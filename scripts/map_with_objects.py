@@ -91,7 +91,12 @@ def is_terrain_empty(grid):
 
 
 def parse_matrix(matrix_path):
-    """Parse a map matrix file. Returns (width, height, terrain_ids_2d)."""
+    """Parse a map matrix file.
+
+    Returns (width, height, header_ids_2d_or_None, terrain_ids_2d).
+    header_ids is a 2D list of map header IDs (or None if the matrix
+    doesn't contain header IDs).
+    """
     with open(matrix_path, "rb") as f:
         data = f.read()
 
@@ -102,9 +107,19 @@ def parse_matrix(matrix_path):
     name_len = data[4]
     offset = 5 + name_len
 
-    # Skip header IDs if present
+    # Read header IDs if present
+    header_ids = None
     if has_headers:
+        header_ids = []
+        for row in range(h):
+            row_ids = []
+            for col in range(w):
+                idx = offset + (row * w + col) * 2
+                val = struct.unpack_from("<H", data, idx)[0]
+                row_ids.append(val)
+            header_ids.append(row_ids)
         offset += w * h * 2
+
     # Skip height values if present
     if has_heights:
         offset += w * h
@@ -119,7 +134,36 @@ def parse_matrix(matrix_path):
             row_ids.append(val)
         terrain_ids.append(row_ids)
 
-    return w, h, terrain_ids
+    return w, h, header_ids, terrain_ids
+
+
+def find_matrix_for_map(map_id):
+    """Search all matrix files to find which one contains the given map_id.
+
+    Returns (matrix_id, matrix_width, matrix_height, header_ids, terrain_ids)
+    or None if not found.
+    """
+    if not os.path.exists(MATRIX_DIR):
+        return None
+
+    for fname in sorted(os.listdir(MATRIX_DIR)):
+        if not fname.endswith(".bin"):
+            continue
+        matrix_id = int(fname.split(".")[0])
+        path = os.path.join(MATRIX_DIR, fname)
+
+        w, h, header_ids, terrain_ids = parse_matrix(path)
+
+        # Only matrices with header IDs can be searched by map_id
+        if header_ids is None:
+            continue
+
+        for row in range(h):
+            for col in range(w):
+                if header_ids[row][col] == map_id:
+                    return matrix_id, w, h, header_ids, terrain_ids
+
+    return None
 
 
 def load_terrain_from_rom(land_data_id):
@@ -150,31 +194,35 @@ def load_terrain_from_rom(land_data_id):
     return grid
 
 
-def resolve_overworld_chunk(global_x, global_y, matrix_id=0):
-    """Given global coords, find the chunk and load its terrain from ROM.
+def resolve_chunk(map_id, global_x, global_y):
+    """Given a map ID and global coords, find the chunk and load its terrain.
 
-    Returns (terrain_grid, chunk_origin_x, chunk_origin_y) or (None, 0, 0).
+    Searches all matrix files for the map_id, then uses the player's global
+    coordinates to determine which 32x32 chunk they're in.
+
+    Returns (terrain_grid, chunk_origin_x, chunk_origin_y, matrix_id) or
+    (None, 0, 0, None) on failure.
     """
-    matrix_path = os.path.join(MATRIX_DIR, f"{matrix_id:04d}.bin")
-    if not os.path.exists(matrix_path):
-        return None, 0, 0
+    result = find_matrix_for_map(map_id)
+    if result is None:
+        return None, 0, 0, None
 
-    w, h, terrain_ids = parse_matrix(matrix_path)
+    matrix_id, w, h, header_ids, terrain_ids = result
 
     chunk_x = global_x // CHUNK_SIZE
     chunk_y = global_y // CHUNK_SIZE
 
     if not (0 <= chunk_x < w and 0 <= chunk_y < h):
-        return None, 0, 0
+        return None, 0, 0, None
 
     land_data_id = terrain_ids[chunk_y][chunk_x]
     if land_data_id == 0xFFFF:
-        return None, 0, 0
+        return None, 0, 0, None
 
     grid = load_terrain_from_rom(land_data_id)
     origin_x = chunk_x * CHUNK_SIZE
     origin_y = chunk_y * CHUNK_SIZE
-    return grid, origin_x, origin_y
+    return grid, origin_x, origin_y, matrix_id
 
 
 def read_objects(emu):
@@ -329,6 +377,18 @@ def render_map(terrain, objects, player_local_x, player_local_y, facing):
     return "\n".join(lines)
 
 
+def needs_chunk_lookup(ram_terrain, px, py):
+    """Determine if we need ROM-based chunk lookup.
+
+    True when:
+    - Player coords exceed a single 32x32 grid (multi-chunk map), OR
+    - RAM terrain is all zeros (game didn't load terrain to known address)
+    """
+    if px >= CHUNK_SIZE or py >= CHUNK_SIZE:
+        return True
+    return is_terrain_empty(ram_terrain)
+
+
 def main():
     emu = connect(SOCKET_PATH)
 
@@ -337,13 +397,14 @@ def main():
     objects = read_objects(emu)
 
     facing_name = FACING_NAMES.get(facing, "?")
-    overworld = is_terrain_empty(ram_terrain)
+    chunked = needs_chunk_lookup(ram_terrain, px, py)
 
-    if overworld:
-        terrain, origin_x, origin_y = resolve_overworld_chunk(px, py)
+    if chunked:
+        terrain, origin_x, origin_y, matrix_id = resolve_chunk(map_id, px, py)
         if terrain is None:
             print(f"Map {map_id} — Player at ({px}, {py}) — "
-                  f"could not load overworld chunk", file=sys.stderr)
+                  f"could not resolve chunk (no matrix found for this map)",
+                  file=sys.stderr)
             sys.exit(1)
 
         local_px = px - origin_x
@@ -351,27 +412,23 @@ def main():
         chunk_cx = px // CHUNK_SIZE
         chunk_cy = py // CHUNK_SIZE
 
-        # Convert objects to local coords, keep only those in this chunk
-        local_objects = []
+        # Convert objects to local coords
         for obj in objects:
-            lx = obj["x"] - origin_x
-            ly = obj["y"] - origin_y
-            obj["local_x"] = lx
-            obj["local_y"] = ly
+            obj["local_x"] = obj["x"] - origin_x
+            obj["local_y"] = obj["y"] - origin_y
             obj["global_x"] = obj["x"]
             obj["global_y"] = obj["y"]
-            local_objects.append(obj)
 
         header = (f"Map {map_id} — Player at ({px}, {py}) facing {facing_name}\n"
-                  f"Overworld chunk ({chunk_cx}, {chunk_cy}) — "
+                  f"Chunk ({chunk_cx}, {chunk_cy}) of matrix {matrix_id} — "
                   f"origin ({origin_x}, {origin_y}) — "
                   f"local ({local_px}, {local_py})\n")
         output = header + "\n"
-        output += render_map(terrain, local_objects, local_px, local_py, facing)
+        output += render_map(terrain, objects, local_px, local_py, facing)
 
         # Append object list with both local and global coords
         output += "\n\nObjects:"
-        for obj in local_objects:
+        for obj in objects:
             label = "PLAYER" if obj["index"] == 0 else f"NPC {chr(ord('A') + obj['index'] - 1)}"
             lx, ly = obj["local_x"], obj["local_y"]
             gx, gy = obj["global_x"], obj["global_y"]
@@ -379,7 +436,7 @@ def main():
             marker = "" if in_chunk else " [other chunk]"
             output += f"\n  [{obj['index']}] {label}: local ({lx}, {ly}) global ({gx}, {gy}){marker}"
     else:
-        # Indoor map: coords are already local to the 32x32 grid
+        # Single-chunk map: coords are already local to the 32x32 grid
         for obj in objects:
             obj["local_x"] = obj["x"]
             obj["local_y"] = obj["y"]

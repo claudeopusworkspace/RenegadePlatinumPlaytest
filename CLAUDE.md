@@ -64,15 +64,16 @@ The current map's terrain attributes (collision grid) are loaded in RAM at **`0x
 - **Bits 0-7** (`0x00FF`): Tile behavior (door, stairs, water, etc.). See "Tile Behaviors" section below.
 - Coordinate offset is **(0, 0)** — grid coords match game coords directly.
 
-#### Overworld Maps (Outdoor)
-On the overworld, the RAM terrain address is **all zeros**. The overworld uses a **matrix/chunk system**:
+#### Multi-Chunk Maps (Overworld, Large Caves, etc.)
+When player coordinates exceed 31 (or RAM terrain is empty), the map uses a **matrix/chunk system**:
 
-- The Sinnoh overworld is a **30×30 grid of 32×32-tile chunks** (matrix 0).
+- Maps are composed of a grid of **32×32-tile chunks** (e.g., the Sinnoh overworld is 30×30 chunks via matrix 0).
 - Player global coords map to chunks: `chunk = (x÷32, y÷32)`, local = `(x%32, y%32)`.
 - Each chunk's terrain is stored in a ROM file: `romdata/land_data/XXXX.bin`.
-- The matrix file (`romdata/map_matrix/0000.bin`) maps chunk positions to land_data file IDs.
-- `map_with_objects.py` detects overworld mode automatically and loads terrain from ROM.
+- Matrix files (`romdata/map_matrix/XXXX.bin`) map chunk positions to land_data file IDs.
+- `map_with_objects.py` **detects this automatically** — it searches all matrix files for the current map ID.
 - The script displays **local chunk coordinates (0-31)** with the chunk offset printed in the header.
+- This works for any multi-chunk map: overworld, large caves, dungeons, etc.
 
 **Important caveats:**
 - Dynamic objects (NPCs, items on the floor) are NOT in the static grid. Use `map_with_objects.py` to see both.
