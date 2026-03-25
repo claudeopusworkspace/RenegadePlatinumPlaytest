@@ -1,0 +1,22 @@
+{
+  "name": "player_facing",
+  "description": "Player facing direction (0=up, 1=down, 2=left, 3=right)",
+  "base_address": 36918086,
+  "fields": [
+    {
+      "name": "facing",
+      "offset": 0,
+      "size": "byte",
+      "transform": {
+        "type": "map",
+        "values": {
+          "0": "up",
+          "1": "down",
+          "2": "left",
+          "3": "right"
+        },
+        "default": "unknown"
+      }
+    }
+  ]
+}

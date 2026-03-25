@@ -1,0 +1,17 @@
+{
+  "name": "walk_left",
+  "description": "Walk one tile left (32 frames hold + 4 frame pause)",
+  "steps": [
+    {
+      "action": "hold",
+      "buttons": [
+        "left"
+      ],
+      "frames": 32
+    },
+    {
+      "action": "wait",
+      "frames": 4
+    }
+  ]
+}

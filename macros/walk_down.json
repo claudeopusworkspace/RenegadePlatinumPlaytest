@@ -1,0 +1,17 @@
+{
+  "name": "walk_down",
+  "description": "Walk one tile down (32 frames hold + 4 frame pause)",
+  "steps": [
+    {
+      "action": "hold",
+      "buttons": [
+        "down"
+      ],
+      "frames": 32
+    },
+    {
+      "action": "wait",
+      "frames": 4
+    }
+  ]
+}

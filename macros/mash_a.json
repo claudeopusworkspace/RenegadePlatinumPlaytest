@@ -1,0 +1,61 @@
+{
+  "name": "mash_a",
+  "description": "Press A 5 times with longer holds and waits - for advancing dialogue",
+  "steps": [
+    {
+      "action": "press",
+      "buttons": [
+        "a"
+      ],
+      "frames": 8
+    },
+    {
+      "action": "wait",
+      "frames": 30
+    },
+    {
+      "action": "press",
+      "buttons": [
+        "a"
+      ],
+      "frames": 8
+    },
+    {
+      "action": "wait",
+      "frames": 30
+    },
+    {
+      "action": "press",
+      "buttons": [
+        "a"
+      ],
+      "frames": 8
+    },
+    {
+      "action": "wait",
+      "frames": 30
+    },
+    {
+      "action": "press",
+      "buttons": [
+        "a"
+      ],
+      "frames": 8
+    },
+    {
+      "action": "wait",
+      "frames": 30
+    },
+    {
+      "action": "press",
+      "buttons": [
+        "a"
+      ],
+      "frames": 8
+    },
+    {
+      "action": "wait",
+      "frames": 30
+    }
+  ]
+}

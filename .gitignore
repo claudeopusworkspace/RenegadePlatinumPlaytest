@@ -1,0 +1,26 @@
+# ROM files (copyrighted)
+*.nds
+
+# Emulator state (binary, large, session-specific)
+savestates/
+snapshots/
+
+# RAM dumps (temporary analysis artifacts)
+*.bin
+
+# Generated output files (regenerated on demand)
+map_view.txt
+nav_view.txt
+
+# DeSmuME MCP subproject (separate repo)
+DesmumeMCP/
+
+# ROM extracted data (large, can be re-extracted)
+romdata/
+
+# IPC bridge socket
+.desmume_bridge.sock
+
+# Python
+__pycache__/
+*.pyc

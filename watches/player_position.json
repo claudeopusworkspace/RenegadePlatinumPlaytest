@@ -1,0 +1,32 @@
+{
+  "name": "player_position",
+  "description": "Player map ID, current X/Y, and previous X/Y position",
+  "base_address": 36172880,
+  "fields": [
+    {
+      "name": "map_id",
+      "offset": 0,
+      "size": "long"
+    },
+    {
+      "name": "x",
+      "offset": 8,
+      "size": "long"
+    },
+    {
+      "name": "y",
+      "offset": 12,
+      "size": "long"
+    },
+    {
+      "name": "prev_x",
+      "offset": 48,
+      "size": "long"
+    },
+    {
+      "name": "prev_y",
+      "offset": 52,
+      "size": "long"
+    }
+  ]
+}
