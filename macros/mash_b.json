@@ -1,0 +1,61 @@
+{
+  "name": "mash_b",
+  "description": "Press B 5 times (8-frame holds, 30-frame waits) for dialogue - safer than A to avoid re-triggering NPCs",
+  "steps": [
+    {
+      "action": "press",
+      "buttons": [
+        "b"
+      ],
+      "frames": 8
+    },
+    {
+      "action": "wait",
+      "frames": 30
+    },
+    {
+      "action": "press",
+      "buttons": [
+        "b"
+      ],
+      "frames": 8
+    },
+    {
+      "action": "wait",
+      "frames": 30
+    },
+    {
+      "action": "press",
+      "buttons": [
+        "b"
+      ],
+      "frames": 8
+    },
+    {
+      "action": "wait",
+      "frames": 30
+    },
+    {
+      "action": "press",
+      "buttons": [
+        "b"
+      ],
+      "frames": 8
+    },
+    {
+      "action": "wait",
+      "frames": 30
+    },
+    {
+      "action": "press",
+      "buttons": [
+        "b"
+      ],
+      "frames": 8
+    },
+    {
+      "action": "wait",
+      "frames": 30
+    }
+  ]
+}

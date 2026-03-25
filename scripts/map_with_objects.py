@@ -4,11 +4,16 @@
 Connects to the running emulator via the IPC bridge and reads everything
 automatically — no manual arguments needed.
 
+For indoor maps, reads terrain directly from RAM.
+For overworld maps (where RAM terrain is empty), loads terrain from ROM
+data using the map matrix/chunk system.
+
 Usage:
     python3 scripts/map_with_objects.py [output_file]
 
 If output_file is omitted, prints to stdout.
 """
+import os
 import struct
 import sys
 
@@ -29,6 +34,13 @@ OBJ_STRIDE = 0x128
 OBJ_MAX_ENTRIES = 16  # Scan up to 16 entries
 
 SOCKET_PATH = "/workspace/RenegadePlatinumPlaytest/.desmume_bridge.sock"
+
+# === ROM data paths ===
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+ROMDATA_DIR = os.path.join(PROJECT_ROOT, "romdata")
+LAND_DATA_DIR = os.path.join(ROMDATA_DIR, "land_data")
+MATRIX_DIR = os.path.join(ROMDATA_DIR, "map_matrix")
+CHUNK_SIZE = 32  # Tiles per chunk edge
 
 # Facing direction arrows and names
 FACING_ARROWS = {0: "^", 1: "v", 2: "<", 3: ">"}
@@ -56,17 +68,113 @@ BEHAVIORS = {
     0x69: "door2",
     0x6B: "warp3",
     0x80: "counter",
-    0xA0: "berry_patch",
+    0xA9: "tree_tile",
 }
 
 
-def read_terrain(emu):
+def read_terrain_from_ram(emu):
     """Read the 32x32 terrain collision grid from RAM."""
     vals = emu.read_memory_range(TERRAIN_ADDR, size="short", count=1024)
     grid = []
     for row in range(32):
         grid.append(vals[row * 32:(row + 1) * 32])
     return grid
+
+
+def is_terrain_empty(grid):
+    """Check if the terrain grid is all zeros (overworld mode)."""
+    for row in grid:
+        for val in row:
+            if val != 0:
+                return False
+    return True
+
+
+def parse_matrix(matrix_path):
+    """Parse a map matrix file. Returns (width, height, terrain_ids_2d)."""
+    with open(matrix_path, "rb") as f:
+        data = f.read()
+
+    w = data[0]
+    h = data[1]
+    has_headers = data[2]
+    has_heights = data[3]
+    name_len = data[4]
+    offset = 5 + name_len
+
+    # Skip header IDs if present
+    if has_headers:
+        offset += w * h * 2
+    # Skip height values if present
+    if has_heights:
+        offset += w * h
+
+    # Read terrain file IDs
+    terrain_ids = []
+    for row in range(h):
+        row_ids = []
+        for col in range(w):
+            idx = offset + (row * w + col) * 2
+            val = struct.unpack_from("<H", data, idx)[0]
+            row_ids.append(val)
+        terrain_ids.append(row_ids)
+
+    return w, h, terrain_ids
+
+
+def load_terrain_from_rom(land_data_id):
+    """Load a 32x32 terrain grid from a land_data ROM file."""
+    path = os.path.join(LAND_DATA_DIR, f"{land_data_id:04d}.bin")
+    if not os.path.exists(path):
+        return None
+
+    with open(path, "rb") as f:
+        data = f.read()
+
+    if len(data) < 0x10 + TERRAIN_SIZE:
+        return None
+
+    terrain_size = struct.unpack_from("<I", data, 0)[0]
+    if terrain_size != TERRAIN_SIZE:
+        return None
+
+    grid = []
+    for row in range(32):
+        row_data = []
+        for col in range(32):
+            idx = 0x10 + (row * 32 + col) * 2
+            val = struct.unpack_from("<H", data, idx)[0]
+            row_data.append(val)
+        grid.append(row_data)
+
+    return grid
+
+
+def resolve_overworld_chunk(global_x, global_y, matrix_id=0):
+    """Given global coords, find the chunk and load its terrain from ROM.
+
+    Returns (terrain_grid, chunk_origin_x, chunk_origin_y) or (None, 0, 0).
+    """
+    matrix_path = os.path.join(MATRIX_DIR, f"{matrix_id:04d}.bin")
+    if not os.path.exists(matrix_path):
+        return None, 0, 0
+
+    w, h, terrain_ids = parse_matrix(matrix_path)
+
+    chunk_x = global_x // CHUNK_SIZE
+    chunk_y = global_y // CHUNK_SIZE
+
+    if not (0 <= chunk_x < w and 0 <= chunk_y < h):
+        return None, 0, 0
+
+    land_data_id = terrain_ids[chunk_y][chunk_x]
+    if land_data_id == 0xFFFF:
+        return None, 0, 0
+
+    grid = load_terrain_from_rom(land_data_id)
+    origin_x = chunk_x * CHUNK_SIZE
+    origin_y = chunk_y * CHUNK_SIZE
+    return grid, origin_x, origin_y
 
 
 def read_objects(emu):
@@ -91,7 +199,7 @@ def read_objects(emu):
             continue
 
         # Skip sentinel entries (0xFFFF)
-        if tile_x > 1000 or tile_y > 1000:
+        if tile_x > 10000 or tile_y > 10000:
             consecutive_empty = 0
             continue
 
@@ -118,17 +226,21 @@ def read_player_state(emu):
     return map_id, x, y, facing
 
 
-def render_map(terrain, objects, player_x, player_y, facing):
-    """Render an ASCII map combining terrain and dynamic objects."""
+def render_map(terrain, objects, player_local_x, player_local_y, facing):
+    """Render an ASCII map combining terrain and dynamic objects.
+
+    All coordinates are expected in chunk-local space (0-31).
+    """
 
     # Build object lookup: (x, y) -> label
     obj_at = {}
     for obj in objects:
-        if 0 <= obj["x"] < 32 and 0 <= obj["y"] < 32:
+        lx, ly = obj["local_x"], obj["local_y"]
+        if 0 <= lx < 32 and 0 <= ly < 32:
             if obj["index"] == 0:
-                obj_at[(obj["x"], obj["y"])] = FACING_ARROWS.get(facing, "P")
+                obj_at[(lx, ly)] = FACING_ARROWS.get(facing, "P")
             else:
-                obj_at[(obj["x"], obj["y"])] = chr(ord("A") + obj["index"] - 1)
+                obj_at[(lx, ly)] = chr(ord("A") + obj["index"] - 1)
 
     # Find map bounds (non-zero terrain region)
     min_row, max_row = 31, 0
@@ -144,11 +256,12 @@ def render_map(terrain, objects, player_x, player_y, facing):
 
     # Include object positions in bounds
     for obj in objects:
-        if 0 <= obj["x"] < 32 and 0 <= obj["y"] < 32:
-            min_row = min(min_row, obj["y"])
-            max_row = max(max_row, obj["y"])
-            min_col = min(min_col, obj["x"])
-            max_col = max(max_col, obj["x"])
+        lx, ly = obj["local_x"], obj["local_y"]
+        if 0 <= lx < 32 and 0 <= ly < 32:
+            min_row = min(min_row, ly)
+            max_row = max(max_row, ly)
+            min_col = min(min_col, lx)
+            max_col = max(max_col, lx)
 
     # Add 1 tile padding
     min_row = max(0, min_row - 1)
@@ -213,13 +326,6 @@ def render_map(terrain, objects, player_x, player_y, facing):
             name = BEHAVIORS.get(beh, "unknown")
             lines.append(f"  {beh:02x} = {passability} ({name})")
 
-    # Object list
-    lines.append("")
-    lines.append("Objects:")
-    for obj in objects:
-        label = "PLAYER" if obj["index"] == 0 else f"NPC {chr(ord('A') + obj['index'] - 1)}"
-        lines.append(f"  [{obj['index']}] {label}: ({obj['x']}, {obj['y']})")
-
     return "\n".join(lines)
 
 
@@ -227,12 +333,67 @@ def main():
     emu = connect(SOCKET_PATH)
 
     map_id, px, py, facing = read_player_state(emu)
-    terrain = read_terrain(emu)
+    ram_terrain = read_terrain_from_ram(emu)
     objects = read_objects(emu)
 
     facing_name = FACING_NAMES.get(facing, "?")
-    output = f"Map {map_id} — Player at ({px}, {py}) facing {facing_name}\n\n"
-    output += render_map(terrain, objects, px, py, facing)
+    overworld = is_terrain_empty(ram_terrain)
+
+    if overworld:
+        terrain, origin_x, origin_y = resolve_overworld_chunk(px, py)
+        if terrain is None:
+            print(f"Map {map_id} — Player at ({px}, {py}) — "
+                  f"could not load overworld chunk", file=sys.stderr)
+            sys.exit(1)
+
+        local_px = px - origin_x
+        local_py = py - origin_y
+        chunk_cx = px // CHUNK_SIZE
+        chunk_cy = py // CHUNK_SIZE
+
+        # Convert objects to local coords, keep only those in this chunk
+        local_objects = []
+        for obj in objects:
+            lx = obj["x"] - origin_x
+            ly = obj["y"] - origin_y
+            obj["local_x"] = lx
+            obj["local_y"] = ly
+            obj["global_x"] = obj["x"]
+            obj["global_y"] = obj["y"]
+            local_objects.append(obj)
+
+        header = (f"Map {map_id} — Player at ({px}, {py}) facing {facing_name}\n"
+                  f"Overworld chunk ({chunk_cx}, {chunk_cy}) — "
+                  f"origin ({origin_x}, {origin_y}) — "
+                  f"local ({local_px}, {local_py})\n")
+        output = header + "\n"
+        output += render_map(terrain, local_objects, local_px, local_py, facing)
+
+        # Append object list with both local and global coords
+        output += "\n\nObjects:"
+        for obj in local_objects:
+            label = "PLAYER" if obj["index"] == 0 else f"NPC {chr(ord('A') + obj['index'] - 1)}"
+            lx, ly = obj["local_x"], obj["local_y"]
+            gx, gy = obj["global_x"], obj["global_y"]
+            in_chunk = 0 <= lx < 32 and 0 <= ly < 32
+            marker = "" if in_chunk else " [other chunk]"
+            output += f"\n  [{obj['index']}] {label}: local ({lx}, {ly}) global ({gx}, {gy}){marker}"
+    else:
+        # Indoor map: coords are already local to the 32x32 grid
+        for obj in objects:
+            obj["local_x"] = obj["x"]
+            obj["local_y"] = obj["y"]
+            obj["global_x"] = obj["x"]
+            obj["global_y"] = obj["y"]
+
+        output = f"Map {map_id} — Player at ({px}, {py}) facing {facing_name}\n\n"
+        output += render_map(ram_terrain, objects, px, py, facing)
+
+        # Object list
+        output += "\n\nObjects:"
+        for obj in objects:
+            label = "PLAYER" if obj["index"] == 0 else f"NPC {chr(ord('A') + obj['index'] - 1)}"
+            output += f"\n  [{obj['index']}] {label}: ({obj['x']}, {obj['y']})"
 
     if len(sys.argv) > 1:
         with open(sys.argv[1], "w") as f:

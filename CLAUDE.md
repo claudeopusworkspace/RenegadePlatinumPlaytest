@@ -56,6 +56,7 @@ python3 scripts/render_map.py terrain.bin <x> <y> <facing> nav_view.txt
 
 ### Map Collision Data
 
+#### Indoor Maps
 The current map's terrain attributes (collision grid) are loaded in RAM at **`0x0231D1E4`** (decimal: 36819428). This is a fixed address — the game loads whichever map's data is active into this slot.
 
 **Format:** 2048 bytes = 32x32 grid of `u16` (little-endian), row-major.
@@ -63,9 +64,20 @@ The current map's terrain attributes (collision grid) are loaded in RAM at **`0x
 - **Bits 0-7** (`0x00FF`): Tile behavior (door, stairs, water, etc.). See "Tile Behaviors" section below.
 - Coordinate offset is **(0, 0)** — grid coords match game coords directly.
 
+#### Overworld Maps (Outdoor)
+On the overworld, the RAM terrain address is **all zeros**. The overworld uses a **matrix/chunk system**:
+
+- The Sinnoh overworld is a **30×30 grid of 32×32-tile chunks** (matrix 0).
+- Player global coords map to chunks: `chunk = (x÷32, y÷32)`, local = `(x%32, y%32)`.
+- Each chunk's terrain is stored in a ROM file: `romdata/land_data/XXXX.bin`.
+- The matrix file (`romdata/map_matrix/0000.bin`) maps chunk positions to land_data file IDs.
+- `map_with_objects.py` detects overworld mode automatically and loads terrain from ROM.
+- The script displays **local chunk coordinates (0-31)** with the chunk offset printed in the header.
+
 **Important caveats:**
 - Dynamic objects (NPCs, items on the floor) are NOT in the static grid. Use `map_with_objects.py` to see both.
 - `navigate.py` is the most robust navigation method — it tries each step and checks the result, catching dynamic blockers and edge cases that the static grid alone would miss.
+- Overworld door tiles (`0x69`) are marked as blocked in terrain but the warp system overrides collision.
 
 ### Dynamic Objects (Overworld Object Array)
 
@@ -97,10 +109,11 @@ These tiles are **passable** (bit 15 = 0). You walk *onto* the tile, then press 
 
 #### Known Blocked Tiles
 
-These tiles are **impassable** (bit 15 = 1).
+These tiles are **impassable** (bit 15 = 1) but may have special behavior.
 
 | Behavior | Name | Notes |
 |----------|------|-------|
+| `0x69` | Door (overworld) | House entrances on overworld maps. Marked blocked but warp system overrides collision — walk into the tile to enter. |
 | `0x80` | Counter | Kitchen counter, can interact across it |
 
 #### Other Behaviors (not yet encountered in gameplay)
@@ -112,6 +125,7 @@ These tiles are **impassable** (bit 15 = 1).
 | `0x38`-`0x3B` | Ledges | One-way jumps (S/N/W/E) |
 | `0x5E` | Stairs (up) | Likely walk **right** to activate? (unconfirmed) |
 | `0x62` | Warp | Generic warp tile |
+| `0xA9` | Tree tile | Decorative trees on overworld, passable |
 
 *This table will grow as we encounter new tile types during the playthrough.*
 
@@ -161,6 +175,7 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 | Macro | Description |
 |-------|-------------|
 | `mash_a` | Press A 5 times (8-frame holds, 30-frame waits) for dialogue |
+| `mash_b` | Press B 5 times (8-frame holds, 30-frame waits) for dialogue — safer than A, avoids re-triggering NPCs |
 | `walk_up` | Walk up 2 tiles (32-frame hold + 4-frame wait) |
 | `walk_down` | Walk down 2 tiles |
 | `walk_left` | Walk left 2 tiles |
@@ -182,8 +197,9 @@ Then analyze with Python scripts.
 
 - **Character name**: CLAUDE
 - **Rival name**: AAAAAAA (mashed through naming screen)
-- **Current point**: Living room (map 414), after Mom gave Running Shoes. Need to exit house and head toward Route 201 — this should trigger the cutscene that leads to getting a starter Pokemon.
+- **Current point**: Twinleaf Town overworld (map 411). Exited house, NPC said Barry is looking for us — need to visit Barry's house. Save state: `twinleaf_outside_barrys_house`.
 - **Pokemon**: None yet.
+- **Twinleaf Town layout** (overworld chunk 3,27): 4 houses. Player's house door at local (20,21) = global (116,885). Barry's house door at local (9,11) = global (105,875). North exit blocked by Barry event until we visit him.
 - **Notable**: There's an Eevee object at (4,3) in the living room. Interacting shows "It's an EEVEE! Mom is taking care of it." — Renegade Platinum likely gives this Eevee to the player at some point.
 
 ## Tips
