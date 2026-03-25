@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "desmume": {
+      "command": "/workspace/RenegadePlatinumPlaytest/DesmumeMCP/.venv/bin/python",
+      "args": ["-m", "desmume_mcp"],
+      "cwd": "/workspace/RenegadePlatinumPlaytest/DesmumeMCP",
+      "env": {
+        "SDL_VIDEODRIVER": "dummy",
+        "SDL_AUDIODRIVER": "dummy",
+        "PYTHONPATH": "/workspace/RenegadePlatinumPlaytest/DesmumeMCP"
+      }
+    }
+  }
+}
