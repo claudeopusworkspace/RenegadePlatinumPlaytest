@@ -139,8 +139,8 @@ See MEMORY_MAP.md for full address documentation.
 
 **Buttons:** a, b, x, y, l, r, start, select, up, down, left, right
 
-- **A**: Confirm / advance dialogue. Use `press_buttons(["a"], frames=8)` — the game needs a few frames of sustained input to register.
-- **B**: Cancel / back
+- **A**: Confirm / advance dialogue / interact with overworld objects. Use `press_buttons(["a"], frames=8)` — the game needs a few frames of sustained input to register.
+- **B**: Cancel / back / advance dialogue. **Prefer B over A for advancing dialogue** — B progresses text just like A but won't accidentally trigger a new interaction with a nearby NPC or object when the dialogue ends.
 - **Start**: Open menu (overworld)
 - **D-pad**: Move character / navigate menus
 - **Touch screen**: Tap targets on bottom screen. **Always use `get_screenshot(screen="bottom")` to estimate coordinates**, as the combined "both" view distorts positions.
