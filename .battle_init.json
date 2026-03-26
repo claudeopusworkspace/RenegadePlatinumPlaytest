@@ -1,10 +1,12 @@
 {
-  "frame": 20351,
+  "frame": 63219,
   "scan_start": "0x0228A000",
   "scan_size": 1572864,
   "markers": {
-    "0x022FF7CC": "Turtwig",
-    "0x022FF838": "Turtwig",
-    "0x022FFB98": "What will Turtwig do?[FFFE][0200][0001][0000]"
+    "0x022A7FAC": "You're a Pok\u00e9mon Trainer, and so am I!\nOur eyes met, so battle we must!\n",
+    "0x02301800": "Turtwig",
+    "0x0230186C": "Turtwig",
+    "0x02301944": "Hoothoot",
+    "0x02301BCC": "What will Turtwig do?[FFFE][0200][0001][0000]"
   }
 }

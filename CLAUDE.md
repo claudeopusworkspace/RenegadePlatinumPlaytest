@@ -26,6 +26,11 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `got_pokedex_rowan_lab` | Inside Rowan's lab (map 422) after receiving Pokedex. Free to move. |
 | `sandgem_pokemon_center_healed` | Outside Sandgem Pokemon Center (map 418). Turtwig Lv8 healed. |
 | `got_eevee_twinleaf` | In player's house (map 414) after obtaining Eevee. Turtwig Lv8, Eevee Lv5. |
+| `route_201_heading_east` | Route 201 (map 342) at (123, 854). Heading east to Sandgem. Turtwig Lv8, Eevee Lv5. |
+| `sandgem_north_exit_healed` | Sandgem Town (map 418) at (184, 833). Healed, heading to Route 202. |
+| `post_dawn_battle_route202` | Route 202 (map 343) at (180, 825). After beating Dawn's Piplup Lv9. Got 30 Poke Balls. Turtwig Lv9. |
+| `route202_mid_healed` | Route 202 (map 343) at (166, 815). Turtwig Lv10, healed. Pre-trainer area. |
+| `route202_post_tristan_healed` | Route 202 (map 343) at (181, 819). After beating Youngster Tristan. Turtwig Lv11 (learned Curse), 31/35 HP. |
 
 ## Navigation
 
@@ -276,16 +281,23 @@ These tiles are **impassable** (bit 15 = 1) but may have special behavior.
 | `0x69` | Door (overworld) | House entrances on overworld maps. Marked blocked but warp system overrides collision — walk into the tile to enter. |
 | `0x80` | Counter | Kitchen counter, can interact across it |
 
+#### Other Known Behaviors (encountered in gameplay)
+
+| Behavior | Name | Notes |
+|----------|------|-------|
+| `0x02` | Tall grass | Wild encounters. Passable but triggers random battles. |
+| `0x21` | Sand/beach | Passable, decorative. Seen in Sandgem Town. |
+| `0x3B` | Ledge (east) | One-way east jump. Blocked bit set. Route 201/202 shortcuts. |
+| `0xA9` | Tree tile | Decorative trees on overworld, passable. |
+
 #### Other Behaviors (not yet encountered in gameplay)
 
 | Behavior | Name | Expected |
 |----------|------|----------|
-| `0x02` | Tall grass | Wild encounters |
 | `0x10` | Water | Requires Surf |
-| `0x38`-`0x3B` | Ledges | One-way jumps (S/N/W/E) |
+| `0x38`-`0x3A` | Ledges (S/N/W) | One-way jumps |
 | `0x5E` | Stairs (up) | Likely walk **right** to activate? (unconfirmed) |
 | `0x62` | Warp | Generic warp tile |
-| `0xA9` | Tree tile | Decorative trees on overworld, passable |
 
 *This table will grow as we encounter new tile types during the playthrough.*
 
@@ -358,16 +370,19 @@ Then analyze with Python scripts.
 
 - **Character name**: CLAUDE
 - **Rival name**: AAAAAAA (mashed through naming screen)
-- **Current point**: Twinleaf Town, player's house (map 414). Just obtained Eevee. Save state: `got_eevee_twinleaf`.
-- **Pokemon**: Turtwig Lv8 (28/28 HP, Naughty +Atk/-SpD, moves: Tackle, Withdraw, Absorb, Razor Leaf), Eevee Lv5 (21/21 HP, Gentle +SpD/-Def, moves: Tackle, Tail Whip, Bite, Covet, ability: Run Away).
+- **Current point**: Route 202 (map 343) at (181, 819). Midway through route, after beating Youngster Tristan. Save state: `route202_post_tristan_healed`.
+- **Pokemon**: Turtwig Lv11 (31/35 HP, Naughty +Atk/-SpD, moves: Tackle, Curse, Absorb, Razor Leaf), Eevee Lv5 (21/21 HP, Gentle +SpD/-Def, moves: Tackle, Tail Whip, Bite, Covet, ability: Run Away).
 - **Starter**: Chose Turtwig. Barry chose Chimchar (type advantage). Other starters NOT yet received — may come later.
-- **Eevee**: Obtained from Poke Ball in player's house after Mom's dialogue. Lv5 with Bite (Dark) and Covet (Normal) as notable moves.
-- **Items received this session**: Poke Radar (key item), Repels, Potions (from Mart NPC on Route 201). Barry's mom gave us a Parcel to deliver to Barry.
+- **Eevee**: Obtained from Poke Ball in player's house after Mom's dialogue. Lv5 with Bite (Dark, 30% flinch) and Covet (Normal) as notable moves. Needs leveling — hasn't seen much combat since the Pidgey fight on Route 201.
+- **Items**: Potion x8, Repel x10, Poke Ball x30, Bicycle, Poke Radar, Journal, Parcel (deliver to Barry).
 - **Route 201 notes**: Tall grass is unavoidable in the middle section (big patch columns 10-20). Wild encounters: Starly Lv4-5, Pidgey Lv4, Nidoran(M) Lv5, Nidoran(F) Lv4. One whiteout occurred previously (Nidoran KO'd Turtwig at 1 HP).
-- **Route 201 navigation**: Path from Sandgem to Twinleaf goes west through tall grass, then south through a corridor at global coords ~(110, 858-863) to reach Twinleaf Town. Ledge barriers block direct south access from the main path — must go west into Verity Lakefront area, jump south ledge, then east and south to the corridor.
+- **Route 201 navigation**: Path from Twinleaf to Sandgem goes north out of Twinleaf (cols 14-17), then east through Route 201. South corridor from Twinleaf exits at ~(111, 864). Route goes east through open areas and tall grass to Sandgem Town.
 - **Lake Verity**: Visited per story requirement. Met Cyrus (ominous speech about time/space). Barry wanted to catch legendary but had no Poke Balls.
-- **Sandgem Town**: Dawn gave town tour (Pokemon Center, Mart). Rowan gave Poke Radar + Repels outside lab.
-- **Next**: Head back to Sandgem Town, then north to Route 202. Need to deliver Parcel to Barry (he's somewhere ahead).
+- **Sandgem Town**: Dawn gave town tour (Pokemon Center, Mart). Rowan gave Poke Radar + Repels outside lab. Pokemon Center door at (177, 842). North exit to Route 202 on the east side (cols 180-189).
+- **Route 202**: Dawn battled us with Piplup Lv9 at the entrance (not a catching tutorial — this is Renegade Platinum). Gave 30 Poke Balls after. Youngster Tristan has Hoothoot Lv7 + Starly Lv7. Wild encounters include Zigzagoon Lv5 (Gluttony). More trainers and grass ahead.
+- **Route 202 wild Pokemon observed**: Zigzagoon Lv5 (Normal, Gluttony).
+- **Route 202 trainers defeated**: Dawn (Piplup Lv9), Youngster Tristan (Hoothoot Lv7 + Starly Lv7).
+- **Next**: Continue north through Route 202 to Jubilife City. Still need to deliver Parcel to Barry. Eevee needs leveling badly — consider leading with Eevee against weaker wild Pokemon or switching in for EXP.
 
 ## Quick Reference: Common Workflows
 
@@ -398,3 +413,10 @@ Then analyze with Python scripts.
 - Use macros for repetitive sequences (dialogue, walking patterns).
 - The `load_state` tool may occasionally hang without returning — check `get_status` to verify.
 - Note: addresses must be passed as decimal integers to MCP tools, not hex strings. Use Python to convert: `python3 -c "print(0x0227F458)"`.
+- **Touch screen taps need `frames=8`** — single-frame taps (default) often don't register. Always use 8-frame holds for touch input.
+- **Wait 300 frames between UI navigation steps** — Pokemon has forced text scroll delays before accepting input. Pressing buttons during these delays wastes them.
+- **Always check the bottom screen for Yes/No prompts** — in battle, move-learning, and switch prompts use the bottom touch screen, not the top.
+- **NEVER call `battle_poll.py` without first selecting a move** — it polls for NEW text, so if no action was taken, it loops forever. Always: select move → verify Pokeball screen → THEN poll.
+- **Use `timeout 15 python3 scripts/battle_poll.py --press` for KO turns** — the script stalls after battle ends (KO + EXP + return to overworld). The `timeout` wrapper prevents infinite hangs.
+- **Pause menu remembers cursor position** — don't assume it starts on a specific item. Check the screenshot before pressing A.
+- **Trainer battles may have multiple Pokemon** — after a KO, the game asks "Will you switch?" with touch buttons on the bottom screen. Handle this before the next action prompt.
