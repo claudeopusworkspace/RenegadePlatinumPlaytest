@@ -45,7 +45,11 @@ python3 scripts/read_party.py           # formatted party display
 python3 scripts/read_party.py --json    # JSON output for scripting
 ```
 
-Reads species, level, HP from the party summary structure at `0x022C0130` (44 bytes per slot, 6 slots max). Species names are loaded from `data/species_names.json`.
+Uses TWO data sources:
+1. **Encrypted Gen 4 party data** at `0x0227E26C` (count) / `0x0227E270` (236 bytes/slot) — species, moves, PP, nature, item, friendship, EXP. Always available (overworld + battle).
+2. **Party summary structure** at `0x022C0130` (44 bytes/slot) — current HP, max HP, level. Overworld only (zeroed during battle/menus).
+
+The encrypted data uses standard Gen 4 format: PID + checksum + 4 shuffled/encrypted 32-byte blocks. Decryption: PRNG seeded by checksum; block shuffle index = `((PID >> 13) & 0x1F) % 24`.
 
 ## Map Name Lookup
 
@@ -303,7 +307,7 @@ Then analyze with Python scripts.
 - **Character name**: CLAUDE
 - **Rival name**: AAAAAAA (mashed through naming screen)
 - **Current point**: Twinleaf Town, player's house (map 414). Just obtained Eevee. Save state: `got_eevee_twinleaf`.
-- **Pokemon**: Turtwig Lv8 (28/28 HP, moves: Tackle, Withdraw, Absorb), Eevee Lv5 (21/21 HP, moves: Tackle, Tail Whip, Bite, Covet). Eevee nature: Gentle (+SpD, -Def), ability: Run Away.
+- **Pokemon**: Turtwig Lv8 (28/28 HP, Naughty +Atk/-SpD, moves: Tackle, Withdraw, Absorb, Razor Leaf), Eevee Lv5 (21/21 HP, Gentle +SpD/-Def, moves: Tackle, Tail Whip, Bite, Covet, ability: Run Away).
 - **Starter**: Chose Turtwig. Barry chose Chimchar (type advantage). Other starters NOT yet received — may come later.
 - **Eevee**: Obtained from Poke Ball in player's house after Mom's dialogue. Lv5 with Bite (Dark) and Covet (Normal) as notable moves.
 - **Items received this session**: Poke Radar (key item), Repels, Potions (from Mart NPC on Route 201). Barry's mom gave us a Parcel to deliver to Barry.
