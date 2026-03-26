@@ -20,6 +20,7 @@ Exit states:
     AUTO_ADVANCE     — still auto-advancing (hit max poll limit)
 """
 
+import struct
 import sys
 import os
 
@@ -27,8 +28,11 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "DesmumeMCP"))
 
 from desmume_mcp.client import connect
 
-BATTLE_BUFFER = 0x02301BD0
-MAX_CHARS = 80
+# Scan region covers both wild battle (~0x022FF000) and trainer battle (~0x02301000) text
+BATTLE_SCAN_START = 0x022FF000
+BATTLE_SCAN_SIZE = 0x4000   # 16 KB
+HEADER_MARKER = b"\xEC\xD2\xF8\xB6"  # D2EC B6F8 in little-endian
+MAX_TEXT_CHARS = 120
 MAX_POLLS = 300       # ~75 seconds at 15 frames/poll (safety limit)
 POLL_FRAMES = 15      # frames to advance between reads
 SETTLE_FRAMES = 120   # frames to wait after detecting a stop indicator
@@ -50,6 +54,61 @@ CHAR_TABLE[0x01AD] = ','
 CHAR_TABLE[0x01AE] = '.'
 CHAR_TABLE[0x01B3] = "'"
 CHAR_TABLE[0x01DE] = ' '
+
+
+def scan_battle_text(emu):
+    """Scan the battle memory region for the best active text slot.
+
+    Returns (text, vals_including_end) or (None, []) if no text found.
+    """
+    raw_bytes = emu.read_memory_range(BATTLE_SCAN_START, size="byte", count=BATTLE_SCAN_SIZE)
+    if not raw_bytes:
+        return None, []
+
+    data = bytes(raw_bytes)
+    best_text = None
+    best_vals = []
+    best_known = 0
+
+    idx = 0
+    while True:
+        idx = data.find(HEADER_MARKER, idx)
+        if idx < 0:
+            break
+
+        text_start = idx + 4
+        if text_start + 1 >= len(data):
+            idx += 2
+            continue
+
+        first_val = struct.unpack_from("<H", data, text_start)[0]
+        if first_val == 0xFFFF:
+            idx += 2
+            continue
+
+        # Read values from this slot
+        vals = []
+        known_count = 0
+        pos = text_start
+        while pos + 1 < len(data) and len(vals) < MAX_TEXT_CHARS:
+            v = struct.unpack_from("<H", data, pos)[0]
+            vals.append(v)
+            pos += 2
+            if v == 0xFFFF:
+                break
+            if v in CHAR_TABLE:
+                known_count += 1
+
+        if known_count > best_known and known_count >= 3:
+            text, _ = decode_text(vals)
+            if text.strip():
+                best_text = text
+                best_vals = vals
+                best_known = known_count
+
+        idx += 2
+
+    return best_text, best_vals
 
 
 def decode_text(vals):
@@ -112,8 +171,9 @@ def poll_battle(auto_press=False):
     for poll in range(MAX_POLLS):
         emu.advance_frames(POLL_FRAMES)
 
-        vals = emu.read_memory_range(BATTLE_BUFFER, size="short", count=MAX_CHARS)
-        text, raw = decode_text(vals)
+        text, vals = scan_battle_text(emu)
+        if text is None:
+            continue
         stop = classify_stop(vals)
 
         # New message?

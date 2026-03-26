@@ -5,17 +5,21 @@ Usage:
     python3 scripts/navigate.py <directions...>
 
     directions: space-separated list of up/down/left/right (or u/d/l/r)
+                optionally followed by a repeat count (e.g., l20 = left 20 times)
 
 Examples:
     python3 scripts/navigate.py down down left left left
     python3 scripts/navigate.py d d l l l
+    python3 scripts/navigate.py l20 u5 r3
     python3 scripts/navigate.py right right up up up left
 
 The script connects to the running MCP emulator via the IPC bridge,
 moves one tile per direction (16 frames hold + 8 frames wait), and
-verifies the player actually moved after each step. Stops early on
-unexpected collision (position didn't change).
+verifies the player actually moved after each step. Stops early if
+the position didn't change (collision, encounter, cutscene, etc.).
+Always advances 120 frames at the end so any triggered events are visible.
 """
+import re
 import sys
 
 sys.path.insert(0, "/workspace/DesmumeMCP")
@@ -31,6 +35,7 @@ Y_OFFSET = 12
 # Movement timing
 HOLD_FRAMES = 16  # frames to hold direction (1 tile)
 WAIT_FRAMES = 8   # frames to wait after releasing
+SETTLE_FRAMES = 120  # frames to advance at end so events become visible
 
 # Direction aliases
 DIR_ALIASES = {"u": "up", "d": "down", "l": "left", "r": "right"}
@@ -52,13 +57,29 @@ def normalize_direction(d):
     return DIR_ALIASES.get(d, d)
 
 
+def parse_directions(args):
+    """Parse direction args, expanding repeat counts (e.g., 'l20' -> 20x left)."""
+    directions = []
+    pattern = re.compile(r'^([a-z]+)(\d+)$')
+    for arg in args:
+        arg = arg.lower().strip()
+        m = pattern.match(arg)
+        if m:
+            d = normalize_direction(m.group(1))
+            count = int(m.group(2))
+            directions.extend([d] * count)
+        else:
+            directions.append(normalize_direction(arg))
+    return directions
+
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: python3 scripts/navigate.py <directions...>")
-        print("  directions: up/down/left/right (or u/d/l/r)")
+        print("  directions: up/down/left/right (or u/d/l/r), optional repeat count (e.g., l20)")
         sys.exit(1)
 
-    directions = [normalize_direction(d) for d in sys.argv[1:]]
+    directions = parse_directions(sys.argv[1:])
     valid = {"up", "down", "left", "right"}
     for d in directions:
         if d not in valid:
@@ -72,6 +93,7 @@ def main():
     print(f"Path: {' -> '.join(directions)} ({len(directions)} steps)")
     print()
 
+    stopped_early = False
     for i, direction in enumerate(directions):
         old_map, old_x, old_y = read_position(emu)
 
@@ -82,20 +104,25 @@ def main():
         new_map, new_x, new_y = read_position(emu)
 
         if (old_x, old_y) == (new_x, new_y) and old_map == new_map:
-            print(f"  Step {i+1}/{len(directions)} ({direction}): BLOCKED at ({old_x}, {old_y})")
-            print(f"\nStopped early — collision at step {i+1}.")
-            print(f"Final: map={new_map}, ({new_x}, {new_y})")
-            emu.close()
-            sys.exit(2)
+            print(f"  Step {i+1}/{len(directions)} ({direction}): stopped at ({old_x}, {old_y})")
+            print(f"\nStopped early at step {i+1} — position unchanged (collision, encounter, or event).")
+            stopped_early = True
+            break
 
         if new_map != old_map:
             print(f"  Step {i+1}/{len(directions)} ({direction}): ({old_x}, {old_y}) -> ({new_x}, {new_y}) [MAP CHANGE: {old_map} -> {new_map}]")
         else:
             print(f"  Step {i+1}/{len(directions)} ({direction}): ({old_x}, {old_y}) -> ({new_x}, {new_y})")
 
+    # Always settle so any triggered events (encounters, cutscenes) become visible
+    emu.advance_frames(SETTLE_FRAMES)
+
     final_map, final_x, final_y = read_position(emu)
     print(f"\nDone! Final: map={final_map}, ({final_x}, {final_y})")
     emu.close()
+
+    if stopped_early:
+        sys.exit(2)
 
 
 if __name__ == "__main__":

@@ -50,9 +50,9 @@ python3 scripts/read_dialogue.py --raw        # show raw hex values for debuggin
 | Region | Scan range | Context |
 |--------|-----------|---------|
 | Overworld | `0x022A7000` - `0x022A9800` | NPC dialogue, signs, cutscene text |
-| Battle | `0x02301000` - `0x02303000` | Move announcements, damage text, status effects |
+| Battle | `0x022FF000` - `0x02303000` | Move announcements, damage text, status effects |
 
-Text is stored in slots preceded by the marker `D2EC B6F8` and terminated by `0xFFFF`. The overworld buffer address is **dynamic** — it shifts between slots depending on the dialogue context (e.g., `0x022A73BC` for NPC dialogue, `0x022A77FC` for cutscenes). The script scans for active slots automatically. The battle buffer has been stable at `0x02301BD0`.
+Text is stored in slots preceded by the marker `D2EC B6F8` and terminated by `0xFFFF`. The overworld buffer address is **dynamic** — it shifts between slots depending on the dialogue context (e.g., `0x022A73BC` for NPC dialogue, `0x022A77FC` for cutscenes). The battle buffer is also **dynamic** — it shifts between `~0x022FF000` (wild battles) and `~0x02301BD0` (trainer battles). Both scripts scan for active marker slots automatically.
 
 ### Battle Text Indicators
 
@@ -88,10 +88,11 @@ python3 scripts/map_with_objects.py              # print to stdout
 python3 scripts/map_with_objects.py map_view.txt  # write to file
 ```
 
-**Automated walking** — moves one tile per direction, verifies each step, stops on collision:
+**Automated walking** — moves one tile per direction, verifies each step, stops if position unchanged:
 ```bash
 python3 scripts/navigate.py down down left left left  # full names
 python3 scripts/navigate.py d d l l l                  # shorthand (u/d/l/r)
+python3 scripts/navigate.py l20 u5 r3                  # repeat counts
 ```
 
 **Legacy manual rendering** (if bridge is unavailable):

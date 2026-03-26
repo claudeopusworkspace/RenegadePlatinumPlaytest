@@ -23,7 +23,7 @@ from desmume_mcp.client import connect
 
 # Memory regions to scan. Each is (start_addr, size, label).
 OVERWORLD_REGION = (0x022A7000, 0x2800, "overworld")  # 10KB
-BATTLE_REGION = (0x02301000, 0x2000, "battle")         # 8KB
+BATTLE_REGION = (0x022FF000, 0x4000, "battle")         # 16KB
 
 # The 4-byte header marker preceding each text slot (little-endian)
 HEADER_MARKER = b"\xEC\xD2\xF8\xB6"
