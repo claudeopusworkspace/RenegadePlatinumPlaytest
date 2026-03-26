@@ -62,219 +62,27 @@ The original Python scripts in `scripts/` still work for debugging but are no lo
 - **When stuck navigating, ask Michael for visual help** rather than brute-forcing positions.
 - Screenshots are fine for reading dialogue, menus, and battle screens — just not for spatial navigation.
 
-## Party Status
+Multi-chunk maps (overworld, large caves) use a matrix/chunk system detected automatically by `view_map` and `navigate_to`. See MEMORY_MAP.md for collision data format, tile behaviors, and dynamic object details.
 
-**Use `read_party` to read party Pokemon directly from RAM** — no menu navigation needed. Returns structured data with species, moves, PP, nature, IVs, EVs, plus a formatted text summary.
+## Game State Tools
 
-Uses TWO data sources:
-1. **Encrypted Gen 4 party data** at `0x0227E26C` (count) / `0x0227E270` (236 bytes/slot) — species, moves, PP, nature, item, friendship, EXP. Always available (overworld + battle).
-2. **Party summary structure** at `0x022C0130` (44 bytes/slot) — current HP, max HP, level. Overworld only (zeroed during battle/menus).
+**Use these tools instead of navigating in-game menus** — faster, more reliable, no accidental inputs.
 
-The encrypted data uses standard Gen 4 format: PID + checksum + 4 shuffled/encrypted 32-byte blocks. Decryption: PRNG seeded by checksum; block shuffle index = `((PID >> 13) & 0x1F) % 24`.
+- **`read_party`** — full party data from encrypted RAM. Works in overworld + battle. See MEMORY_MAP.md for data format.
+- **`read_bag`** — all 7 bag pockets. Pass `pocket="Key Items"` to filter.
+- **`read_battle`** — live battle data for all active battlers. Returns empty if not in battle. See MEMORY_MAP.md for struct layout.
+- **`map_name`** — location name from map ID. No args = current map.
+- **`read_dialogue`** — text from RAM buffers. Pass `region="overworld"` or `"battle"` to target specific buffers.
+- **`decode_rom_message(file_index)`** / **`search_rom_messages(query)`** — ROM data lookup (no emulator needed).
 
-## Bag / Inventory
+Key ROM file indices: 0392=items, 0412=species, 0610=abilities, 0647=moves, 0433=locations, 0646=move descriptions.
 
-**Use `read_bag` to read bag contents directly from RAM** — no menu navigation needed. Pass `pocket="Key Items"` to filter to a specific pocket.
+## Battle Workflow
 
-Reads 7 pockets from `0x0227E800` (1844 bytes total). Each pocket is an array of `(item_id u16, qty u16)` pairs:
-
-| Pocket | Max Slots | Offset |
-|--------|-----------|--------|
-| Items | 165 | 0x000 |
-| Key Items | 50 | 0x294 |
-| TMs & HMs | 100 | 0x35C |
-| Mail | 12 | 0x4EC |
-| Medicine | 40 | 0x51C |
-| Berries | 64 | 0x5BC |
-| Battle Items | 30 | 0x6BC |
-
-## Battle State
-
-**Use `read_battle` to read live battle data from RAM** — species, stats, HP, moves, PP, stat stages, types, ability, and status for all active battlers. Returns structured data plus a formatted summary. Returns empty if not in battle.
-
-Reads from `0x022C5774` (4 slots × 0xC0 bytes). Key fields per battler:
-
-| Field | Offset | Size | Notes |
-|-------|--------|------|-------|
-| Species | +0x00 | u16 | National Dex # |
-| Atk/Def/Spe/SpA/SpD | +0x02-0x0A | u16 each | Effective stats (after nature) |
-| Moves | +0x0C | u16 × 4 | Move IDs |
-| Stat stages | +0x18 | u8 × 8 | Atk,Def,Spe,SpA,SpD,Acc,Eva,Crit; neutral=6 |
-| Weight | +0x20 | u16 | In 0.1 kg units |
-| Types | +0x24 | u8 × 2 | Gen 4 internal type IDs |
-| Ability | +0x27 | u8 | Ability ID |
-| Status | +0x28 | u32 | Bitfield (sleep/psn/brn/frz/par/tox) |
-| PP | +0x2C | u8 × 4 | Current PP per move |
-| Level | +0x34 | u8 | |
-| Current HP | +0x4C | u16 | Live battle HP |
-| Max HP | +0x50 | u16 | |
-
-Slot 0 = player active, Slot 1 = enemy active, Slots 2-3 = doubles partners. Outside of battle, all slots contain stale/invalid data (detected automatically).
-
-## Map Name Lookup
-
-**Use `map_name` to identify maps by ID** — no more guessing which building you're in. Call with no arguments to get the current map, or pass `map_id=414` to look up a specific ID.
-
-Map IDs → location names are derived from ROM data (`romdata/mapname.bin`). Indoor maps show the area code (e.g., `T01R0201` = Twinleaf Town, Room 2, Floor 1).
-
-## ROM Message Decoder
-
-**Use `decode_rom_message(file_index)` to decode ROM message archives** and `search_rom_messages(query)` to search across all files. These do not require the emulator — they read directly from ROM data.
-
-Key file indices:
-| File | Content |
-|------|---------|
-| 0392 | Item names (index = item ID) |
-| 0412 | Pokemon species names (index = national dex #) |
-| 0610 | Ability names (index = ability ID) |
-| 0647 | Move names (index = move ID) |
-| 0433 | Location/map names |
-| 0646 | Move descriptions |
-
-## Dialogue & Text Reading
-
-**Use `read_dialogue` to read text directly from RAM** — no need to time screenshots or mash through dialogue blindly. Pass `region="auto"` (default), `"overworld"`, or `"battle"` to control which buffer is scanned.
-
-### Text Buffers
-
-| Region | Scan range | Context |
-|--------|-----------|---------|
-| Overworld | `0x022A7000` - `0x022A9800` | NPC dialogue, signs, cutscene text |
-| Battle | `0x022FF000` - `0x02303000` | Move announcements, damage text, status effects |
-
-Text is stored in slots preceded by the marker `D2EC B6F8` and terminated by `0xFFFF`. The overworld buffer address is **dynamic** — it shifts between slots depending on the dialogue context (e.g., `0x022A73BC` for NPC dialogue, `0x022A77FC` for cutscenes). The battle buffer is also **dynamic** — it shifts between `~0x022FF000` (wild battles) and `~0x02301BD0` (trainer battles). Both scripts scan for active marker slots automatically.
-
-### Battle Text Indicators
-
-The last value(s) before `[END]` indicate whether the game auto-advances or waits:
-- **No trailing control code** (e.g., `! [END]`) → auto-advancing narration
-- **`0xE000` before `[END]`** → game waits for B press to dismiss
-- **`0xFFFE` sequence before `[END]`** → game waits for player action (move selection, etc.)
-
-**Battle turn logger** — two-step workflow for capturing battle narration:
-1. **`battle_init`** — Run ONCE at the start of each battle (after battle screen loads). Snapshots pre-existing text markers as baseline. State is held in memory (no temp files).
-2. **`battle_poll(auto_press=true)`** — Run after selecting a move. Polls until a stopping point. With `auto_press=true`, auto-dismisses mid-battle dialogue (trainer taunts) and continues until the action prompt.
-
-### Text Encoding (Gen 4)
-
-16-bit little-endian characters:
-- Uppercase A-Z: `0x012B` - `0x0144`
-- Lowercase a-z: `0x0145` - `0x015E`
-- Digits 0-9: `0x0161` - `0x016A` (assumed)
-- Space: `0x01DE`
-- `é`: `0x0188` (Pokémon)
-- `!`: `0x01AB`, `?`: `0x01AC`, `,`: `0x01AD`, `.`: `0x01AE`, `'`: `0x01B3`, `:`: `0x01C4`
-- Newline: `0xE000`, New text box: `0x25BC`, End: `0xFFFF`, Variable: `0xFFFE`
-
-### Navigation Tools
-
-**`view_map`** — reads terrain, player state, and dynamic objects live. Returns ASCII map with legend.
-
-**`navigate(directions)`** — manual walking. Accepts space-separated directions with optional repeat counts: `"d2 l3 u1"`, `"down down left"`, etc. Moves one tile per direction (16 frames hold + 8 frames wait), verifies each step, stops if blocked.
-
-**`navigate_to(x, y)`** — BFS pathfinding. Reads terrain + dynamic objects, computes shortest path, executes it step by step. Supports both local (0-31) and global coordinates — global coords are auto-detected and trigger multi-chunk terrain loading (up to 5x5 chunks = 160x160 tiles). Ledge tiles (0x38-0x3B) are treated as one-way passable in the correct direction. NPC tiles are blocked. Does not cross map boundaries (warps).
-
-### Movement Timing
-- 1 tile = 16 frames of holding a direction, then release and wait ~8 frames for the step to complete.
-- `navigate` and `navigate_to` handle this automatically.
-- The walk macros (`walk_up/down/left/right`) use 32-frame holds and move **2 tiles** per execution.
-
-### Map Collision Data
-
-#### Indoor Maps
-The current map's terrain attributes (collision grid) are loaded in RAM at **`0x0231D1E4`** (decimal: 36819428). This is a fixed address — the game loads whichever map's data is active into this slot.
-
-**Format:** 2048 bytes = 32x32 grid of `u16` (little-endian), row-major.
-- **Bit 15** (`0x8000`): Collision flag. **1 = impassable, 0 = passable.** This is the authoritative source for pathfinding — no need to check individual behavior values.
-- **Bits 0-7** (`0x00FF`): Tile behavior (door, stairs, water, etc.). See "Tile Behaviors" section below.
-- Coordinate offset is **(0, 0)** — grid coords match game coords directly.
-
-#### Multi-Chunk Maps (Overworld, Large Caves, etc.)
-When player coordinates exceed 31 (or RAM terrain is empty), the map uses a **matrix/chunk system**:
-
-- Maps are composed of a grid of **32×32-tile chunks** (e.g., the Sinnoh overworld is 30×30 chunks via matrix 0).
-- Player global coords map to chunks: `chunk = (x÷32, y÷32)`, local = `(x%32, y%32)`.
-- Each chunk's terrain is stored in a ROM file: `romdata/land_data/XXXX.bin`.
-- Matrix files (`romdata/map_matrix/XXXX.bin`) map chunk positions to land_data file IDs.
-- `view_map` **detects this automatically** — it searches all matrix files for the current map ID.
-- The tool displays **local chunk coordinates (0-31)** with the chunk offset printed in the header.
-- This works for any multi-chunk map: overworld, large caves, dungeons, etc.
-
-**Important caveats:**
-- Dynamic objects (NPCs, items on the floor) are NOT in the static grid. Use `view_map` to see both.
-- `navigate`/`navigate_to` are the most robust navigation methods — they try each step and check the result, catching dynamic blockers and edge cases that the static grid alone would miss.
-- Overworld door tiles (`0x69`) are marked as blocked in terrain but the warp system overrides collision.
-
-### Dynamic Objects (Overworld Object Array)
-
-NPCs, floor items, and the player are stored in an array in RAM. Each entry is **0x128 (296) bytes** apart.
-
-| Field | Offset from entry base | Size | Notes |
-|-------|----------------------|------|-------|
-| Fixed-point X | +0x00 | long | Upper 16 bits = tile X, lower 16 = sub-tile |
-| Fixed-point Y | +0x08 | long | Upper 16 bits = tile Y, lower 16 = sub-tile |
-
-**Entry 0 (player)** fixed-point X is at `0x022A1AA8`. Subsequent entries are at `+0x128` intervals.
-
-- Entry 0 = player, Entry 1+ = NPCs/objects on current map.
-- Entries with fpx=0 and fpy=0 are empty/inactive.
-- `view_map` reads this automatically — player shows as `^v<>`, NPCs/objects as `A`, `B`, `C`, etc.
-
-### Tile Behaviors
-
-**Passability is determined by bit 15, not the behavior value.** The behavior byte tells us what *special effect* a tile has, not whether we can walk on it.
-
-#### Known Warp/Transition Tiles
-
-These tiles are **passable** (bit 15 = 0). You walk *onto* the tile, then press a specific direction to activate the transition.
-
-| Behavior | Name | Activation | Example |
-|----------|------|------------|---------|
-| `0x5F` | Stairs (down) | Stand on tile, walk **left** | Living room (10,3) → bedroom upstairs |
-| `0x65` | Door / Exit | Stand on tile, walk **down** | Living room (6,10) → exit house |
-
-#### Known Blocked Tiles
-
-These tiles are **impassable** (bit 15 = 1) but may have special behavior.
-
-| Behavior | Name | Notes |
-|----------|------|-------|
-| `0x69` | Door (overworld) | House entrances on overworld maps. Marked blocked but warp system overrides collision — walk into the tile to enter. |
-| `0x80` | Counter | Kitchen counter, can interact across it |
-
-#### Other Known Behaviors (encountered in gameplay)
-
-| Behavior | Name | Notes |
-|----------|------|-------|
-| `0x02` | Tall grass | Wild encounters. Passable but triggers random battles. |
-| `0x21` | Sand/beach | Passable, decorative. Seen in Sandgem Town. |
-| `0x3B` | Ledge (east) | One-way east jump. Blocked bit set. Route 201/202 shortcuts. |
-| `0xA9` | Tree tile | Decorative trees on overworld, passable. |
-
-#### Other Behaviors (not yet encountered in gameplay)
-
-| Behavior | Name | Expected |
-|----------|------|----------|
-| `0x10` | Water | Requires Surf |
-| `0x38`-`0x3A` | Ledges (S/N/W) | One-way jumps |
-| `0x5E` | Stairs (up) | Likely walk **right** to activate? (unconfirmed) |
-| `0x62` | Warp | Generic warp tile |
-
-*This table will grow as we encounter new tile types during the playthrough.*
-
-## Player Watches
-
-```
-read_watch("player_position")  # → map_id, x, y, prev_x, prev_y
-read_watch("player_facing")    # → facing (0=up, 1=down, 2=left, 3=right)
-```
-
-| Watch | Base Address | Fields |
-|-------|-------------|--------|
-| `player_position` | `0x0227F450` | map_id, x, y, prev_x, prev_y |
-| `player_facing` | `0x02335346` | facing (with display transform) |
-
-See MEMORY_MAP.md for full address documentation.
+1. **`battle_init`** — run ONCE at battle start to snapshot text baseline.
+2. **`read_battle`** — check enemy species, types, ability, stats, moves. Do this FIRST to plan tactics.
+3. Select a move via touch screen, then **`battle_poll(auto_press=true)`** — polls for turn narration.
+4. **`read_battle`** again — check updated HP, PP, stat stages, status.
 
 ## DS Screen Layout
 
@@ -286,12 +94,11 @@ See MEMORY_MAP.md for full address documentation.
 
 **Buttons:** a, b, x, y, l, r, start, select, up, down, left, right
 
-- **A**: Confirm / advance dialogue / interact with overworld objects. Use `press_buttons(["a"], frames=8)` — the game needs a few frames of sustained input to register.
-- **B**: Cancel / back / advance dialogue. **Prefer B over A for advancing dialogue** — B progresses text just like A but won't accidentally trigger a new interaction with a nearby NPC or object when the dialogue ends.
+- **A**: Confirm / advance dialogue / interact. Use `press_buttons(["a"], frames=8)`.
+- **B**: Cancel / advance dialogue. **Prefer B over A for advancing dialogue** — avoids re-triggering nearby NPCs.
 - **X**: Open menu (overworld). **Use X, not Start** — Start does not open the menu in Platinum.
-- **Start**: Does NOT open the menu in Platinum.
-- **D-pad**: Move character / navigate menus
-- **Touch screen**: Tap targets on bottom screen. **Always use `get_screenshot(screen="bottom")` to estimate coordinates**, as the combined "both" view distorts positions.
+- **D-pad**: Move character / navigate menus.
+- **Touch screen**: Tap targets on bottom screen. **Always use `get_screenshot(screen="bottom")`** for coordinate estimation.
 
 ### Touch Screen Keyboard (Name Entry)
 Letter grid coordinates (calibrated):
@@ -309,7 +116,7 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 | Macro | Description |
 |-------|-------------|
 | `mash_a` | Press A 5 times (8-frame holds, 30-frame waits) for dialogue |
-| `mash_b` | Press B 5 times (8-frame holds, 30-frame waits) for dialogue — safer than A, avoids re-triggering NPCs |
+| `mash_b` | Press B 5 times (8-frame holds, 30-frame waits) — safer than A |
 | `walk_up` | Walk up 2 tiles (32-frame hold + 4-frame wait) |
 | `walk_down` | Walk down 2 tiles |
 | `walk_left` | Walk left 2 tiles |
@@ -323,27 +130,16 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 3. `snapshot_memory(name="after", address=0x02200000, size=1048576)`
 4. `diff_snapshots(name_a="before", name_b="after", value_size="long", filter="changed")`
 
-### Dump Memory (for offline analysis)
-`dump_memory(address=0x02200000, size=1048576, file_path="/workspace/.../dump.bin")`
-Then analyze with Python scripts.
-
 ## Game Progress
 
-- **Character name**: CLAUDE
-- **Rival name**: AAAAAAA (mashed through naming screen)
-- **Current point**: Route 202 (map 343) at (181, 819). Midway through route, after beating Youngster Tristan. Save state: `route202_post_tristan_healed`.
-- **Pokemon**: Turtwig Lv11 (31/35 HP, Naughty +Atk/-SpD, moves: Tackle, Curse, Absorb, Razor Leaf), Eevee Lv5 (21/21 HP, Gentle +SpD/-Def, moves: Tackle, Tail Whip, Bite, Covet, ability: Run Away).
-- **Starter**: Chose Turtwig. Barry chose Chimchar (type advantage). Other starters NOT yet received — may come later.
-- **Eevee**: Obtained from Poke Ball in player's house after Mom's dialogue. Lv5 with Bite (Dark, 30% flinch) and Covet (Normal) as notable moves. Needs leveling — hasn't seen much combat since the Pidgey fight on Route 201.
-- **Items**: Potion x8, Repel x10, Poke Ball x30, Bicycle, Poke Radar, Journal, Parcel (deliver to Barry).
-- **Route 201 notes**: Tall grass is unavoidable in the middle section (big patch columns 10-20). Wild encounters: Starly Lv4-5, Pidgey Lv4, Nidoran(M) Lv5, Nidoran(F) Lv4. One whiteout occurred previously (Nidoran KO'd Turtwig at 1 HP).
-- **Route 201 navigation**: Path from Twinleaf to Sandgem goes north out of Twinleaf (cols 14-17), then east through Route 201. South corridor from Twinleaf exits at ~(111, 864). Route goes east through open areas and tall grass to Sandgem Town.
-- **Lake Verity**: Visited per story requirement. Met Cyrus (ominous speech about time/space). Barry wanted to catch legendary but had no Poke Balls.
-- **Sandgem Town**: Dawn gave town tour (Pokemon Center, Mart). Rowan gave Poke Radar + Repels outside lab. Pokemon Center door at (177, 842). North exit to Route 202 on the east side (cols 180-189).
-- **Route 202**: Dawn battled us with Piplup Lv9 at the entrance (not a catching tutorial — this is Renegade Platinum). Gave 30 Poke Balls after. Youngster Tristan has Hoothoot Lv7 + Starly Lv7. Wild encounters include Zigzagoon Lv5 (Gluttony). More trainers and grass ahead.
-- **Route 202 wild Pokemon observed**: Zigzagoon Lv5 (Normal, Gluttony).
-- **Route 202 trainers defeated**: Dawn (Piplup Lv9), Youngster Tristan (Hoothoot Lv7 + Starly Lv7).
-- **Next**: Continue north through Route 202 to Jubilife City. Still need to deliver Parcel to Barry. Eevee needs leveling badly — consider leading with Eevee against weaker wild Pokemon or switching in for EXP.
+- **Character**: CLAUDE | **Rival**: AAAAAAA
+- **Location**: Route 202 (map 343) at (181, 819). Save state: `route202_post_tristan_healed`.
+- **Turtwig** Lv11 — Naughty (+Atk/-SpD). Moves: Tackle, Curse, Absorb, Razor Leaf. 31/35 HP.
+- **Eevee** Lv5 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Tail Whip, Bite, Covet. Badly underleveled.
+- **Key items**: Potion x8, Repel x10, Poke Ball x30, Bicycle, Poke Radar, Parcel (deliver to Barry).
+- **Next**: Continue north through Route 202 to Jubilife City. Level up Eevee via switch-training. Deliver Parcel to Barry. Catch useful wild Pokemon.
+
+See GAME_HISTORY.md for full chronological playthrough details.
 
 ## Quick Reference: Common Workflows
 
@@ -352,10 +148,10 @@ Then analyze with Python scripts.
 2. `view_map` — see the map layout, NPCs, exits
 
 ### Before/during battle
-1. `read_battle` — see enemy species, types, ability, stats, moves, and HP. **Do this at battle start** to plan tactics (especially important in this difficulty hack — enemy abilities and movesets may be changed from vanilla).
+1. `read_battle` — enemy species, types, ability, stats, moves, HP
 2. `battle_init` — snapshot text baseline (once per battle)
 3. Select move, then `battle_poll(auto_press=true)` — get full turn narration
-4. `read_battle` — check updated HP, PP, stat stages, status after the turn
+4. `read_battle` — check updated state after the turn
 
 ### Checking inventory/party (overworld)
 1. `read_party` — full party with moves, PP, nature, IVs, EVs
@@ -364,18 +160,14 @@ Then analyze with Python scripts.
 ## Tips
 
 - Save state frequently — this is a difficulty hack, expect challenges.
-- **Use `read_battle` at the start of every battle** — it reveals the enemy's ability, types, moves, and stats. Renegade Platinum changes many of these from vanilla (e.g., Chimchar has Iron Fist instead of Blaze).
-- **Use `read_bag` instead of navigating the bag menu** — faster and avoids accidental inputs.
-- **Use `read_party` instead of the party menu** — shows everything including IVs/EVs without menu navigation.
-- Use `read_dialogue` to read full dialogue text from memory — far more reliable than timing screenshots.
-- Use `battle_poll(auto_press=true)` after selecting a move to get the full turn log automatically.
-- Use macros for repetitive sequences (dialogue, walking patterns).
-- The `load_state` tool may occasionally hang without returning — check `get_status` to verify.
-- Note: addresses must be passed as decimal integers to DeSmuME MCP tools, not hex strings.
-- **Touch screen taps need `frames=8`** — single-frame taps (default) often don't register. Always use 8-frame holds for touch input.
-- **Wait 300 frames between UI navigation steps** — Pokemon has forced text scroll delays before accepting input. Pressing buttons during these delays wastes them.
-- **Always check the bottom screen for Yes/No prompts** — in battle, move-learning, and switch prompts use the bottom touch screen, not the top.
-- **NEVER call `battle_poll` without first selecting a move** — it polls for NEW text, so if no action was taken, it loops forever. Always: select move → verify Pokeball screen → THEN poll.
-- **`battle_poll` may stall on KO turns** — the tool has a built-in MAX_POLLS limit (300 polls = ~75 seconds) so it will eventually return with TIMEOUT state rather than hanging forever.
-- **Pause menu remembers cursor position** — don't assume it starts on a specific item. Check the screenshot before pressing A.
-- **Trainer battles may have multiple Pokemon** — after a KO, the game asks "Will you switch?" with touch buttons on the bottom screen. Handle this before the next action prompt.
+- **Use `read_battle` at the start of every battle** — Renegade Platinum changes abilities and movesets from vanilla.
+- Use `read_dialogue` to read text from memory — more reliable than timing screenshots.
+- The `load_state` tool may occasionally hang — check `get_status` to verify.
+- Addresses must be passed as decimal integers to DeSmuME MCP tools, not hex strings.
+- **Touch screen taps need `frames=8`** — single-frame taps often don't register.
+- **Wait 300 frames between UI navigation steps** — Pokemon ignores input during forced text delays.
+- **Always check the bottom screen for Yes/No prompts** — battle/switch prompts use touch screen.
+- **NEVER call `battle_poll` without first selecting a move** — it polls for NEW text and will loop.
+- **`battle_poll` has a built-in timeout** (300 polls / ~75 seconds) — returns TIMEOUT rather than hanging forever.
+- **Pause menu remembers cursor position** — check screenshot before pressing A.
+- **Trainer battles may have multiple Pokemon** — handle "Will you switch?" prompt before next action.

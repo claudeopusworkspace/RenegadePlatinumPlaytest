@@ -103,6 +103,62 @@ The game loads the active map's terrain attributes from `land_data.narc` (ROM fi
 |-------------|------|-------|
 | `0x02335346` | byte | Facing direction: 0=up, 1=down, 2=left, 3=right |
 
+## Encrypted Party Data (Gen 4)
+
+The game stores party Pokemon in encrypted Gen 4 format. Count at `0x0227E26C`, data at `0x0227E270` (236 bytes per slot, up to 6 slots).
+
+Each slot: PID (4 bytes) + checksum (2 bytes) + 4 shuffled/encrypted 32-byte blocks (A/B/C/D).
+
+**Decryption:** PRNG seeded by checksum. Each 16-bit value XOR'd with successive PRNG outputs.
+**Block shuffle:** Index = `((PID >> 13) & 0x1F) % 24`. Maps to one of 24 permutations of blocks A/B/C/D.
+
+**Block contents (after decryption + unshuffle):**
+- **Block A (Growth):** Species, held item, EXP, friendship, ability
+- **Block B (Moves):** Move IDs (u16 x4), PP (u8 x4), PP-Ups
+- **Block C (EVs):** HP/Atk/Def/Spe/SpA/SpD EVs, contest stats
+- **Block D (Misc):** Nature (from PID in Gen 4), origin info, IVs (packed u32)
+
+This data is always available (overworld + battle). See also Party Summary Structure below for the runtime overlay with current HP/level.
+
+## Bag Data
+
+Base address: `0x0227E800` (1844 bytes total). Each pocket is an array of `(item_id u16, qty u16)` pairs.
+
+| Pocket | Max Slots | Offset from Base |
+|--------|-----------|-----------------|
+| Items | 165 | 0x000 |
+| Key Items | 50 | 0x294 |
+| TMs & HMs | 100 | 0x35C |
+| Mail | 12 | 0x4EC |
+| Medicine | 40 | 0x51C |
+| Berries | 64 | 0x5BC |
+| Battle Items | 30 | 0x6BC |
+
+## Battle Battler Struct
+
+Base address: `0x022C5774`. 4 slots x `0xC0` (192) bytes each. Slot 0 = player active, Slot 1 = enemy active, Slots 2-3 = doubles partners.
+
+| Field | Offset | Size | Notes |
+|-------|--------|------|-------|
+| Species | +0x00 | u16 | National Dex # |
+| Atk | +0x02 | u16 | Effective stat (after nature) |
+| Def | +0x04 | u16 | |
+| Spe | +0x06 | u16 | |
+| SpA | +0x08 | u16 | |
+| SpD | +0x0A | u16 | |
+| Moves | +0x0C | u16 x 4 | Move IDs |
+| Stat stages | +0x18 | u8 x 8 | Atk,Def,Spe,SpA,SpD,Acc,Eva,Crit; neutral=6 |
+| Weight | +0x20 | u16 | In 0.1 kg units |
+| Types | +0x24 | u8 x 2 | Gen 4 internal type IDs |
+| Ability | +0x27 | u8 | Ability ID |
+| Status | +0x28 | u32 | Bitfield (sleep/psn/brn/frz/par/tox) |
+| PP | +0x2C | u8 x 4 | Current PP per move |
+| Level | +0x34 | u8 | |
+| Current HP | +0x4C | u16 | Live battle HP |
+| Max HP | +0x50 | u16 | |
+
+Outside of battle, all slots contain stale/invalid data (detected automatically by `read_battle`).
+
 ## Party Summary Structure
 
 **Status: PARTIALLY SOLVED.** Species, level, and HP are confirmed. Move data and some fields are still unknown.
@@ -203,6 +259,56 @@ Stable address observed at `0x02301BD0`. Uses the same `D2EC B6F8` header marker
 | `[FFFE]... [END]` (variable sequence) | Waits for player action | Select move/item/switch |
 
 These indicators are **confirmed reliable** across all tested battle messages.
+
+## Dynamic Objects (Overworld Object Array)
+
+NPCs, floor items, and the player are stored in an array in RAM. Each entry is **0x128 (296) bytes** apart.
+
+| Field | Offset from entry base | Size | Notes |
+|-------|----------------------|------|-------|
+| Fixed-point X | +0x00 | long | Upper 16 bits = tile X, lower 16 = sub-tile |
+| Fixed-point Y | +0x08 | long | Upper 16 bits = tile Y, lower 16 = sub-tile |
+
+**Entry 0 (player)** fixed-point X is at `0x022A1AA8`. Subsequent entries are at `+0x128` intervals.
+
+- Entry 0 = player, Entry 1+ = NPCs/objects on current map.
+- Entries with fpx=0 and fpy=0 are empty/inactive.
+- `view_map` reads this automatically — player shows as `^v<>`, NPCs/objects as `A`, `B`, `C`, etc.
+
+## Tile Behaviors
+
+Passability is determined by bit 15 of the terrain u16, not the behavior value. The behavior byte (bits 0-7) indicates what special effect a tile has.
+
+### Warp/Transition Tiles (passable, bit 15 = 0)
+
+Walk *onto* the tile, then press a specific direction to activate the transition.
+
+| Behavior | Name | Activation | Example |
+|----------|------|------------|---------|
+| `0x5F` | Stairs (down) | Stand on tile, walk **left** | Living room (10,3) -> bedroom |
+| `0x5E` | Stairs (up) | Likely walk **right** (unconfirmed) | |
+| `0x62` | Warp | Generic warp tile | |
+| `0x65` | Door / Exit | Stand on tile, walk **down** | Living room (6,10) -> outside |
+
+### Blocked Tiles (impassable, bit 15 = 1)
+
+| Behavior | Name | Notes |
+|----------|------|-------|
+| `0x69` | Door (overworld) | House entrances on overworld maps. Marked blocked but warp system overrides collision — walk into the tile to enter. |
+| `0x80` | Counter | Kitchen counter, can interact across it |
+
+### Other Known Behaviors
+
+| Behavior | Name | Notes |
+|----------|------|-------|
+| `0x02` | Tall grass | Wild encounters. Passable. |
+| `0x10` | Water | Requires Surf. |
+| `0x21` | Sand/beach | Passable, decorative. Seen in Sandgem Town. |
+| `0x38`-`0x3A` | Ledges (S/N/W) | One-way jumps. Blocked bit set. |
+| `0x3B` | Ledge (east) | One-way east jump. Blocked bit set. Route 201/202 shortcuts. |
+| `0xA9` | Tree tile | Decorative trees on overworld, passable. |
+
+*This table grows as we encounter new tile types during the playthrough.*
 
 ## Memory Watch Definitions
 
