@@ -20,7 +20,7 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `first_battle_start` | Rival battle vs AAAAAAA's Chimchar Lv5. At "What will Turtwig do?" menu. |
 | `post_rival_battle_twinleaf` | After rival battle, outside in Twinleaf Town (map 411). Turtwig Lv6. |
 | `post_lake_verity_cutscene` | After Lake Verity cutscene (Cyrus + Barry). Map 334, Verity Lakefront. |
-| `wild_starly_battle_start` | Wild Starly Lv4 battle on Route 201. For debugging battle_poll.py. Turtwig Lv7. |
+| `wild_starly_battle_start` | Wild Starly Lv4 battle on Route 201. For debugging battle_poll. Turtwig Lv7. |
 | `post_wipe_home_healed` | After whiteout, back in living room. Turtwig Lv7 26/26 HP. |
 | `sandgem_town_arrival` | Just entered Sandgem Town (map 418). Turtwig Lv7. |
 | `got_pokedex_rowan_lab` | Inside Rowan's lab (map 422) after receiving Pokedex. Free to move. |
@@ -32,23 +32,39 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `route202_mid_healed` | Route 202 (map 343) at (166, 815). Turtwig Lv10, healed. Pre-trainer area. |
 | `route202_post_tristan_healed` | Route 202 (map 343) at (181, 819). After beating Youngster Tristan. Turtwig Lv11 (learned Curse), 31/35 HP. |
 
+## Renegade MCP Tools
+
+Game-specific tools are provided by the `renegade` MCP server (defined in `renegade_mcp/`). These run alongside the generic `desmume` MCP server. All tools connect to the emulator via the bridge socket — if the emulator isn't initialized yet, they return a clear error.
+
+| Tool | Purpose |
+|------|---------|
+| `read_party` | Party Pokemon: species, level, HP, moves, PP, nature, IVs, EVs |
+| `read_battle` | Live battle state: all battlers with stats, moves, ability, types, status |
+| `read_bag(pocket="")` | Bag contents across all 7 pockets. Optional pocket filter. |
+| `view_map` | ASCII map with terrain, player position, NPCs |
+| `map_name(map_id=-1)` | Location name lookup. Defaults to current map. |
+| `navigate(directions)` | Manual walk: "d2 l3 u1" or "down down left left left" |
+| `navigate_to(x, y)` | BFS pathfind to target tile, then walk there |
+| `read_dialogue(region="auto")` | Read dialogue/battle text from RAM |
+| `battle_init` | Snapshot text baseline at battle start |
+| `battle_poll(auto_press=false)` | Poll for turn narration after selecting a move |
+| `decode_rom_message(file_index)` | Decode ROM message archive (species, moves, items, etc.) |
+| `search_rom_messages(query)` | Search all 724 message files for text |
+
+The original Python scripts in `scripts/` still work for debugging but are no longer the primary interface.
+
 ## Navigation
 
 **CRITICAL: Do not rely on screenshots for spatial reasoning in the overworld.** The isometric/overhead camera makes it very difficult to judge tile positions, room boundaries, and exits from pixel images. Instead:
 
-- **Use `map_with_objects.py`** to get a full map with terrain, player, and NPCs — all read live from the emulator.
-- **Use `navigate.py`** to walk paths — it verifies each step and stops on collision.
+- **Use `view_map`** to get a full map with terrain, player, and NPCs — all read live from the emulator.
+- **Use `navigate` or `navigate_to`** to walk paths — they verify each step and stop on collision.
 - **When stuck navigating, ask Michael for visual help** rather than brute-forcing positions.
 - Screenshots are fine for reading dialogue, menus, and battle screens — just not for spatial navigation.
 
 ## Party Status
 
-**Use `read_party.py` to read party Pokemon directly from RAM** — no menu navigation needed.
-
-```bash
-python3 scripts/read_party.py           # formatted party display
-python3 scripts/read_party.py --json    # JSON output for scripting
-```
+**Use `read_party` to read party Pokemon directly from RAM** — no menu navigation needed. Returns structured data with species, moves, PP, nature, IVs, EVs, plus a formatted text summary.
 
 Uses TWO data sources:
 1. **Encrypted Gen 4 party data** at `0x0227E26C` (count) / `0x0227E270` (236 bytes/slot) — species, moves, PP, nature, item, friendship, EXP. Always available (overworld + battle).
@@ -58,13 +74,7 @@ The encrypted data uses standard Gen 4 format: PID + checksum + 4 shuffled/encry
 
 ## Bag / Inventory
 
-**Use `read_bag.py` to read bag contents directly from RAM** — no menu navigation needed.
-
-```bash
-python3 scripts/read_bag.py              # print all bag pockets
-python3 scripts/read_bag.py --json       # JSON output for scripting
-python3 scripts/read_bag.py --pocket "Key Items"  # show only one pocket
-```
+**Use `read_bag` to read bag contents directly from RAM** — no menu navigation needed. Pass `pocket="Key Items"` to filter to a specific pocket.
 
 Reads 7 pockets from `0x0227E800` (1844 bytes total). Each pocket is an array of `(item_id u16, qty u16)` pairs:
 
@@ -80,12 +90,7 @@ Reads 7 pockets from `0x0227E800` (1844 bytes total). Each pocket is an array of
 
 ## Battle State
 
-**Use `read_battle.py` to read live battle data from RAM** — species, stats, HP, moves, PP, stat stages, types, ability, and status for all active battlers.
-
-```bash
-python3 scripts/read_battle.py           # formatted battle state
-python3 scripts/read_battle.py --json    # JSON output for scripting
-```
+**Use `read_battle` to read live battle data from RAM** — species, stats, HP, moves, PP, stat stages, types, ability, and status for all active battlers. Returns structured data plus a formatted summary. Returns empty if not in battle.
 
 Reads from `0x022C5774` (4 slots × 0xC0 bytes). Key fields per battler:
 
@@ -108,26 +113,13 @@ Slot 0 = player active, Slot 1 = enemy active, Slots 2-3 = doubles partners. Out
 
 ## Map Name Lookup
 
-**Use `map_name.py` to identify maps by ID** — no more guessing which building you're in.
-
-```bash
-python3 scripts/map_name.py              # show current map name from emulator
-python3 scripts/map_name.py 414          # look up a specific map ID
-python3 scripts/map_name.py 411 418 422  # look up multiple map IDs
-```
+**Use `map_name` to identify maps by ID** — no more guessing which building you're in. Call with no arguments to get the current map, or pass `map_id=414` to look up a specific ID.
 
 Map IDs → location names are derived from ROM data (`romdata/mapname.bin`). Indoor maps show the area code (e.g., `T01R0201` = Twinleaf Town, Room 2, Floor 1).
 
 ## ROM Message Decoder
 
-**Use `decode_msg.py` to read text from ROM message archives** — species names, move names, location names, dialogue, etc.
-
-```bash
-python3 scripts/decode_msg.py 412                # decode file (species names)
-python3 scripts/decode_msg.py 647                # decode file (move names)
-python3 scripts/decode_msg.py 433                # decode file (location names)
-python3 scripts/decode_msg.py --search "Turtwig" # search all 724 message files
-```
+**Use `decode_rom_message(file_index)` to decode ROM message archives** and `search_rom_messages(query)` to search across all files. These do not require the emulator — they read directly from ROM data.
 
 Key file indices:
 | File | Content |
@@ -141,14 +133,7 @@ Key file indices:
 
 ## Dialogue & Text Reading
 
-**Use `read_dialogue.py` to read text directly from RAM** — no need to time screenshots or mash through dialogue blindly. The script reads decoded text buffers and handles both overworld and battle contexts.
-
-```bash
-python3 scripts/read_dialogue.py              # auto-detect active text (overworld or battle)
-python3 scripts/read_dialogue.py --battle     # force read battle buffer
-python3 scripts/read_dialogue.py --overworld  # force read overworld buffer
-python3 scripts/read_dialogue.py --raw        # show raw hex values for debugging
-```
+**Use `read_dialogue` to read text directly from RAM** — no need to time screenshots or mash through dialogue blindly. Pass `region="auto"` (default), `"overworld"`, or `"battle"` to control which buffer is scanned.
 
 ### Text Buffers
 
@@ -167,14 +152,8 @@ The last value(s) before `[END]` indicate whether the game auto-advances or wait
 - **`0xFFFE` sequence before `[END]`** → game waits for player action (move selection, etc.)
 
 **Battle turn logger** — two-step workflow for capturing battle narration:
-```bash
-# Step 1: Run ONCE at the start of each battle (after battle screen loads)
-python3 scripts/battle_init.py          # snapshots pre-existing text markers as baseline
-
-# Step 2: Run after selecting a move to capture the turn
-python3 scripts/battle_poll.py          # poll until next stop (returns at WAIT_FOR_INPUT or WAIT_FOR_ACTION)
-python3 scripts/battle_poll.py --press  # auto-dismiss trainer mid-battle dialogue, stop at action prompt
-```
+1. **`battle_init`** — Run ONCE at the start of each battle (after battle screen loads). Snapshots pre-existing text markers as baseline. State is held in memory (no temp files).
+2. **`battle_poll(auto_press=true)`** — Run after selecting a move. Polls until a stopping point. With `auto_press=true`, auto-dismisses mid-battle dialogue (trainer taunts) and continues until the action prompt.
 
 ### Text Encoding (Gen 4)
 
@@ -187,35 +166,17 @@ python3 scripts/battle_poll.py --press  # auto-dismiss trainer mid-battle dialog
 - `!`: `0x01AB`, `?`: `0x01AC`, `,`: `0x01AD`, `.`: `0x01AE`, `'`: `0x01B3`, `:`: `0x01C4`
 - Newline: `0xE000`, New text box: `0x25BC`, End: `0xFFFF`, Variable: `0xFFFE`
 
-### Navigation Scripts (Bridge-Connected)
+### Navigation Tools
 
-These scripts connect directly to the running MCP emulator via the IPC bridge — no manual arguments needed.
+**`view_map`** — reads terrain, player state, and dynamic objects live. Returns ASCII map with legend.
 
-**Map visualization** — reads terrain, player state, and dynamic objects live:
-```bash
-python3 scripts/map_with_objects.py              # print to stdout
-python3 scripts/map_with_objects.py map_view.txt  # write to file
-```
+**`navigate(directions)`** — manual walking. Accepts space-separated directions with optional repeat counts: `"d2 l3 u1"`, `"down down left"`, etc. Moves one tile per direction (16 frames hold + 8 frames wait), verifies each step, stops if blocked.
 
-**Automated walking** — moves one tile per direction, verifies each step, stops if position unchanged:
-```bash
-python3 scripts/navigate.py down down left left left  # manual: full names
-python3 scripts/navigate.py d d l l l                  # manual: shorthand (u/d/l/r)
-python3 scripts/navigate.py l20 u5 r3                  # manual: repeat counts
-python3 scripts/navigate.py --to 6 10                  # auto: BFS pathfind to tile (local coords)
-python3 scripts/navigate.py --to 116 885               # auto: BFS with global coords (cross-chunk)
-```
-Auto mode reads terrain + dynamic objects, computes shortest path via BFS, and executes it. Supports both local (0-31) and global coordinates — global coords are auto-detected and trigger multi-chunk terrain loading (up to 5x5 chunks = 160x160 tiles). Ledge tiles (0x38-0x3B) are treated as one-way passable in the correct direction. NPC tiles are blocked. Does not cross map boundaries (warps).
-
-**Legacy manual rendering** (if bridge is unavailable):
-```bash
-dump_memory(address=36819428, size=2048, file_path="terrain.bin")
-python3 scripts/render_map.py terrain.bin <x> <y> <facing> nav_view.txt
-```
+**`navigate_to(x, y)`** — BFS pathfinding. Reads terrain + dynamic objects, computes shortest path, executes it step by step. Supports both local (0-31) and global coordinates — global coords are auto-detected and trigger multi-chunk terrain loading (up to 5x5 chunks = 160x160 tiles). Ledge tiles (0x38-0x3B) are treated as one-way passable in the correct direction. NPC tiles are blocked. Does not cross map boundaries (warps).
 
 ### Movement Timing
 - 1 tile = 16 frames of holding a direction, then release and wait ~8 frames for the step to complete.
-- `navigate.py` handles this automatically.
+- `navigate` and `navigate_to` handle this automatically.
 - The walk macros (`walk_up/down/left/right`) use 32-frame holds and move **2 tiles** per execution.
 
 ### Map Collision Data
@@ -235,13 +196,13 @@ When player coordinates exceed 31 (or RAM terrain is empty), the map uses a **ma
 - Player global coords map to chunks: `chunk = (x÷32, y÷32)`, local = `(x%32, y%32)`.
 - Each chunk's terrain is stored in a ROM file: `romdata/land_data/XXXX.bin`.
 - Matrix files (`romdata/map_matrix/XXXX.bin`) map chunk positions to land_data file IDs.
-- `map_with_objects.py` **detects this automatically** — it searches all matrix files for the current map ID.
-- The script displays **local chunk coordinates (0-31)** with the chunk offset printed in the header.
+- `view_map` **detects this automatically** — it searches all matrix files for the current map ID.
+- The tool displays **local chunk coordinates (0-31)** with the chunk offset printed in the header.
 - This works for any multi-chunk map: overworld, large caves, dungeons, etc.
 
 **Important caveats:**
-- Dynamic objects (NPCs, items on the floor) are NOT in the static grid. Use `map_with_objects.py` to see both.
-- `navigate.py` is the most robust navigation method — it tries each step and checks the result, catching dynamic blockers and edge cases that the static grid alone would miss.
+- Dynamic objects (NPCs, items on the floor) are NOT in the static grid. Use `view_map` to see both.
+- `navigate`/`navigate_to` are the most robust navigation methods — they try each step and check the result, catching dynamic blockers and edge cases that the static grid alone would miss.
 - Overworld door tiles (`0x69`) are marked as blocked in terrain but the warp system overrides collision.
 
 ### Dynamic Objects (Overworld Object Array)
@@ -257,7 +218,7 @@ NPCs, floor items, and the player are stored in an array in RAM. Each entry is *
 
 - Entry 0 = player, Entry 1+ = NPCs/objects on current map.
 - Entries with fpx=0 and fpy=0 are empty/inactive.
-- `map_with_objects.py` reads this automatically — player shows as `^v<>`, NPCs/objects as `A`, `B`, `C`, etc.
+- `view_map` reads this automatically — player shows as `^v<>`, NPCs/objects as `A`, `B`, `C`, etc.
 
 ### Tile Behaviors
 
@@ -387,36 +348,34 @@ Then analyze with Python scripts.
 ## Quick Reference: Common Workflows
 
 ### Entering a new area
-1. `read_watch("player_position")` — get map ID and coordinates
-2. `python3 scripts/map_name.py` — identify where you are
-3. `python3 scripts/map_with_objects.py` — see the map layout, NPCs, exits
+1. `map_name` — get map ID, location name, and coordinates
+2. `view_map` — see the map layout, NPCs, exits
 
 ### Before/during battle
-1. `python3 scripts/read_battle.py` — see enemy species, types, ability, stats, moves, and HP. **Do this at battle start** to plan tactics (especially important in this difficulty hack — enemy abilities and movesets may be changed from vanilla).
-2. `python3 scripts/battle_init.py` — snapshot text baseline (once per battle)
-3. Select move, then `python3 scripts/battle_poll.py --press` — get full turn narration
-4. `python3 scripts/read_battle.py` — check updated HP, PP, stat stages, status after the turn
+1. `read_battle` — see enemy species, types, ability, stats, moves, and HP. **Do this at battle start** to plan tactics (especially important in this difficulty hack — enemy abilities and movesets may be changed from vanilla).
+2. `battle_init` — snapshot text baseline (once per battle)
+3. Select move, then `battle_poll(auto_press=true)` — get full turn narration
+4. `read_battle` — check updated HP, PP, stat stages, status after the turn
 
 ### Checking inventory/party (overworld)
-1. `python3 scripts/read_party.py` — full party with moves, PP, nature, IVs, EVs
-2. `python3 scripts/read_bag.py` — all items across all pockets
+1. `read_party` — full party with moves, PP, nature, IVs, EVs
+2. `read_bag` — all items across all pockets
 
 ## Tips
 
 - Save state frequently — this is a difficulty hack, expect challenges.
-- **Use `read_battle.py` at the start of every battle** — it reveals the enemy's ability, types, moves, and stats. Renegade Platinum changes many of these from vanilla (e.g., Chimchar has Iron Fist instead of Blaze).
-- **Use `read_bag.py` instead of navigating the bag menu** — faster and avoids accidental inputs.
-- **Use `read_party.py` instead of the party menu** — shows everything including IVs/EVs without menu navigation.
-- Use the `player_position` watch after every movement to confirm you moved.
-- Use `read_dialogue.py` to read full dialogue text from memory — far more reliable than timing screenshots.
-- Use `battle_poll.py --press` after selecting a move to get the full turn log automatically.
+- **Use `read_battle` at the start of every battle** — it reveals the enemy's ability, types, moves, and stats. Renegade Platinum changes many of these from vanilla (e.g., Chimchar has Iron Fist instead of Blaze).
+- **Use `read_bag` instead of navigating the bag menu** — faster and avoids accidental inputs.
+- **Use `read_party` instead of the party menu** — shows everything including IVs/EVs without menu navigation.
+- Use `read_dialogue` to read full dialogue text from memory — far more reliable than timing screenshots.
+- Use `battle_poll(auto_press=true)` after selecting a move to get the full turn log automatically.
 - Use macros for repetitive sequences (dialogue, walking patterns).
 - The `load_state` tool may occasionally hang without returning — check `get_status` to verify.
-- Note: addresses must be passed as decimal integers to MCP tools, not hex strings. Use Python to convert: `python3 -c "print(0x0227F458)"`.
+- Note: addresses must be passed as decimal integers to DeSmuME MCP tools, not hex strings.
 - **Touch screen taps need `frames=8`** — single-frame taps (default) often don't register. Always use 8-frame holds for touch input.
 - **Wait 300 frames between UI navigation steps** — Pokemon has forced text scroll delays before accepting input. Pressing buttons during these delays wastes them.
 - **Always check the bottom screen for Yes/No prompts** — in battle, move-learning, and switch prompts use the bottom touch screen, not the top.
-- **NEVER call `battle_poll.py` without first selecting a move** — it polls for NEW text, so if no action was taken, it loops forever. Always: select move → verify Pokeball screen → THEN poll.
-- **Use `timeout 15 python3 scripts/battle_poll.py --press` for KO turns** — the script stalls after battle ends (KO + EXP + return to overworld). The `timeout` wrapper prevents infinite hangs.
+- **NEVER call `battle_poll` without first selecting a move** — it polls for NEW text, so if no action was taken, it loops forever. Always: select move → verify Pokeball screen → THEN poll.
+- **`battle_poll` may stall on KO turns** — the tool has a built-in MAX_POLLS limit (300 polls = ~75 seconds) so it will eventually return with TIMEOUT state rather than hanging forever.
 - **Pause menu remembers cursor position** — don't assume it starts on a specific item. Check the screenshot before pressing A.
 - **Trainer battles may have multiple Pokemon** — after a KO, the game asks "Will you switch?" with touch buttons on the bottom screen. Handle this before the next action prompt.
