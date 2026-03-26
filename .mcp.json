@@ -9,6 +9,14 @@
         "SDL_AUDIODRIVER": "dummy",
         "PYTHONPATH": "/workspace/RenegadePlatinumPlaytest/DesmumeMCP"
       }
+    },
+    "renegade": {
+      "command": "/workspace/RenegadePlatinumPlaytest/DesmumeMCP/.venv/bin/python",
+      "args": ["-m", "renegade_mcp"],
+      "cwd": "/workspace/RenegadePlatinumPlaytest",
+      "env": {
+        "PYTHONPATH": "/workspace/RenegadePlatinumPlaytest:/workspace/RenegadePlatinumPlaytest/DesmumeMCP"
+      }
     }
   }
 }

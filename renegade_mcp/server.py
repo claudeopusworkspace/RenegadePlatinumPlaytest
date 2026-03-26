@@ -1,0 +1,253 @@
+"""Renegade Platinum MCP server — game-specific tools for Pokemon Renegade Platinum.
+
+Tools connect to the running DeSmuME emulator via the bridge socket.
+The server starts without requiring the emulator — connection is lazy.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+from mcp.server.fastmcp import FastMCP
+
+from renegade_mcp.connection import get_client
+
+
+def create_server() -> FastMCP:
+    """Create and configure the Renegade Platinum MCP server."""
+    mcp = FastMCP("renegade")
+
+    # ── Party ──
+
+    @mcp.tool()
+    def read_party() -> dict[str, Any]:
+        """Read party Pokemon from memory.
+
+        Returns species, level, HP, moves with PP, nature, IVs, EVs for each party member.
+        Works in overworld and battle (HP/level unavailable during battle).
+        """
+        from renegade_mcp.party import format_party, read_party as _read_party
+
+        emu = get_client()
+        party = _read_party(emu)
+        return {
+            "count": len(party),
+            "party": party,
+            "formatted": format_party(party),
+        }
+
+    # ── Battle ──
+
+    @mcp.tool()
+    def read_battle() -> dict[str, Any]:
+        """Read live battle state from memory.
+
+        Returns all active battlers with species, stats, moves, PP, HP, ability,
+        types, status conditions, held items, and stat stage changes.
+        Slot 0 = player active, Slot 1 = enemy active, Slots 2-3 = doubles partners.
+        Returns empty if not in battle.
+        """
+        from renegade_mcp.battle import format_battle, read_battle as _read_battle
+
+        emu = get_client()
+        battlers = _read_battle(emu)
+        return {
+            "in_battle": len(battlers) > 0,
+            "battlers": battlers,
+            "formatted": format_battle(battlers),
+        }
+
+    # ── Bag ──
+
+    @mcp.tool()
+    def read_bag(pocket: str = "") -> dict[str, Any]:
+        """Read bag/inventory contents from memory.
+
+        Returns all 7 pockets (Items, Key Items, TMs & HMs, Mail, Medicine, Berries,
+        Battle Items) with item names and quantities.
+
+        Args:
+            pocket: Optional pocket name to filter (e.g. "Key Items"). Empty = all pockets.
+        """
+        from renegade_mcp.bag import format_bag, read_bag as _read_bag
+
+        emu = get_client()
+        bag = _read_bag(emu)
+        filtered = bag
+        if pocket:
+            filtered = [p for p in bag if p["name"].lower() == pocket.lower()]
+        return {
+            "pockets": filtered,
+            "formatted": format_bag(bag, pocket),
+        }
+
+    # ── Map ──
+
+    @mcp.tool()
+    def view_map() -> dict[str, Any]:
+        """Show ASCII map of current area with terrain, player position, and NPCs.
+
+        Handles indoor maps (from RAM) and overworld multi-chunk maps (from ROM).
+        Player shown as ^v<> (facing), NPCs as A-Z. Includes terrain behaviors.
+        """
+        from renegade_mcp.map_state import view_map as _view_map
+
+        emu = get_client()
+        return _view_map(emu)
+
+    @mcp.tool()
+    def map_name(map_id: int = -1) -> dict[str, Any]:
+        """Look up the location name for a map ID.
+
+        Args:
+            map_id: Map ID to look up. If -1, reads current map from the emulator.
+        """
+        from renegade_mcp.map_names import lookup_map_name
+        from renegade_mcp.map_state import read_player_state
+
+        if map_id < 0:
+            emu = get_client()
+            mid, x, y, facing = read_player_state(emu)
+            result = lookup_map_name(mid)
+            result["x"] = x
+            result["y"] = y
+            return result
+        return lookup_map_name(map_id)
+
+    # ── Navigation ──
+
+    @mcp.tool()
+    def navigate(directions: str) -> dict[str, Any]:
+        """Walk a manual path in the overworld.
+
+        Moves one tile per direction (16 frames hold + 8 frames wait), verifying
+        each step. Stops early if blocked (collision, encounter, cutscene).
+
+        Args:
+            directions: Space-separated directions: up/down/left/right (or u/d/l/r)
+                       with optional repeat counts (e.g. "l20 u5 r3").
+        """
+        from renegade_mcp.navigation import navigate_manual
+
+        emu = get_client()
+        return navigate_manual(emu, directions)
+
+    @mcp.tool()
+    def navigate_to(x: int, y: int) -> dict[str, Any]:
+        """Pathfind to a target tile using BFS, then walk there.
+
+        Reads terrain and NPC positions, computes shortest path, and executes it
+        step by step with position verification. Supports local (0-31) and global
+        coordinates (auto-detected). Handles multi-chunk overworld maps.
+
+        Args:
+            x: Target X coordinate (local or global).
+            y: Target Y coordinate (local or global).
+        """
+        from renegade_mcp.navigation import navigate_to as _navigate_to
+
+        emu = get_client()
+        return _navigate_to(emu, x, y)
+
+    # ── Dialogue ──
+
+    @mcp.tool()
+    def read_dialogue(region: str = "auto") -> dict[str, Any]:
+        """Read current dialogue or battle text from memory.
+
+        Scans RAM for active text slots with D2EC B6F8 markers. Decodes Gen 4
+        text encoding. Use "auto" to check overworld first, then battle.
+
+        Args:
+            region: "auto" (try overworld then battle), "overworld", or "battle".
+        """
+        from renegade_mcp.dialogue import read_dialogue as _read_dialogue
+
+        emu = get_client()
+        return _read_dialogue(emu, region)
+
+    # ── Battle Tracking ──
+
+    @mcp.tool()
+    def battle_init() -> dict[str, Any]:
+        """Snapshot battle text baseline. Run ONCE when a battle starts.
+
+        Scans memory for pre-existing text markers so that battle_poll can
+        distinguish old text from new battle narration. Must be called before
+        battle_poll.
+        """
+        from renegade_mcp.battle_tracker import battle_init as _battle_init
+
+        emu = get_client()
+        return _battle_init(emu)
+
+    @mcp.tool()
+    def battle_poll(auto_press: bool = False) -> dict[str, Any]:
+        """Poll for new battle narration after selecting a move.
+
+        Advances frames and monitors text buffers until a stopping point:
+        - WAIT_FOR_ACTION: game wants move/item/switch selection
+        - WAIT_FOR_INPUT: game waits for B press to dismiss
+        - TIMEOUT: hit max poll limit without finding a stop
+        - NO_TEXT: no new battle text found
+
+        Requires battle_init to have been called first for this battle.
+
+        Args:
+            auto_press: If True, auto-press B to dismiss mid-battle dialogue
+                       (like trainer taunts) and continue polling until action prompt.
+        """
+        from renegade_mcp.battle_tracker import battle_poll as _battle_poll
+
+        emu = get_client()
+        return _battle_poll(emu, auto_press)
+
+    # ── ROM Message Decoding ──
+
+    @mcp.tool()
+    def decode_rom_message(file_index: int) -> dict[str, Any]:
+        """Decode all strings in a ROM message file by index.
+
+        Key file indices:
+        - 392: Item names (index = item ID)
+        - 412: Pokemon species names (index = national dex #)
+        - 610: Ability names (index = ability ID)
+        - 647: Move names (index = move ID)
+        - 433: Location/map names
+        - 646: Move descriptions
+
+        Args:
+            file_index: Message file index (0-723).
+        """
+        from renegade_mcp.rom_messages import decode_file
+
+        results = decode_file(file_index)
+        if not results:
+            return {"file_index": file_index, "count": 0, "strings": [], "error": "File not found or empty."}
+
+        return {
+            "file_index": file_index,
+            "count": len(results),
+            "strings": results,
+        }
+
+    @mcp.tool()
+    def search_rom_messages(query: str) -> dict[str, Any]:
+        """Search all ROM message files for strings containing the query text.
+
+        Searches all 724 message files (species names, moves, items, dialogue, etc.).
+        Case-insensitive.
+
+        Args:
+            query: Text to search for.
+        """
+        from renegade_mcp.rom_messages import search_all
+
+        matches = search_all(query)
+        return {
+            "query": query,
+            "match_count": len(matches),
+            "matches": matches,
+        }
+
+    return mcp

@@ -1,0 +1,246 @@
+"""Read party Pokemon data from emulator memory.
+
+Uses TWO data sources:
+1. Encrypted Gen 4 party data at 0x0227E270 (always available) — species, moves, PP, nature, etc.
+2. Party summary structure at 0x022C0130 (overworld only) — current HP, max HP, level.
+"""
+
+from __future__ import annotations
+
+import struct
+from typing import TYPE_CHECKING, Any
+
+from renegade_mcp.data import move_names, species_names
+
+if TYPE_CHECKING:
+    from desmume_mcp.client import EmulatorClient
+
+# ── Memory addresses ──
+ENCRYPTED_PARTY_COUNT = 0x0227E26C
+ENCRYPTED_PARTY_BASE = 0x0227E270
+ENCRYPTED_SLOT_SIZE = 236
+PARTY_SUMMARY_BASE = 0x022C0130
+PARTY_SLOT_SIZE = 0x2C  # 44 bytes
+PARTY_MAX_SLOTS = 6
+
+# Summary field offsets
+OFF_SPECIES = 0x04
+OFF_CUR_HP = 0x06
+OFF_MAX_HP = 0x08
+OFF_LEVEL = 0x0A
+
+# All 24 permutations of ABCD (block unshuffle table)
+BLOCK_ORDERS = [
+    [0, 1, 2, 3], [0, 1, 3, 2], [0, 2, 1, 3], [0, 2, 3, 1], [0, 3, 1, 2], [0, 3, 2, 1],
+    [1, 0, 2, 3], [1, 0, 3, 2], [1, 2, 0, 3], [1, 2, 3, 0], [1, 3, 0, 2], [1, 3, 2, 0],
+    [2, 0, 1, 3], [2, 0, 3, 1], [2, 1, 0, 3], [2, 1, 3, 0], [2, 3, 0, 1], [2, 3, 1, 0],
+    [3, 0, 1, 2], [3, 0, 2, 1], [3, 1, 0, 2], [3, 1, 2, 0], [3, 2, 0, 1], [3, 2, 1, 0],
+]
+
+NATURES = [
+    "Hardy", "Lonely", "Brave", "Adamant", "Naughty",
+    "Bold", "Docile", "Relaxed", "Impish", "Lax",
+    "Timid", "Hasty", "Serious", "Jolly", "Naive",
+    "Modest", "Mild", "Quiet", "Bashful", "Rash",
+    "Calm", "Gentle", "Sassy", "Careful", "Quirky",
+]
+
+
+# ── Gen 4 Decryption ──
+
+def _decrypt_data(data_128: bytes, checksum: int) -> bytes:
+    """Decrypt 128 bytes of Pokemon data using Gen 4 PRNG seeded with checksum."""
+    result = bytearray(128)
+    state = checksum
+    for i in range(0, 128, 2):
+        state = (state * 0x41C64E6D + 0x6073) & 0xFFFFFFFF
+        key = (state >> 16) & 0xFFFF
+        val = struct.unpack_from("<H", data_128, i)[0]
+        struct.pack_into("<H", result, i, val ^ key)
+    return bytes(result)
+
+
+def _unshuffle_blocks(data_128: bytes, pid: int) -> bytes:
+    """Unshuffle 4x32-byte blocks into ABCD order based on PID."""
+    order_idx = ((pid >> 13) & 0x1F) % 24
+    order = BLOCK_ORDERS[order_idx]
+    result = bytearray(128)
+    for i, block in enumerate(order):
+        result[block * 32 : (block + 1) * 32] = data_128[i * 32 : (i + 1) * 32]
+    return bytes(result)
+
+
+def _decode_encrypted_pokemon(raw_236: bytes) -> dict[str, Any] | None:
+    """Decode a 236-byte encrypted Pokemon structure. Returns None if invalid."""
+    pid = struct.unpack_from("<I", raw_236, 0)[0]
+    checksum = struct.unpack_from("<H", raw_236, 6)[0]
+    encrypted = raw_236[8:136]
+
+    if pid == 0:
+        return None
+
+    decrypted = _decrypt_data(encrypted, checksum)
+    blocks = _unshuffle_blocks(decrypted, pid)
+
+    # Validate checksum
+    calc_checksum = sum(
+        struct.unpack_from("<H", decrypted, i)[0] for i in range(0, 128, 2)
+    ) & 0xFFFF
+    if calc_checksum != checksum:
+        return None
+
+    # Block A (Growth)
+    species = struct.unpack_from("<H", blocks, 0)[0]
+    item = struct.unpack_from("<H", blocks, 2)[0]
+    exp = struct.unpack_from("<I", blocks, 8)[0]
+    friendship = blocks[12]
+    ability_idx = blocks[13]
+    evs = {
+        "hp": blocks[16], "atk": blocks[17], "def": blocks[18],
+        "spe": blocks[19], "spa": blocks[20], "spd": blocks[21],
+    }
+
+    # Block B (Moves)
+    moves = [struct.unpack_from("<H", blocks, 32 + i * 2)[0] for i in range(4)]
+    pp = [blocks[40 + i] for i in range(4)]
+    pp_ups = [blocks[44 + i] for i in range(4)]
+
+    # Block B — IVs packed in u32 at offset 48
+    iv_raw = struct.unpack_from("<I", blocks, 48)[0]
+    ivs = {
+        "hp": (iv_raw >> 0) & 0x1F,
+        "atk": (iv_raw >> 5) & 0x1F,
+        "def": (iv_raw >> 10) & 0x1F,
+        "spe": (iv_raw >> 15) & 0x1F,
+        "spa": (iv_raw >> 20) & 0x1F,
+        "spd": (iv_raw >> 25) & 0x1F,
+    }
+
+    nature_idx = pid % 25
+    nature = NATURES[nature_idx]
+
+    return {
+        "pid": pid,
+        "species_id": species,
+        "item_id": item,
+        "exp": exp,
+        "friendship": friendship,
+        "ability_idx": ability_idx,
+        "moves": moves,
+        "pp": pp,
+        "pp_ups": pp_ups,
+        "nature": nature,
+        "nature_idx": nature_idx,
+        "ivs": ivs,
+        "evs": evs,
+    }
+
+
+# ── Party Reading ──
+
+def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
+    """Read all party slots from memory. Returns list of Pokemon dicts."""
+    sp_names = species_names()
+    mv_names = move_names()
+
+    enc_count_raw = emu.read_memory_range(ENCRYPTED_PARTY_COUNT, size="long", count=1)
+    enc_party_count = min(enc_count_raw[0], PARTY_MAX_SLOTS)
+
+    if enc_party_count == 0:
+        return []
+
+    enc_raw = emu.read_memory_range(
+        ENCRYPTED_PARTY_BASE, size="byte", count=enc_party_count * ENCRYPTED_SLOT_SIZE
+    )
+    summary_raw = emu.read_memory_range(
+        PARTY_SUMMARY_BASE, size="byte", count=PARTY_MAX_SLOTS * PARTY_SLOT_SIZE
+    )
+
+    party = []
+    for i in range(enc_party_count):
+        enc_offset = i * ENCRYPTED_SLOT_SIZE
+        enc_slot = bytes(enc_raw[enc_offset : enc_offset + ENCRYPTED_SLOT_SIZE])
+        decoded = _decode_encrypted_pokemon(enc_slot)
+
+        if not decoded or decoded["species_id"] == 0:
+            continue
+
+        species = decoded["species_id"]
+        name = sp_names.get(species, f"Pokemon#{species}")
+
+        # Try HP/level from summary (valid in overworld only)
+        summary_offset = i * PARTY_SLOT_SIZE
+        summary_slot = bytes(summary_raw[summary_offset : summary_offset + PARTY_SLOT_SIZE])
+        summary_species = struct.unpack_from("<H", summary_slot, OFF_SPECIES)[0]
+
+        if summary_species == species:
+            cur_hp = struct.unpack_from("<H", summary_slot, OFF_CUR_HP)[0]
+            max_hp = struct.unpack_from("<H", summary_slot, OFF_MAX_HP)[0]
+            level = summary_slot[OFF_LEVEL]
+        else:
+            cur_hp = -1
+            max_hp = -1
+            level = -1
+
+        pokemon = {
+            "slot": i + 1,
+            "species_id": species,
+            "name": name,
+            "level": level,
+            "hp": cur_hp,
+            "max_hp": max_hp,
+            "moves": decoded["moves"],
+            "move_names": [
+                mv_names.get(m, f"#{m}") if m > 0 else "-" for m in decoded["moves"]
+            ],
+            "pp": decoded["pp"],
+            "nature": decoded["nature"],
+            "item_id": decoded.get("item_id", 0),
+            "friendship": decoded.get("friendship", 0),
+            "exp": decoded.get("exp", 0),
+            "ivs": decoded.get("ivs", {}),
+            "evs": decoded.get("evs", {}),
+        }
+        party.append(pokemon)
+
+    return party
+
+
+def format_party(party: list[dict[str, Any]]) -> str:
+    """Format party data as a readable string."""
+    if not party:
+        return "Party is empty!"
+
+    lines = [f"=== Party ({len(party)} Pokemon) ==="]
+    for p in party:
+        nature_str = f" ({p['nature']})" if p.get("nature", "?") != "?" else ""
+        level_str = f"Lv{p['level']}" if p["level"] >= 0 else "Lv?"
+
+        if p["hp"] >= 0 and p["max_hp"] > 0:
+            hp_pct = p["hp"] / p["max_hp"] * 100
+            filled = int(hp_pct / 100 * 20)
+            bar = "\u2588" * filled + "\u2591" * (20 - filled)
+            hp_str = f"HP {p['hp']}/{p['max_hp']} [{bar}]"
+        else:
+            hp_str = "HP ?/?"
+
+        lines.append(f"  {p['slot']}. {p['name']} {level_str}{nature_str}  {hp_str}")
+
+        if p.get("move_names"):
+            for mname, pp in zip(p["move_names"], p["pp"]):
+                if mname == "-":
+                    continue
+                lines.append(f"     - {mname} (PP {pp})")
+        else:
+            lines.append("     (moves unavailable)")
+
+        ivs = p.get("ivs", {})
+        evs = p.get("evs", {})
+        if ivs:
+            iv_str = "/".join(str(ivs[s]) for s in ["hp", "atk", "def", "spa", "spd", "spe"])
+            lines.append(f"     IVs: {iv_str} (HP/Atk/Def/SpA/SpD/Spe)")
+        if evs and any(evs[s] > 0 for s in evs):
+            ev_str = "/".join(str(evs[s]) for s in ["hp", "atk", "def", "spa", "spd", "spe"])
+            lines.append(f"     EVs: {ev_str}")
+
+    return "\n".join(lines)

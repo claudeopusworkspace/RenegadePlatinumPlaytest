@@ -1,0 +1,409 @@
+"""Terrain, dynamic objects, and player state reading + ASCII map rendering.
+
+Handles both indoor maps (terrain from RAM) and multi-chunk overworld maps
+(terrain loaded from ROM via the map matrix/chunk system).
+"""
+
+from __future__ import annotations
+
+import os
+import struct
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from desmume_mcp.client import EmulatorClient
+
+# ── Memory addresses ──
+TERRAIN_ADDR = 0x0231D1E4
+TERRAIN_SIZE = 2048  # 32*32*2
+
+PLAYER_POS_BASE = 0x0227F450
+PLAYER_FACING_ADDR = 0x02335346
+
+OBJ_ARRAY_FPX_BASE = 0x022A1AA8
+OBJ_STRIDE = 0x128
+OBJ_MAX_ENTRIES = 16
+
+# ── ROM data paths (relative to CWD = project root) ──
+ROMDATA_DIR = Path("romdata")
+LAND_DATA_DIR = ROMDATA_DIR / "land_data"
+MATRIX_DIR = ROMDATA_DIR / "map_matrix"
+CHUNK_SIZE = 32
+
+# ── Display constants ──
+FACING_ARROWS = {0: "^", 1: "v", 2: "<", 3: ">"}
+FACING_NAMES = {0: "up", 1: "down", 2: "left", 3: "right"}
+
+BEHAVIORS = {
+    0x00: "ground", 0x02: "tall_grass", 0x03: "very_tall_grass",
+    0x08: "cave_floor", 0x10: "water", 0x13: "waterfall", 0x15: "sea",
+    0x20: "ice", 0x21: "sand",
+    0x38: "ledge_S", 0x39: "ledge_N", 0x3A: "ledge_W", 0x3B: "ledge_E",
+    0x5E: "stairs_up", 0x5F: "stairs_down",
+    0x62: "warp", 0x65: "door", 0x69: "door2", 0x6B: "warp3",
+    0x80: "counter", 0xA9: "tree_tile",
+}
+
+
+# ── Terrain reading ──
+
+def read_terrain_from_ram(emu: EmulatorClient) -> list[list[int]]:
+    """Read the 32x32 terrain collision grid from RAM."""
+    vals = emu.read_memory_range(TERRAIN_ADDR, size="short", count=1024)
+    return [vals[row * 32 : (row + 1) * 32] for row in range(32)]
+
+
+def is_terrain_empty(grid: list[list[int]]) -> bool:
+    """Check if the terrain grid is all zeros (overworld mode)."""
+    return all(val == 0 for row in grid for val in row)
+
+
+def needs_chunk_lookup(ram_terrain: list[list[int]], px: int, py: int) -> bool:
+    """Determine if we need ROM-based chunk lookup."""
+    return px >= CHUNK_SIZE or py >= CHUNK_SIZE or is_terrain_empty(ram_terrain)
+
+
+# ── ROM chunk system ──
+
+def parse_matrix(matrix_path: str | Path) -> tuple[int, int, list | None, list]:
+    """Parse a map matrix file. Returns (width, height, header_ids_2d_or_None, terrain_ids_2d)."""
+    with open(matrix_path, "rb") as f:
+        data = f.read()
+
+    w, h = data[0], data[1]
+    has_headers, has_heights = data[2], data[3]
+    name_len = data[4]
+    offset = 5 + name_len
+
+    header_ids = None
+    if has_headers:
+        header_ids = []
+        for row in range(h):
+            row_ids = []
+            for col in range(w):
+                idx = offset + (row * w + col) * 2
+                val = struct.unpack_from("<H", data, idx)[0]
+                row_ids.append(val)
+            header_ids.append(row_ids)
+        offset += w * h * 2
+
+    if has_heights:
+        offset += w * h
+
+    terrain_ids = []
+    for row in range(h):
+        row_ids = []
+        for col in range(w):
+            idx = offset + (row * w + col) * 2
+            val = struct.unpack_from("<H", data, idx)[0]
+            row_ids.append(val)
+        terrain_ids.append(row_ids)
+
+    return w, h, header_ids, terrain_ids
+
+
+def find_matrix_for_map(map_id: int) -> tuple | None:
+    """Search all matrix files for the given map_id.
+
+    Returns (matrix_id, width, height, header_ids, terrain_ids) or None.
+    """
+    if not MATRIX_DIR.exists():
+        return None
+
+    for fname in sorted(os.listdir(MATRIX_DIR)):
+        if not fname.endswith(".bin"):
+            continue
+        matrix_id = int(fname.split(".")[0])
+        path = MATRIX_DIR / fname
+
+        w, h, header_ids, terrain_ids = parse_matrix(path)
+        if header_ids is None:
+            continue
+
+        for row in range(h):
+            for col in range(w):
+                if header_ids[row][col] == map_id:
+                    return matrix_id, w, h, header_ids, terrain_ids
+
+    return None
+
+
+def load_terrain_from_rom(land_data_id: int) -> list[list[int]] | None:
+    """Load a 32x32 terrain grid from a land_data ROM file."""
+    path = LAND_DATA_DIR / f"{land_data_id:04d}.bin"
+    if not path.exists():
+        return None
+
+    with open(path, "rb") as f:
+        data = f.read()
+
+    if len(data) < 0x10 + TERRAIN_SIZE:
+        return None
+
+    terrain_size = struct.unpack_from("<I", data, 0)[0]
+    if terrain_size != TERRAIN_SIZE:
+        return None
+
+    grid = []
+    for row in range(32):
+        row_data = []
+        for col in range(32):
+            idx = 0x10 + (row * 32 + col) * 2
+            val = struct.unpack_from("<H", data, idx)[0]
+            row_data.append(val)
+        grid.append(row_data)
+
+    return grid
+
+
+def resolve_chunk(map_id: int, global_x: int, global_y: int) -> tuple:
+    """Resolve terrain for a global coordinate. Returns (grid, origin_x, origin_y, matrix_id) or (None, 0, 0, None)."""
+    result = find_matrix_for_map(map_id)
+    if result is None:
+        return None, 0, 0, None
+
+    matrix_id, w, h, header_ids, terrain_ids = result
+
+    chunk_x = global_x // CHUNK_SIZE
+    chunk_y = global_y // CHUNK_SIZE
+
+    if not (0 <= chunk_x < w and 0 <= chunk_y < h):
+        return None, 0, 0, None
+
+    land_data_id = terrain_ids[chunk_y][chunk_x]
+    if land_data_id == 0xFFFF:
+        return None, 0, 0, None
+
+    grid = load_terrain_from_rom(land_data_id)
+    origin_x = chunk_x * CHUNK_SIZE
+    origin_y = chunk_y * CHUNK_SIZE
+    return grid, origin_x, origin_y, matrix_id
+
+
+# ── Dynamic objects ──
+
+def read_objects(emu: EmulatorClient) -> list[dict[str, Any]]:
+    """Scan the overworld object array and return active objects."""
+    objects = []
+    consecutive_empty = 0
+
+    for i in range(OBJ_MAX_ENTRIES):
+        fpx_addr = OBJ_ARRAY_FPX_BASE + (i * OBJ_STRIDE)
+        fpy_addr = fpx_addr + 8
+
+        fpx = emu.read_memory(fpx_addr, size="long")
+        fpy = emu.read_memory(fpy_addr, size="long")
+
+        tile_x = (fpx >> 16) & 0xFFFF
+        tile_y = (fpy >> 16) & 0xFFFF
+
+        if fpx == 0 and fpy == 0:
+            consecutive_empty += 1
+            if consecutive_empty >= 3:
+                break
+            continue
+
+        if tile_x > 10000 or tile_y > 10000:
+            consecutive_empty = 0
+            continue
+
+        consecutive_empty = 0
+        objects.append({"index": i, "x": tile_x, "y": tile_y, "fpx": fpx, "fpy": fpy})
+
+    return objects
+
+
+# ── Player state ──
+
+def read_player_state(emu: EmulatorClient) -> tuple[int, int, int, int]:
+    """Read player position and facing. Returns (map_id, x, y, facing)."""
+    map_id = emu.read_memory(PLAYER_POS_BASE, size="long")
+    x = emu.read_memory(PLAYER_POS_BASE + 8, size="long")
+    y = emu.read_memory(PLAYER_POS_BASE + 12, size="long")
+    facing = emu.read_memory(PLAYER_FACING_ADDR, size="byte")
+    return map_id, x, y, facing
+
+
+# ── High-level map state ──
+
+def get_map_state(emu: EmulatorClient) -> dict[str, Any] | None:
+    """Read full map state: terrain grid, objects, player position.
+
+    Returns dict with terrain, objects, positions, and origin info.
+    Returns None if chunk resolution fails.
+    """
+    map_id, px, py, facing = read_player_state(emu)
+    ram_terrain = read_terrain_from_ram(emu)
+    objects = read_objects(emu)
+    chunked = needs_chunk_lookup(ram_terrain, px, py)
+
+    if chunked:
+        terrain, origin_x, origin_y, matrix_id = resolve_chunk(map_id, px, py)
+        if terrain is None:
+            return None
+        local_px = px - origin_x
+        local_py = py - origin_y
+        for obj in objects:
+            obj["local_x"] = obj["x"] - origin_x
+            obj["local_y"] = obj["y"] - origin_y
+    else:
+        terrain = ram_terrain
+        origin_x, origin_y = 0, 0
+        local_px, local_py = px, py
+        for obj in objects:
+            obj["local_x"] = obj["x"]
+            obj["local_y"] = obj["y"]
+
+    return {
+        "terrain": terrain,
+        "objects": objects,
+        "map_id": map_id,
+        "px": px, "py": py,
+        "local_px": local_px, "local_py": local_py,
+        "origin_x": origin_x, "origin_y": origin_y,
+        "facing": facing,
+        "chunked": chunked,
+    }
+
+
+# ── ASCII map rendering ──
+
+def render_map(terrain: list, objects: list, player_local_x: int, player_local_y: int, facing: int) -> str:
+    """Render an ASCII map combining terrain and dynamic objects."""
+    obj_at = {}
+    for obj in objects:
+        lx, ly = obj["local_x"], obj["local_y"]
+        if 0 <= lx < 32 and 0 <= ly < 32:
+            if obj["index"] == 0:
+                obj_at[(lx, ly)] = FACING_ARROWS.get(facing, "P")
+            else:
+                obj_at[(lx, ly)] = chr(ord("A") + obj["index"] - 1)
+
+    # Find map bounds
+    min_row, max_row = 31, 0
+    min_col, max_col = 31, 0
+    for row in range(32):
+        for col in range(32):
+            if terrain[row][col] != 0:
+                min_row = min(min_row, row)
+                max_row = max(max_row, row)
+                min_col = min(min_col, col)
+                max_col = max(max_col, col)
+
+    for obj in objects:
+        lx, ly = obj["local_x"], obj["local_y"]
+        if 0 <= lx < 32 and 0 <= ly < 32:
+            min_row = min(min_row, ly)
+            max_row = max(max_row, ly)
+            min_col = min(min_col, lx)
+            max_col = max(max_col, lx)
+
+    min_row = max(0, min_row - 1)
+    max_row = min(31, max_row + 1)
+    min_col = max(0, min_col - 1)
+    max_col = min(31, max_col + 1)
+
+    lines = []
+
+    header = "     "
+    for col in range(min_col, max_col + 1):
+        header += f"{col:>3}"
+    lines.append(header)
+    lines.append("    " + "-" * ((max_col - min_col + 1) * 3 + 1))
+
+    behaviors_seen = {}
+
+    for row in range(min_row, max_row + 1):
+        line = f"{row:>3} |"
+        for col in range(min_col, max_col + 1):
+            val = terrain[row][col]
+            is_blocked = (val & 0x8000) != 0
+            behavior = val & 0x00FF
+
+            if (col, row) in obj_at:
+                cell = f"  {obj_at[(col, row)]}"
+            elif val == 0:
+                cell = "  ."
+            elif is_blocked and behavior == 0:
+                cell = "  #"
+            elif is_blocked and behavior != 0:
+                cell = f" {behavior:02x}"
+                behaviors_seen[behavior] = "blocked"
+            elif behavior == 0x00:
+                cell = "  _"
+            elif behavior == 0x08:
+                cell = "   "
+            else:
+                cell = f" {behavior:02x}"
+                behaviors_seen[behavior] = "passable"
+
+            line += cell
+        lines.append(line)
+
+    lines.append("")
+    lines.append("Legend:")
+    lines.append("  ^v<> = player (facing direction)")
+    lines.append("  A-Z  = NPC/dynamic object")
+    lines.append("  .    = void  #  = wall  _  = walkable ground")
+    lines.append("  xx   = tile behavior (hex)")
+
+    if behaviors_seen:
+        lines.append("")
+        lines.append("Behaviors:")
+        for beh, passability in sorted(behaviors_seen.items()):
+            name = BEHAVIORS.get(beh, "unknown")
+            lines.append(f"  {beh:02x} = {passability} ({name})")
+
+    return "\n".join(lines)
+
+
+def view_map(emu: EmulatorClient) -> dict[str, Any]:
+    """Get full map view with ASCII rendering and metadata."""
+    state = get_map_state(emu)
+    if state is None:
+        return {"error": "Could not resolve map chunk", "map": "", "player": {}, "objects": []}
+
+    facing_name = FACING_NAMES.get(state["facing"], "?")
+    map_str = render_map(
+        state["terrain"], state["objects"],
+        state["local_px"], state["local_py"], state["facing"],
+    )
+
+    # Build header
+    if state["chunked"]:
+        chunk_cx = state["px"] // CHUNK_SIZE
+        chunk_cy = state["py"] // CHUNK_SIZE
+        header = (
+            f"Map {state['map_id']} — Player at ({state['px']}, {state['py']}) "
+            f"facing {facing_name}\n"
+            f"Chunk ({chunk_cx}, {chunk_cy}) — "
+            f"origin ({state['origin_x']}, {state['origin_y']}) — "
+            f"local ({state['local_px']}, {state['local_py']})"
+        )
+    else:
+        header = f"Map {state['map_id']} — Player at ({state['px']}, {state['py']}) facing {facing_name}"
+
+    # Object list
+    obj_info = []
+    for obj in state["objects"]:
+        label = "PLAYER" if obj["index"] == 0 else f"NPC {chr(ord('A') + obj['index'] - 1)}"
+        obj_info.append({
+            "index": obj["index"],
+            "label": label,
+            "x": obj["x"], "y": obj["y"],
+            "local_x": obj["local_x"], "local_y": obj["local_y"],
+        })
+
+    return {
+        "map": header + "\n\n" + map_str,
+        "map_id": state["map_id"],
+        "player": {
+            "x": state["px"], "y": state["py"],
+            "local_x": state["local_px"], "local_y": state["local_py"],
+            "facing": facing_name,
+        },
+        "origin": {"x": state["origin_x"], "y": state["origin_y"]},
+        "chunked": state["chunked"],
+        "objects": obj_info,
+    }
