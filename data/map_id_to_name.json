@@ -1,0 +1,2967 @@
+{
+  "0": {
+    "code": "EVERYWHERE",
+    "name": "Mystery Zone",
+    "room": "RYWHERE"
+  },
+  "1": {
+    "code": "NOTHING",
+    "name": "Mystery Zone",
+    "room": ""
+  },
+  "2": {
+    "code": "UG",
+    "name": "Canalave Library",
+    "room": ""
+  },
+  "3": {
+    "code": "C01",
+    "name": "Jubilife City",
+    "room": ""
+  },
+  "4": {
+    "code": "C01FS0101",
+    "name": "[C01FS0101]",
+    "room": ""
+  },
+  "5": {
+    "code": "C01GYM0101",
+    "name": "[C01GYM0101]",
+    "room": ""
+  },
+  "6": {
+    "code": "C01PC0101",
+    "name": "[C01PC0101]",
+    "room": ""
+  },
+  "7": {
+    "code": "C01PC0102",
+    "name": "[C01PC0102]",
+    "room": ""
+  },
+  "8": {
+    "code": "C01R0101",
+    "name": "Jubilife City",
+    "room": "R0101"
+  },
+  "9": {
+    "code": "C01R0102",
+    "name": "Jubilife City",
+    "room": "R0102"
+  },
+  "10": {
+    "code": "C01R0103",
+    "name": "Jubilife City",
+    "room": "R0103"
+  },
+  "11": {
+    "code": "C01R0201",
+    "name": "Jubilife City",
+    "room": "R0201"
+  },
+  "12": {
+    "code": "C01R0202",
+    "name": "Jubilife City",
+    "room": "R0202"
+  },
+  "13": {
+    "code": "C01R0203",
+    "name": "Jubilife City",
+    "room": "R0203"
+  },
+  "14": {
+    "code": "C01R0204",
+    "name": "Jubilife City",
+    "room": "R0204"
+  },
+  "15": {
+    "code": "C01R0205",
+    "name": "Jubilife City",
+    "room": "R0205"
+  },
+  "16": {
+    "code": "C01R0206",
+    "name": "Jubilife City",
+    "room": "R0206"
+  },
+  "17": {
+    "code": "C01R0207",
+    "name": "Jubilife City",
+    "room": "R0207"
+  },
+  "18": {
+    "code": "C01R0208",
+    "name": "Jubilife City",
+    "room": "R0208"
+  },
+  "19": {
+    "code": "C01R0301",
+    "name": "Jubilife City",
+    "room": "R0301"
+  },
+  "20": {
+    "code": "C01R0302",
+    "name": "Jubilife City",
+    "room": "R0302"
+  },
+  "21": {
+    "code": "C01R0303",
+    "name": "Jubilife City",
+    "room": "R0303"
+  },
+  "22": {
+    "code": "C01R0304",
+    "name": "Jubilife City",
+    "room": "R0304"
+  },
+  "23": {
+    "code": "C01R0401",
+    "name": "Jubilife City",
+    "room": "R0401"
+  },
+  "24": {
+    "code": "C01R0501",
+    "name": "Jubilife City",
+    "room": "R0501"
+  },
+  "25": {
+    "code": "C01R0502",
+    "name": "Jubilife City",
+    "room": "R0502"
+  },
+  "26": {
+    "code": "C01R0503",
+    "name": "Jubilife City",
+    "room": "R0503"
+  },
+  "27": {
+    "code": "C01R0504",
+    "name": "Jubilife City",
+    "room": "R0504"
+  },
+  "28": {
+    "code": "C01R0601",
+    "name": "Jubilife City",
+    "room": "R0601"
+  },
+  "29": {
+    "code": "C01R0701",
+    "name": "Jubilife City",
+    "room": "R0701"
+  },
+  "30": {
+    "code": "C01R0801",
+    "name": "Jubilife City",
+    "room": "R0801"
+  },
+  "31": {
+    "code": "C01R0901",
+    "name": "Jubilife City",
+    "room": "R0901"
+  },
+  "32": {
+    "code": "C01R1001",
+    "name": "Jubilife City",
+    "room": "R1001"
+  },
+  "33": {
+    "code": "C02",
+    "name": "Canalave City",
+    "room": ""
+  },
+  "34": {
+    "code": "C02FS0101",
+    "name": "[C02FS0101]",
+    "room": ""
+  },
+  "35": {
+    "code": "C02GYM0101",
+    "name": "[C02GYM0101]",
+    "room": ""
+  },
+  "36": {
+    "code": "C02PC0101",
+    "name": "[C02PC0101]",
+    "room": ""
+  },
+  "37": {
+    "code": "C02PC0102",
+    "name": "[C02PC0102]",
+    "room": ""
+  },
+  "38": {
+    "code": "C02R0101",
+    "name": "Canalave City",
+    "room": "R0101"
+  },
+  "39": {
+    "code": "C02R0102",
+    "name": "Canalave City",
+    "room": "R0102"
+  },
+  "40": {
+    "code": "C02R0103",
+    "name": "Canalave City",
+    "room": "R0103"
+  },
+  "41": {
+    "code": "C02R0201",
+    "name": "Canalave City",
+    "room": "R0201"
+  },
+  "42": {
+    "code": "C02R0301",
+    "name": "Canalave City",
+    "room": "R0301"
+  },
+  "43": {
+    "code": "C02R0401",
+    "name": "Canalave City",
+    "room": "R0401"
+  },
+  "44": {
+    "code": "C02R0501",
+    "name": "Canalave City",
+    "room": "R0501"
+  },
+  "45": {
+    "code": "C03",
+    "name": "Oreburgh City",
+    "room": ""
+  },
+  "46": {
+    "code": "C03FS0101",
+    "name": "[C03FS0101]",
+    "room": ""
+  },
+  "47": {
+    "code": "C03GYM0101",
+    "name": "[C03GYM0101]",
+    "room": ""
+  },
+  "48": {
+    "code": "C03PC0101",
+    "name": "[C03PC0101]",
+    "room": ""
+  },
+  "49": {
+    "code": "C03PC0102",
+    "name": "[C03PC0102]",
+    "room": ""
+  },
+  "50": {
+    "code": "C03R0101",
+    "name": "Oreburgh City",
+    "room": "R0101"
+  },
+  "51": {
+    "code": "C03R0102",
+    "name": "Oreburgh City",
+    "room": "R0102"
+  },
+  "52": {
+    "code": "C03R0103",
+    "name": "Oreburgh City",
+    "room": "R0103"
+  },
+  "53": {
+    "code": "C03R0104",
+    "name": "Oreburgh City",
+    "room": "R0104"
+  },
+  "54": {
+    "code": "C03R0201",
+    "name": "Oreburgh City",
+    "room": "R0201"
+  },
+  "55": {
+    "code": "C03R0202",
+    "name": "Oreburgh City",
+    "room": "R0202"
+  },
+  "56": {
+    "code": "C03R0203",
+    "name": "Oreburgh City",
+    "room": "R0203"
+  },
+  "57": {
+    "code": "C03R0204",
+    "name": "Oreburgh City",
+    "room": "R0204"
+  },
+  "58": {
+    "code": "C03R0301",
+    "name": "Oreburgh City",
+    "room": "R0301"
+  },
+  "59": {
+    "code": "C03R0401",
+    "name": "Oreburgh City",
+    "room": "R0401"
+  },
+  "60": {
+    "code": "C03R0501",
+    "name": "Oreburgh City",
+    "room": "R0501"
+  },
+  "61": {
+    "code": "C03R0601",
+    "name": "Oreburgh City",
+    "room": "R0601"
+  },
+  "62": {
+    "code": "C03R0602",
+    "name": "Oreburgh City",
+    "room": "R0602"
+  },
+  "63": {
+    "code": "C03R0603",
+    "name": "Oreburgh City",
+    "room": "R0603"
+  },
+  "64": {
+    "code": "C03R0701",
+    "name": "Oreburgh City",
+    "room": "R0701"
+  },
+  "65": {
+    "code": "C04",
+    "name": "Eterna City",
+    "room": ""
+  },
+  "66": {
+    "code": "C04FS0101",
+    "name": "[C04FS0101]",
+    "room": ""
+  },
+  "67": {
+    "code": "C04GYM0101",
+    "name": "[C04GYM0101]",
+    "room": ""
+  },
+  "68": {
+    "code": "C04GYM0102",
+    "name": "[C04GYM0102]",
+    "room": ""
+  },
+  "69": {
+    "code": "C04PC0101",
+    "name": "[C04PC0101]",
+    "room": ""
+  },
+  "70": {
+    "code": "C04PC0102",
+    "name": "[C04PC0102]",
+    "room": ""
+  },
+  "71": {
+    "code": "C04R0101",
+    "name": "Eterna City",
+    "room": "R0101"
+  },
+  "72": {
+    "code": "C04R0201",
+    "name": "Eterna City",
+    "room": "R0201"
+  },
+  "73": {
+    "code": "C04R0202",
+    "name": "Eterna City",
+    "room": "R0202"
+  },
+  "74": {
+    "code": "C04R0203",
+    "name": "Eterna City",
+    "room": "R0203"
+  },
+  "75": {
+    "code": "C04R0204",
+    "name": "Eterna City",
+    "room": "R0204"
+  },
+  "76": {
+    "code": "C04R0301",
+    "name": "Eterna City",
+    "room": "R0301"
+  },
+  "77": {
+    "code": "C04R0302",
+    "name": "Eterna City",
+    "room": "R0302"
+  },
+  "78": {
+    "code": "C04R0303",
+    "name": "Eterna City",
+    "room": "R0303"
+  },
+  "79": {
+    "code": "C04R0304",
+    "name": "Eterna City",
+    "room": "R0304"
+  },
+  "80": {
+    "code": "C04R0401",
+    "name": "Eterna City",
+    "room": "R0401"
+  },
+  "81": {
+    "code": "C04R0501",
+    "name": "Eterna City",
+    "room": "R0501"
+  },
+  "82": {
+    "code": "C04R0601",
+    "name": "Eterna City",
+    "room": "R0601"
+  },
+  "83": {
+    "code": "C04R0701",
+    "name": "Eterna City",
+    "room": "R0701"
+  },
+  "84": {
+    "code": "C04R0801",
+    "name": "Eterna City",
+    "room": "R0801"
+  },
+  "85": {
+    "code": "C04R0901",
+    "name": "Eterna City",
+    "room": "R0901"
+  },
+  "86": {
+    "code": "C05",
+    "name": "Hearthome City",
+    "room": ""
+  },
+  "87": {
+    "code": "C05FS0101",
+    "name": "[C05FS0101]",
+    "room": ""
+  },
+  "88": {
+    "code": "C05GYM0101",
+    "name": "[C05GYM0101]",
+    "room": ""
+  },
+  "89": {
+    "code": "C05GYM0102",
+    "name": "[C05GYM0102]",
+    "room": ""
+  },
+  "90": {
+    "code": "C05GYM0103",
+    "name": "[C05GYM0103]",
+    "room": ""
+  },
+  "91": {
+    "code": "C05GYM0104",
+    "name": "[C05GYM0104]",
+    "room": ""
+  },
+  "92": {
+    "code": "C05GYM0105",
+    "name": "[C05GYM0105]",
+    "room": ""
+  },
+  "93": {
+    "code": "C05GYM0106",
+    "name": "[C05GYM0106]",
+    "room": ""
+  },
+  "94": {
+    "code": "C05GYM0107",
+    "name": "[C05GYM0107]",
+    "room": ""
+  },
+  "95": {
+    "code": "C05GYM0108",
+    "name": "[C05GYM0108]",
+    "room": ""
+  },
+  "96": {
+    "code": "C05GYM0109",
+    "name": "[C05GYM0109]",
+    "room": ""
+  },
+  "97": {
+    "code": "C05GYM0110",
+    "name": "[C05GYM0110]",
+    "room": ""
+  },
+  "98": {
+    "code": "C05GYM0111",
+    "name": "[C05GYM0111]",
+    "room": ""
+  },
+  "99": {
+    "code": "C05GYM0112",
+    "name": "[C05GYM0112]",
+    "room": ""
+  },
+  "100": {
+    "code": "C05GYM0113",
+    "name": "[C05GYM0113]",
+    "room": ""
+  },
+  "101": {
+    "code": "C05PC0101",
+    "name": "[C05PC0101]",
+    "room": ""
+  },
+  "102": {
+    "code": "C05PC0102",
+    "name": "[C05PC0102]",
+    "room": ""
+  },
+  "103": {
+    "code": "C05R0101",
+    "name": "Hearthome City",
+    "room": "R0101"
+  },
+  "104": {
+    "code": "C05R0102",
+    "name": "Hearthome City",
+    "room": "R0102"
+  },
+  "105": {
+    "code": "C05R0103",
+    "name": "Hearthome City",
+    "room": "R0103"
+  },
+  "106": {
+    "code": "C05R0201",
+    "name": "Hearthome City",
+    "room": "R0201"
+  },
+  "107": {
+    "code": "C05R0301",
+    "name": "Hearthome City",
+    "room": "R0301"
+  },
+  "108": {
+    "code": "C05R0401",
+    "name": "Hearthome City",
+    "room": "R0401"
+  },
+  "109": {
+    "code": "C05R0501",
+    "name": "Hearthome City",
+    "room": "R0501"
+  },
+  "110": {
+    "code": "C05R0601",
+    "name": "Hearthome City",
+    "room": "R0601"
+  },
+  "111": {
+    "code": "C05R0701",
+    "name": "Hearthome City",
+    "room": "R0701"
+  },
+  "112": {
+    "code": "C05R0801",
+    "name": "Hearthome City",
+    "room": "R0801"
+  },
+  "113": {
+    "code": "C05R0802",
+    "name": "Hearthome City",
+    "room": "R0802"
+  },
+  "114": {
+    "code": "C05R0803",
+    "name": "Hearthome City",
+    "room": "R0803"
+  },
+  "115": {
+    "code": "C05R0901",
+    "name": "Hearthome City",
+    "room": "R0901"
+  },
+  "116": {
+    "code": "C05R1001",
+    "name": "Hearthome City",
+    "room": "R1001"
+  },
+  "117": {
+    "code": "C05R1101",
+    "name": "Hearthome City",
+    "room": "R1101"
+  },
+  "118": {
+    "code": "C05R1102",
+    "name": "Hearthome City",
+    "room": "R1102"
+  },
+  "119": {
+    "code": "C05R1201",
+    "name": "Hearthome City",
+    "room": "R1201"
+  },
+  "120": {
+    "code": "C06",
+    "name": "Pastoria City",
+    "room": ""
+  },
+  "121": {
+    "code": "C06FS0101",
+    "name": "[C06FS0101]",
+    "room": ""
+  },
+  "122": {
+    "code": "C06GYM0101",
+    "name": "[C06GYM0101]",
+    "room": ""
+  },
+  "123": {
+    "code": "C06PC0101",
+    "name": "[C06PC0101]",
+    "room": ""
+  },
+  "124": {
+    "code": "C06PC0102",
+    "name": "[C06PC0102]",
+    "room": ""
+  },
+  "125": {
+    "code": "C06R0101",
+    "name": "Pastoria City",
+    "room": "R0101"
+  },
+  "126": {
+    "code": "C06R0102",
+    "name": "Pastoria City",
+    "room": "R0102"
+  },
+  "127": {
+    "code": "C06R0201",
+    "name": "Pastoria City",
+    "room": "R0201"
+  },
+  "128": {
+    "code": "C06R0301",
+    "name": "Pastoria City",
+    "room": "R0301"
+  },
+  "129": {
+    "code": "C06R0401",
+    "name": "Pastoria City",
+    "room": "R0401"
+  },
+  "130": {
+    "code": "C06R0501",
+    "name": "Pastoria City",
+    "room": "R0501"
+  },
+  "131": {
+    "code": "C06R0601",
+    "name": "Pastoria City",
+    "room": "R0601"
+  },
+  "132": {
+    "code": "C07",
+    "name": "Veilstone City",
+    "room": ""
+  },
+  "133": {
+    "code": "C07GYM0101",
+    "name": "[C07GYM0101]",
+    "room": ""
+  },
+  "134": {
+    "code": "C07PC0101",
+    "name": "[C07PC0101]",
+    "room": ""
+  },
+  "135": {
+    "code": "C07PC0102",
+    "name": "[C07PC0102]",
+    "room": ""
+  },
+  "136": {
+    "code": "C07R0101",
+    "name": "Veilstone City",
+    "room": "R0101"
+  },
+  "137": {
+    "code": "C07R0201",
+    "name": "Veilstone City",
+    "room": "R0201"
+  },
+  "138": {
+    "code": "C07R0202",
+    "name": "Veilstone City",
+    "room": "R0202"
+  },
+  "139": {
+    "code": "C07R0203",
+    "name": "Veilstone City",
+    "room": "R0203"
+  },
+  "140": {
+    "code": "C07R0204",
+    "name": "Veilstone City",
+    "room": "R0204"
+  },
+  "141": {
+    "code": "C07R0205",
+    "name": "Veilstone City",
+    "room": "R0205"
+  },
+  "142": {
+    "code": "C07R0206",
+    "name": "Veilstone City",
+    "room": "R0206"
+  },
+  "143": {
+    "code": "C07R0301",
+    "name": "Veilstone City",
+    "room": "R0301"
+  },
+  "144": {
+    "code": "C07R0401",
+    "name": "Veilstone City",
+    "room": "R0401"
+  },
+  "145": {
+    "code": "C07R0501",
+    "name": "Veilstone City",
+    "room": "R0501"
+  },
+  "146": {
+    "code": "C07R0601",
+    "name": "Veilstone City",
+    "room": "R0601"
+  },
+  "147": {
+    "code": "C07R0701",
+    "name": "Veilstone City",
+    "room": "R0701"
+  },
+  "148": {
+    "code": "C07R0801",
+    "name": "Veilstone City",
+    "room": "R0801"
+  },
+  "149": {
+    "code": "C07R0901",
+    "name": "Veilstone City",
+    "room": "R0901"
+  },
+  "150": {
+    "code": "C08",
+    "name": "Sunyshore City",
+    "room": ""
+  },
+  "151": {
+    "code": "C08PC0101",
+    "name": "[C08PC0101]",
+    "room": ""
+  },
+  "152": {
+    "code": "C08PC0102",
+    "name": "[C08PC0102]",
+    "room": ""
+  },
+  "153": {
+    "code": "C08FS0101",
+    "name": "[C08FS0101]",
+    "room": ""
+  },
+  "154": {
+    "code": "C08GYM0101",
+    "name": "[C08GYM0101]",
+    "room": ""
+  },
+  "155": {
+    "code": "C08GYM0102",
+    "name": "[C08GYM0102]",
+    "room": ""
+  },
+  "156": {
+    "code": "C08GYM0103",
+    "name": "[C08GYM0103]",
+    "room": ""
+  },
+  "157": {
+    "code": "C08R0101",
+    "name": "Sunyshore City",
+    "room": "R0101"
+  },
+  "158": {
+    "code": "C08R0201",
+    "name": "Sunyshore City",
+    "room": "R0201"
+  },
+  "159": {
+    "code": "C08R0301",
+    "name": "Sunyshore City",
+    "room": "R0301"
+  },
+  "160": {
+    "code": "C08R0401",
+    "name": "Sunyshore City",
+    "room": "R0401"
+  },
+  "161": {
+    "code": "C08R0501",
+    "name": "Sunyshore City",
+    "room": "R0501"
+  },
+  "162": {
+    "code": "C08R0601",
+    "name": "Sunyshore City",
+    "room": "R0601"
+  },
+  "163": {
+    "code": "C08R0701",
+    "name": "Sunyshore City",
+    "room": "R0701"
+  },
+  "164": {
+    "code": "C08R0801",
+    "name": "Sunyshore City",
+    "room": "R0801"
+  },
+  "165": {
+    "code": "C09",
+    "name": "Snowpoint City",
+    "room": ""
+  },
+  "166": {
+    "code": "C09FS0101",
+    "name": "[C09FS0101]",
+    "room": ""
+  },
+  "167": {
+    "code": "C09GYM0101",
+    "name": "[C09GYM0101]",
+    "room": ""
+  },
+  "168": {
+    "code": "C09PC0101",
+    "name": "[C09PC0101]",
+    "room": ""
+  },
+  "169": {
+    "code": "C09PC0102",
+    "name": "[C09PC0102]",
+    "room": ""
+  },
+  "170": {
+    "code": "C09R0101",
+    "name": "Snowpoint City",
+    "room": "R0101"
+  },
+  "171": {
+    "code": "C09R0201",
+    "name": "Snowpoint City",
+    "room": "R0201"
+  },
+  "172": {
+    "code": "C10",
+    "name": "Pokémon League",
+    "room": ""
+  },
+  "173": {
+    "code": "C10PC0101",
+    "name": "[C10PC0101]",
+    "room": ""
+  },
+  "174": {
+    "code": "C10PC0102",
+    "name": "[C10PC0102]",
+    "room": ""
+  },
+  "175": {
+    "code": "C10R0101",
+    "name": "Pokémon League",
+    "room": "R0101"
+  },
+  "176": {
+    "code": "C10R0102",
+    "name": "Pokémon League",
+    "room": "R0102"
+  },
+  "177": {
+    "code": "C10R0103",
+    "name": "Pokémon League",
+    "room": "R0103"
+  },
+  "178": {
+    "code": "C10R0104",
+    "name": "Pokémon League",
+    "room": "R0104"
+  },
+  "179": {
+    "code": "C10R0105",
+    "name": "Pokémon League",
+    "room": "R0105"
+  },
+  "180": {
+    "code": "C10R0106",
+    "name": "Pokémon League",
+    "room": "R0106"
+  },
+  "181": {
+    "code": "C10R0107",
+    "name": "Pokémon League",
+    "room": "R0107"
+  },
+  "182": {
+    "code": "C10R0108",
+    "name": "Pokémon League",
+    "room": "R0108"
+  },
+  "183": {
+    "code": "C10R0109",
+    "name": "Pokémon League",
+    "room": "R0109"
+  },
+  "184": {
+    "code": "C10R0110",
+    "name": "Pokémon League",
+    "room": "R0110"
+  },
+  "185": {
+    "code": "C10R0111",
+    "name": "Pokémon League",
+    "room": "R0111"
+  },
+  "186": {
+    "code": "C10R0112",
+    "name": "Pokémon League",
+    "room": "R0112"
+  },
+  "187": {
+    "code": "C10R0113",
+    "name": "Pokémon League",
+    "room": "R0113"
+  },
+  "188": {
+    "code": "C11",
+    "name": "[C11]",
+    "room": ""
+  },
+  "189": {
+    "code": "C11PC0101",
+    "name": "[C11PC0101]",
+    "room": ""
+  },
+  "190": {
+    "code": "C11PC0102",
+    "name": "[C11PC0102]",
+    "room": ""
+  },
+  "191": {
+    "code": "C11FS0101",
+    "name": "[C11FS0101]",
+    "room": ""
+  },
+  "192": {
+    "code": "C11R0101",
+    "name": "[C11]",
+    "room": "R0101"
+  },
+  "193": {
+    "code": "C11R0201",
+    "name": "[C11]",
+    "room": "R0201"
+  },
+  "194": {
+    "code": "C11R0301",
+    "name": "[C11]",
+    "room": "R0301"
+  },
+  "195": {
+    "code": "C11R0401",
+    "name": "[C11]",
+    "room": "R0401"
+  },
+  "196": {
+    "code": "C11R0501",
+    "name": "[C11]",
+    "room": "R0501"
+  },
+  "197": {
+    "code": "D01",
+    "name": "Oreburgh Mine",
+    "room": ""
+  },
+  "198": {
+    "code": "D01R0101",
+    "name": "Oreburgh Mine",
+    "room": "R0101"
+  },
+  "199": {
+    "code": "D01R0102",
+    "name": "Oreburgh Mine",
+    "room": "R0102"
+  },
+  "200": {
+    "code": "D02",
+    "name": "Valley Windworks",
+    "room": ""
+  },
+  "201": {
+    "code": "D02R0101",
+    "name": "Valley Windworks",
+    "room": "R0101"
+  },
+  "202": {
+    "code": "D03",
+    "name": "Eterna Forest",
+    "room": ""
+  },
+  "203": {
+    "code": "D03R0101",
+    "name": "Eterna Forest",
+    "room": "R0101"
+  },
+  "204": {
+    "code": "D04",
+    "name": "Fuego Ironworks",
+    "room": ""
+  },
+  "205": {
+    "code": "D04R0101",
+    "name": "Fuego Ironworks",
+    "room": "R0101"
+  },
+  "206": {
+    "code": "D05",
+    "name": "Mt. Coronet",
+    "room": ""
+  },
+  "207": {
+    "code": "D05R0101",
+    "name": "Mt. Coronet",
+    "room": "R0101"
+  },
+  "208": {
+    "code": "D05R0102",
+    "name": "Mt. Coronet",
+    "room": "R0102"
+  },
+  "209": {
+    "code": "D05R0103",
+    "name": "Mt. Coronet",
+    "room": "R0103"
+  },
+  "210": {
+    "code": "D05R0104",
+    "name": "Mt. Coronet",
+    "room": "R0104"
+  },
+  "211": {
+    "code": "D05R0105",
+    "name": "Mt. Coronet",
+    "room": "R0105"
+  },
+  "212": {
+    "code": "D05R0106",
+    "name": "Mt. Coronet",
+    "room": "R0106"
+  },
+  "213": {
+    "code": "D05R0107",
+    "name": "Mt. Coronet",
+    "room": "R0107"
+  },
+  "214": {
+    "code": "D05R0108",
+    "name": "Mt. Coronet",
+    "room": "R0108"
+  },
+  "215": {
+    "code": "D05R0109",
+    "name": "Mt. Coronet",
+    "room": "R0109"
+  },
+  "216": {
+    "code": "D05R0110",
+    "name": "Mt. Coronet",
+    "room": "R0110"
+  },
+  "217": {
+    "code": "D05R0111",
+    "name": "Mt. Coronet",
+    "room": "R0111"
+  },
+  "218": {
+    "code": "D05R0112",
+    "name": "Mt. Coronet",
+    "room": "R0112"
+  },
+  "219": {
+    "code": "D05R0113",
+    "name": "Mt. Coronet",
+    "room": "R0113"
+  },
+  "220": {
+    "code": "D05R0114",
+    "name": "Mt. Coronet",
+    "room": "R0114"
+  },
+  "221": {
+    "code": "D05R0115",
+    "name": "Mt. Coronet",
+    "room": "R0115"
+  },
+  "222": {
+    "code": "D06",
+    "name": "Spear Pillar",
+    "room": ""
+  },
+  "223": {
+    "code": "D06R0101",
+    "name": "Spear Pillar",
+    "room": "R0101"
+  },
+  "224": {
+    "code": "D07",
+    "name": "Great Marsh",
+    "room": ""
+  },
+  "225": {
+    "code": "D07R0101",
+    "name": "Great Marsh",
+    "room": "R0101"
+  },
+  "226": {
+    "code": "D07R0102",
+    "name": "Great Marsh",
+    "room": "R0102"
+  },
+  "227": {
+    "code": "D07R0103",
+    "name": "Great Marsh",
+    "room": "R0103"
+  },
+  "228": {
+    "code": "D07R0104",
+    "name": "Great Marsh",
+    "room": "R0104"
+  },
+  "229": {
+    "code": "D07R0105",
+    "name": "Great Marsh",
+    "room": "R0105"
+  },
+  "230": {
+    "code": "D07R0106",
+    "name": "Great Marsh",
+    "room": "R0106"
+  },
+  "231": {
+    "code": "D07R0107",
+    "name": "Great Marsh",
+    "room": "R0107"
+  },
+  "232": {
+    "code": "D07R0108",
+    "name": "Great Marsh",
+    "room": "R0108"
+  },
+  "233": {
+    "code": "D07R0109",
+    "name": "Great Marsh",
+    "room": "R0109"
+  },
+  "234": {
+    "code": "D07R0110",
+    "name": "Great Marsh",
+    "room": "R0110"
+  },
+  "235": {
+    "code": "D07R0111",
+    "name": "Great Marsh",
+    "room": "R0111"
+  },
+  "236": {
+    "code": "D07R0112",
+    "name": "Great Marsh",
+    "room": "R0112"
+  },
+  "237": {
+    "code": "D07R0113",
+    "name": "Great Marsh",
+    "room": "R0113"
+  },
+  "238": {
+    "code": "D07R0114",
+    "name": "Great Marsh",
+    "room": "R0114"
+  },
+  "239": {
+    "code": "D07R0115",
+    "name": "Great Marsh",
+    "room": "R0115"
+  },
+  "240": {
+    "code": "D07R0116",
+    "name": "Great Marsh",
+    "room": "R0116"
+  },
+  "241": {
+    "code": "D07R0117",
+    "name": "Great Marsh",
+    "room": "R0117"
+  },
+  "242": {
+    "code": "D07R0118",
+    "name": "Great Marsh",
+    "room": "R0118"
+  },
+  "243": {
+    "code": "D09",
+    "name": "Solaceon Ruins",
+    "room": ""
+  },
+  "244": {
+    "code": "D09R0101",
+    "name": "Solaceon Ruins",
+    "room": "R0101"
+  },
+  "245": {
+    "code": "D09R0102",
+    "name": "Solaceon Ruins",
+    "room": "R0102"
+  },
+  "246": {
+    "code": "D09R0103",
+    "name": "Solaceon Ruins",
+    "room": "R0103"
+  },
+  "247": {
+    "code": "D09R0104",
+    "name": "Solaceon Ruins",
+    "room": "R0104"
+  },
+  "248": {
+    "code": "D09R0105",
+    "name": "Solaceon Ruins",
+    "room": "R0105"
+  },
+  "249": {
+    "code": "D09R0106",
+    "name": "Solaceon Ruins",
+    "room": "R0106"
+  },
+  "250": {
+    "code": "D10",
+    "name": "Victory Road",
+    "room": ""
+  },
+  "251": {
+    "code": "D10R0101",
+    "name": "Victory Road",
+    "room": "R0101"
+  },
+  "252": {
+    "code": "D11",
+    "name": "Pal Park",
+    "room": ""
+  },
+  "253": {
+    "code": "D11R0101",
+    "name": "Pal Park",
+    "room": "R0101"
+  },
+  "254": {
+    "code": "D12R0101",
+    "name": "Amity Square",
+    "room": "R0101"
+  },
+  "255": {
+    "code": "D13",
+    "name": "Ravaged Path",
+    "room": ""
+  },
+  "256": {
+    "code": "D13R0101",
+    "name": "Ravaged Path",
+    "room": "R0101"
+  },
+  "257": {
+    "code": "D13R0102",
+    "name": "Ravaged Path",
+    "room": "R0102"
+  },
+  "258": {
+    "code": "D14R0101",
+    "name": "Floaroma Meadow",
+    "room": "R0101"
+  },
+  "259": {
+    "code": "D14R0102",
+    "name": "Floaroma Meadow",
+    "room": "R0102"
+  },
+  "260": {
+    "code": "D15",
+    "name": "Oreburgh Gate",
+    "room": ""
+  },
+  "261": {
+    "code": "D15R0101",
+    "name": "Oreburgh Gate",
+    "room": "R0101"
+  },
+  "262": {
+    "code": "D16",
+    "name": "Distortion World",
+    "room": ""
+  },
+  "263": {
+    "code": "D16R0101",
+    "name": "Distortion World",
+    "room": "R0101"
+  },
+  "264": {
+    "code": "D16R0102",
+    "name": "Distortion World",
+    "room": "R0102"
+  },
+  "265": {
+    "code": "D16R0103",
+    "name": "Distortion World",
+    "room": "R0103"
+  },
+  "266": {
+    "code": "D17",
+    "name": "[D17]",
+    "room": ""
+  },
+  "267": {
+    "code": "D17R0101",
+    "name": "[D17]",
+    "room": "R0101"
+  },
+  "268": {
+    "code": "D17R0102",
+    "name": "[D17]",
+    "room": "R0102"
+  },
+  "269": {
+    "code": "D17R0103",
+    "name": "[D17]",
+    "room": "R0103"
+  },
+  "270": {
+    "code": "D17R0104",
+    "name": "[D17]",
+    "room": "R0104"
+  },
+  "271": {
+    "code": "D17R0105",
+    "name": "[D17]",
+    "room": "R0105"
+  },
+  "272": {
+    "code": "D17R0106",
+    "name": "[D17]",
+    "room": "R0106"
+  },
+  "273": {
+    "code": "D17R0107",
+    "name": "[D17]",
+    "room": "R0107"
+  },
+  "274": {
+    "code": "D18",
+    "name": "[D18]",
+    "room": ""
+  },
+  "275": {
+    "code": "D18R0101",
+    "name": "[D18]",
+    "room": "R0101"
+  },
+  "276": {
+    "code": "D19A",
+    "name": "[D19A]",
+    "room": ""
+  },
+  "277": {
+    "code": "D19B",
+    "name": "[D19B]",
+    "room": ""
+  },
+  "278": {
+    "code": "D20R0101",
+    "name": "[D20]",
+    "room": "R0101"
+  },
+  "279": {
+    "code": "D20R0102",
+    "name": "[D20]",
+    "room": "R0102"
+  },
+  "280": {
+    "code": "D20R0103",
+    "name": "[D20]",
+    "room": "R0103"
+  },
+  "281": {
+    "code": "D20R0104",
+    "name": "[D20]",
+    "room": "R0104"
+  },
+  "282": {
+    "code": "D20R0105",
+    "name": "[D20]",
+    "room": "R0105"
+  },
+  "283": {
+    "code": "D20R0106",
+    "name": "[D20]",
+    "room": "R0106"
+  },
+  "284": {
+    "code": "D21R0101",
+    "name": "[D21]",
+    "room": "R0101"
+  },
+  "285": {
+    "code": "D21R0102",
+    "name": "[D21]",
+    "room": "R0102"
+  },
+  "286": {
+    "code": "D22R0101",
+    "name": "[D22]",
+    "room": "R0101"
+  },
+  "287": {
+    "code": "D23R0101",
+    "name": "[D23]",
+    "room": "R0101"
+  },
+  "288": {
+    "code": "D24",
+    "name": "[D24]",
+    "room": ""
+  },
+  "289": {
+    "code": "D24R0101",
+    "name": "[D24]",
+    "room": "R0101"
+  },
+  "290": {
+    "code": "D24R0102",
+    "name": "[D24]",
+    "room": "R0102"
+  },
+  "291": {
+    "code": "D24R0103",
+    "name": "[D24]",
+    "room": "R0103"
+  },
+  "292": {
+    "code": "D24R0104",
+    "name": "[D24]",
+    "room": "R0104"
+  },
+  "293": {
+    "code": "D24R0105",
+    "name": "[D24]",
+    "room": "R0105"
+  },
+  "294": {
+    "code": "D24R0106",
+    "name": "[D24]",
+    "room": "R0106"
+  },
+  "295": {
+    "code": "D25R0101",
+    "name": "[D25]",
+    "room": "R0101"
+  },
+  "296": {
+    "code": "D25R0102",
+    "name": "[D25]",
+    "room": "R0102"
+  },
+  "297": {
+    "code": "D25R0103",
+    "name": "[D25]",
+    "room": "R0103"
+  },
+  "298": {
+    "code": "D25R0104",
+    "name": "[D25]",
+    "room": "R0104"
+  },
+  "299": {
+    "code": "D25R0105",
+    "name": "[D25]",
+    "room": "R0105"
+  },
+  "300": {
+    "code": "D25R0106",
+    "name": "[D25]",
+    "room": "R0106"
+  },
+  "301": {
+    "code": "D25R0107",
+    "name": "[D25]",
+    "room": "R0107"
+  },
+  "302": {
+    "code": "D25R0108",
+    "name": "[D25]",
+    "room": "R0108"
+  },
+  "303": {
+    "code": "D25R0109",
+    "name": "[D25]",
+    "room": "R0109"
+  },
+  "304": {
+    "code": "D25R1001",
+    "name": "[D25]",
+    "room": "R1001"
+  },
+  "305": {
+    "code": "D26R0101",
+    "name": "[D26]",
+    "room": "R0101"
+  },
+  "306": {
+    "code": "D26R0102",
+    "name": "[D26]",
+    "room": "R0102"
+  },
+  "307": {
+    "code": "D26R0103",
+    "name": "[D26]",
+    "room": "R0103"
+  },
+  "308": {
+    "code": "D26R0104",
+    "name": "[D26]",
+    "room": "R0104"
+  },
+  "309": {
+    "code": "D26R0105",
+    "name": "[D26]",
+    "room": "R0105"
+  },
+  "310": {
+    "code": "D26R0106",
+    "name": "[D26]",
+    "room": "R0106"
+  },
+  "311": {
+    "code": "D27R0101",
+    "name": "[D27]",
+    "room": "R0101"
+  },
+  "312": {
+    "code": "D27R0102",
+    "name": "[D27]",
+    "room": "R0102"
+  },
+  "313": {
+    "code": "D27R0103",
+    "name": "[D27]",
+    "room": "R0103"
+  },
+  "314": {
+    "code": "D28R0101",
+    "name": "[D28]",
+    "room": "R0101"
+  },
+  "315": {
+    "code": "D28R0102",
+    "name": "[D28]",
+    "room": "R0102"
+  },
+  "316": {
+    "code": "D28R0103",
+    "name": "[D28]",
+    "room": "R0103"
+  },
+  "317": {
+    "code": "D29R0101",
+    "name": "[D29]",
+    "room": "R0101"
+  },
+  "318": {
+    "code": "D29R0102",
+    "name": "[D29]",
+    "room": "R0102"
+  },
+  "319": {
+    "code": "D29R0103",
+    "name": "[D29]",
+    "room": "R0103"
+  },
+  "320": {
+    "code": "D30",
+    "name": "[D30]",
+    "room": ""
+  },
+  "321": {
+    "code": "D30R0101",
+    "name": "[D30]",
+    "room": "R0101"
+  },
+  "322": {
+    "code": "D31",
+    "name": "[D31]",
+    "room": ""
+  },
+  "323": {
+    "code": "D31R0101",
+    "name": "[D31]",
+    "room": "R0101"
+  },
+  "324": {
+    "code": "D31R0102",
+    "name": "[D31]",
+    "room": "R0102"
+  },
+  "325": {
+    "code": "D31R0103",
+    "name": "[D31]",
+    "room": "R0103"
+  },
+  "326": {
+    "code": "D31R0201",
+    "name": "[D31]",
+    "room": "R0201"
+  },
+  "327": {
+    "code": "D31R0202",
+    "name": "[D31]",
+    "room": "R0202"
+  },
+  "328": {
+    "code": "D31R0203",
+    "name": "[D31]",
+    "room": "R0203"
+  },
+  "329": {
+    "code": "D31R0204",
+    "name": "[D31]",
+    "room": "R0204"
+  },
+  "330": {
+    "code": "D31R0205",
+    "name": "[D31]",
+    "room": "R0205"
+  },
+  "331": {
+    "code": "D31R0206",
+    "name": "[D31]",
+    "room": "R0206"
+  },
+  "332": {
+    "code": "DIRECT2",
+    "name": "[DI]",
+    "room": "RECT2"
+  },
+  "333": {
+    "code": "DIRECT4",
+    "name": "[DI]",
+    "room": "RECT4"
+  },
+  "334": {
+    "code": "L01",
+    "name": "Flower Shop",
+    "room": ""
+  },
+  "335": {
+    "code": "L01R0101",
+    "name": "Flower Shop",
+    "room": "R0101"
+  },
+  "336": {
+    "code": "L02",
+    "name": "Mining Museum",
+    "room": ""
+  },
+  "337": {
+    "code": "L02R0101",
+    "name": "Mining Museum",
+    "room": "R0101"
+  },
+  "338": {
+    "code": "L02R0201",
+    "name": "Mining Museum",
+    "room": "R0201"
+  },
+  "339": {
+    "code": "L02R0301",
+    "name": "Mining Museum",
+    "room": "R0301"
+  },
+  "340": {
+    "code": "L03",
+    "name": "Contest Hall",
+    "room": ""
+  },
+  "341": {
+    "code": "L04",
+    "name": "Trainers' School",
+    "room": ""
+  },
+  "342": {
+    "code": "R201",
+    "name": "Route 201",
+    "room": ""
+  },
+  "343": {
+    "code": "R202",
+    "name": "Route 202",
+    "room": ""
+  },
+  "344": {
+    "code": "R203",
+    "name": "Route 203",
+    "room": ""
+  },
+  "345": {
+    "code": "R204A",
+    "name": "Route 204",
+    "room": ""
+  },
+  "346": {
+    "code": "R204B",
+    "name": "Route 204",
+    "room": ""
+  },
+  "347": {
+    "code": "R205A",
+    "name": "Route 205",
+    "room": ""
+  },
+  "348": {
+    "code": "R205AR0101",
+    "name": "Route 205",
+    "room": "R0101"
+  },
+  "349": {
+    "code": "R205B",
+    "name": "Route 205",
+    "room": ""
+  },
+  "350": {
+    "code": "R206",
+    "name": "Route 206",
+    "room": ""
+  },
+  "351": {
+    "code": "R206R0101",
+    "name": "Route 206",
+    "room": "R0101"
+  },
+  "352": {
+    "code": "R206R0201",
+    "name": "Route 206",
+    "room": "R0201"
+  },
+  "353": {
+    "code": "R207",
+    "name": "Route 207",
+    "room": ""
+  },
+  "354": {
+    "code": "R208",
+    "name": "Route 208",
+    "room": ""
+  },
+  "355": {
+    "code": "R208R0101",
+    "name": "Route 208",
+    "room": "R0101"
+  },
+  "356": {
+    "code": "R209",
+    "name": "Route 209",
+    "room": ""
+  },
+  "357": {
+    "code": "R209R0101",
+    "name": "Route 209",
+    "room": "R0101"
+  },
+  "358": {
+    "code": "R209R0102",
+    "name": "Route 209",
+    "room": "R0102"
+  },
+  "359": {
+    "code": "R209R0103",
+    "name": "Route 209",
+    "room": "R0103"
+  },
+  "360": {
+    "code": "R209R0104",
+    "name": "Route 209",
+    "room": "R0104"
+  },
+  "361": {
+    "code": "R209R0105",
+    "name": "Route 209",
+    "room": "R0105"
+  },
+  "362": {
+    "code": "R210A",
+    "name": "Route 210",
+    "room": ""
+  },
+  "363": {
+    "code": "R210B",
+    "name": "Route 210",
+    "room": ""
+  },
+  "364": {
+    "code": "R210BR0101",
+    "name": "Route 210",
+    "room": "R0101"
+  },
+  "365": {
+    "code": "R211A",
+    "name": "Route 211",
+    "room": ""
+  },
+  "366": {
+    "code": "R211B",
+    "name": "Route 211",
+    "room": ""
+  },
+  "367": {
+    "code": "R212A",
+    "name": "Route 212",
+    "room": ""
+  },
+  "368": {
+    "code": "R212AR0101",
+    "name": "Route 212",
+    "room": "R0101"
+  },
+  "369": {
+    "code": "R212AR0102",
+    "name": "Route 212",
+    "room": "R0102"
+  },
+  "370": {
+    "code": "R212AR0103",
+    "name": "Route 212",
+    "room": "R0103"
+  },
+  "371": {
+    "code": "R212B",
+    "name": "Route 212",
+    "room": ""
+  },
+  "372": {
+    "code": "R212BR0101",
+    "name": "Route 212",
+    "room": "R0101"
+  },
+  "373": {
+    "code": "R213",
+    "name": "Route 213",
+    "room": ""
+  },
+  "374": {
+    "code": "R213R0101",
+    "name": "Route 213",
+    "room": "R0101"
+  },
+  "375": {
+    "code": "R213R0201",
+    "name": "Route 213",
+    "room": "R0201"
+  },
+  "376": {
+    "code": "R213R0301",
+    "name": "Route 213",
+    "room": "R0301"
+  },
+  "377": {
+    "code": "R213R0401",
+    "name": "Route 213",
+    "room": "R0401"
+  },
+  "378": {
+    "code": "R213R0501",
+    "name": "Route 213",
+    "room": "R0501"
+  },
+  "379": {
+    "code": "R213R0601",
+    "name": "Route 213",
+    "room": "R0601"
+  },
+  "380": {
+    "code": "R214",
+    "name": "Route 214",
+    "room": ""
+  },
+  "381": {
+    "code": "R214R0101",
+    "name": "Route 214",
+    "room": "R0101"
+  },
+  "382": {
+    "code": "R215",
+    "name": "Route 215",
+    "room": ""
+  },
+  "383": {
+    "code": "R216",
+    "name": "Route 216",
+    "room": ""
+  },
+  "384": {
+    "code": "R216R0101",
+    "name": "Route 216",
+    "room": "R0101"
+  },
+  "385": {
+    "code": "R217",
+    "name": "Route 217",
+    "room": ""
+  },
+  "386": {
+    "code": "R217R0101",
+    "name": "Route 217",
+    "room": "R0101"
+  },
+  "387": {
+    "code": "R217R0201",
+    "name": "Route 217",
+    "room": "R0201"
+  },
+  "388": {
+    "code": "R218",
+    "name": "Route 218",
+    "room": ""
+  },
+  "389": {
+    "code": "R218R0101",
+    "name": "Route 218",
+    "room": "R0101"
+  },
+  "390": {
+    "code": "R218R0201",
+    "name": "Route 218",
+    "room": "R0201"
+  },
+  "391": {
+    "code": "R219",
+    "name": "Route 219",
+    "room": ""
+  },
+  "392": {
+    "code": "R221",
+    "name": "Route 221",
+    "room": ""
+  },
+  "393": {
+    "code": "R221R0101",
+    "name": "Route 221",
+    "room": "R0101"
+  },
+  "394": {
+    "code": "R221R0201",
+    "name": "Route 221",
+    "room": "R0201"
+  },
+  "395": {
+    "code": "R222",
+    "name": "Route 222",
+    "room": ""
+  },
+  "396": {
+    "code": "R222R0101",
+    "name": "Route 222",
+    "room": "R0101"
+  },
+  "397": {
+    "code": "R222R0201",
+    "name": "Route 222",
+    "room": "R0201"
+  },
+  "398": {
+    "code": "R222R0301",
+    "name": "Route 222",
+    "room": "R0301"
+  },
+  "399": {
+    "code": "R224",
+    "name": "Route 224",
+    "room": ""
+  },
+  "400": {
+    "code": "R225",
+    "name": "Route 225",
+    "room": ""
+  },
+  "401": {
+    "code": "R226A",
+    "name": "Route 226",
+    "room": ""
+  },
+  "402": {
+    "code": "R226B",
+    "name": "Route 226",
+    "room": ""
+  },
+  "403": {
+    "code": "R227",
+    "name": "Route 227",
+    "room": ""
+  },
+  "404": {
+    "code": "R227A",
+    "name": "Route 227",
+    "room": ""
+  },
+  "405": {
+    "code": "R227B",
+    "name": "Route 227",
+    "room": ""
+  },
+  "406": {
+    "code": "R228",
+    "name": "Route 228",
+    "room": ""
+  },
+  "407": {
+    "code": "R229",
+    "name": "Route 229",
+    "room": ""
+  },
+  "408": {
+    "code": "R230",
+    "name": "Route 230",
+    "room": ""
+  },
+  "409": {
+    "code": "R232",
+    "name": "[R232]",
+    "room": ""
+  },
+  "410": {
+    "code": "RECORD",
+    "name": "[RECO]",
+    "room": "RD"
+  },
+  "411": {
+    "code": "T01",
+    "name": "Twinleaf Town",
+    "room": ""
+  },
+  "412": {
+    "code": "T01R0101",
+    "name": "Twinleaf Town",
+    "room": "R0101"
+  },
+  "413": {
+    "code": "T01R0102",
+    "name": "Twinleaf Town",
+    "room": "R0102"
+  },
+  "414": {
+    "code": "T01R0201",
+    "name": "Twinleaf Town",
+    "room": "R0201"
+  },
+  "415": {
+    "code": "T01R0202",
+    "name": "Twinleaf Town",
+    "room": "R0202"
+  },
+  "416": {
+    "code": "T01R0301",
+    "name": "Twinleaf Town",
+    "room": "R0301"
+  },
+  "417": {
+    "code": "T01R0401",
+    "name": "Twinleaf Town",
+    "room": "R0401"
+  },
+  "418": {
+    "code": "T02",
+    "name": "Sandgem Town",
+    "room": ""
+  },
+  "419": {
+    "code": "T02FS0101",
+    "name": "[T02FS0101]",
+    "room": ""
+  },
+  "420": {
+    "code": "T02PC0101",
+    "name": "[T02PC0101]",
+    "room": ""
+  },
+  "421": {
+    "code": "T02PC0102",
+    "name": "[T02PC0102]",
+    "room": ""
+  },
+  "422": {
+    "code": "T02R0101",
+    "name": "Sandgem Town",
+    "room": "R0101"
+  },
+  "423": {
+    "code": "T02R0201",
+    "name": "Sandgem Town",
+    "room": "R0201"
+  },
+  "424": {
+    "code": "T02R0202",
+    "name": "Sandgem Town",
+    "room": "R0202"
+  },
+  "425": {
+    "code": "T02R0301",
+    "name": "Sandgem Town",
+    "room": "R0301"
+  },
+  "426": {
+    "code": "T03",
+    "name": "Floaroma Town",
+    "room": ""
+  },
+  "427": {
+    "code": "T03FS0101",
+    "name": "[T03FS0101]",
+    "room": ""
+  },
+  "428": {
+    "code": "T03PC0101",
+    "name": "[T03PC0101]",
+    "room": ""
+  },
+  "429": {
+    "code": "T03PC0102",
+    "name": "[T03PC0102]",
+    "room": ""
+  },
+  "430": {
+    "code": "T03R0101",
+    "name": "Floaroma Town",
+    "room": "R0101"
+  },
+  "431": {
+    "code": "T03R0201",
+    "name": "Floaroma Town",
+    "room": "R0201"
+  },
+  "432": {
+    "code": "T03R0301",
+    "name": "Floaroma Town",
+    "room": "R0301"
+  },
+  "433": {
+    "code": "T04",
+    "name": "Solaceon Town",
+    "room": ""
+  },
+  "434": {
+    "code": "T04FS0101",
+    "name": "[T04FS0101]",
+    "room": ""
+  },
+  "435": {
+    "code": "T04PC0101",
+    "name": "[T04PC0101]",
+    "room": ""
+  },
+  "436": {
+    "code": "T04PC0102",
+    "name": "[T04PC0102]",
+    "room": ""
+  },
+  "437": {
+    "code": "T04R0101",
+    "name": "Solaceon Town",
+    "room": "R0101"
+  },
+  "438": {
+    "code": "T04R0201",
+    "name": "Solaceon Town",
+    "room": "R0201"
+  },
+  "439": {
+    "code": "T04R0301",
+    "name": "Solaceon Town",
+    "room": "R0301"
+  },
+  "440": {
+    "code": "T04R0401",
+    "name": "Solaceon Town",
+    "room": "R0401"
+  },
+  "441": {
+    "code": "T04R0501",
+    "name": "Solaceon Town",
+    "room": "R0501"
+  },
+  "442": {
+    "code": "T05",
+    "name": "Celestic Town",
+    "room": ""
+  },
+  "443": {
+    "code": "T05PC0101",
+    "name": "[T05PC0101]",
+    "room": ""
+  },
+  "444": {
+    "code": "T05PC0102",
+    "name": "[T05PC0102]",
+    "room": ""
+  },
+  "445": {
+    "code": "T05R0101",
+    "name": "Celestic Town",
+    "room": "R0101"
+  },
+  "446": {
+    "code": "T05R0201",
+    "name": "Celestic Town",
+    "room": "R0201"
+  },
+  "447": {
+    "code": "T05R0301",
+    "name": "Celestic Town",
+    "room": "R0301"
+  },
+  "448": {
+    "code": "T05R0401",
+    "name": "Celestic Town",
+    "room": "R0401"
+  },
+  "449": {
+    "code": "T05R0501",
+    "name": "Celestic Town",
+    "room": "R0501"
+  },
+  "450": {
+    "code": "T06",
+    "name": "[T06]",
+    "room": ""
+  },
+  "451": {
+    "code": "T06FS0101",
+    "name": "[T06FS0101]",
+    "room": ""
+  },
+  "452": {
+    "code": "T06PC0101",
+    "name": "[T06PC0101]",
+    "room": ""
+  },
+  "453": {
+    "code": "T06PC0102",
+    "name": "[T06PC0102]",
+    "room": ""
+  },
+  "454": {
+    "code": "T06R0101",
+    "name": "[T06]",
+    "room": "R0101"
+  },
+  "455": {
+    "code": "T06R0201",
+    "name": "[T06]",
+    "room": "R0201"
+  },
+  "456": {
+    "code": "T06R0301",
+    "name": "[T06]",
+    "room": "R0301"
+  },
+  "457": {
+    "code": "T07",
+    "name": "[T07]",
+    "room": ""
+  },
+  "458": {
+    "code": "T07FS0101",
+    "name": "[T07FS0101]",
+    "room": ""
+  },
+  "459": {
+    "code": "T07PC0101",
+    "name": "[T07PC0101]",
+    "room": ""
+  },
+  "460": {
+    "code": "T07PC0102",
+    "name": "[T07PC0102]",
+    "room": ""
+  },
+  "461": {
+    "code": "T07R0101",
+    "name": "[T07]",
+    "room": "R0101"
+  },
+  "462": {
+    "code": "T07R0102",
+    "name": "[T07]",
+    "room": "R0102"
+  },
+  "463": {
+    "code": "T07R0103",
+    "name": "[T07]",
+    "room": "R0103"
+  },
+  "464": {
+    "code": "T07R0201",
+    "name": "[T07]",
+    "room": "R0201"
+  },
+  "465": {
+    "code": "T07R0301",
+    "name": "[T07]",
+    "room": "R0301"
+  },
+  "466": {
+    "code": "UNION",
+    "name": "Vista Lighthouse",
+    "room": ""
+  },
+  "467": {
+    "code": "W220",
+    "name": "Route 220",
+    "room": ""
+  },
+  "468": {
+    "code": "W223",
+    "name": "Route 223",
+    "room": ""
+  },
+  "469": {
+    "code": "W226",
+    "name": "Route 226",
+    "room": ""
+  },
+  "470": {
+    "code": "W229",
+    "name": "Route 229",
+    "room": ""
+  },
+  "471": {
+    "code": "W230",
+    "name": "Route 230",
+    "room": ""
+  },
+  "472": {
+    "code": "W231",
+    "name": "[W231]",
+    "room": ""
+  },
+  "473": {
+    "code": "W233",
+    "name": "[W233]",
+    "room": ""
+  },
+  "474": {
+    "code": "C01PC0103",
+    "name": "[C01PC0103]",
+    "room": ""
+  },
+  "475": {
+    "code": "C02PC0103",
+    "name": "[C02PC0103]",
+    "room": ""
+  },
+  "476": {
+    "code": "C03PC0103",
+    "name": "[C03PC0103]",
+    "room": ""
+  },
+  "477": {
+    "code": "C04PC0103",
+    "name": "[C04PC0103]",
+    "room": ""
+  },
+  "478": {
+    "code": "C05PC0103",
+    "name": "[C05PC0103]",
+    "room": ""
+  },
+  "479": {
+    "code": "C06PC0103",
+    "name": "[C06PC0103]",
+    "room": ""
+  },
+  "480": {
+    "code": "C07PC0103",
+    "name": "[C07PC0103]",
+    "room": ""
+  },
+  "481": {
+    "code": "C08PC0103",
+    "name": "[C08PC0103]",
+    "room": ""
+  },
+  "482": {
+    "code": "C09PC0103",
+    "name": "[C09PC0103]",
+    "room": ""
+  },
+  "483": {
+    "code": "C10PC0103",
+    "name": "[C10PC0103]",
+    "room": ""
+  },
+  "484": {
+    "code": "C11PC0103",
+    "name": "[C11PC0103]",
+    "room": ""
+  },
+  "485": {
+    "code": "T02PC0103",
+    "name": "[T02PC0103]",
+    "room": ""
+  },
+  "486": {
+    "code": "T03PC0103",
+    "name": "[T03PC0103]",
+    "room": ""
+  },
+  "487": {
+    "code": "T04PC0103",
+    "name": "[T04PC0103]",
+    "room": ""
+  },
+  "488": {
+    "code": "T05PC0103",
+    "name": "[T05PC0103]",
+    "room": ""
+  },
+  "489": {
+    "code": "T06PC0103",
+    "name": "[T06PC0103]",
+    "room": ""
+  },
+  "490": {
+    "code": "T07PC0103",
+    "name": "[T07PC0103]",
+    "room": ""
+  },
+  "491": {
+    "code": "C02R0601",
+    "name": "Canalave City",
+    "room": "R0601"
+  },
+  "492": {
+    "code": "R210AR0101",
+    "name": "Route 210",
+    "room": "R0101"
+  },
+  "493": {
+    "code": "D31R0207",
+    "name": "[D31]",
+    "room": "R0207"
+  },
+  "494": {
+    "code": "D26R0107",
+    "name": "[D26]",
+    "room": "R0107"
+  },
+  "495": {
+    "code": "C10R0114",
+    "name": "Pokémon League",
+    "room": "R0114"
+  },
+  "496": {
+    "code": "C10R0115",
+    "name": "Pokémon League",
+    "room": "R0115"
+  },
+  "497": {
+    "code": "D26R0108",
+    "name": "[D26]",
+    "room": "R0108"
+  },
+  "498": {
+    "code": "R225R0101",
+    "name": "Route 225",
+    "room": "R0101"
+  },
+  "499": {
+    "code": "W226R0101",
+    "name": "Route 226",
+    "room": "R0101"
+  },
+  "500": {
+    "code": "R227R0101",
+    "name": "Route 227",
+    "room": "R0101"
+  },
+  "501": {
+    "code": "R228R0101",
+    "name": "Route 228",
+    "room": "R0101"
+  },
+  "502": {
+    "code": "R228R0201",
+    "name": "Route 228",
+    "room": "R0201"
+  },
+  "503": {
+    "code": "R228R0301",
+    "name": "Route 228",
+    "room": "R0301"
+  },
+  "504": {
+    "code": "D06R0201",
+    "name": "Spear Pillar",
+    "room": "R0201"
+  },
+  "505": {
+    "code": "D06R0202",
+    "name": "Spear Pillar",
+    "room": "R0202"
+  },
+  "506": {
+    "code": "D06R0203",
+    "name": "Spear Pillar",
+    "room": "R0203"
+  },
+  "507": {
+    "code": "D06R0204",
+    "name": "Spear Pillar",
+    "room": "R0204"
+  },
+  "508": {
+    "code": "D06R0205",
+    "name": "Spear Pillar",
+    "room": "R0205"
+  },
+  "509": {
+    "code": "D06R0206",
+    "name": "Spear Pillar",
+    "room": "R0206"
+  },
+  "510": {
+    "code": "D05R0116",
+    "name": "Mt. Coronet",
+    "room": "R0116"
+  },
+  "511": {
+    "code": "D05R0117",
+    "name": "Mt. Coronet",
+    "room": "R0117"
+  },
+  "512": {
+    "code": "D22R0102",
+    "name": "[D22]",
+    "room": "R0102"
+  },
+  "513": {
+    "code": "D22R0103",
+    "name": "[D22]",
+    "room": "R0103"
+  },
+  "514": {
+    "code": "D24R0201",
+    "name": "[D24]",
+    "room": "R0201"
+  },
+  "515": {
+    "code": "D07R0119",
+    "name": "Great Marsh",
+    "room": "R0119"
+  },
+  "516": {
+    "code": "C08R0802",
+    "name": "Sunyshore City",
+    "room": "R0802"
+  },
+  "517": {
+    "code": "C01R0802",
+    "name": "Jubilife City",
+    "room": "R0802"
+  },
+  "518": {
+    "code": "D17R0108",
+    "name": "[D17]",
+    "room": "R0108"
+  },
+  "519": {
+    "code": "D17R0109",
+    "name": "[D17]",
+    "room": "R0109"
+  },
+  "520": {
+    "code": "D17R0110",
+    "name": "[D17]",
+    "room": "R0110"
+  },
+  "521": {
+    "code": "D17R0111",
+    "name": "[D17]",
+    "room": "R0111"
+  },
+  "522": {
+    "code": "D17R0112",
+    "name": "[D17]",
+    "room": "R0112"
+  },
+  "523": {
+    "code": "D17R0113",
+    "name": "[D17]",
+    "room": "R0113"
+  },
+  "524": {
+    "code": "D17R0114",
+    "name": "[D17]",
+    "room": "R0114"
+  },
+  "525": {
+    "code": "D17R0115",
+    "name": "[D17]",
+    "room": "R0115"
+  },
+  "526": {
+    "code": "D17R0116",
+    "name": "[D17]",
+    "room": "R0116"
+  },
+  "527": {
+    "code": "D17R0117",
+    "name": "[D17]",
+    "room": "R0117"
+  },
+  "528": {
+    "code": "D17R0118",
+    "name": "[D17]",
+    "room": "R0118"
+  },
+  "529": {
+    "code": "D17R0119",
+    "name": "[D17]",
+    "room": "R0119"
+  },
+  "530": {
+    "code": "D17R0120",
+    "name": "[D17]",
+    "room": "R0120"
+  },
+  "531": {
+    "code": "D17R0121",
+    "name": "[D17]",
+    "room": "R0121"
+  },
+  "532": {
+    "code": "D17R0122",
+    "name": "[D17]",
+    "room": "R0122"
+  },
+  "533": {
+    "code": "D17R0123",
+    "name": "[D17]",
+    "room": "R0123"
+  },
+  "534": {
+    "code": "D17R0124",
+    "name": "[D17]",
+    "room": "R0124"
+  },
+  "535": {
+    "code": "D17R0125",
+    "name": "[D17]",
+    "room": "R0125"
+  },
+  "536": {
+    "code": "D17R0126",
+    "name": "[D17]",
+    "room": "R0126"
+  },
+  "537": {
+    "code": "D17R0127",
+    "name": "[D17]",
+    "room": "R0127"
+  },
+  "538": {
+    "code": "D17R0128",
+    "name": "[D17]",
+    "room": "R0128"
+  },
+  "539": {
+    "code": "D17R0129",
+    "name": "[D17]",
+    "room": "R0129"
+  },
+  "540": {
+    "code": "D17R0130",
+    "name": "[D17]",
+    "room": "R0130"
+  },
+  "541": {
+    "code": "D17R0131",
+    "name": "[D17]",
+    "room": "R0131"
+  },
+  "542": {
+    "code": "D17R0132",
+    "name": "[D17]",
+    "room": "R0132"
+  },
+  "543": {
+    "code": "D17R0133",
+    "name": "[D17]",
+    "room": "R0133"
+  },
+  "544": {
+    "code": "D17R0134",
+    "name": "[D17]",
+    "room": "R0134"
+  },
+  "545": {
+    "code": "D17R0135",
+    "name": "[D17]",
+    "room": "R0135"
+  },
+  "546": {
+    "code": "D17R0136",
+    "name": "[D17]",
+    "room": "R0136"
+  },
+  "547": {
+    "code": "D17R0137",
+    "name": "[D17]",
+    "room": "R0137"
+  },
+  "548": {
+    "code": "D17R0138",
+    "name": "[D17]",
+    "room": "R0138"
+  },
+  "549": {
+    "code": "D17R0139",
+    "name": "[D17]",
+    "room": "R0139"
+  },
+  "550": {
+    "code": "D17R0140",
+    "name": "[D17]",
+    "room": "R0140"
+  },
+  "551": {
+    "code": "D17R0141",
+    "name": "[D17]",
+    "room": "R0141"
+  },
+  "552": {
+    "code": "D17R0142",
+    "name": "[D17]",
+    "room": "R0142"
+  },
+  "553": {
+    "code": "D17R0143",
+    "name": "[D17]",
+    "room": "R0143"
+  },
+  "554": {
+    "code": "D17R0144",
+    "name": "[D17]",
+    "room": "R0144"
+  },
+  "555": {
+    "code": "D17R0145",
+    "name": "[D17]",
+    "room": "R0145"
+  },
+  "556": {
+    "code": "D17R0146",
+    "name": "[D17]",
+    "room": "R0146"
+  },
+  "557": {
+    "code": "D17R0147",
+    "name": "[D17]",
+    "room": "R0147"
+  },
+  "558": {
+    "code": "C05R1103",
+    "name": "Hearthome City",
+    "room": "R1103"
+  },
+  "559": {
+    "code": "D32",
+    "name": "[D32]",
+    "room": ""
+  },
+  "560": {
+    "code": "D32R0101",
+    "name": "[D32]",
+    "room": "R0101"
+  },
+  "561": {
+    "code": "D32R0201",
+    "name": "[D32]",
+    "room": "R0201"
+  },
+  "562": {
+    "code": "D32R0301",
+    "name": "[D32]",
+    "room": "R0301"
+  },
+  "563": {
+    "code": "D32R0401",
+    "name": "[D32]",
+    "room": "R0401"
+  },
+  "564": {
+    "code": "D32R0501",
+    "name": "[D32]",
+    "room": "R0501"
+  },
+  "565": {
+    "code": "D32R0601",
+    "name": "[D32]",
+    "room": "R0601"
+  },
+  "566": {
+    "code": "C07R0207",
+    "name": "Veilstone City",
+    "room": "R0207"
+  },
+  "567": {
+    "code": "C01R0602",
+    "name": "Jubilife City",
+    "room": "R0602"
+  },
+  "568": {
+    "code": "C01R0603",
+    "name": "Jubilife City",
+    "room": "R0603"
+  },
+  "569": {
+    "code": "D26R0109",
+    "name": "[D26]",
+    "room": "R0109"
+  },
+  "570": {
+    "code": "D33R0101",
+    "name": "[D33]",
+    "room": "R0101"
+  },
+  "571": {
+    "code": "C04R0205",
+    "name": "Eterna City",
+    "room": "R0205"
+  },
+  "572": {
+    "code": "C04R0206",
+    "name": "Eterna City",
+    "room": "R0206"
+  },
+  "573": {
+    "code": "D34R0101",
+    "name": "[D34]",
+    "room": "R0101"
+  },
+  "574": {
+    "code": "D34R0102",
+    "name": "[D34]",
+    "room": "R0102"
+  },
+  "575": {
+    "code": "D34R0103",
+    "name": "[D34]",
+    "room": "R0103"
+  },
+  "576": {
+    "code": "D34R0104",
+    "name": "[D34]",
+    "room": "R0104"
+  },
+  "577": {
+    "code": "D34R0105",
+    "name": "[D34]",
+    "room": "R0105"
+  },
+  "578": {
+    "code": "D34R0106",
+    "name": "[D34]",
+    "room": "R0106"
+  },
+  "579": {
+    "code": "D34R0107",
+    "name": "[D34]",
+    "room": "R0107"
+  },
+  "580": {
+    "code": "D34R0108",
+    "name": "[D34]",
+    "room": "R0108"
+  },
+  "581": {
+    "code": "D34R0109",
+    "name": "[D34]",
+    "room": "R0109"
+  },
+  "582": {
+    "code": "D34R0110",
+    "name": "[D34]",
+    "room": "R0110"
+  },
+  "583": {
+    "code": "D34R0111",
+    "name": "[D34]",
+    "room": "R0111"
+  },
+  "584": {
+    "code": "D05R0118",
+    "name": "Mt. Coronet",
+    "room": "R0118"
+  },
+  "585": {
+    "code": "D05R0119",
+    "name": "Mt. Coronet",
+    "room": "R0119"
+  },
+  "586": {
+    "code": "HIROBA",
+    "name": "Mystery Zone",
+    "room": "ROBA"
+  },
+  "587": {
+    "code": "D35R0101",
+    "name": "[D35]",
+    "room": "R0101"
+  },
+  "588": {
+    "code": "D35R0102",
+    "name": "[D35]",
+    "room": "R0102"
+  },
+  "589": {
+    "code": "D35R0103",
+    "name": "[D35]",
+    "room": "R0103"
+  },
+  "590": {
+    "code": "D35R0104",
+    "name": "[D35]",
+    "room": "R0104"
+  },
+  "591": {
+    "code": "D35R0105",
+    "name": "[D35]",
+    "room": "R0105"
+  },
+  "592": {
+    "code": "D35R0106",
+    "name": "[D35]",
+    "room": "R0106"
+  }
+}

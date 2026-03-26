@@ -103,6 +103,31 @@ The game loads the active map's terrain attributes from `land_data.narc` (ROM fi
 |-------------|------|-------|
 | `0x02335346` | byte | Facing direction: 0=up, 1=down, 2=left, 3=right |
 
+## Party Summary Structure
+
+**Status: PARTIALLY SOLVED.** Species, level, and HP are confirmed. Move data and some fields are still unknown.
+
+The game maintains a party summary array at `0x022C0130`. Each slot is **44 bytes (0x2C)**, up to 6 party members. Empty slots have species = 0.
+
+| Offset | Size | Field | Notes |
+|--------|------|-------|-------|
+| +0x00 | long | Data pointer | Points to full PokePara tree structure |
+| +0x04 | u16 | Species | National Dex number (e.g., 387 = Turtwig) |
+| +0x06 | u16 | Current HP | |
+| +0x08 | u16 | Max HP | |
+| +0x0A | u8 | Level | |
+| +0x0B | u8 | Status? | 0 = no status (tentative) |
+| +0x0C | u16 | Held item? | 0 = none (tentative) |
+| +0x0E | u8 | Unknown | Always 0x07 for occupied slots |
+| +0x0F | u8 | Unknown | Varies per Pokemon |
+| +0x10-0x23 | varies | Unknown | Various values, purpose unclear |
+| +0x24 | long | Display pointer | Points to sprite/rendering data |
+| +0x28 | u32 | Flags? | 0x00000100 for occupied slots |
+
+**The full PokePara tree** (at the data pointer) uses a node-based structure with linked pointers, NOT the standard flat 236-byte party format. Property nodes contain individual attributes (name at prop_id=11, etc.). Move data has not been located yet.
+
+**Note:** The standard Gen 4 party structure (PID + encrypted blocks + battle stats) was NOT found anywhere in the 4MB main RAM during overworld play. The game appears to use the PokePara tree exclusively and only constructs flat structures when saving or entering battle.
+
 ## Save File Structure (from PKHeX / Bulbapedia)
 
 The save file uses an encrypted format in RAM. String searches (e.g. trainer name) won't work on raw memory.

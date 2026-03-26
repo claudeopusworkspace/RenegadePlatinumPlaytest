@@ -12,22 +12,33 @@ Modes:
              Reads terrain and dynamic objects, runs BFS for shortest path,
              and executes it step by step.
 
+             Coordinates can be local (0-31) or global. Global coordinates
+             are auto-detected when > 31 and converted to local coords.
+             Cross-chunk pathfinding loads a 3x3 grid of adjacent chunks.
+
 Examples:
     python3 scripts/navigate.py d d l l l
     python3 scripts/navigate.py l20 u5 r3
-    python3 scripts/navigate.py --to 6 10
+    python3 scripts/navigate.py --to 6 10          # local coords
+    python3 scripts/navigate.py --to 116 885       # global coords (auto-detected)
 
 The script connects to the running MCP emulator via the IPC bridge,
 moves one tile per direction (16 frames hold + 8 frames wait), and
 verifies the player actually moved after each step. Stops early if
 the position didn't change (collision, encounter, cutscene, etc.).
 Always advances 120 frames at the end so any triggered events are visible.
+
+Ledge tiles (0x38-0x3B) are treated as one-way passable in the correct
+direction: 0x38=south, 0x39=north, 0x3A=west, 0x3B=east.
 """
 import re
 import sys
 from collections import deque
 
-from game_state import SOCKET_PATH, get_map_state
+from game_state import (SOCKET_PATH, get_map_state, find_matrix_for_map,
+                        load_terrain_from_rom, needs_chunk_lookup,
+                        read_terrain_from_ram, read_objects, read_player_state,
+                        CHUNK_SIZE)
 
 sys.path.insert(0, "/workspace/DesmumeMCP")
 from desmume_mcp.client import connect
@@ -85,52 +96,64 @@ def parse_directions(args):
     return directions
 
 
-def build_passability_grid(terrain, objects):
-    """Build a 32x32 boolean grid: True = passable, False = blocked.
+# Ledge behaviors: direction you must be moving to cross them
+LEDGE_DIRECTIONS = {
+    0x38: "down",   # ledge_S — jump south
+    0x39: "up",     # ledge_N — jump north
+    0x3A: "left",   # ledge_W — jump west
+    0x3B: "right",  # ledge_E — jump east
+}
 
-    Blocked if:
-    - Terrain bit 15 is set (collision flag), UNLESS behavior is 0x69 (door)
-    - An NPC (non-player object) occupies the tile
 
-    Note: val=0x0000 is passable (indoor walkable floor). Only bit 15 blocks.
+def build_terrain_info(terrain, objects, width=32, height=32, obj_offset_x=0, obj_offset_y=0):
+    """Build terrain info grid: (passable, behavior) per tile.
+
+    Returns:
+        grid[row][col] = (passable: bool, behavior: int)
+        npc_set: set of (x, y) tiles blocked by NPCs
     """
-    grid = [[True] * 32 for _ in range(32)]
+    grid = [[(True, 0)] * width for _ in range(height)]
 
-    for row in range(32):
-        for col in range(32):
+    for row in range(min(height, len(terrain))):
+        for col in range(min(width, len(terrain[row]) if row < len(terrain) else 0)):
             val = terrain[row][col]
             is_blocked = (val & 0x8000) != 0
             behavior = val & 0x00FF
-            if is_blocked and behavior != 0x69:
-                grid[row][col] = False
+            # Passable if: not blocked, OR is a door (0x69), OR is a ledge (0x38-0x3B)
+            passable = (not is_blocked) or behavior == 0x69 or behavior in LEDGE_DIRECTIONS
+            grid[row][col] = (passable, behavior)
 
-    # Block tiles occupied by NPCs (skip player at index 0)
+    # NPC positions
+    npc_set = set()
     for obj in objects:
         if obj["index"] == 0:
             continue
-        lx, ly = obj["local_x"], obj["local_y"]
-        if 0 <= lx < 32 and 0 <= ly < 32:
-            grid[ly][lx] = False
+        lx = obj.get("local_x", obj["x"]) - obj_offset_x
+        ly = obj.get("local_y", obj["y"]) - obj_offset_y
+        if 0 <= lx < width and 0 <= ly < height:
+            npc_set.add((lx, ly))
 
-    return grid
+    return grid, npc_set
 
 
-def bfs_pathfind(passability, start_x, start_y, goal_x, goal_y):
-    """BFS shortest path on a 32x32 grid.
+def bfs_pathfind(terrain_info, npc_set, start_x, start_y, goal_x, goal_y, width=32, height=32):
+    """BFS shortest path with ledge awareness.
 
-    Returns list of direction strings (e.g., ["down", "left", "left"])
-    or None if no path exists.
+    Ledge tiles (0x38-0x3B) are only passable when approached from the
+    correct direction. The BFS tracks the movement direction when entering
+    each tile.
+
+    Returns list of direction strings or None if no path exists.
     """
-    if not (0 <= start_x < 32 and 0 <= start_y < 32):
+    if not (0 <= start_x < width and 0 <= start_y < height):
         return None
-    if not (0 <= goal_x < 32 and 0 <= goal_y < 32):
+    if not (0 <= goal_x < width and 0 <= goal_y < height):
         return None
     if (start_x, start_y) == (goal_x, goal_y):
         return []
 
     visited = set()
     visited.add((start_x, start_y))
-    # Queue entries: (x, y, path_so_far)
     queue = deque([(start_x, start_y, [])])
 
     while queue:
@@ -138,12 +161,22 @@ def bfs_pathfind(passability, start_x, start_y, goal_x, goal_y):
 
         for dx, dy, direction in BFS_MOVES:
             nx, ny = x + dx, y + dy
-            if not (0 <= nx < 32 and 0 <= ny < 32):
+            if not (0 <= nx < width and 0 <= ny < height):
                 continue
             if (nx, ny) in visited:
                 continue
-            if not passability[ny][nx]:
+            if (nx, ny) in npc_set:
                 continue
+
+            passable, behavior = terrain_info[ny][nx]
+            if not passable:
+                continue
+
+            # Ledge check: can only enter ledge tile from the matching direction
+            if behavior in LEDGE_DIRECTIONS:
+                required_dir = LEDGE_DIRECTIONS[behavior]
+                if direction != required_dir:
+                    continue
 
             new_path = path + [direction]
             if (nx, ny) == (goal_x, goal_y):
@@ -153,6 +186,74 @@ def bfs_pathfind(passability, start_x, start_y, goal_x, goal_y):
             queue.append((nx, ny, new_path))
 
     return None
+
+
+def build_multi_chunk_terrain(map_id, px, py, target_x, target_y):
+    """Load a multi-chunk terrain grid covering both player and target.
+
+    Returns (terrain_info, npc_set, grid_origin_x, grid_origin_y, grid_w, grid_h)
+    or None on failure.
+    """
+    result = find_matrix_for_map(map_id)
+    if result is None:
+        return None
+
+    matrix_id, mw, mh, header_ids, terrain_ids = result
+
+    # Determine which chunks we need (player chunk + target chunk + neighbors)
+    player_chunk_x = px // CHUNK_SIZE
+    player_chunk_y = py // CHUNK_SIZE
+    target_chunk_x = target_x // CHUNK_SIZE
+    target_chunk_y = target_y // CHUNK_SIZE
+
+    # Load a rectangular region of chunks covering both positions + 1 tile border
+    min_cx = max(0, min(player_chunk_x, target_chunk_x) - 1)
+    max_cx = min(mw - 1, max(player_chunk_x, target_chunk_x) + 1)
+    min_cy = max(0, min(player_chunk_y, target_chunk_y) - 1)
+    max_cy = min(mh - 1, max(player_chunk_y, target_chunk_y) + 1)
+
+    # Cap at 5x5 chunks (160x160 tiles) to keep BFS fast
+    if max_cx - min_cx > 4:
+        mid = (player_chunk_x + target_chunk_x) // 2
+        min_cx = max(0, mid - 2)
+        max_cx = min(mw - 1, mid + 2)
+    if max_cy - min_cy > 4:
+        mid = (player_chunk_y + target_chunk_y) // 2
+        min_cy = max(0, mid - 2)
+        max_cy = min(mh - 1, mid + 2)
+
+    num_cx = max_cx - min_cx + 1
+    num_cy = max_cy - min_cy + 1
+    grid_w = num_cx * CHUNK_SIZE
+    grid_h = num_cy * CHUNK_SIZE
+    grid_origin_x = min_cx * CHUNK_SIZE
+    grid_origin_y = min_cy * CHUNK_SIZE
+
+    # Build combined terrain grid
+    combined = [[(False, 0)] * grid_w for _ in range(grid_h)]
+
+    for cy in range(min_cy, max_cy + 1):
+        for cx in range(min_cx, max_cx + 1):
+            land_id = terrain_ids[cy][cx]
+            if land_id == 0xFFFF:
+                continue
+
+            chunk_terrain = load_terrain_from_rom(land_id)
+            if chunk_terrain is None:
+                continue
+
+            # Copy into combined grid
+            base_x = (cx - min_cx) * CHUNK_SIZE
+            base_y = (cy - min_cy) * CHUNK_SIZE
+            for row in range(CHUNK_SIZE):
+                for col in range(CHUNK_SIZE):
+                    val = chunk_terrain[row][col]
+                    is_blocked = (val & 0x8000) != 0
+                    behavior = val & 0x00FF
+                    passable = (not is_blocked) or behavior == 0x69 or behavior in LEDGE_DIRECTIONS
+                    combined[base_y + row][base_x + col] = (passable, behavior)
+
+    return combined, grid_origin_x, grid_origin_y, grid_w, grid_h
 
 
 def execute_path(emu, directions):
@@ -182,21 +283,71 @@ def execute_path(emu, directions):
 
 
 def pathfind_mode(emu, target_x, target_y):
-    """Read map state, pathfind to target, and execute."""
+    """Read map state, pathfind to target, and execute.
+
+    Supports both local (0-31) and global coordinates. Global coordinates
+    are auto-detected and handled with multi-chunk terrain loading.
+    """
     state = get_map_state(emu)
     if state is None:
         print("Error: could not read map state (chunk resolution failed).")
         return True
 
+    map_id = state["map_id"]
+    px, py = state["px"], state["py"]
     local_px = state["local_px"]
     local_py = state["local_py"]
+    chunked = state["chunked"]
+    origin_x = state.get("origin_x", 0)
+    origin_y = state.get("origin_y", 0)
 
-    print(f"Start: map={state['map_id']}, ({state['px']}, {state['py']}) local=({local_px}, {local_py})")
-    print(f"Target: ({target_x}, {target_y})")
+    # Detect if target is in global or local coordinates
+    is_global = target_x > 31 or target_y > 31 or chunked
 
-    passability = build_passability_grid(state["terrain"], state["objects"])
+    if is_global and chunked:
+        # Global coordinates on a multi-chunk map — use multi-chunk BFS
+        print(f"Start: map={map_id}, global=({px}, {py}), chunk=({origin_x},{origin_y})")
+        print(f"Target: global=({target_x}, {target_y})")
 
-    path = bfs_pathfind(passability, local_px, local_py, target_x, target_y)
+        result = build_multi_chunk_terrain(map_id, px, py, target_x, target_y)
+        if result is None:
+            print("\nError: could not load multi-chunk terrain.")
+            return True
+
+        combined_terrain, grid_ox, grid_oy, grid_w, grid_h = result
+        npc_set = set()
+        for obj in state["objects"]:
+            if obj["index"] == 0:
+                continue
+            nx = obj["x"] - grid_ox
+            ny = obj["y"] - grid_oy
+            if 0 <= nx < grid_w and 0 <= ny < grid_h:
+                npc_set.add((nx, ny))
+
+        # Convert player and target to grid-relative coordinates
+        rel_px = px - grid_ox
+        rel_py = py - grid_oy
+        rel_tx = target_x - grid_ox
+        rel_ty = target_y - grid_oy
+
+        print(f"Grid: {grid_w}x{grid_h} tiles (origin {grid_ox},{grid_oy})")
+
+        path = bfs_pathfind(combined_terrain, npc_set, rel_px, rel_py,
+                            rel_tx, rel_ty, width=grid_w, height=grid_h)
+    else:
+        # Local coordinates (indoor map or explicit local)
+        # If global coords given for a chunked map but target is in same chunk,
+        # convert to local
+        if target_x > 31 or target_y > 31:
+            target_x = target_x - origin_x
+            target_y = target_y - origin_y
+
+        print(f"Start: map={map_id}, ({px}, {py}) local=({local_px}, {local_py})")
+        print(f"Target: ({target_x}, {target_y})")
+
+        terrain_info, npc_set = build_terrain_info(state["terrain"], state["objects"])
+        path = bfs_pathfind(terrain_info, npc_set, local_px, local_py,
+                            target_x, target_y)
 
     if path is None:
         print("\nNo path found! Target may be unreachable or blocked.")
@@ -206,7 +357,6 @@ def pathfind_mode(emu, target_x, target_y):
         print("\nAlready at target!")
         return False
 
-    # Summarize the path compactly
     summary = summarize_path(path)
     print(f"Path: {summary} ({len(path)} steps)")
     print()

@@ -36,6 +36,48 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 - **When stuck navigating, ask Michael for visual help** rather than brute-forcing positions.
 - Screenshots are fine for reading dialogue, menus, and battle screens — just not for spatial navigation.
 
+## Party Status
+
+**Use `read_party.py` to read party Pokemon directly from RAM** — no menu navigation needed.
+
+```bash
+python3 scripts/read_party.py           # formatted party display
+python3 scripts/read_party.py --json    # JSON output for scripting
+```
+
+Reads species, level, HP from the party summary structure at `0x022C0130` (44 bytes per slot, 6 slots max). Species names are loaded from `data/species_names.json`.
+
+## Map Name Lookup
+
+**Use `map_name.py` to identify maps by ID** — no more guessing which building you're in.
+
+```bash
+python3 scripts/map_name.py              # show current map name from emulator
+python3 scripts/map_name.py 414          # look up a specific map ID
+python3 scripts/map_name.py 411 418 422  # look up multiple map IDs
+```
+
+Map IDs → location names are derived from ROM data (`romdata/mapname.bin`). Indoor maps show the area code (e.g., `T01R0201` = Twinleaf Town, Room 2, Floor 1).
+
+## ROM Message Decoder
+
+**Use `decode_msg.py` to read text from ROM message archives** — species names, move names, location names, dialogue, etc.
+
+```bash
+python3 scripts/decode_msg.py 412                # decode file (species names)
+python3 scripts/decode_msg.py 647                # decode file (move names)
+python3 scripts/decode_msg.py 433                # decode file (location names)
+python3 scripts/decode_msg.py --search "Turtwig" # search all 724 message files
+```
+
+Key file indices:
+| File | Content |
+|------|---------|
+| 0412 | Pokemon species names (index = national dex #) |
+| 0647 | Move names (index = move ID) |
+| 0433 | Location/map names |
+| 0646 | Move descriptions |
+
 ## Dialogue & Text Reading
 
 **Use `read_dialogue.py` to read text directly from RAM** — no need to time screenshots or mash through dialogue blindly. The script reads decoded text buffers and handles both overworld and battle contexts.
@@ -100,8 +142,9 @@ python3 scripts/navigate.py down down left left left  # manual: full names
 python3 scripts/navigate.py d d l l l                  # manual: shorthand (u/d/l/r)
 python3 scripts/navigate.py l20 u5 r3                  # manual: repeat counts
 python3 scripts/navigate.py --to 6 10                  # auto: BFS pathfind to tile (local coords)
+python3 scripts/navigate.py --to 116 885               # auto: BFS with global coords (cross-chunk)
 ```
-Auto mode reads terrain + dynamic objects, computes shortest path via BFS, and executes it. Uses local/chunk coordinates (0-31). Treats NPC tiles as blocked. Does not cross map boundaries.
+Auto mode reads terrain + dynamic objects, computes shortest path via BFS, and executes it. Supports both local (0-31) and global coordinates — global coords are auto-detected and trigger multi-chunk terrain loading (up to 5x5 chunks = 160x160 tiles). Ledge tiles (0x38-0x3B) are treated as one-way passable in the correct direction. NPC tiles are blocked. Does not cross map boundaries (warps).
 
 **Legacy manual rendering** (if bridge is unavailable):
 ```bash
