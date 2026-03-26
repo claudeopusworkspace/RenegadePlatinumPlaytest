@@ -1,17 +1,10 @@
 {
-  "frame": 17487,
+  "frame": 20351,
   "scan_start": "0x0228A000",
   "scan_size": 1572864,
   "markers": {
-    "0x022A791C": "CLAUDE",
-    "0x022A79C8": "AAAAAAA",
-    "0x022A7A74": "CLAUDE",
-    "0x022A7B20": "Chimchar",
-    "0x022A7F28": "AAAAAAA[01C4] I've always wanted to\nsay this...\nThe time has finally come!\nCLAUDE!\nI challenge you to a battle!\n",
-    "0x022A8754": "[FFFE][0103][0002][0000][0000][01C4] I've always wanted to\nsay this...\nThe time has finally come!\n[FFFE][0103][0002][0001][0000]!\nI challenge you to a battle!\n",
-    "0x02301800": "Turtwig",
-    "0x0230186C": "Turtwig",
-    "0x02301944": "Chimchar",
-    "0x02301BCC": "What will Turtwig do?[FFFE][0200][0001][0000]"
+    "0x022FF7CC": "Turtwig",
+    "0x022FF838": "Turtwig",
+    "0x022FFB98": "What will Turtwig do?[FFFE][0200][0001][0000]"
   }
 }
