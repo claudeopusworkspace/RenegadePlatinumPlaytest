@@ -24,6 +24,8 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `post_wipe_home_healed` | After whiteout, back in living room. Turtwig Lv7 26/26 HP. |
 | `sandgem_town_arrival` | Just entered Sandgem Town (map 418). Turtwig Lv7. |
 | `got_pokedex_rowan_lab` | Inside Rowan's lab (map 422) after receiving Pokedex. Free to move. |
+| `sandgem_pokemon_center_healed` | Outside Sandgem Pokemon Center (map 418). Turtwig Lv8 healed. |
+| `got_eevee_twinleaf` | In player's house (map 414) after obtaining Eevee. Turtwig Lv8, Eevee Lv5. |
 
 ## Navigation
 
@@ -257,13 +259,16 @@ Then analyze with Python scripts.
 
 - **Character name**: CLAUDE
 - **Rival name**: AAAAAAA (mashed through naming screen)
-- **Current point**: Sandgem Town, inside Rowan's lab (map 422). Just received Pokedex. Save state: `got_pokedex_rowan_lab`.
-- **Pokemon**: Turtwig Lv7 (moves: Tackle, Withdraw, Absorb). ~20/26 HP.
+- **Current point**: Twinleaf Town, player's house (map 414). Just obtained Eevee. Save state: `got_eevee_twinleaf`.
+- **Pokemon**: Turtwig Lv8 (28/28 HP, moves: Tackle, Withdraw, Absorb), Eevee Lv5 (21/21 HP, moves: Tackle, Tail Whip, Bite, Covet). Eevee nature: Gentle (+SpD, -Def), ability: Run Away.
 - **Starter**: Chose Turtwig. Barry chose Chimchar (type advantage). Other starters NOT yet received — may come later.
-- **Eevee**: Still in living room at home. "Mom is taking care of it." — not available yet, likely a later gift.
-- **Route 201 notes**: Tall grass is unavoidable in the middle section (big patch columns 10-20). Wild encounters: Starly Lv4, Nidoran(M) Lv5, Nidoran(F) Lv4. One whiteout occurred (Nidoran KO'd Turtwig at 1 HP).
+- **Eevee**: Obtained from Poke Ball in player's house after Mom's dialogue. Lv5 with Bite (Dark) and Covet (Normal) as notable moves.
+- **Items received this session**: Poke Radar (key item), Repels, Potions (from Mart NPC on Route 201). Barry's mom gave us a Parcel to deliver to Barry.
+- **Route 201 notes**: Tall grass is unavoidable in the middle section (big patch columns 10-20). Wild encounters: Starly Lv4-5, Pidgey Lv4, Nidoran(M) Lv5, Nidoran(F) Lv4. One whiteout occurred previously (Nidoran KO'd Turtwig at 1 HP).
+- **Route 201 navigation**: Path from Sandgem to Twinleaf goes west through tall grass, then south through a corridor at global coords ~(110, 858-863) to reach Twinleaf Town. Ledge barriers block direct south access from the main path — must go west into Verity Lakefront area, jump south ledge, then east and south to the corridor.
 - **Lake Verity**: Visited per story requirement. Met Cyrus (ominous speech about time/space). Barry wanted to catch legendary but had no Poke Balls.
-- **Next**: Dawn should give town tour (Pokemon Center, Mart). Then Route 202 north.
+- **Sandgem Town**: Dawn gave town tour (Pokemon Center, Mart). Rowan gave Poke Radar + Repels outside lab.
+- **Next**: Head back to Sandgem Town, then north to Route 202. Need to deliver Parcel to Barry (he's somewhere ahead).
 
 ## Tips
 
