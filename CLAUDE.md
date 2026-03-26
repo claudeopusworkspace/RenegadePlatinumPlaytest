@@ -50,6 +50,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `battle_poll(auto_press=false)` | Poll for turn narration after selecting a move |
 | `decode_rom_message(file_index)` | Decode ROM message archive (species, moves, items, etc.) |
 | `search_rom_messages(query)` | Search all 724 message files for text |
+| `use_item(item_name, party_slot)` | Use a Medicine item on a party Pokemon from overworld |
 
 The original Python scripts in `scripts/` still work for debugging but are no longer the primary interface.
 
@@ -99,6 +100,20 @@ Key ROM file indices: 0392=items, 0412=species, 0610=abilities, 0647=moves, 0433
 - **X**: Open menu (overworld). **Use X, not Start** — Start does not open the menu in Platinum.
 - **D-pad**: Move character / navigate menus.
 - **Touch screen**: Tap targets on bottom screen. **Always use `get_screenshot(screen="bottom")`** for coordinate estimation.
+
+### Bag Pocket Tabs (Bottom Screen, in-bag view)
+Touch targets arranged in a circle around the Poketch ball:
+
+| Pocket | Tap (x, y) |
+|--------|-----------|
+| Items | (27, 51) |
+| Medicine | (35, 102) |
+| Poke Balls | (59, 142) |
+| TMs & HMs | (100, 165) |
+| Berries | (156, 165) |
+| Mail | (195, 142) |
+| Battle Items | (220, 102) |
+| Key Items | (228, 51) |
 
 ### Touch Screen Keyboard (Name Entry)
 Letter grid coordinates (calibrated):
@@ -157,6 +172,10 @@ See GAME_HISTORY.md for full chronological playthrough details.
 1. `read_party` — full party with moves, PP, nature, IVs, EVs
 2. `read_bag` — all items across all pockets
 
+### Using items (overworld)
+1. `use_item("Potion", 0)` — uses a Medicine item on the specified party slot (0-indexed)
+2. Handles full menu flow automatically: pause menu → Bag → Medicine → item → USE → party → dismiss
+
 ## Tips
 
 - Save state frequently — this is a difficulty hack, expect challenges.
@@ -164,10 +183,10 @@ See GAME_HISTORY.md for full chronological playthrough details.
 - Use `read_dialogue` to read text from memory — more reliable than timing screenshots.
 - The `load_state` tool may occasionally hang — check `get_status` to verify.
 - Addresses must be passed as decimal integers to DeSmuME MCP tools, not hex strings.
-- **Touch screen taps need `frames=8`** — single-frame taps often don't register.
+- **Touch screen taps default to `frames=8`** — changed from 1 to avoid missed inputs.
 - **Wait 300 frames between UI navigation steps** — Pokemon ignores input during forced text delays.
 - **Always check the bottom screen for Yes/No prompts** — battle/switch prompts use touch screen.
 - **NEVER call `battle_poll` without first selecting a move** — it polls for NEW text and will loop.
 - **`battle_poll` has a built-in timeout** (300 polls / ~75 seconds) — returns TIMEOUT rather than hanging forever.
-- **Pause menu remembers cursor position** — check screenshot before pressing A.
+- **Pause menu remembers cursor position** — cursor index stored at `0x0229FA28`. The `use_item` tool reads this automatically; for manual menu navigation, read this address first.
 - **Trainer battles may have multiple Pokemon** — handle "Will you switch?" prompt before next action.
