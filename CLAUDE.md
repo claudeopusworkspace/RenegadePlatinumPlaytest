@@ -42,12 +42,21 @@ python3 scripts/read_dialogue.py --raw        # show raw hex values for debuggin
 
 ### Text Buffers
 
-| Buffer | Address | Context |
-|--------|---------|---------|
-| Overworld | `0x022A73BC` | NPC dialogue, signs, cutscene text |
-| Battle | `0x02301BD0` | Move announcements, damage text, status effects |
+| Region | Scan range | Context |
+|--------|-----------|---------|
+| Overworld | `0x022A7000` - `0x022A9800` | NPC dialogue, signs, cutscene text |
+| Battle | `0x02301000` - `0x02303000` | Move announcements, damage text, status effects |
 
-Both buffers are preceded by the marker bytes `D2EC B6F8` and terminated by `0xFFFF`.
+Text is stored in slots preceded by the marker `D2EC B6F8` and terminated by `0xFFFF`. The overworld buffer address is **dynamic** — it shifts between slots depending on the dialogue context (e.g., `0x022A73BC` for NPC dialogue, `0x022A77FC` for cutscenes). The script scans for active slots automatically. The battle buffer has been stable at `0x02301BD0`.
+
+### Battle Text Indicators
+
+The last value(s) before `[END]` indicate whether the game auto-advances or waits:
+- **No trailing control code** (e.g., `! [END]`) → auto-advancing narration
+- **`0xE000` before `[END]`** → game waits for B press to dismiss
+- **`0xFFFE` sequence before `[END]`** → game waits for player action (move selection, etc.)
+
+Use `battle_poll.py` after selecting a move to capture all turn narration automatically.
 
 ### Text Encoding (Gen 4)
 
