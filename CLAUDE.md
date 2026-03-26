@@ -94,10 +94,12 @@ python3 scripts/map_with_objects.py map_view.txt  # write to file
 
 **Automated walking** — moves one tile per direction, verifies each step, stops if position unchanged:
 ```bash
-python3 scripts/navigate.py down down left left left  # full names
-python3 scripts/navigate.py d d l l l                  # shorthand (u/d/l/r)
-python3 scripts/navigate.py l20 u5 r3                  # repeat counts
+python3 scripts/navigate.py down down left left left  # manual: full names
+python3 scripts/navigate.py d d l l l                  # manual: shorthand (u/d/l/r)
+python3 scripts/navigate.py l20 u5 r3                  # manual: repeat counts
+python3 scripts/navigate.py --to 6 10                  # auto: BFS pathfind to tile (local coords)
 ```
+Auto mode reads terrain + dynamic objects, computes shortest path via BFS, and executes it. Uses local/chunk coordinates (0-31). Treats NPC tiles as blocked. Does not cross map boundaries.
 
 **Legacy manual rendering** (if bridge is unavailable):
 ```bash
