@@ -126,10 +126,27 @@ def decode_encrypted_pokemon(raw_236):
     friendship = blocks[12]
     ability_idx = blocks[13]
 
+    # Block A (Growth) continued - EVs at offset 16
+    evs = {
+        'hp': blocks[16], 'atk': blocks[17], 'def': blocks[18],
+        'spe': blocks[19], 'spa': blocks[20], 'spd': blocks[21],
+    }
+
     # Block B (Moves) - offset 32
     moves = [struct.unpack_from('<H', blocks, 32 + i * 2)[0] for i in range(4)]
     pp = [blocks[40 + i] for i in range(4)]
     pp_ups = [blocks[44 + i] for i in range(4)]
+
+    # Block B - IVs packed in u32 at offset 48 (5 bits each)
+    iv_raw = struct.unpack_from('<I', blocks, 48)[0]
+    ivs = {
+        'hp':  (iv_raw >> 0) & 0x1F,
+        'atk': (iv_raw >> 5) & 0x1F,
+        'def': (iv_raw >> 10) & 0x1F,
+        'spe': (iv_raw >> 15) & 0x1F,
+        'spa': (iv_raw >> 20) & 0x1F,
+        'spd': (iv_raw >> 25) & 0x1F,
+    }
 
     # Nature from PID
     nature_idx = pid % 25
@@ -148,6 +165,8 @@ def decode_encrypted_pokemon(raw_236):
         'pp_ups': pp_ups,
         'nature': nature,
         'nature_idx': nature_idx,
+        'ivs': ivs,
+        'evs': evs,
     }
 
 
@@ -221,6 +240,8 @@ def read_party(emu):
             'item_id': decoded.get('item_id', 0),
             'friendship': decoded.get('friendship', 0),
             'exp': decoded.get('exp', 0),
+            'ivs': decoded.get('ivs', {}),
+            'evs': decoded.get('evs', {}),
         }
         party.append(pokemon)
 
@@ -258,6 +279,16 @@ def format_party(party):
                 lines.append(f"     - {mname} (PP {pp})")
         else:
             lines.append(f"     (moves unavailable)")
+
+        # Show IVs/EVs
+        ivs = p.get('ivs', {})
+        evs = p.get('evs', {})
+        if ivs:
+            iv_str = "/".join(str(ivs[s]) for s in ['hp','atk','def','spa','spd','spe'])
+            lines.append(f"     IVs: {iv_str} (HP/Atk/Def/SpA/SpD/Spe)")
+        if evs and any(evs[s] > 0 for s in evs):
+            ev_str = "/".join(str(evs[s]) for s in ['hp','atk','def','spa','spd','spe'])
+            lines.append(f"     EVs: {ev_str}")
 
     return '\n'.join(lines)
 
