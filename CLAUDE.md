@@ -17,6 +17,8 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `post_barry_bedroom` | In bedroom, AFTER Barry leaves. Position (4,7) on map 415. |
 | `living_room` | Downstairs in the living room, BEFORE Mom's dialogue. Position (10,3) on map 414. |
 | `post_mom_living_room` | Downstairs, AFTER Mom gives Running Shoes. Position (10,3) on map 414. Free to move. |
+| `first_battle_start` | Rival battle vs AAAAAAA's Chimchar Lv5. At "What will Turtwig do?" menu. |
+| `post_rival_battle_twinleaf` | After rival battle, outside in Twinleaf Town (map 411). Turtwig Lv6. |
 
 ## Navigation
 
@@ -26,6 +28,37 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 - **Use `navigate.py`** to walk paths — it verifies each step and stops on collision.
 - **When stuck navigating, ask Michael for visual help** rather than brute-forcing positions.
 - Screenshots are fine for reading dialogue, menus, and battle screens — just not for spatial navigation.
+
+## Dialogue & Text Reading
+
+**Use `read_dialogue.py` to read text directly from RAM** — no need to time screenshots or mash through dialogue blindly. The script reads decoded text buffers and handles both overworld and battle contexts.
+
+```bash
+python3 scripts/read_dialogue.py              # auto-detect active text (overworld or battle)
+python3 scripts/read_dialogue.py --battle     # force read battle buffer
+python3 scripts/read_dialogue.py --overworld  # force read overworld buffer
+python3 scripts/read_dialogue.py --raw        # show raw hex values for debugging
+```
+
+### Text Buffers
+
+| Buffer | Address | Context |
+|--------|---------|---------|
+| Overworld | `0x022A73BC` | NPC dialogue, signs, cutscene text |
+| Battle | `0x02301BD0` | Move announcements, damage text, status effects |
+
+Both buffers are preceded by the marker bytes `D2EC B6F8` and terminated by `0xFFFF`.
+
+### Text Encoding (Gen 4)
+
+16-bit little-endian characters:
+- Uppercase A-Z: `0x012B` - `0x0144`
+- Lowercase a-z: `0x0145` - `0x015E`
+- Digits 0-9: `0x0161` - `0x016A` (assumed)
+- Space: `0x01DE`
+- `é`: `0x0188` (Pokémon)
+- `!`: `0x01AB`, `,`: `0x01AD`, `.`: `0x01AE`, `'`: `0x01B3`
+- Newline: `0xE000`, New text box: `0x25BC`, End: `0xFFFF`, Variable: `0xFFFE`
 
 ### Navigation Scripts (Bridge-Connected)
 
@@ -198,9 +231,11 @@ Then analyze with Python scripts.
 
 - **Character name**: CLAUDE
 - **Rival name**: AAAAAAA (mashed through naming screen)
-- **Current point**: Twinleaf Town overworld (map 411). Exited house, NPC said Barry is looking for us — need to visit Barry's house. Save state: `twinleaf_outside_barrys_house`.
-- **Pokemon**: None yet.
-- **Twinleaf Town layout** (overworld chunk 3,27): 4 houses. Player's house door at local (20,21) = global (116,885). Barry's house door at local (9,11) = global (105,875). North exit blocked by Barry event until we visit him.
+- **Current point**: Twinleaf Town overworld (map 411), post-rival battle. Save state: `post_rival_battle_twinleaf`. Need to head north to Route 201 → Sandgem Town.
+- **Pokemon**: Turtwig Lv6 (moves: Tackle, Withdraw, Absorb)
+- **Starter**: Chose Turtwig. Barry chose Chimchar (type advantage). Michael says other starters join party before second town.
+- **First battle**: Won vs Barry's Chimchar Lv5 in 4 turns using Tackle. Battle UI uses touch screen (FIGHT button → move selection).
+- **Twinleaf Town layout** (overworld chunk 3,27): 4 houses. Player's house door at local (20,21) = global (116,885). Barry's house door at local (9,11) = global (105,875).
 - **Notable**: There's an Eevee object at (4,3) in the living room. Interacting shows "It's an EEVEE! Mom is taking care of it." — Renegade Platinum likely gives this Eevee to the player at some point.
 
 ## Tips
