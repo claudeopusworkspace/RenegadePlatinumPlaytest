@@ -369,9 +369,29 @@ Then analyze with Python scripts.
 - **Sandgem Town**: Dawn gave town tour (Pokemon Center, Mart). Rowan gave Poke Radar + Repels outside lab.
 - **Next**: Head back to Sandgem Town, then north to Route 202. Need to deliver Parcel to Barry (he's somewhere ahead).
 
+## Quick Reference: Common Workflows
+
+### Entering a new area
+1. `read_watch("player_position")` — get map ID and coordinates
+2. `python3 scripts/map_name.py` — identify where you are
+3. `python3 scripts/map_with_objects.py` — see the map layout, NPCs, exits
+
+### Before/during battle
+1. `python3 scripts/read_battle.py` — see enemy species, types, ability, stats, moves, and HP. **Do this at battle start** to plan tactics (especially important in this difficulty hack — enemy abilities and movesets may be changed from vanilla).
+2. `python3 scripts/battle_init.py` — snapshot text baseline (once per battle)
+3. Select move, then `python3 scripts/battle_poll.py --press` — get full turn narration
+4. `python3 scripts/read_battle.py` — check updated HP, PP, stat stages, status after the turn
+
+### Checking inventory/party (overworld)
+1. `python3 scripts/read_party.py` — full party with moves, PP, nature, IVs, EVs
+2. `python3 scripts/read_bag.py` — all items across all pockets
+
 ## Tips
 
 - Save state frequently — this is a difficulty hack, expect challenges.
+- **Use `read_battle.py` at the start of every battle** — it reveals the enemy's ability, types, moves, and stats. Renegade Platinum changes many of these from vanilla (e.g., Chimchar has Iron Fist instead of Blaze).
+- **Use `read_bag.py` instead of navigating the bag menu** — faster and avoids accidental inputs.
+- **Use `read_party.py` instead of the party menu** — shows everything including IVs/EVs without menu navigation.
 - Use the `player_position` watch after every movement to confirm you moved.
 - Use `read_dialogue.py` to read full dialogue text from memory — far more reliable than timing screenshots.
 - Use `battle_poll.py --press` after selecting a move to get the full turn log automatically.
