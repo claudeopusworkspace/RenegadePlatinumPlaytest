@@ -103,6 +103,16 @@ The game loads the active map's terrain attributes from `land_data.narc` (ROM fi
 |-------------|------|-------|
 | `0x02335346` | byte | Facing direction: 0=up, 1=down, 2=left, 3=right |
 
+### Pause Menu Cursor
+
+| Address      | Size | Field |
+|-------------|------|-------|
+| `0x0229FA28` | byte | Pause menu cursor index (persists across menu opens) |
+
+Values: 0=Pokedex, 1=Pokemon, 2=Bag, 3=Trainer Card, 4=Save, 5=Options, 6=Exit.
+
+Also tracked at `0x022A6528` (mirror/copy, same values).
+
 ## Encrypted Party Data (Gen 4)
 
 The game stores party Pokemon in encrypted Gen 4 format. Count at `0x0227E26C`, data at `0x0227E270` (236 bytes per slot, up to 6 slots).

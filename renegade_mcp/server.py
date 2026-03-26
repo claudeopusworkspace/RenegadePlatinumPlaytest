@@ -250,4 +250,22 @@ def create_server() -> FastMCP:
             "matches": matches,
         }
 
+    # ── Item Use ──
+
+    @mcp.tool()
+    def use_item(item_name: str, party_slot: int = 0) -> dict[str, Any]:
+        """Use a Medicine pocket item on a party Pokemon in the overworld.
+
+        Opens the pause menu, navigates to Bag → Medicine pocket, selects the
+        item, uses it on the target party member, and closes all menus.
+
+        Args:
+            item_name: Item name (e.g. "Potion", "Antidote"). Case-insensitive.
+            party_slot: Party index 0-5 (0 = first Pokemon).
+        """
+        from renegade_mcp.use_item import use_item as _use_item
+
+        emu = get_client()
+        return _use_item(emu, item_name, party_slot)
+
     return mcp
