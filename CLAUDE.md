@@ -61,8 +61,12 @@ The last value(s) before `[END]` indicate whether the game auto-advances or wait
 - **`0xE000` before `[END]`** → game waits for B press to dismiss
 - **`0xFFFE` sequence before `[END]`** → game waits for player action (move selection, etc.)
 
-**Battle turn logger** — after selecting a move, captures all narration until next stopping point:
+**Battle turn logger** — two-step workflow for capturing battle narration:
 ```bash
+# Step 1: Run ONCE at the start of each battle (after battle screen loads)
+python3 scripts/battle_init.py          # snapshots pre-existing text markers as baseline
+
+# Step 2: Run after selecting a move to capture the turn
 python3 scripts/battle_poll.py          # poll until next stop (returns at WAIT_FOR_INPUT or WAIT_FOR_ACTION)
 python3 scripts/battle_poll.py --press  # auto-dismiss trainer mid-battle dialogue, stop at action prompt
 ```

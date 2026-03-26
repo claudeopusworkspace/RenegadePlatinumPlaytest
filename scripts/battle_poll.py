@@ -5,10 +5,10 @@ After selecting a move/action, run this script to capture all battle
 narration until the game reaches a stopping point (waiting for input
 or waiting for next action selection).
 
-Advances ~15 frames at a time, reading the battle text buffer each time.
-When a new message appears, it's added to the log. Once a "wait" indicator
-is detected, waits ~120 frames for it to finish loading, then returns
-the full log and the current game state.
+Requires battle_init.py to have been run at the start of the battle.
+The init snapshot tells us which text markers were already in memory
+(overworld dialogue, etc.) so we can ignore them and only track new
+battle narration.
 
 Usage:
     python3 scripts/battle_poll.py          # poll until next stopping point
@@ -17,9 +17,10 @@ Usage:
 Exit states:
     WAIT_FOR_ACTION  — game is at move/item/switch selection
     WAIT_FOR_INPUT   — game is waiting for B press to dismiss dialogue
-    AUTO_ADVANCE     — still auto-advancing (hit max poll limit)
+    TIMEOUT          — still auto-advancing (hit max poll limit)
 """
 
+import json
 import struct
 import sys
 import os
@@ -28,15 +29,20 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "DesmumeMCP"))
 
 from desmume_mcp.client import connect
 
-# Scan region covers both wild battle (~0x022FF000) and trainer battle (~0x02301000) text
-BATTLE_SCAN_START = 0x022FF000
-BATTLE_SCAN_SIZE = 0x4000   # 16 KB
+# Discovery scan: broad sweep of heap to find where battle text landed.
+# Only done once at startup; subsequent polls use a narrow window.
+DISCOVERY_START = 0x0228A000
+DISCOVERY_SIZE = 0x180000   # 1.5 MB
+
 HEADER_MARKER = b"\xEC\xD2\xF8\xB6"  # D2EC B6F8 in little-endian
 MAX_TEXT_CHARS = 120
+POLL_REGION_PADDING = 0x1000  # 4 KB padding around discovered markers
 MAX_POLLS = 300       # ~75 seconds at 15 frames/poll (safety limit)
+DISCOVERY_POLLS = 30  # polls during discovery before giving up
 POLL_FRAMES = 15      # frames to advance between reads
 SETTLE_FRAMES = 120   # frames to wait after detecting a stop indicator
 SOCKET_PATH = "/workspace/RenegadePlatinumPlaytest/.desmume_bridge.sock"
+INIT_FILE = "/workspace/RenegadePlatinumPlaytest/.battle_init.json"
 
 # === Text Encoding ===
 
@@ -56,25 +62,52 @@ CHAR_TABLE[0x01B3] = "'"
 CHAR_TABLE[0x01DE] = ' '
 
 
-def scan_battle_text(emu):
-    """Scan the battle memory region for the best active text slot.
+def load_init_baseline():
+    """Load the battle init baseline. Returns (frame, {addr: text}) or exits."""
+    if not os.path.exists(INIT_FILE):
+        print("Error: no battle init found. Run battle_init.py at the start of the battle.")
+        sys.exit(1)
 
-    Returns (text, vals_including_end) or (None, []) if no text found.
+    with open(INIT_FILE) as f:
+        data = json.load(f)
+
+    baseline = data.get("markers", {})
+    baseline_frame = data.get("frame", 0)
+    return baseline_frame, baseline
+
+
+def validate_baseline(emu, baseline_frame):
+    """Check that the init baseline is from this session (not stale)."""
+    current_frame = emu.get_frame_count()
+    if current_frame < baseline_frame:
+        print(f"Warning: current frame ({current_frame}) < init frame ({baseline_frame}).")
+        print("A save state may have been loaded after battle_init.py ran.")
+        print("Re-run battle_init.py for this battle.")
+        sys.exit(1)
+
+
+def scan_for_text(data, base_addr, baseline=None):
+    """Scan raw bytes for D2EC B6F8 markers with active text.
+
+    Args:
+        baseline: dict of {hex_addr_str: text_content} from battle_init.
+                  Markers at a baseline address are only included if their
+                  text has changed (i.e., the game wrote new content to the slot).
+
+    Returns list of (abs_addr, text, vals, known_count) sorted by known_count desc.
     """
-    raw_bytes = emu.read_memory_range(BATTLE_SCAN_START, size="byte", count=BATTLE_SCAN_SIZE)
-    if not raw_bytes:
-        return None, []
+    if baseline is None:
+        baseline = {}
 
-    data = bytes(raw_bytes)
-    best_text = None
-    best_vals = []
-    best_known = 0
-
+    results = []
     idx = 0
     while True:
         idx = data.find(HEADER_MARKER, idx)
         if idx < 0:
             break
+
+        abs_addr = base_addr + idx
+        addr_str = f"0x{abs_addr:08X}"
 
         text_start = idx + 4
         if text_start + 1 >= len(data):
@@ -99,16 +132,66 @@ def scan_battle_text(emu):
             if v in CHAR_TABLE:
                 known_count += 1
 
-        if known_count > best_known and known_count >= 3:
+        if known_count >= 3:
             text, _ = decode_text(vals)
             if text.strip():
-                best_text = text
-                best_vals = vals
-                best_known = known_count
+                # Skip if this slot still has the same content as the baseline
+                if addr_str in baseline and baseline[addr_str] == text:
+                    idx += 2
+                    continue
+                results.append((abs_addr, text, vals, known_count))
 
         idx += 2
 
-    return best_text, best_vals
+    results.sort(key=lambda x: -x[3])
+    return results
+
+
+def scan_battle_text(emu, scan_start, scan_size, baseline=None):
+    """Scan a memory region for the best active text slot (filtering baseline).
+
+    Returns (text, vals_including_end) or (None, []) if no text found.
+    """
+    raw_bytes = emu.read_memory_range(scan_start, size="byte", count=scan_size)
+    if not raw_bytes:
+        return None, []
+
+    data = bytes(raw_bytes)
+    results = scan_for_text(data, scan_start, baseline)
+    if results:
+        _, text, vals, _ = results[0]
+        return text, vals
+    return None, []
+
+
+def discover_battle_region(emu, baseline):
+    """Broad scan to find where NEW battle text lives (filtering baseline).
+
+    Returns (region_start, region_size) or None if not found.
+    """
+    for attempt in range(DISCOVERY_POLLS):
+        emu.advance_frames(POLL_FRAMES)
+
+        raw_bytes = emu.read_memory_range(DISCOVERY_START, size="byte", count=DISCOVERY_SIZE)
+        if not raw_bytes:
+            continue
+
+        data = bytes(raw_bytes)
+        results = scan_for_text(data, DISCOVERY_START, baseline)
+        if results:
+            # Build a narrow region around the new markers only
+            addrs = [r[0] for r in results]
+            nearest = min(addrs)
+            furthest = max(addrs)
+            region_start = max(DISCOVERY_START, nearest - POLL_REGION_PADDING)
+            region_end = furthest + POLL_REGION_PADDING
+            region_size = region_end - region_start
+
+            addr = results[0][0]
+            print(f"[discovered battle text at 0x{addr:08X}, polling 0x{region_start:08X} +{region_size} bytes]")
+            return region_start, region_size
+
+    return None
 
 
 def decode_text(vals):
@@ -159,19 +242,45 @@ def classify_stop(vals):
 def poll_battle(auto_press=False):
     """Poll the battle buffer, building a log until a stop point is reached.
 
+    Phase 1: load baseline from battle_init.py, validate it's current.
+    Phase 2 (discovery): broad scan, find NEW markers not in baseline.
+    Phase 3 (polling): narrow scan of discovered region for fast updates.
+
     Skips the initial stale message (from the previous action prompt) by
     requiring at least one auto-advancing message before accepting a stop.
     """
-    emu = connect(SOCKET_PATH)
+    baseline_frame, baseline = load_init_baseline()
 
+    emu = connect(SOCKET_PATH)
+    validate_baseline(emu, baseline_frame)
+
+    if baseline:
+        print(f"[baseline: {len(baseline)} pre-existing marker(s) loaded]")
+
+    # Phase 2: discover where NEW battle text is
+    result = discover_battle_region(emu, baseline)
+    if result is None:
+        print("=== Battle Log ===")
+        print("  (no new battle text found after discovery scan)")
+        print("\nState: NO_TEXT")
+        emu.close()
+        return [], "NO_TEXT"
+
+    scan_start, scan_size = result
+
+    # Phase 3: poll the narrow region
+    # During polling, only filter baseline until we've seen real narration.
+    # Once we've seen auto-advancing text, stop filtering so recurring
+    # prompts like "What will Turtwig do?" are detected.
     log = []
     prev_text = None
-    seen_auto = False  # must see an auto-advance message before accepting stops
+    seen_auto = False
 
     for poll in range(MAX_POLLS):
         emu.advance_frames(POLL_FRAMES)
 
-        text, vals = scan_battle_text(emu)
+        active_baseline = baseline if not seen_auto else None
+        text, vals = scan_battle_text(emu, scan_start, scan_size, active_baseline)
         if text is None:
             continue
         stop = classify_stop(vals)
@@ -184,7 +293,6 @@ def poll_battle(auto_press=False):
                 seen_auto = True
                 log.append({"text": text, "stop": stop})
             elif seen_auto:
-                # We've seen real narration, so this stop is meaningful
                 log.append({"text": text, "stop": stop})
 
                 # Let it fully settle
@@ -193,16 +301,12 @@ def poll_battle(auto_press=False):
                 if stop == "WAIT_FOR_INPUT" and auto_press:
                     emu.press_buttons(["b"], frames=8)
                     emu.advance_frames(30)
-                    # Keep polling for more messages after dismissing
                     continue
 
-                # We've hit a stopping point — return the log
                 _print_log(log, stop)
                 emu.close()
                 return log, stop
-            # else: stale message from before our action — skip it
 
-    # Reached max polls without a stop point
     _print_log(log, "TIMEOUT")
     emu.close()
     return log, "TIMEOUT"
@@ -213,9 +317,7 @@ def _print_log(log, final_state):
     print("=== Battle Log ===")
     for i, entry in enumerate(log):
         text = entry["text"]
-        # Clean up: collapse newlines, strip action prompts from display
         text = text.replace("\n", " / ")
-        # Remove trailing VAR sequences for display
         while "[FFFE]" in text:
             text = text[:text.index("[FFFE]")].rstrip()
         marker = ""
