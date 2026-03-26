@@ -51,6 +51,56 @@ Uses TWO data sources:
 
 The encrypted data uses standard Gen 4 format: PID + checksum + 4 shuffled/encrypted 32-byte blocks. Decryption: PRNG seeded by checksum; block shuffle index = `((PID >> 13) & 0x1F) % 24`.
 
+## Bag / Inventory
+
+**Use `read_bag.py` to read bag contents directly from RAM** — no menu navigation needed.
+
+```bash
+python3 scripts/read_bag.py              # print all bag pockets
+python3 scripts/read_bag.py --json       # JSON output for scripting
+python3 scripts/read_bag.py --pocket "Key Items"  # show only one pocket
+```
+
+Reads 7 pockets from `0x0227E800` (1844 bytes total). Each pocket is an array of `(item_id u16, qty u16)` pairs:
+
+| Pocket | Max Slots | Offset |
+|--------|-----------|--------|
+| Items | 165 | 0x000 |
+| Key Items | 50 | 0x294 |
+| TMs & HMs | 100 | 0x35C |
+| Mail | 12 | 0x4EC |
+| Medicine | 40 | 0x51C |
+| Berries | 64 | 0x5BC |
+| Battle Items | 30 | 0x6BC |
+
+## Battle State
+
+**Use `read_battle.py` to read live battle data from RAM** — species, stats, HP, moves, PP, stat stages, types, ability, and status for all active battlers.
+
+```bash
+python3 scripts/read_battle.py           # formatted battle state
+python3 scripts/read_battle.py --json    # JSON output for scripting
+```
+
+Reads from `0x022C5774` (4 slots × 0xC0 bytes). Key fields per battler:
+
+| Field | Offset | Size | Notes |
+|-------|--------|------|-------|
+| Species | +0x00 | u16 | National Dex # |
+| Atk/Def/Spe/SpA/SpD | +0x02-0x0A | u16 each | Effective stats (after nature) |
+| Moves | +0x0C | u16 × 4 | Move IDs |
+| Stat stages | +0x18 | u8 × 8 | Atk,Def,Spe,SpA,SpD,Acc,Eva,Crit; neutral=6 |
+| Weight | +0x20 | u16 | In 0.1 kg units |
+| Types | +0x24 | u8 × 2 | Gen 4 internal type IDs |
+| Ability | +0x27 | u8 | Ability ID |
+| Status | +0x28 | u32 | Bitfield (sleep/psn/brn/frz/par/tox) |
+| PP | +0x2C | u8 × 4 | Current PP per move |
+| Level | +0x34 | u8 | |
+| Current HP | +0x4C | u16 | Live battle HP |
+| Max HP | +0x50 | u16 | |
+
+Slot 0 = player active, Slot 1 = enemy active, Slots 2-3 = doubles partners. Outside of battle, all slots contain stale/invalid data (detected automatically).
+
 ## Map Name Lookup
 
 **Use `map_name.py` to identify maps by ID** — no more guessing which building you're in.
@@ -77,7 +127,9 @@ python3 scripts/decode_msg.py --search "Turtwig" # search all 724 message files
 Key file indices:
 | File | Content |
 |------|---------|
+| 0392 | Item names (index = item ID) |
 | 0412 | Pokemon species names (index = national dex #) |
+| 0610 | Ability names (index = ability ID) |
 | 0647 | Move names (index = move ID) |
 | 0433 | Location/map names |
 | 0646 | Move descriptions |
