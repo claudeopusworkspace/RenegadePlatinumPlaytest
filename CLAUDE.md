@@ -19,6 +19,11 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `post_mom_living_room` | Downstairs, AFTER Mom gives Running Shoes. Position (10,3) on map 414. Free to move. |
 | `first_battle_start` | Rival battle vs AAAAAAA's Chimchar Lv5. At "What will Turtwig do?" menu. |
 | `post_rival_battle_twinleaf` | After rival battle, outside in Twinleaf Town (map 411). Turtwig Lv6. |
+| `post_lake_verity_cutscene` | After Lake Verity cutscene (Cyrus + Barry). Map 334, Verity Lakefront. |
+| `wild_starly_battle_start` | Wild Starly Lv4 battle on Route 201. For debugging battle_poll.py. Turtwig Lv7. |
+| `post_wipe_home_healed` | After whiteout, back in living room. Turtwig Lv7 26/26 HP. |
+| `sandgem_town_arrival` | Just entered Sandgem Town (map 418). Turtwig Lv7. |
+| `got_pokedex_rowan_lab` | Inside Rowan's lab (map 422) after receiving Pokedex. Free to move. |
 
 ## Navigation
 
@@ -202,7 +207,8 @@ See MEMORY_MAP.md for full address documentation.
 
 - **A**: Confirm / advance dialogue / interact with overworld objects. Use `press_buttons(["a"], frames=8)` — the game needs a few frames of sustained input to register.
 - **B**: Cancel / back / advance dialogue. **Prefer B over A for advancing dialogue** — B progresses text just like A but won't accidentally trigger a new interaction with a nearby NPC or object when the dialogue ends.
-- **Start**: Open menu (overworld)
+- **X**: Open menu (overworld). **Use X, not Start** — Start does not open the menu in Platinum.
+- **Start**: Does NOT open the menu in Platinum.
 - **D-pad**: Move character / navigate menus
 - **Touch screen**: Tap targets on bottom screen. **Always use `get_screenshot(screen="bottom")` to estimate coordinates**, as the combined "both" view distorts positions.
 
@@ -244,12 +250,13 @@ Then analyze with Python scripts.
 
 - **Character name**: CLAUDE
 - **Rival name**: AAAAAAA (mashed through naming screen)
-- **Current point**: Twinleaf Town overworld (map 411), post-rival battle. Save state: `post_rival_battle_twinleaf`. Need to head north to Route 201 → Sandgem Town.
-- **Pokemon**: Turtwig Lv6 (moves: Tackle, Withdraw, Absorb)
-- **Starter**: Chose Turtwig. Barry chose Chimchar (type advantage). Michael says other starters join party before second town.
-- **First battle**: Won vs Barry's Chimchar Lv5 in 4 turns using Tackle. Battle UI uses touch screen (FIGHT button → move selection).
-- **Twinleaf Town layout** (overworld chunk 3,27): 4 houses. Player's house door at local (20,21) = global (116,885). Barry's house door at local (9,11) = global (105,875).
-- **Notable**: There's an Eevee object at (4,3) in the living room. Interacting shows "It's an EEVEE! Mom is taking care of it." — Renegade Platinum likely gives this Eevee to the player at some point.
+- **Current point**: Sandgem Town, inside Rowan's lab (map 422). Just received Pokedex. Save state: `got_pokedex_rowan_lab`.
+- **Pokemon**: Turtwig Lv7 (moves: Tackle, Withdraw, Absorb). ~20/26 HP.
+- **Starter**: Chose Turtwig. Barry chose Chimchar (type advantage). Other starters NOT yet received — may come later.
+- **Eevee**: Still in living room at home. "Mom is taking care of it." — not available yet, likely a later gift.
+- **Route 201 notes**: Tall grass is unavoidable in the middle section (big patch columns 10-20). Wild encounters: Starly Lv4, Nidoran(M) Lv5, Nidoran(F) Lv4. One whiteout occurred (Nidoran KO'd Turtwig at 1 HP).
+- **Lake Verity**: Visited per story requirement. Met Cyrus (ominous speech about time/space). Barry wanted to catch legendary but had no Poke Balls.
+- **Next**: Dawn should give town tour (Pokemon Center, Mart). Then Route 202 north.
 
 ## Tips
 
