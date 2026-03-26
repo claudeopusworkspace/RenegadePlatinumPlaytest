@@ -56,7 +56,11 @@ The last value(s) before `[END]` indicate whether the game auto-advances or wait
 - **`0xE000` before `[END]`** → game waits for B press to dismiss
 - **`0xFFFE` sequence before `[END]`** → game waits for player action (move selection, etc.)
 
-Use `battle_poll.py` after selecting a move to capture all turn narration automatically.
+**Battle turn logger** — after selecting a move, captures all narration until next stopping point:
+```bash
+python3 scripts/battle_poll.py          # poll until next stop (returns at WAIT_FOR_INPUT or WAIT_FOR_ACTION)
+python3 scripts/battle_poll.py --press  # auto-dismiss trainer mid-battle dialogue, stop at action prompt
+```
 
 ### Text Encoding (Gen 4)
 
@@ -66,7 +70,7 @@ Use `battle_poll.py` after selecting a move to capture all turn narration automa
 - Digits 0-9: `0x0161` - `0x016A` (assumed)
 - Space: `0x01DE`
 - `é`: `0x0188` (Pokémon)
-- `!`: `0x01AB`, `,`: `0x01AD`, `.`: `0x01AE`, `'`: `0x01B3`
+- `!`: `0x01AB`, `?`: `0x01AC`, `,`: `0x01AD`, `.`: `0x01AE`, `'`: `0x01B3`, `:`: `0x01C4`
 - Newline: `0xE000`, New text box: `0x25BC`, End: `0xFFFF`, Variable: `0xFFFE`
 
 ### Navigation Scripts (Bridge-Connected)
@@ -251,6 +255,8 @@ Then analyze with Python scripts.
 
 - Save state frequently — this is a difficulty hack, expect challenges.
 - Use the `player_position` watch after every movement to confirm you moved.
+- Use `read_dialogue.py` to read full dialogue text from memory — far more reliable than timing screenshots.
+- Use `battle_poll.py --press` after selecting a move to get the full turn log automatically.
 - Use macros for repetitive sequences (dialogue, walking patterns).
 - The `load_state` tool may occasionally hang without returning — check `get_status` to verify.
 - Note: addresses must be passed as decimal integers to MCP tools, not hex strings. Use Python to convert: `python3 -c "print(0x0227F458)"`.

@@ -116,6 +116,69 @@ has not been confirmed in our environment.
 | `+0x1288`  | X position (save) | UInt16 — this is the SAVE copy, not the live runtime value |
 | `+0x128C`  | Y position (save) | UInt16 — this is the SAVE copy, not the live runtime value |
 
+## Text / Dialogue Buffers
+
+### Text Encoding (Gen 4)
+
+All decoded text in RAM uses 16-bit little-endian character values:
+
+| Range | Characters |
+|-------|-----------|
+| `0x012B` - `0x0144` | Uppercase A-Z |
+| `0x0145` - `0x015E` | Lowercase a-z |
+| `0x0161` - `0x016A` | Digits 0-9 (assumed) |
+| `0x0188` | é (as in Pokémon) |
+| `0x01AB` | ! |
+| `0x01AC` | ? |
+| `0x01AD` | , |
+| `0x01AE` | . |
+| `0x01B3` | ' (apostrophe) |
+| `0x01C4` | : (colon) |
+| `0x01DE` | (space) |
+
+Control codes:
+
+| Value | Meaning |
+|-------|---------|
+| `0xFFFF` | End of text |
+| `0xFFFE` | Variable substitution (followed by argument bytes) |
+| `0xE000` | Newline within text box |
+| `0x25BC` | Page break / new text box |
+
+### Overworld Dialogue Buffer
+
+**Region:** `0x022A7000` - `0x022A9800` (10KB scan range)
+
+Text is stored in a slot array. Each slot is preceded by the header marker `D2EC B6F8` (bytes: `EC D2 F8 B6`). Slots are spaced `0xAC` bytes apart. An active slot has text immediately after the marker; an empty slot has `0xFFFF` immediately after.
+
+The buffer address is **dynamic** — different dialogue contexts write to different slots:
+- NPC dialogue observed at `0x022A73BC`
+- Cutscene dialogue (Mom) observed at `0x022A77FC`
+
+The `read_dialogue.py` script scans for active slots automatically.
+
+**Segment structure:** The buffer contains a full "segment" of dialogue — multiple text boxes separated by `0x25BC`. The game loads one segment at a time and advances through its boxes. At a segment boundary (e.g., item receive jingle), the next segment replaces the previous one.
+
+**Trailing bytes before `[END]`:**
+- `[BOX][END]` — observed in cutscene segments that wait for input and precede script events
+- `[END]` with no trailing control — observed in both wait-for-input (NPC dialogue) and auto-advance (item receive) contexts. Not a reliable wait indicator for overworld text.
+
+### Battle Text Buffer
+
+**Region:** `0x02301000` - `0x02303000` (8KB scan range)
+
+Stable address observed at `0x02301BD0`. Uses the same `D2EC B6F8` header marker. Contains **one message at a time** — each new battle event overwrites the previous.
+
+**Trailing bytes before `[END]` (reliable indicators):**
+
+| Pattern | Meaning | Action |
+|---------|---------|--------|
+| `text [END]` (no trailing control) | Auto-advancing narration | Wait, it will progress on its own |
+| `[E000] [END]` (trailing newline) | Waits for player input | Press B to dismiss |
+| `[FFFE]... [END]` (variable sequence) | Waits for player action | Select move/item/switch |
+
+These indicators are **confirmed reliable** across all tested battle messages.
+
 ## Memory Watch Definitions
 
 Watches are stored in `/workspace/RenegadePlatinumPlaytest/watches/` and persist across sessions.
