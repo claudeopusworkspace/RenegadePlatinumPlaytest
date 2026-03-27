@@ -144,30 +144,81 @@ Base address: `0x0227E800` (1844 bytes total). Each pocket is an array of `(item
 | Berries | 64 | 0x5BC |
 | Battle Items | 30 | 0x6BC |
 
-## Battle Battler Struct
+## Battle Battler Struct (`BattleMon`)
 
 Base address: `0x022C5774`. 4 slots x `0xC0` (192) bytes each. Slot 0 = player active, Slot 1 = enemy active, Slots 2-3 = doubles partners.
+
+Struct layout verified against [pret/pokeplatinum](https://github.com/pret/pokeplatinum) decompilation (`include/battle/battle_mon.h`).
 
 | Field | Offset | Size | Notes |
 |-------|--------|------|-------|
 | Species | +0x00 | u16 | National Dex # |
-| Atk | +0x02 | u16 | Effective stat (after nature) |
+| Atk | +0x02 | u16 | Effective stat (after nature/EVs/IVs) |
 | Def | +0x04 | u16 | |
 | Spe | +0x06 | u16 | |
 | SpA | +0x08 | u16 | |
 | SpD | +0x0A | u16 | |
 | Moves | +0x0C | u16 x 4 | Move IDs |
-| Stat stages | +0x18 | u8 x 8 | Atk,Def,Spe,SpA,SpD,Acc,Eva,Crit; neutral=6 |
-| Weight | +0x20 | u16 | In 0.1 kg units |
-| Types | +0x24 | u8 x 2 | Gen 4 internal type IDs |
+| IVs | +0x14 | u32 bitfield | 5 bits each: HP/Atk/Def/Spe/SpA/SpD + isEgg + hasNickname |
+| Stat stages | +0x18 | s8 x 8 | Atk,Def,Spe,SpA,SpD,Acc,Eva,Crit; neutral=6 |
+| Weight | +0x20 | int (4) | In 0.1 kg units |
+| Type 1 | +0x24 | u8 | Gen 4 internal type ID |
+| Type 2 | +0x25 | u8 | |
+| Form/Shiny | +0x26 | u8 bitfield | formNum:5, isShiny:1, padding:2 |
 | Ability | +0x27 | u8 | Ability ID |
-| Status | +0x28 | u32 | Bitfield (sleep/psn/brn/frz/par/tox) |
+| Ability flags | +0x28 | u32 bitfield | **NOT status!** Entry ability announcements (see below) |
 | PP | +0x2C | u8 x 4 | Current PP per move |
+| PP Ups | +0x30 | u8 x 4 | PP Up count per move |
 | Level | +0x34 | u8 | |
-| Current HP | +0x4C | u16 | Live battle HP |
-| Max HP | +0x50 | u16 | |
+| Friendship | +0x35 | u8 | |
+| Nickname | +0x36 | u16 x 11 | Gen 4 text encoding, 0xFFFF terminated |
+| Current HP | +0x4C | s32 | Live battle HP |
+| Max HP | +0x50 | u32 | |
+| OT Name | +0x54 | u16 x 8 | Original trainer name |
+| EXP | +0x64 | u32 | |
+| Personality | +0x68 | u32 | PID |
+| **Status** | **+0x6C** | **u32** | **Non-volatile status bitfield (sleep/psn/brn/frz/par/tox)** |
+| Status Volatile | +0x70 | u32 | Volatile status flags (confusion, attract, etc.) |
+| OT ID | +0x74 | u32 | |
+| Held Item | +0x78 | u16 | Item ID |
 
-Outside of battle, all slots contain stale/invalid data. **Garbage detection:** Post-battle, the struct retains partially-valid data (e.g. species 396 = Starly passes the `<= 493` check) but with impossible values: `cur_hp > max_hp`, `max_hp > 999`, `level` drift, stats in the thousands. The most reliable garbage signal is `cur_hp > max_hp`, which is impossible during a real battle.
+### Ability Announcement Flags (+0x28)
+
+This u32 bitfield tracks which entry abilities have already fired. **Previously misidentified as the status field** — Shinx with Intimidate set bit 1, which decoded as `Sleep(2)`.
+
+| Bit | Flag |
+|-----|------|
+| 0 | weatherAbilityAnnounced |
+| 1 | intimidateAnnounced |
+| 2 | traceAnnounced |
+| 3 | downloadAnnounced |
+| 4 | anticipationAnnounced |
+| 5 | forewarnAnnounced |
+| 6 | slowStartAnnounced |
+| 7 | slowStartFinished |
+| 8 | friskAnnounced |
+| 9 | moldBreakerAnnounced |
+| 10 | pressureAnnounced |
+
+### Status Condition Bitfield (+0x6C)
+
+| Bits | Mask | Condition |
+|------|------|-----------|
+| 0-2 | 0x07 | Sleep (turns remaining, 1-7; 0 = not asleep) |
+| 3 | 0x08 | Poison |
+| 4 | 0x10 | Burn |
+| 5 | 0x20 | Freeze |
+| 6 | 0x40 | Paralysis |
+| 7 | 0x80 | Toxic (bad poison) |
+
+### Garbage Detection
+
+Outside of battle, all slots contain stale/invalid data. Post-battle, the game reuses this memory region for pointer arrays, but some fields (species, level) may retain plausible-looking stale values. **Validation checks** (in order of reliability):
+
+1. `cur_hp > max_hp` — most reliable, impossible in a real battle
+2. `species > 493` or `species == 0` — invalid species
+3. `level == 0` or `level > 100` — invalid level
+4. `max_hp == 0` — no Pokemon has 0 max HP
 
 ### Battle State Detection (Text-Based)
 
