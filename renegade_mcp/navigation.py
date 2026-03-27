@@ -15,6 +15,7 @@ from renegade_mcp.map_state import (
     get_map_state,
     get_matrix_for_map,
     load_terrain_from_rom,
+    read_objects,
 )
 
 if TYPE_CHECKING:
@@ -27,6 +28,8 @@ POSITION_BASE = 0x0227F450
 HOLD_FRAMES = 16
 WAIT_FRAMES = 8
 SETTLE_FRAMES = 120
+
+MAX_REPATHS = 5
 
 # ── Direction handling ──
 DIR_ALIASES = {"u": "up", "d": "down", "l": "left", "r": "right"}
@@ -141,7 +144,7 @@ def _bfs_pathfind(
 def _build_multi_chunk_terrain(
     emu: EmulatorClient, map_id: int, px: int, py: int, target_x: int, target_y: int,
 ) -> tuple | None:
-    """Load multi-chunk terrain grid. Returns (terrain_info, npc_set, origin_x, origin_y, w, h) or None."""
+    """Load multi-chunk terrain grid. Returns (terrain_info, origin_x, origin_y, w, h) or None."""
     result = get_matrix_for_map(emu, map_id)
     if result is None:
         return None
@@ -218,38 +221,155 @@ def _summarize_path(directions: list[str]) -> str:
     return " -> ".join(parts)
 
 
-def _execute_path(emu: EmulatorClient, directions: list[str]) -> tuple[bool, int, list[dict]]:
-    """Execute directions, verifying each step. Returns (stopped_early, steps_taken, log)."""
-    log = []
-    steps_taken = 0
+# ── NPC tracking and dynamic repathing ──
 
-    for i, direction in enumerate(directions):
+def _read_npc_positions(emu: EmulatorClient) -> dict[int, tuple[int, int]]:
+    """Read current NPC tile positions. Returns {obj_index: (global_x, global_y)}."""
+    objects = read_objects(emu)
+    return {obj["index"]: (obj["x"], obj["y"]) for obj in objects if obj["index"] != 0}
+
+
+def _detect_npc_changes(
+    prev: dict[int, tuple[int, int]],
+    curr: dict[int, tuple[int, int]],
+) -> list[dict]:
+    """Compare NPC positions between steps. Returns list of change entries."""
+    changes = []
+    for idx in sorted(set(prev) | set(curr)):
+        label = chr(ord("A") + idx - 1) if 1 <= idx <= 26 else f"obj{idx}"
+        if idx in prev and idx in curr:
+            if prev[idx] != curr[idx]:
+                changes.append({
+                    "npc": label,
+                    "from": {"x": prev[idx][0], "y": prev[idx][1]},
+                    "to": {"x": curr[idx][0], "y": curr[idx][1]},
+                })
+        elif idx in curr:
+            changes.append({
+                "npc": label,
+                "appeared_at": {"x": curr[idx][0], "y": curr[idx][1]},
+            })
+        else:
+            changes.append({
+                "npc": label,
+                "disappeared_from": {"x": prev[idx][0], "y": prev[idx][1]},
+            })
+    return changes
+
+
+def _try_repath(
+    ctx: dict,
+    current_npcs: dict[int, tuple[int, int]],
+    player_x: int,
+    player_y: int,
+) -> list[str] | None:
+    """Attempt BFS repath with current NPC positions. Returns directions or None."""
+    ox, oy = ctx["grid_ox"], ctx["grid_oy"]
+    w, h = ctx["grid_w"], ctx["grid_h"]
+
+    npc_set = set()
+    for nx, ny in current_npcs.values():
+        rx, ry = nx - ox, ny - oy
+        if 0 <= rx < w and 0 <= ry < h:
+            npc_set.add((rx, ry))
+
+    return _bfs_pathfind(
+        ctx["terrain_info"], npc_set,
+        player_x - ox, player_y - oy,
+        ctx["goal_x"], ctx["goal_y"],
+        width=w, height=h,
+    )
+
+
+# ── Path execution ──
+
+def _execute_path(
+    emu: EmulatorClient,
+    directions: list[str],
+    track_npcs: bool = False,
+    repath_ctx: dict | None = None,
+) -> tuple[bool, int, int, list[dict]]:
+    """Execute directions, verifying each step.
+
+    When track_npcs is True, reads NPC positions after each step and logs changes.
+    When repath_ctx is provided (implies track_npcs), attempts BFS repath when
+    NPCs block or move into the planned path.
+
+    Returns (stopped_early, steps_taken, repaths_used, log).
+    """
+    if repath_ctx is not None:
+        track_npcs = True
+
+    log: list[dict] = []
+    steps_taken = 0
+    repaths_used = 0
+    prev_npcs = _read_npc_positions(emu) if track_npcs else {}
+
+    i = 0
+    while i < len(directions):
+        direction = directions[i]
         old_map, old_x, old_y = _read_position(emu)
 
         emu.advance_frames(HOLD_FRAMES, buttons=[direction])
         emu.advance_frames(WAIT_FRAMES)
 
         new_map, new_x, new_y = _read_position(emu)
-        steps_taken = i + 1
+        steps_taken += 1
 
-        entry = {
-            "step": i + 1,
+        entry: dict = {
+            "step": steps_taken,
             "direction": direction,
             "from": {"x": old_x, "y": old_y, "map": old_map},
             "to": {"x": new_x, "y": new_y, "map": new_map},
         }
 
-        if (old_x, old_y) == (new_x, new_y) and old_map == new_map:
+        # Track NPC movement
+        if track_npcs:
+            curr_npcs = _read_npc_positions(emu)
+            changes = _detect_npc_changes(prev_npcs, curr_npcs)
+            if changes:
+                entry["npc_changes"] = changes
+            prev_npcs = curr_npcs
+
+        blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
+
+        if blocked:
             entry["blocked"] = True
+            # Attempt repath around obstacle
+            if repath_ctx is not None and repaths_used < MAX_REPATHS:
+                new_path = _try_repath(repath_ctx, prev_npcs, new_x, new_y)
+                if new_path is not None and len(new_path) > 0:
+                    repaths_used += 1
+                    entry["repathed"] = True
+                    entry["new_path"] = _summarize_path(new_path)
+                    log.append(entry)
+                    directions = directions[:i] + new_path
+                    continue  # Retry from same index with new path
             log.append(entry)
-            return True, steps_taken, log
+            return True, steps_taken, repaths_used, log
 
         if new_map != old_map:
             entry["map_change"] = True
 
-        log.append(entry)
+        # Proactive repath when NPCs moved and steps remain
+        if (repath_ctx is not None and entry.get("npc_changes")
+                and repaths_used < MAX_REPATHS and i + 1 < len(directions)):
+            new_path = _try_repath(repath_ctx, prev_npcs, new_x, new_y)
+            if new_path is None:
+                entry["repath_failed"] = True
+                log.append(entry)
+                return True, steps_taken, repaths_used, log
+            remaining = directions[i + 1:]
+            if new_path != remaining:
+                repaths_used += 1
+                entry["repathed"] = True
+                entry["new_path"] = _summarize_path(new_path)
+                directions = directions[:i + 1] + new_path
 
-    return False, steps_taken, log
+        log.append(entry)
+        i += 1
+
+    return False, steps_taken, repaths_used, log
 
 
 # ── Public API ──
@@ -267,12 +387,12 @@ def navigate_manual(emu: EmulatorClient, directions_str: str) -> dict[str, Any]:
         return {"error": "No directions provided."}
 
     start_map, start_x, start_y = _read_position(emu)
-    stopped_early, steps_taken, log = _execute_path(emu, directions)
+    stopped_early, steps_taken, _, log = _execute_path(emu, directions, track_npcs=True)
 
     emu.advance_frames(SETTLE_FRAMES)
     final_map, final_x, final_y = _read_position(emu)
 
-    return {
+    result: dict[str, Any] = {
         "summary": _summarize_path(directions),
         "total_directions": len(directions),
         "steps_taken": steps_taken,
@@ -281,6 +401,12 @@ def navigate_manual(emu: EmulatorClient, directions_str: str) -> dict[str, Any]:
         "final": {"x": final_x, "y": final_y, "map": final_map},
         "log": log,
     }
+
+    npc_steps = sum(1 for e in log if "npc_changes" in e)
+    if npc_steps > 0:
+        result["steps_with_npc_movement"] = npc_steps
+
+    return result
 
 
 def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, Any]:
@@ -299,11 +425,11 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
     is_global = target_x > 31 or target_y > 31 or chunked
 
     if is_global and chunked:
-        result = _build_multi_chunk_terrain(emu, map_id, px, py, target_x, target_y)
-        if result is None:
+        mc_result = _build_multi_chunk_terrain(emu, map_id, px, py, target_x, target_y)
+        if mc_result is None:
             return {"error": "Could not load multi-chunk terrain."}
 
-        combined_terrain, grid_ox, grid_oy, grid_w, grid_h = result
+        combined_terrain, grid_ox, grid_oy, grid_w, grid_h = mc_result
         npc_set = set()
         for obj in state["objects"]:
             if obj["index"] == 0:
@@ -320,6 +446,16 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
 
         path = _bfs_pathfind(combined_terrain, npc_set, rel_px, rel_py,
                              rel_tx, rel_ty, width=grid_w, height=grid_h)
+
+        repath_ctx = {
+            "terrain_info": combined_terrain,
+            "goal_x": rel_tx,
+            "goal_y": rel_ty,
+            "grid_w": grid_w,
+            "grid_h": grid_h,
+            "grid_ox": grid_ox,
+            "grid_oy": grid_oy,
+        }
     else:
         if target_x > 31 or target_y > 31:
             target_x = target_x - origin_x
@@ -327,6 +463,16 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
 
         terrain_info, npc_set = _build_terrain_info(state["terrain"], state["objects"])
         path = _bfs_pathfind(terrain_info, npc_set, local_px, local_py, target_x, target_y)
+
+        repath_ctx = {
+            "terrain_info": terrain_info,
+            "goal_x": target_x,
+            "goal_y": target_y,
+            "grid_w": 32,
+            "grid_h": 32,
+            "grid_ox": origin_x,
+            "grid_oy": origin_y,
+        }
 
     if path is None:
         return {
@@ -346,12 +492,14 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
             "final": {"x": px, "y": py, "map": map_id},
         }
 
-    stopped_early, steps_taken, log = _execute_path(emu, path)
+    stopped_early, steps_taken, repaths_used, log = _execute_path(
+        emu, path, repath_ctx=repath_ctx,
+    )
 
     emu.advance_frames(SETTLE_FRAMES)
     final_map, final_x, final_y = _read_position(emu)
 
-    return {
+    result: dict[str, Any] = {
         "path_summary": _summarize_path(path),
         "total_directions": len(path),
         "steps_taken": steps_taken,
@@ -361,3 +509,11 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
         "final": {"x": final_x, "y": final_y, "map": final_map},
         "log": log,
     }
+
+    if repaths_used > 0:
+        result["repaths"] = repaths_used
+    npc_steps = sum(1 for e in log if "npc_changes" in e)
+    if npc_steps > 0:
+        result["steps_with_npc_movement"] = npc_steps
+
+    return result

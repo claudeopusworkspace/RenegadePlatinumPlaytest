@@ -28,6 +28,7 @@ ZONE_HEADER_BASE = 0x020E601E
 ZONE_HEADER_STRIDE = 24
 
 OBJ_ARRAY_FPX_BASE = 0x022A1AA8
+OBJ_STRUCT_BASE = OBJ_ARRAY_FPX_BASE - 0x70  # True start of MapObject[0]
 OBJ_STRIDE = 0x128
 OBJ_MAX_ENTRIES = 16
 
@@ -49,6 +50,40 @@ BEHAVIORS = {
     0x5E: "stairs_up", 0x5F: "stairs_down",
     0x62: "warp", 0x65: "door", 0x69: "door2", 0x6B: "warp3",
     0x80: "counter", 0xA9: "tree_tile",
+}
+
+# ── Object graphics name lookup ──
+GFX_DATA_FILE = Path("data/obj_event_gfx.txt")
+
+
+def _load_gfx_names() -> dict[int, str]:
+    """Load graphicsID → name mapping from data file."""
+    names = {}
+    if not GFX_DATA_FILE.exists():
+        return names
+    for line in GFX_DATA_FILE.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("\t", 1)
+        if len(parts) != 2:
+            continue
+        try:
+            gfx_id = int(parts[0])
+        except ValueError:
+            continue
+        raw = parts[1].strip()
+        # Strip prefix and convert to readable name
+        clean = raw.removeprefix("OBJ_EVENT_GFX_").replace("_", " ").title()
+        names[gfx_id] = clean
+    return names
+
+
+GFX_NAMES: dict[int, str] = _load_gfx_names()
+
+MOVEMENT_TYPES = {
+    0: "none", 1: "look_around", 2: "walk_around",
+    3: "wander", 15: "stationary",
 }
 
 
@@ -238,7 +273,12 @@ def resolve_terrain_from_rom(emu: "EmulatorClient", map_id: int, px: int, py: in
 # ── Dynamic objects ──
 
 def read_objects(emu: EmulatorClient) -> list[dict[str, Any]]:
-    """Scan the overworld object array and return active objects."""
+    """Scan the overworld object array and return active objects with identity info.
+
+    For each active entry, reads the MapObject struct header to get graphicsID,
+    movementType, localID, trainerType, and script — enabling identification of
+    what each object actually is (NPC, item ball, briefcase, boulder, etc.).
+    """
     objects = []
     consecutive_empty = 0
 
@@ -263,7 +303,24 @@ def read_objects(emu: EmulatorClient) -> list[dict[str, Any]]:
             continue
 
         consecutive_empty = 0
-        objects.append({"index": i, "x": tile_x, "y": tile_y, "fpx": fpx, "fpy": fpy})
+        obj: dict[str, Any] = {
+            "index": i, "x": tile_x, "y": tile_y, "fpx": fpx, "fpy": fpy,
+        }
+
+        # Read struct header: status, unk, localID, mapID, graphicsID,
+        # movementType, trainerType, flag, script (9 longs from struct base)
+        struct_base = OBJ_STRUCT_BASE + (i * OBJ_STRIDE)
+        header = emu.read_memory_range(struct_base, size="long", count=9)
+        if len(header) >= 9:
+            gfx_id = header[4]
+            obj["local_id"] = header[2]
+            obj["graphics_id"] = gfx_id
+            obj["name"] = GFX_NAMES.get(gfx_id, f"Unknown ({gfx_id})")
+            obj["movement_type"] = MOVEMENT_TYPES.get(header[5], f"type_{header[5]}")
+            obj["trainer_type"] = header[6]
+            obj["script"] = header[8]
+
+        objects.append(obj)
 
     return objects
 
@@ -447,13 +504,26 @@ def view_map(emu: EmulatorClient) -> dict[str, Any]:
     # Object list
     obj_info = []
     for obj in state["objects"]:
-        label = "PLAYER" if obj["index"] == 0 else f"NPC {chr(ord('A') + obj['index'] - 1)}"
-        obj_info.append({
-            "index": obj["index"],
+        idx = obj["index"]
+        letter = chr(ord("A") + idx - 1) if 1 <= idx <= 26 else f"#{idx}"
+        name = obj.get("name", "")
+        if idx == 0:
+            label = "PLAYER"
+        elif name:
+            label = f"{name} ({letter})"
+        else:
+            label = f"NPC {letter}"
+        entry: dict[str, Any] = {
+            "index": idx,
             "label": label,
             "x": obj["x"], "y": obj["y"],
             "local_x": obj["local_x"], "local_y": obj["local_y"],
-        })
+        }
+        if "movement_type" in obj:
+            entry["movement"] = obj["movement_type"]
+        if obj.get("trainer_type", 0) > 0:
+            entry["trainer"] = True
+        obj_info.append(entry)
 
     return {
         "map": header + "\n\n" + map_str,

@@ -352,20 +352,74 @@ Stable address observed at `0x02301BD0`. Uses the same `D2EC B6F8` header marker
 
 These indicators are **confirmed reliable** across all tested battle messages.
 
-## Dynamic Objects (Overworld Object Array)
+## Dynamic Objects (Overworld MapObject Array)
 
-NPCs, floor items, and the player are stored in an array in RAM. Each entry is **0x128 (296) bytes** apart.
+NPCs, floor items, boulders, signs, and the player are stored in an array in RAM. Each entry is a **MapObject** struct — **0x128 (296) bytes**. Struct layout sourced from [pret/pokeplatinum](https://github.com/pret/pokeplatinum) decompilation.
 
-| Field | Offset from entry base | Size | Notes |
-|-------|----------------------|------|-------|
-| Fixed-point X | +0x00 | long | Upper 16 bits = tile X, lower 16 = sub-tile |
-| Fixed-point Y | +0x08 | long | Upper 16 bits = tile Y, lower 16 = sub-tile |
+**True struct base (entry 0):** `0x022A1A38`
+**Legacy FPX base (entry 0 pos.x):** `0x022A1AA8` (= struct base + 0x70)
+**Entry stride:** `0x128` (296 bytes). **Max entries:** 16.
 
-**Entry 0 (player)** fixed-point X is at `0x022A1AA8`. Subsequent entries are at `+0x128` intervals.
+### MapObject Struct Layout
 
+| Field | Offset | Size | Description |
+|-------|--------|------|-------------|
+| status | +0x00 | u32 | Bitfield: active, hidden, moving, etc. |
+| unk_04 | +0x04 | u32 | Unknown |
+| localID | +0x08 | u32 | NPC ID within map (0=player, 1+=NPCs) |
+| mapID | +0x0C | u32 | Zone/map ID this object belongs to |
+| **graphicsID** | **+0x10** | **u32** | **Sprite type — identifies what the object IS** |
+| movementType | +0x14 | u32 | Movement AI (0=none, 1=look_around, 3=wander, 15=stationary) |
+| trainerType | +0x18 | u32 | Trainer type (0 = not a trainer) |
+| flag | +0x1C | u32 | Event flag ID controlling visibility |
+| script | +0x20 | u32 | Script ID triggered on interaction |
+| initialDir | +0x24 | int | Initial facing (0=N, 1=S, 2=W, 3=E) |
+| facingDir | +0x28 | int | Current facing direction |
+| movingDir | +0x2C | int | Current movement direction |
+| prevFacingDir | +0x30 | int | Previous facing direction |
+| prevMovingDir | +0x34 | int | Previous movement direction |
+| data[3] | +0x38 | int×3 | Generic script parameter slots |
+| movementRangeX | +0x44 | int | Max wander range in X (tiles) |
+| movementRangeZ | +0x48 | int | Max wander range in Z (tiles) |
+| xInitial | +0x4C | int | Spawn tile X |
+| yInitial | +0x50 | int | Spawn tile Y (elevation) |
+| zInitial | +0x54 | int | Spawn tile Z (= map Y) |
+| xPrev | +0x58 | int | Previous tile X |
+| yPrev | +0x5C | int | Previous tile Y |
+| zPrev | +0x60 | int | Previous tile Z |
+| x | +0x64 | int | Current tile X (plain integer) |
+| y | +0x68 | int | Current tile Y (elevation) |
+| z | +0x6C | int | Current tile Z (= map Y) |
+| pos.x | +0x70 | fx32 | Fixed-point X; tile = (val >> 16) |
+| pos.y | +0x74 | fx32 | Fixed-point Y (height) |
+| pos.z | +0x78 | fx32 | Fixed-point Z (= map Y); tile = (val >> 16) |
+| _(rendering/task data)_ | +0x7C..+0x127 | — | Sprite offsets, movement callbacks, animation data |
+
+### Notable graphicsID Values
+
+Full list in `data/obj_event_gfx.txt`. Key values:
+
+| ID | Name | Category |
+|----|------|----------|
+| 0 | Player M | Player |
+| 97 | Player F | Player |
+| 99 | Prof Rowan | Named NPC |
+| 148 | Barry | Named NPC |
+| 140 | Mom | Named NPC |
+| 138 | Cynthia | Named NPC |
+| 87 | Pokeball | Floor item |
+| 174 | Briefcase | Interactable object |
+| 84 | Strength Boulder | Field obstacle |
+| 86 | Cut Tree | Field obstacle |
+| 91-96 | Signs/Signposts | Signs |
+| 26 | Pokecenter Nurse | Generic NPC |
+
+### Usage
+
+- `read_objects()` reads struct header for each active entry, returning `name`, `graphics_id`, `movement_type`, `trainer_type`, `local_id`, and `script`.
+- `view_map` shows objects by name (e.g., "Prof Rowan (A)") instead of generic letters.
 - Entry 0 = player, Entry 1+ = NPCs/objects on current map.
-- Entries with fpx=0 and fpy=0 are empty/inactive.
-- `view_map` reads this automatically — player shows as `^v<>`, NPCs/objects as `A`, `B`, `C`, etc.
+- Entries with pos.x=0 and pos.z=0 are empty/inactive.
 
 ## Tile Behaviors
 
