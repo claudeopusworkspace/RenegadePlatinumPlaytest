@@ -279,4 +279,22 @@ def create_server() -> FastMCP:
         emu = get_client()
         return _use_item(emu, item_name, party_slot)
 
+    # ── Party Reorder ──
+
+    @mcp.tool()
+    def reorder_party(from_slot: int, to_slot: int) -> dict[str, Any]:
+        """Swap two party Pokemon positions in the overworld.
+
+        Opens pause menu → Pokemon → selects source → Switch → selects destination.
+        Both slots must be occupied. Cannot be used in battle.
+
+        Args:
+            from_slot: Source party slot (0-5).
+            to_slot: Destination party slot (0-5).
+        """
+        from renegade_mcp.reorder_party import reorder_party as _reorder_party
+
+        emu = get_client()
+        return _reorder_party(emu, from_slot, to_slot)
+
     return mcp
