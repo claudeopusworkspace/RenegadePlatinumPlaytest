@@ -166,67 +166,31 @@ def create_server() -> FastMCP:
         emu = get_client()
         return _read_dialogue(emu, region)
 
-    # ── Battle Tracking ──
-
-    @mcp.tool()
-    def battle_init() -> dict[str, Any]:
-        """Snapshot battle text baseline. Run ONCE when a battle starts.
-
-        Scans memory for pre-existing text markers so that battle_poll can
-        distinguish old text from new battle narration. Must be called before
-        battle_poll.
-        """
-        from renegade_mcp.battle_tracker import battle_init as _battle_init
-
-        emu = get_client()
-        return _battle_init(emu)
-
-    @mcp.tool()
-    def battle_poll(auto_press: bool = False) -> dict[str, Any]:
-        """Poll for new battle narration after selecting a move.
-
-        Advances frames and monitors text buffers until a stopping point:
-        - WAIT_FOR_ACTION: game wants move/item/switch selection
-        - WAIT_FOR_INPUT: game waits for B press to dismiss
-        - TIMEOUT: hit max poll limit without finding a stop
-        - NO_TEXT: no new battle text found
-
-        Requires battle_init to have been called first for this battle.
-
-        Args:
-            auto_press: If True, auto-press B to dismiss mid-battle dialogue
-                       (like trainer taunts) and continue polling until action prompt.
-        """
-        from renegade_mcp.battle_tracker import battle_poll as _battle_poll
-
-        emu = get_client()
-        return _battle_poll(emu, auto_press)
-
     # ── Battle Turn ──
 
     @mcp.tool()
-    def battle_turn(move_index: int) -> dict[str, Any]:
-        """Execute a full battle turn: select a move, poll for narration, detect outcome.
+    def battle_turn(move_index: int = -1, switch_to: int = -1) -> dict[str, Any]:
+        """Execute a full battle turn: use a move OR switch Pokemon.
 
-        Combines battle_init + move selection + battle_poll into one call.
-        Automatically snapshots text baseline, taps FIGHT, taps the move,
-        polls for all battle narration (auto-dismissing mid-turn text), and
-        classifies the final state.
+        Combines battle_init + action + battle_poll into one call.
+        Specify exactly one action: move_index to fight, or switch_to to swap.
+
+        Actions:
+        - move_index (0-3): Tap FIGHT, select the move (top-left, top-right, bottom-left, bottom-right).
+        - switch_to (0-5): Tap POKEMON, navigate to party slot, confirm switch.
 
         States returned:
         - WAIT_FOR_ACTION: next turn ready, select another move
         - SWITCH_PROMPT: trainer sending next Pokemon, switch or keep battling
         - BATTLE_ENDED: battle over, back in overworld
+        - LEVEL_UP: level up with move learning prompt
         - TIMEOUT: poll limit reached, check game state manually
-        - NO_TEXT: move may not have registered
-
-        Args:
-            move_index: Move slot 0-3 (top-left, top-right, bottom-left, bottom-right).
+        - NO_TEXT: action may not have registered
         """
         from renegade_mcp.turn import battle_turn as _battle_turn
 
         emu = get_client()
-        return _battle_turn(emu, move_index)
+        return _battle_turn(emu, move_index=move_index, switch_to=switch_to)
 
     # ── Catch ──
 
