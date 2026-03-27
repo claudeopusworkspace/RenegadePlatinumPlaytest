@@ -177,7 +177,7 @@ def create_server() -> FastMCP:
     # ── Battle Turn ──
 
     @mcp.tool()
-    def battle_turn(move_index: int = -1, switch_to: int = -1) -> dict[str, Any]:
+    def battle_turn(move_index: int = -1, switch_to: int = -1, forget_move: int = -2) -> dict[str, Any]:
         """Execute a full battle turn: use a move OR switch Pokemon.
 
         Combines battle_init + action + battle_poll into one call.
@@ -186,19 +186,21 @@ def create_server() -> FastMCP:
         Actions:
         - move_index (0-3): Tap FIGHT, select the move (top-left, top-right, bottom-left, bottom-right).
         - switch_to (0-5): Tap POKEMON, navigate to party slot, confirm switch.
+        - forget_move (0-3): At MOVE_LEARN prompt, forget this move slot and learn the new move.
+        - forget_move=-1: At MOVE_LEARN prompt, skip learning the new move.
 
         States returned:
         - WAIT_FOR_ACTION: next turn ready, select another move
         - SWITCH_PROMPT: trainer sending next Pokemon, switch or keep battling
+        - MOVE_LEARN: move learning prompt — includes move_to_learn and current_moves
         - BATTLE_ENDED: battle over, back in overworld
-        - LEVEL_UP: level up with move learning prompt
         - TIMEOUT: poll limit reached, check game state manually
         - NO_TEXT: action may not have registered
         """
         from renegade_mcp.turn import battle_turn as _battle_turn
 
         emu = get_client()
-        return _battle_turn(emu, move_index=move_index, switch_to=switch_to)
+        return _battle_turn(emu, move_index=move_index, switch_to=switch_to, forget_move=forget_move)
 
     # ── Catch ──
 

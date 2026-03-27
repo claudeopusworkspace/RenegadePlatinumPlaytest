@@ -55,6 +55,20 @@ SHIFT_XY = (128, 100)  # "SHIFT" confirmation button
 PROMPT_YES_XY = (128, 67)     # "Use next Pokemon" / "Switch Pokemon" (red)
 PROMPT_NO_XY = (128, 127)     # "Flee" / "Keep battling" (blue)
 
+# ── Move learn prompt buttons (bottom screen) ──
+GIVE_UP_XY = (128, 75)        # "Give up on [Move]!" (red, top)
+DONT_GIVE_UP_XY = (128, 145)  # "Don't give up on [Move]!" (green, bottom)
+FORGET_A_MOVE_XY = (128, 75)  # "Forget a move!" (red, top)
+FORGET_BTN_XY = (128, 178)    # "FORGET" button on move detail view
+
+# Move forget screen grid (shifted down from battle MOVE_XY due to Pokemon info header)
+FORGET_MOVE_XY = [
+    (70, 75),    # Move 0 — top-left
+    (190, 75),   # Move 1 — top-right
+    (70, 125),   # Move 2 — bottom-left
+    (190, 125),  # Move 3 — bottom-right
+]
+
 # Battle struct address for garbage detection
 BATTLE_BASE = 0x022C5774
 BATTLE_SLOT_SIZE = 0xC0
@@ -68,6 +82,7 @@ ACTION_SETTLE = 120   # frames before first tap (covers send-out animations)
 TAP_WAIT = 60         # frames between sequential taps
 DPAD_WAIT = 30        # frames between D-pad presses
 ACTION_PROMPT_MAX_POLLS = 120  # polls waiting for "What will X do?" (~30 sec)
+TEXT_ADVANCE_WAIT = 120  # frames between B presses during text advancement
 
 
 # ── Helpers ──
@@ -110,7 +125,39 @@ def _classify_prompt(text: str) -> str:
         return "FAINT_SWITCH"
     if "Will you switch" in text:
         return "SWITCH_PROMPT"
+    if "give up on" in text or "forget another move" in text:
+        return "MOVE_LEARN"
     return "ACTION"
+
+
+def _extract_new_move_name(log: list[dict]) -> str | None:
+    """Extract the new move name from a LEVEL_UP/MOVE_LEARN log.
+
+    Scans log entries between 'grew to' and the move-learn prompt text,
+    matching against known move names from the ROM.
+    """
+    from renegade_mcp.data import move_names
+    known_moves = set(move_names().values())
+
+    in_range = False
+    candidate = None
+    for entry in log:
+        text = entry.get("text", "").strip()
+        if "grew to" in text:
+            in_range = True
+            continue
+        if "give up on" in text or "forget another move" in text:
+            break
+        if in_range and text in known_moves:
+            candidate = text
+    return candidate
+
+
+def _advance_text(emu: EmulatorClient, presses: int = 1, wait: int = TEXT_ADVANCE_WAIT) -> None:
+    """Press B to advance through dialogue text."""
+    for _ in range(presses):
+        emu.press_buttons(["b"], frames=8)
+        emu.advance_frames(wait)
 
 
 # ── Prompt detection ──
@@ -122,6 +169,7 @@ def _wait_for_action_prompt(emu: EmulatorClient) -> dict[str, Any]:
     - ACTION: normal "What will X do?" turn prompt
     - FAINT_SWITCH: wild battle faint, "Use next Pokemon?" (can flee)
     - SWITCH_PROMPT: trainer sending next Pokemon, "Will you switch?"
+    - MOVE_LEARN: move learning prompt, "give up on learning?"
     - FAINT_FORCED: trainer battle faint, party grid shown (no text prompt)
 
     On turns 2+, the prompt is already in the text buffer and returns
@@ -235,6 +283,50 @@ def _decline_flow(emu: EmulatorClient) -> None:
     emu.tap_touch_screen(PROMPT_NO_XY[0], PROMPT_NO_XY[1], frames=8)
 
 
+def _skip_move_learn_flow(emu: EmulatorClient) -> None:
+    """Tap 'Give up on [Move]!' to skip learning the new move."""
+    emu.tap_touch_screen(GIVE_UP_XY[0], GIVE_UP_XY[1], frames=8)
+    emu.advance_frames(TAP_WAIT)
+    # Advance through "did not learn [Move]" text
+    _advance_text(emu, presses=3, wait=180)
+
+
+def _learn_move_flow(emu: EmulatorClient, forget_index: int) -> None:
+    """Navigate from 'give up?' prompt through move selection to learn the new move.
+
+    Steps: Don't give up → text → Forget a move! → move grid → tap slot → FORGET
+    """
+    # 1. Tap "Don't give up on [Move]!" (green button)
+    emu.tap_touch_screen(DONT_GIVE_UP_XY[0], DONT_GIVE_UP_XY[1], frames=8)
+    emu.advance_frames(TAP_WAIT)
+
+    # 2. Advance through "wants to learn" / "can't learn more than four" text
+    #    Two text boxes, each needs B to complete scroll + B to advance.
+    #    Stop before the "Forget a move?" touch prompt appears.
+    _advance_text(emu, presses=4, wait=90)
+    emu.advance_frames(300)  # Wait for "Forget a move?" touch prompt
+
+    # 3. Tap "Forget a move!" (red button)
+    emu.tap_touch_screen(FORGET_A_MOVE_XY[0], FORGET_A_MOVE_XY[1], frames=8)
+    emu.advance_frames(TAP_WAIT)
+
+    # 4. Advance through "Which move should be forgotten?" text
+    _advance_text(emu, presses=2, wait=120)
+    emu.advance_frames(180)  # Wait for move grid to render
+
+    # 5. Tap the target move slot on the grid
+    mx, my = FORGET_MOVE_XY[forget_index]
+    emu.tap_touch_screen(mx, my, frames=8)
+    emu.advance_frames(ACTION_SETTLE)
+
+    # 6. Tap FORGET on the detail view
+    emu.tap_touch_screen(FORGET_BTN_XY[0], FORGET_BTN_XY[1], frames=8)
+    emu.advance_frames(ACTION_SETTLE)
+
+    # 7. Advance through "1, 2, and... Poof!" / "forgot [old]" / "learned [new]" text
+    _advance_text(emu, presses=6, wait=180)
+
+
 def _poll_after_action(emu: EmulatorClient, prompt_log: list[dict]) -> dict[str, Any]:
     """Re-init tracker and poll for the next battle state after an action."""
     _tracker.init(emu)
@@ -250,8 +342,9 @@ def _poll_after_action(emu: EmulatorClient, prompt_log: list[dict]) -> dict[str,
 
 def battle_turn(
     emu: EmulatorClient, move_index: int = -1, switch_to: int = -1,
+    forget_move: int = -2,
 ) -> dict[str, Any]:
-    """Execute a battle action: move, switch, flee, or keep battling.
+    """Execute a battle action: move, switch, flee, keep battling, or handle move learning.
 
     The tool detects the current game state and validates parameters:
 
@@ -270,10 +363,16 @@ def battle_turn(
         switch_to (0-5): Switch to a different Pokemon.
         No args / switch_to=-1: Keep battling with current Pokemon.
 
+    Move learning (MOVE_LEARN — "give up on learning?"):
+        forget_move (0-3): Forget that move slot and learn the new move.
+        forget_move=-1: Skip learning the new move.
+        No forget_move: Return MOVE_LEARN state with move info for decision.
+
     Returns dict with: log, final_state, formatted, battle_state.
     """
     has_move = move_index >= 0
     has_switch = switch_to >= 0
+    has_forget = forget_move >= -1  # -1 = skip, 0-3 = forget slot
 
     # 1. Detect current game state
     prompt = _wait_for_action_prompt(emu)
@@ -293,6 +392,8 @@ def battle_turn(
 
     # 2. Validate parameters for current state
     if pt == "ACTION":
+        if has_forget:
+            return {"error": "Not at a move learning prompt. Use move_index or switch_to."}
         if has_move and has_switch:
             return {"error": "Specify move_index OR switch_to, not both."}
         if not has_move and not has_switch:
@@ -302,17 +403,26 @@ def battle_turn(
         if has_switch and switch_to > 5:
             return {"error": f"switch_to must be 0-5, got {switch_to}"}
     elif pt in ("FAINT_SWITCH", "SWITCH_PROMPT"):
+        if has_forget:
+            return {"error": f"Not at a move learning prompt. Currently in {pt} state."}
         if has_move:
             return {"error": f"Can't use a move in {pt} state. Use switch_to (0-5), or omit to {'flee' if pt == 'FAINT_SWITCH' else 'keep battling'}."}
         if has_switch and switch_to > 5:
             return {"error": f"switch_to must be 0-5, got {switch_to}"}
     elif pt == "FAINT_FORCED":
+        if has_forget:
+            return {"error": "Not at a move learning prompt. Your Pokemon fainted — use switch_to."}
         if has_move:
             return {"error": "Can't use a move — your Pokemon fainted. Use switch_to (0-5) to send a replacement."}
         if not has_switch:
             return {"error": "Must switch in a trainer battle — specify switch_to (0-5)."}
         if switch_to > 5:
             return {"error": f"switch_to must be 0-5, got {switch_to}"}
+    elif pt == "MOVE_LEARN":
+        if has_move or has_switch:
+            return {"error": "At move learning prompt. Use forget_move (0-3) to forget a move, or forget_move=-1 to skip."}
+        if has_forget and forget_move > 3:
+            return {"error": f"forget_move must be -1 (skip) or 0-3, got {forget_move}"}
 
     # 3. Execute the appropriate flow
     if pt == "ACTION":
@@ -323,10 +433,16 @@ def battle_turn(
         result = _execute_forced_switch(emu, prompt, switch_to)
     elif pt == "SWITCH_PROMPT":
         result = _execute_switch_prompt(emu, prompt, switch_to, has_switch)
+    elif pt == "MOVE_LEARN":
+        result = _execute_move_learn(emu, prompt, forget_move, has_forget)
     else:
         result = {"log": prompt["log"], "final_state": "NO_ACTION_PROMPT"}
 
-    # 4. Format and append battle state
+    # 4. Enrich MOVE_LEARN results with move info
+    if result["final_state"] == "MOVE_LEARN":
+        _enrich_move_learn_result(result, emu)
+
+    # 5. Format and append battle state
     result["formatted"] = _reformat(result)
     battlers = read_battle(emu)
     result["battle_state"] = battlers
@@ -399,6 +515,22 @@ def _execute_switch_prompt(
     return _poll_after_action(emu, prompt["log"])
 
 
+def _execute_move_learn(
+    emu: EmulatorClient, prompt: dict, forget_move: int, has_forget: bool,
+) -> dict[str, Any]:
+    """Handle move learning prompt: skip, learn, or return info for decision."""
+    if not has_forget:
+        # No decision yet — return MOVE_LEARN state for the caller to decide
+        return {"log": prompt["log"], "final_state": "MOVE_LEARN"}
+
+    if forget_move == -1:
+        _skip_move_learn_flow(emu)
+    else:
+        _learn_move_flow(emu, forget_move)
+
+    return _poll_after_action(emu, prompt["log"])
+
+
 # ── Post-action processing ──
 
 def _recover_from_level_up(emu: EmulatorClient, result: dict[str, Any]) -> dict[str, Any]:
@@ -426,6 +558,23 @@ def _recover_from_level_up(emu: EmulatorClient, result: dict[str, Any]) -> dict[
     return result
 
 
+def _enrich_move_learn_result(result: dict[str, Any], emu: EmulatorClient) -> None:
+    """Add move_to_learn and current_moves info to a MOVE_LEARN result."""
+    move_name = _extract_new_move_name(result.get("log", []))
+    if move_name:
+        result["move_to_learn"] = move_name
+
+    # Get current moves from battle state
+    battlers = read_battle(emu)
+    for b in battlers:
+        if b.get("side") == "player":
+            result["current_moves"] = [
+                {"slot": i, "name": m["name"], "pp": m["pp"]}
+                for i, m in enumerate(b.get("moves", []))
+            ]
+            break
+
+
 def _classify_final_state(emu: EmulatorClient, result: dict[str, Any]) -> str:
     """Refine the raw poll state into a more specific battle state."""
     raw_state = result.get("final_state", "")
@@ -438,7 +587,7 @@ def _classify_final_state(emu: EmulatorClient, result: dict[str, Any]) -> str:
             if "Will you switch" in text:
                 return "SWITCH_PROMPT"
             if "give up on" in text or "forget another move" in text:
-                return "LEVEL_UP"
+                return "MOVE_LEARN"
         return "WAIT_FOR_ACTION"
 
     if raw_state in ("TIMEOUT", "NO_TEXT"):
@@ -462,12 +611,26 @@ def _reformat(result: dict[str, Any]) -> str:
         lines.append(f"  {text}")
 
     state = result["final_state"]
+
+    # Special formatting for MOVE_LEARN
+    if state == "MOVE_LEARN" and "move_to_learn" in result:
+        move = result["move_to_learn"]
+        lines.append(f"\nState: MOVE_LEARN — wants to learn {move}")
+        if "current_moves" in result:
+            lines.append("  Current moves:")
+            for m in result["current_moves"]:
+                lines.append(f"    {m['slot']}: {m['name']} (PP {m['pp']})")
+        lines.append(f"  Use battle_turn(forget_move=N) to forget move N and learn {move}")
+        lines.append(f"  Use battle_turn(forget_move=-1) to skip learning {move}")
+        return "\n".join(lines)
+
     state_labels = {
         "WAIT_FOR_ACTION": "Your turn — select next move",
         "SWITCH_PROMPT": "Opponent sending next Pokemon — use battle_turn(switch_to=N) to swap, or battle_turn() to keep battling",
         "FAINT_SWITCH": "Your Pokemon fainted (wild) — use battle_turn(switch_to=N) to send replacement, or battle_turn() to flee",
         "FAINT_FORCED": "Your Pokemon fainted (trainer) — use battle_turn(switch_to=N) to send replacement",
         "BATTLE_ENDED": "Battle is over — back in overworld",
+        "MOVE_LEARN": "Move learning prompt — use battle_turn(forget_move=N) or battle_turn(forget_move=-1)",
         "LEVEL_UP": "Level up with move learning — handle manually",
         "CAUGHT": "Pokemon caught! Back in overworld",
         "NOT_CAUGHT": "Ball failed — back at action prompt",
