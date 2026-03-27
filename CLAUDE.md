@@ -98,13 +98,15 @@ Key ROM file indices: 0392=items, 0412=species, 0610=abilities, 0647=moves, 0433
 
 ### Automated (preferred)
 1. **`read_battle`** — check enemy species, types, ability, stats, moves. Plan tactics.
-2. **`battle_turn(move_index=N)`** — use a move (0-3). Returns battle log + final state + updated battle state.
+2. **`battle_turn(move_index=N)`** — use a move (0-3). Waits for action prompt automatically, then executes. Returns battle log + final state + updated battle state.
    - Or **`battle_turn(switch_to=N)`** — switch to party slot N (0-5) instead of attacking.
+   - Works on the very first turn of battle — no need to call twice.
 3. Handle the returned state:
    - `WAIT_FOR_ACTION` — next turn, call `battle_turn` again. Battle state is included in the response.
    - `SWITCH_PROMPT` — trainer sending next Pokemon. Use d-pad + A to choose.
    - `BATTLE_ENDED` — back in overworld.
    - `LEVEL_UP` — move learning prompt. Handle manually (d-pad + A for choice, touch for move selection).
+   - `NO_ACTION_PROMPT` — action prompt never appeared (~30 sec timeout). Game may need manual input.
    - `TIMEOUT` / `NO_TEXT` — something unexpected. Screenshot + `read_battle` to diagnose.
 
 Note: `battle_turn` includes `read_battle` data in every response — no separate call needed.
