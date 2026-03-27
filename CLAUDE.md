@@ -34,6 +34,11 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `tristan_battle_start` | Youngster Tristan battle start. Turtwig Lv10 vs Hoothoot Lv7. Debug state for 2-Pokemon trainer battle. |
 | `tristan_switch_prompt` | Mid-battle "Will you switch?" prompt. After KO'ing Hoothoot, before Starly. Debug state. |
 | `wild_zigzagoon_route202` | Wild Zigzagoon Lv5 battle. Route 202, at action prompt. For catch tool testing. |
+| `route202_grinding_eevee_lv7` | Route 202 grass. Eevee Lv7, Turtwig Lv12, Shinx Lv5 (caught). Post-grind checkpoint. |
+| `debug_read_party_missing_slot2` | Debug: read_party skips Turtwig in slot 2 with 3-Pokemon party. |
+| `debug_read_battle_false_sleep` | Debug: read_battle shows Sleep(2) on awake wild Shinx. |
+| `debug_read_battle_false_positive_trainer` | Debug: read_battle returns garbled in_battle:true during pre-battle trainer dialogue. |
+| `sandgem_pokecenter_post_wipe_logan` | Sandgem Pokemon Center (map 420). Wiped to Youngster Logan. Team healed. Shinx Lv5, Turtwig Lv12, Eevee Lv7. |
 
 ## Renegade MCP Tools
 
@@ -163,11 +168,13 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 ## Game Progress
 
 - **Character**: CLAUDE | **Rival**: AAAAAAA
-- **Location**: Route 202 (map 343) at (181, 819). Save state: `route202_post_tristan_healed`.
-- **Turtwig** Lv11 — Naughty (+Atk/-SpD). Moves: Tackle, Curse, Absorb, Razor Leaf. 31/35 HP.
-- **Eevee** Lv5 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Tail Whip, Bite, Covet. Badly underleveled.
-- **Key items**: Potion x8, Repel x10, Poke Ball x30, Bicycle, Poke Radar, Parcel (deliver to Barry).
-- **Next**: Continue north through Route 202 to Jubilife City. Level up Eevee via switch-training. Deliver Parcel to Barry. Catch useful wild Pokemon.
+- **Location**: Sandgem Pokemon Center (map 420). Save state: `sandgem_pokecenter_post_wipe_logan`.
+- **Turtwig** Lv12 — Naughty (+Atk/-SpD). Moves: Tackle, Curse, Absorb, Razor Leaf. Healed.
+- **Eevee** Lv7 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Tail Whip, Bite, Covet. Healed.
+- **Shinx** Lv5 — Jolly (+Spe/-SpA), Guts. Moves: Tackle, Leer, Howl. Freshly caught, needs leveling.
+- **Key items**: Potion x4, Repel x10, Poke Ball x29, Bicycle, Poke Radar, Parcel (deliver to Barry).
+- **Defeated trainers**: Youngster Tristan (Route 202). Lost to Youngster Logan (Route 202, Growlithe/Burmy/Zigzagoon).
+- **Next**: Grind Shinx to Lv8+ and Eevee to Lv9+. Rematch Youngster Logan. Continue north to Jubilife City. Deliver Parcel to Barry.
 
 See GAME_HISTORY.md for full chronological playthrough details.
 
