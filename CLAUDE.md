@@ -39,6 +39,8 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `debug_read_battle_false_sleep` | Debug: read_battle shows Sleep(2) on awake wild Shinx. |
 | `debug_read_battle_false_positive_trainer` | Debug: read_battle returns garbled in_battle:true during pre-battle trainer dialogue. |
 | `sandgem_pokecenter_post_wipe_logan` | Sandgem Pokemon Center (map 420). Wiped to Youngster Logan. Team healed. Shinx Lv5, Turtwig Lv12, Eevee Lv7. |
+| `debug_switch_test_baseline` | Wild Zigzagoon Lv5 battle, Route 202. 2 Pokemon (Eevee Lv7, Turtwig Lv9). For battle switch testing. |
+| `debug_reorder_test_baseline` | Route 202 overworld. 3 Pokemon (Eevee, Turtwig, Shinx). **Heisenbug repro state** — read_party has stale encrypted data for Turtwig slot. |
 
 ## Renegade MCP Tools
 
@@ -46,7 +48,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 
 | Tool | Purpose |
 |------|---------|
-| `read_party` | Party Pokemon: species, level, HP, moves, PP, nature, IVs, EVs |
+| `read_party(refresh=false)` | Party Pokemon: species, level, HP, moves, PP, nature, IVs, EVs. `refresh=true` opens/closes party screen to force re-encryption (overworld only). |
 | `read_battle` | Live battle state: all battlers with stats, moves, ability, types, status |
 | `read_bag(pocket="")` | Bag contents across all 7 pockets. Optional pocket filter. |
 | `view_map` | ASCII map with terrain, player position, NPCs |
@@ -54,10 +56,9 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `navigate(directions)` | Manual walk: "d2 l3 u1" or "down down left left left" |
 | `navigate_to(x, y)` | BFS pathfind to target tile, then walk there |
 | `read_dialogue(region="auto")` | Read dialogue/battle text from RAM |
-| `battle_init` | Snapshot text baseline at battle start |
-| `battle_poll(auto_press=false)` | Poll for turn narration after selecting a move |
-| `battle_turn(move_index)` | Full automated turn: init + FIGHT + move + poll + state detection |
+| `battle_turn(move_index, switch_to)` | Full automated turn: FIGHT + move OR POKEMON + switch. Returns battle log + state + read_battle data. |
 | `throw_ball` | Throw a Poké Ball in wild battle: BAG + ball select + USE + catch result |
+| `reorder_party(from_slot, to_slot)` | Swap two party Pokemon via pause menu (overworld only) |
 | `decode_rom_message(file_index)` | Decode ROM message archive (species, moves, items, etc.) |
 | `search_rom_messages(query)` | Search all 724 message files for text |
 | `use_item(item_name, party_slot)` | Use a Medicine item on a party Pokemon from overworld |
@@ -79,7 +80,7 @@ Multi-chunk maps (overworld, large caves) use a matrix/chunk system detected aut
 
 **Use these tools instead of navigating in-game menus** — faster, more reliable, no accidental inputs.
 
-- **`read_party`** — full party data from encrypted RAM. Works in overworld + battle. See MEMORY_MAP.md for data format.
+- **`read_party`** — full party data from encrypted RAM. Works in overworld + battle. Pass `refresh=true` to force re-encryption via party screen (overworld only) — guarantees full data when encrypted blocks are stale. See MEMORY_MAP.md for data format.
 - **`read_bag`** — all 7 bag pockets. Pass `pocket="Key Items"` to filter.
 - **`read_battle`** — live battle data for all active battlers. Returns empty if not in battle. See MEMORY_MAP.md for struct layout.
 - **`map_name`** — location name from map ID. No args = current map.
@@ -92,18 +93,16 @@ Key ROM file indices: 0392=items, 0412=species, 0610=abilities, 0647=moves, 0433
 
 ### Automated (preferred)
 1. **`read_battle`** — check enemy species, types, ability, stats, moves. Plan tactics.
-2. **`battle_turn(move_index)`** — executes full turn: init + FIGHT + move + poll + detect state.
+2. **`battle_turn(move_index=N)`** — use a move (0-3). Returns battle log + final state + updated battle state.
+   - Or **`battle_turn(switch_to=N)`** — switch to party slot N (0-5) instead of attacking.
 3. Handle the returned state:
-   - `WAIT_FOR_ACTION` — next turn, call `battle_turn` again.
+   - `WAIT_FOR_ACTION` — next turn, call `battle_turn` again. Battle state is included in the response.
    - `SWITCH_PROMPT` — trainer sending next Pokemon. Use d-pad + A to choose.
    - `BATTLE_ENDED` — back in overworld.
    - `LEVEL_UP` — move learning prompt. Handle manually (d-pad + A for choice, touch for move selection).
    - `TIMEOUT` / `NO_TEXT` — something unexpected. Screenshot + `read_battle` to diagnose.
 
-### Manual (for debugging)
-1. **`battle_init`** — run ONCE at battle start to snapshot text baseline.
-2. Select a move via touch screen, then **`battle_poll(auto_press=true)`** — polls for turn narration.
-3. **`read_battle`** — check updated HP, PP, stat stages, status.
+Note: `battle_turn` includes `read_battle` data in every response — no separate call needed.
 
 ## DS Screen Layout
 
@@ -186,17 +185,19 @@ See GAME_HISTORY.md for full chronological playthrough details.
 
 ### Before/during battle
 1. `read_battle` — enemy species, types, ability, stats, moves, HP
-2. `battle_init` — snapshot text baseline (once per battle)
-3. Select move, then `battle_poll(auto_press=true)` — get full turn narration
-4. `read_battle` — check updated state after the turn
+2. `battle_turn(move_index=0)` — use a move. Returns battle log + state + updated battle data.
+3. Or `battle_turn(switch_to=1)` — switch Pokemon instead of attacking.
 
 ### Checking inventory/party (overworld)
-1. `read_party` — full party with moves, PP, nature, IVs, EVs
+1. `read_party` — full party with moves, PP, nature, IVs, EVs. Use `refresh=true` if data looks stale.
 2. `read_bag` — all items across all pockets
 
 ### Using items (overworld)
 1. `use_item("Potion", 0)` — uses a Medicine item on the specified party slot (0-indexed)
 2. Handles full menu flow automatically: pause menu → Bag → Medicine → item → USE → party → dismiss
+
+### Reordering party (overworld)
+1. `reorder_party(0, 2)` — swap slot 0 and slot 2. Navigates pause menu automatically.
 
 ## Tips
 
@@ -208,7 +209,6 @@ See GAME_HISTORY.md for full chronological playthrough details.
 - **Touch screen taps default to `frames=8`** — changed from 1 to avoid missed inputs.
 - **Wait 300 frames between UI navigation steps** — Pokemon ignores input during forced text delays.
 - **Always check the bottom screen for Yes/No prompts** — battle/switch prompts use touch screen.
-- **NEVER call `battle_poll` without first selecting a move** — it polls for NEW text and will loop.
-- **`battle_poll` has a built-in timeout** (300 polls / ~75 seconds) — returns TIMEOUT rather than hanging forever.
+- **`battle_turn` has a built-in timeout** (150 polls / ~37 seconds) — returns TIMEOUT rather than hanging forever.
 - **Pause menu remembers cursor position** — cursor index stored at `0x0229FA28`. The `use_item` tool reads this automatically; for manual menu navigation, read this address first.
 - **Trainer battles may have multiple Pokemon** — handle "Will you switch?" prompt before next action.
