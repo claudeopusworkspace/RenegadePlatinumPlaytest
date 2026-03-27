@@ -39,6 +39,38 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - Wild Pokemon observed: Zigzagoon Lv5 (Normal, Gluttony).
 - More trainers visible further north (around global coords 166-176, rows 804-816).
 
-### Pokemon Observations (as of Route 202)
-- **Turtwig**: Naughty nature (+Atk/-SpD). IVs: 23/9/5/6/25/9. Physical attacker build. Curse is excellent — already slow, so Speed loss is minimal. Razor Leaf + Absorb for STAB. Weak to Flying types encountered frequently.
-- **Eevee**: Gentle nature (+SpD/-Def). IVs: 10/6/19/16/11/25. Physically frail. Bite is best move. Badly underleveled at Lv5 — needs dedicated switch-training. Evolution path TBD — Gentle nature favors SpDef-oriented forms (Umbreon, Glaceon) but Espeon's speed + SpAtk could also work.
+### Catching Shinx
+- Caught Shinx Lv5 on Route 202. Jolly (+Spe/-SpA), Guts ability. Moves: Tackle, Leer, Howl.
+- Lost to Youngster Logan (Growlithe/Burmy/Zigzagoon) — overextended with underleveled team.
+- Whiteout, respawned at Sandgem Pokemon Center.
+
+## Chapter 2: Rowan's Lab Starters & Grinding
+
+### Rowan's Lab Revisit (Map 422)
+- Michael hinted that the other two starters were available in Rowan's lab.
+- Found Rowan's briefcase (NPC D at position 18,4) in the upper-right area of the lab.
+- Interacting with briefcase triggers Rowan's dialogue: "I would feel safe if I were to entrust the two Pokémon inside that briefcase to you."
+- First attempt: mash_a through dialogue accidentally nicknamed Chimchar "AAAAAAAAA". Reloaded.
+- Second attempt: carefully advanced through dialogue, selected NO for both nickname prompts.
+- **Received Chimchar Lv5** — Careful (+SpD/-SpA), Iron Fist ability. Moves: Scratch, Leer, Ember.
+- **Received Piplup Lv5** — Lax (+Def/-SpD), Vital Spirit ability. Moves: Pound, Growl, Bubble.
+- Iron Fist on Chimchar is a Renegade Platinum change — boosts punching moves. Vital Spirit on Piplup prevents sleep.
+
+### Route 202 Grinding
+- Grinded Chimchar: Lv5 → Lv8 (4 battles). Learned Taunt at Lv8. Ember super effective vs Burmy. Scratch + Iron Fist physical IVs (23 Atk, 29 Spe) making it a solid physical attacker despite Careful nature.
+- Grinded Piplup: Lv5 → Lv6 (2 battles). Bubble does ~6 damage to Route 202 Normals. Fainted once to a 5-hit Fury Swipes crit from Sentret.
+- Shinx attempted: Fainted to Sentret (crit Fury Swipes + Quick Attack). Only has Tackle for damage at Lv5 — needs more levels.
+- Route 202 wild Pokemon: Sentret Lv5 (Normal, Run Away/Keen Eye), Poochyena Lv5 (Dark, Run Away), Zigzagoon Lv5 (Normal, Gluttony, holds Potion), Burmy Lv5 (Bug, Battle Armor).
+- Sentret's Fury Swipes is surprisingly dangerous — multi-hit moves with crits can burst down low-level Pokemon.
+
+### Tool Issues Discovered
+- **Garbled map data indoors**: Using `read_party(refresh=true)` inside Rowan's lab corrupted all map collision data. Every tile read as `ff` (blocked). Had to navigate out manually with Michael's help.
+- **Faint-switch prompt**: When a Pokemon faints, the "Use next Pokémon?" touch button doesn't respond to taps. Required A mashing → B twice to reach full party grid → tap Pokemon → tap SHIFT. Extremely finicky.
+- **NPC movement**: Lab assistants moved during navigation, causing missed interactions.
+
+### Pokemon Observations (as of end of Chapter 2)
+- **Turtwig** Lv12: Naughty (+Atk/-SpD). IVs: 23/9/5/6/25/9. Moves: Tackle, Curse, Absorb, Razor Leaf. Team anchor, handles most threats.
+- **Chimchar** Lv8: Careful (+SpD/-SpA), Iron Fist. IVs: 6/23/24/2/20/29. Moves: Scratch, Leer, Ember, Taunt. Great physical stats despite SpA-reducing nature. Ember still useful for type coverage vs Bugs.
+- **Eevee** Lv7: Gentle (+SpD/-Def). IVs: 10/6/19/16/11/25. Moves: Tackle, Tail Whip, Bite, Covet. Needs leveling. Evolution path still TBD.
+- **Piplup** Lv6: Lax (+Def/-SpD), Vital Spirit. IVs: 30/14/7/4/23/25. Moves: Pound, Growl, Bubble. Bulky HP IV (30). Sleep immunity is useful. Needs leveling.
+- **Shinx** Lv5: Jolly (+Spe/-SpA), Guts. IVs: 13/11/23/21/6/15. Moves: Tackle, Leer, Howl. Most underleveled, needs dedicated grind time. Guts will be great once it has real attacks.
