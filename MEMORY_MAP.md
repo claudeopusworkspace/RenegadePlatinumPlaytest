@@ -75,14 +75,26 @@ Located at approximately `0x020E7F88`. Each entry appears to be 12 bytes:
 | +4     | short | Tileset index? (sequential values 400, 401...) |
 | +6     | short | Unknown (1021, 1009...) |
 
+### Zone Header Table
+**Status: SOLVED.**
+
+| Address      | Stride | Field |
+|-------------|--------|-------|
+| `0x020E601E` | 24 bytes | Zone header table in ARM9 binary. One entry per zone/map_id. |
+
+**Entry format (first field only — rest TBD):**
+- `+0` (u16): Matrix ID — index into `map_matrix/` files.
+
+**Usage:** Given a map_id, read `0x020E601E + map_id * 24` as u16 to get the matrix_id. Then load the matrix file to get the land_data file ID. This chain (zone header → matrix → land_data) resolves terrain for ANY map — indoor or overworld.
+
 ### Terrain Attributes / Collision Grid
 **Status: SOLVED.**
 
 | Address      | Size | Field |
 |-------------|------|-------|
-| `0x0231D1E4` | 2048 bytes | Current map's terrain attribute grid (32x32 u16, little-endian, row-major) |
+| `0x0231D1E4` | 2048 bytes | RAM copy of current map's terrain (32x32 u16, little-endian, row-major) |
 
-The game loads the active map's terrain attributes from `land_data.narc` (ROM filesystem: `fielddata/land_data/land_data.narc`) into this fixed RAM slot. When the map changes, this data is replaced.
+**WARNING:** This RAM address is **unreliable**. It gets garbled after menu interactions (party screen, pause menu) inside buildings, and for some maps (e.g., Pokemon Center) may contain non-terrain data. **Always prefer ROM-based terrain resolution** via the zone header → matrix → land_data chain.
 
 **Per-tile format (u16):**
 - Bit 15 (`0x8000`): Collision flag. 1 = impassable, 0 = passable.
@@ -93,7 +105,7 @@ The game loads the active map's terrain attributes from `land_data.narc` (ROM fi
 **Caveats:**
 - Dynamic objects (NPCs, floor items) are NOT in the static grid.
 - Stair tiles may show as blocked (`0x8000`) but allow passage via dynamic events.
-- Zone ID ≠ land_data NARC index (e.g., zone 414 = land_data 186, zone 415 = land_data 187). The mapping is done via a header table in the ARM9. Since we read terrain directly from RAM, this mapping is only needed for offline analysis.
+- Zone ID ≠ land_data NARC index (e.g., zone 414 = land_data 186, zone 415 = land_data 187). The zone header table provides the correct mapping.
 
 **ROM source:** `fielddata/land_data/land_data.narc` contains 666 map files. Each file has a 16-byte header (4 u32: terrain_size, props_size, model_size, bdhc_size) followed by the terrain grid at offset 0x10. Confirmed against the `pret/pokeplatinum` decompilation.
 

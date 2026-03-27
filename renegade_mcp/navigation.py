@@ -12,8 +12,8 @@ from typing import TYPE_CHECKING, Any
 
 from renegade_mcp.map_state import (
     CHUNK_SIZE,
-    find_matrix_for_map,
     get_map_state,
+    get_matrix_for_map,
     load_terrain_from_rom,
 )
 
@@ -139,10 +139,10 @@ def _bfs_pathfind(
 
 
 def _build_multi_chunk_terrain(
-    map_id: int, px: int, py: int, target_x: int, target_y: int,
+    emu: EmulatorClient, map_id: int, px: int, py: int, target_x: int, target_y: int,
 ) -> tuple | None:
     """Load multi-chunk terrain grid. Returns (terrain_info, npc_set, origin_x, origin_y, w, h) or None."""
-    result = find_matrix_for_map(map_id)
+    result = get_matrix_for_map(emu, map_id)
     if result is None:
         return None
 
@@ -299,7 +299,7 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
     is_global = target_x > 31 or target_y > 31 or chunked
 
     if is_global and chunked:
-        result = _build_multi_chunk_terrain(map_id, px, py, target_x, target_y)
+        result = _build_multi_chunk_terrain(emu, map_id, px, py, target_x, target_y)
         if result is None:
             return {"error": "Could not load multi-chunk terrain."}
 

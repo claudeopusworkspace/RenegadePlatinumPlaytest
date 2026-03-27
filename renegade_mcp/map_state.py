@@ -1,7 +1,8 @@
 """Terrain, dynamic objects, and player state reading + ASCII map rendering.
 
-Handles both indoor maps (terrain from RAM) and multi-chunk overworld maps
-(terrain loaded from ROM via the map matrix/chunk system).
+Terrain is always loaded from ROM via the zone header → matrix → land_data
+chain. RAM terrain at 0x0231D1E4 is unreliable (garbled after menu
+interactions indoors) and only used as a last-resort fallback.
 """
 
 from __future__ import annotations
@@ -20,6 +21,11 @@ TERRAIN_SIZE = 2048  # 32*32*2
 
 PLAYER_POS_BASE = 0x0227F450
 PLAYER_FACING_ADDR = 0x02335346
+
+# Zone header table in ARM9 (Platinum US / Renegade Platinum).
+# Each entry is 24 bytes; first u16 is the matrix_id for that zone.
+ZONE_HEADER_BASE = 0x020E601E
+ZONE_HEADER_STRIDE = 24
 
 OBJ_ARRAY_FPX_BASE = 0x022A1AA8
 OBJ_STRIDE = 0x128
@@ -181,6 +187,54 @@ def resolve_chunk(map_id: int, global_x: int, global_y: int) -> tuple:
     return grid, origin_x, origin_y, matrix_id
 
 
+def get_matrix_for_map(emu: "EmulatorClient", map_id: int) -> tuple | None:
+    """Look up matrix data for a map via the zone header table.
+
+    Returns (matrix_id, width, height, header_ids, terrain_ids) or None.
+    Much faster than find_matrix_for_map() which scans all files.
+    """
+    addr = ZONE_HEADER_BASE + map_id * ZONE_HEADER_STRIDE
+    matrix_id = emu.read_memory(addr, size="short")
+
+    matrix_path = MATRIX_DIR / f"{matrix_id:04d}.bin"
+    if not matrix_path.exists():
+        return None
+
+    w, h, header_ids, terrain_ids = parse_matrix(matrix_path)
+    return matrix_id, w, h, header_ids, terrain_ids
+
+
+def resolve_terrain_from_rom(emu: "EmulatorClient", map_id: int, px: int, py: int) -> tuple:
+    """Resolve terrain from ROM via zone header → matrix → land_data.
+
+    Works for both indoor (single-chunk) and overworld (multi-chunk) maps.
+    Returns (grid, origin_x, origin_y) or (None, 0, 0) on failure.
+    """
+    addr = ZONE_HEADER_BASE + map_id * ZONE_HEADER_STRIDE
+    matrix_id = emu.read_memory(addr, size="short")
+
+    matrix_path = MATRIX_DIR / f"{matrix_id:04d}.bin"
+    if not matrix_path.exists():
+        return None, 0, 0
+
+    w, h, _header_ids, terrain_ids = parse_matrix(matrix_path)
+
+    chunk_x = px // CHUNK_SIZE
+    chunk_y = py // CHUNK_SIZE
+
+    if not (0 <= chunk_x < w and 0 <= chunk_y < h):
+        return None, 0, 0
+
+    land_data_id = terrain_ids[chunk_y][chunk_x]
+    if land_data_id == 0xFFFF:
+        return None, 0, 0
+
+    grid = load_terrain_from_rom(land_data_id)
+    origin_x = chunk_x * CHUNK_SIZE
+    origin_y = chunk_y * CHUNK_SIZE
+    return grid, origin_x, origin_y
+
+
 # ── Dynamic objects ──
 
 def read_objects(emu: EmulatorClient) -> list[dict[str, Any]]:
@@ -230,30 +284,36 @@ def read_player_state(emu: EmulatorClient) -> tuple[int, int, int, int]:
 def get_map_state(emu: EmulatorClient) -> dict[str, Any] | None:
     """Read full map state: terrain grid, objects, player position.
 
+    Terrain is resolved from ROM (zone header → matrix → land_data) which is
+    immune to RAM corruption from menu overlays.  Falls back to RAM terrain
+    only when ROM resolution fails.
+
     Returns dict with terrain, objects, positions, and origin info.
-    Returns None if chunk resolution fails.
+    Returns None if all resolution methods fail.
     """
     map_id, px, py, facing = read_player_state(emu)
-    ram_terrain = read_terrain_from_ram(emu)
     objects = read_objects(emu)
-    chunked = needs_chunk_lookup(ram_terrain, px, py)
 
-    if chunked:
-        terrain, origin_x, origin_y, matrix_id = resolve_chunk(map_id, px, py)
-        if terrain is None:
-            return None
-        local_px = px - origin_x
-        local_py = py - origin_y
-        for obj in objects:
-            obj["local_x"] = obj["x"] - origin_x
-            obj["local_y"] = obj["y"] - origin_y
-    else:
-        terrain = ram_terrain
-        origin_x, origin_y = 0, 0
-        local_px, local_py = px, py
-        for obj in objects:
-            obj["local_x"] = obj["x"]
-            obj["local_y"] = obj["y"]
+    # Always try ROM first — reliable regardless of menu state.
+    terrain, origin_x, origin_y = resolve_terrain_from_rom(emu, map_id, px, py)
+    chunked = origin_x > 0 or origin_y > 0
+
+    # Fall back to RAM terrain if ROM resolution failed.
+    if terrain is None:
+        ram_terrain = read_terrain_from_ram(emu)
+        if not is_terrain_empty(ram_terrain):
+            terrain = ram_terrain
+            origin_x, origin_y = 0, 0
+            chunked = False
+
+    if terrain is None:
+        return None
+
+    local_px = px - origin_x
+    local_py = py - origin_y
+    for obj in objects:
+        obj["local_x"] = obj["x"] - origin_x
+        obj["local_y"] = obj["y"] - origin_y
 
     return {
         "terrain": terrain,
