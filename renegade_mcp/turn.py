@@ -52,8 +52,8 @@ PARTY_TOUCH_XY = [
 SHIFT_XY = (128, 100)  # "SHIFT" confirmation button
 
 # ── Faint/switch prompt buttons (bottom screen) ──
-PROMPT_YES_XY = (128, 95)     # "Use next Pokemon" / "Switch Pokemon" (red)
-PROMPT_NO_XY = (128, 150)     # "Flee" / "Keep battling" (blue)
+PROMPT_YES_XY = (128, 67)     # "Use next Pokemon" / "Switch Pokemon" (red)
+PROMPT_NO_XY = (128, 127)     # "Flee" / "Keep battling" (blue)
 
 # Battle struct address for garbage detection
 BATTLE_BASE = 0x022C5774
@@ -239,8 +239,10 @@ def _poll_after_action(emu: EmulatorClient, prompt_log: list[dict]) -> dict[str,
     """Re-init tracker and poll for the next battle state after an action."""
     _tracker.init(emu)
     result = _tracker.poll(emu, auto_press=True)
-    result["log"] = prompt_log + result.get("log", [])
+    # Classify on poll-only log first (avoids stale prompt text contamination)
     result["final_state"] = _classify_final_state(emu, result)
+    # Then prepend prompt log for complete display
+    result["log"] = prompt_log + result.get("log", [])
     return result
 
 
@@ -347,8 +349,9 @@ def _execute_action(
         _switch_flow(emu, switch_to)
 
     result = _tracker.poll(emu, auto_press=True)
-    result["log"] = prompt["log"] + result.get("log", [])
+    # Classify on poll-only log (avoids stale prompt text contamination)
     result["final_state"] = _classify_final_state(emu, result)
+    result["log"] = prompt["log"] + result.get("log", [])
 
     if result["final_state"] == "TIMEOUT" and _log_has(result.get("log", []), "grew to"):
         result = _recover_from_level_up(emu, result)

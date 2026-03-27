@@ -46,6 +46,7 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `debug_garbled_map_post_party_refresh` | Rowan's lab (map 422). Map data garbled after `read_party(refresh=true)` indoors. All tiles read as `ff`. |
 | `sandgem_5pokemon_turtwig_lead` | Sandgem Town (map 418). 5 Pokemon, Turtwig leading. Post-reorder test. |
 | `sandgem_pc_grind_session_end` | Sandgem Pokemon Center (map 420). Healed. Shinx Lv5, Piplup Lv6, Eevee Lv7, Turtwig Lv12, Chimchar Lv8. |
+| `debug_wild_faint_use_next` | Wild Zigzagoon battle, at "Use next Pokemon?" prompt after Turtwig fainted. For faint-switch testing. |
 
 ## Renegade MCP Tools
 
@@ -103,7 +104,9 @@ Key ROM file indices: 0392=items, 0412=species, 0610=abilities, 0647=moves, 0433
    - Works on the very first turn of battle — no need to call twice.
 3. Handle the returned state:
    - `WAIT_FOR_ACTION` — next turn, call `battle_turn` again. Battle state is included in the response.
-   - `SWITCH_PROMPT` — trainer sending next Pokemon. Use d-pad + A to choose.
+   - `SWITCH_PROMPT` — trainer sending next Pokemon. Call `battle_turn(switch_to=N)` to swap, or `battle_turn()` to keep battling.
+   - `FAINT_SWITCH` — your Pokemon fainted (wild battle). Call `battle_turn(switch_to=N)` to send replacement, or `battle_turn()` to flee.
+   - `FAINT_FORCED` — your Pokemon fainted (trainer battle). Call `battle_turn(switch_to=N)` to send replacement (required).
    - `BATTLE_ENDED` — back in overworld.
    - `LEVEL_UP` — move learning prompt. Handle manually (d-pad + A for choice, touch for move selection).
    - `NO_ACTION_PROMPT` — action prompt never appeared (~30 sec timeout). Game may need manual input.
