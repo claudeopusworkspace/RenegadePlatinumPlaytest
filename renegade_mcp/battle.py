@@ -20,7 +20,7 @@ BATTLE_BASE = 0x022C5774
 BATTLE_SLOT_SIZE = 0xC0  # 192 bytes
 BATTLE_MAX_SLOTS = 4
 
-# Field offsets within battle Pokemon structure
+# Field offsets within BattleMon struct (from pret/pokeplatinum decomp)
 OFF_SPECIES = 0x00
 OFF_ATK = 0x02
 OFF_DEF = 0x04
@@ -30,15 +30,16 @@ OFF_SPD = 0x0A
 OFF_MOVES = 0x0C
 OFF_STAGES = 0x18
 OFF_WEIGHT = 0x20
-OFF_ITEM = 0x22
 OFF_TYPES = 0x24
 OFF_ABILITY = 0x27
-OFF_STATUS = 0x28
+OFF_ABILITY_FLAGS = 0x28  # ability announcement bitfield (intimidate, trace, etc.)
 OFF_PP = 0x2C
 OFF_LEVEL = 0x34
 OFF_NICK = 0x36
 OFF_CUR_HP = 0x4C
 OFF_MAX_HP = 0x50
+OFF_STATUS = 0x6C  # non-volatile status (sleep/poison/burn/freeze/paralysis/toxic)
+OFF_ITEM = 0x78
 
 # Gen 4 internal type IDs
 TYPE_NAMES = {
@@ -103,10 +104,9 @@ def read_battle(emu: EmulatorClient) -> list[dict[str, Any]]:
 
         level = data[OFF_LEVEL]
         max_hp = struct.unpack_from("<H", data, OFF_MAX_HP)[0]
-        if species > 493 or level == 0 or level > 100 or max_hp == 0:
-            continue
-
         cur_hp = struct.unpack_from("<H", data, OFF_CUR_HP)[0]
+        if species > 493 or level == 0 or level > 100 or max_hp == 0 or cur_hp > max_hp:
+            continue
 
         atk = struct.unpack_from("<H", data, OFF_ATK)[0]
         df = struct.unpack_from("<H", data, OFF_DEF)[0]
