@@ -41,6 +41,11 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `sandgem_pokecenter_post_wipe_logan` | Sandgem Pokemon Center (map 420). Wiped to Youngster Logan. Team healed. Shinx Lv5, Turtwig Lv12, Eevee Lv7. |
 | `debug_switch_test_baseline` | Wild Zigzagoon Lv5 battle, Route 202. 2 Pokemon (Eevee Lv7, Turtwig Lv9). For battle switch testing. |
 | `debug_reorder_test_baseline` | Route 202 overworld. 3 Pokemon (Eevee, Turtwig, Shinx). **Heisenbug repro state** — read_party has stale encrypted data for Turtwig slot. |
+| `rowan_lab_before_briefcase` | Rowan's lab (map 422) at (18,5). Before interacting with briefcase to get Chimchar + Piplup. |
+| `got_starters_rowan_lab` | Rowan's lab (map 422). Just received Chimchar + Piplup from briefcase. 5 Pokemon party. |
+| `debug_garbled_map_post_party_refresh` | Rowan's lab (map 422). Map data garbled after `read_party(refresh=true)` indoors. All tiles read as `ff`. |
+| `sandgem_5pokemon_turtwig_lead` | Sandgem Town (map 418). 5 Pokemon, Turtwig leading. Post-reorder test. |
+| `sandgem_pc_grind_session_end` | Sandgem Pokemon Center (map 420). Healed. Shinx Lv5, Piplup Lv6, Eevee Lv7, Turtwig Lv12, Chimchar Lv8. |
 
 ## Renegade MCP Tools
 
@@ -167,13 +172,15 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 ## Game Progress
 
 - **Character**: CLAUDE | **Rival**: AAAAAAA
-- **Location**: Sandgem Pokemon Center (map 420). Save state: `sandgem_pokecenter_post_wipe_logan`.
-- **Turtwig** Lv12 — Naughty (+Atk/-SpD). Moves: Tackle, Curse, Absorb, Razor Leaf. Healed.
-- **Eevee** Lv7 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Tail Whip, Bite, Covet. Healed.
-- **Shinx** Lv5 — Jolly (+Spe/-SpA), Guts. Moves: Tackle, Leer, Howl. Freshly caught, needs leveling.
-- **Key items**: Potion x4, Repel x10, Poke Ball x29, Bicycle, Poke Radar, Parcel (deliver to Barry).
+- **Location**: Sandgem Pokemon Center (map 420). Save state: `sandgem_pc_grind_session_end`.
+- **Shinx** Lv5 — Jolly (+Spe/-SpA), Guts. Moves: Tackle, Leer, Howl. Fainted, needs leveling.
+- **Piplup** Lv6 — Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble. Gift from Rowan's lab briefcase.
+- **Eevee** Lv7 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Tail Whip, Bite, Covet.
+- **Turtwig** Lv12 — Naughty (+Atk/-SpD). Moves: Tackle, Curse, Absorb, Razor Leaf.
+- **Chimchar** Lv8 — Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Leer, Ember, Taunt. Gift from Rowan's lab briefcase.
+- **Key items**: Potion x2, Repel x10, Poke Ball x29, Bicycle, Poke Radar, Parcel (deliver to Barry).
 - **Defeated trainers**: Youngster Tristan (Route 202). Lost to Youngster Logan (Route 202, Growlithe/Burmy/Zigzagoon).
-- **Next**: Grind Shinx to Lv8+ and Eevee to Lv9+. Rematch Youngster Logan. Continue north to Jubilife City. Deliver Parcel to Barry.
+- **Next**: Grind Shinx to Lv8+, Eevee to Lv9+, Piplup to Lv8+. Rematch Youngster Logan. Continue north to Jubilife City. Deliver Parcel to Barry.
 
 See GAME_HISTORY.md for full chronological playthrough details.
 
