@@ -31,6 +31,13 @@ PARTY_MAX_SLOTS = 6
 SPECIES_ARRAY_BASE = 0x0227F3E8
 SPECIES_ARRAY_STRIDE = 8
 
+# Pause menu (for refresh sync)
+PAUSE_CURSOR_ADDR = 0x0229FA28
+POKEMON_MENU_INDEX = 1
+PAUSE_MENU_SIZE = 7
+MENU_WAIT = 300  # frames after major menu transitions
+NAV_WAIT = 60    # frames after D-pad
+
 # Summary field offsets
 OFF_SPECIES = 0x04
 OFF_CUR_HP = 0x06
@@ -193,10 +200,53 @@ def _read_species_array(emu: EmulatorClient) -> list[int]:
     return species
 
 
+# ── Party Sync ──
+
+def _refresh_party_data(emu: EmulatorClient) -> None:
+    """Open and close the party screen to force re-encryption of party data.
+
+    Must be called from the overworld with player control. Navigates:
+    X (pause) → Pokemon → B (close party) → B (close pause).
+    """
+    # Open pause menu
+    emu.press_buttons(["x"], frames=8)
+    emu.advance_frames(MENU_WAIT)
+
+    # Navigate to Pokemon
+    cursor = emu.read_memory(PAUSE_CURSOR_ADDR, size="byte")
+    diff = POKEMON_MENU_INDEX - cursor
+    direction = "down" if diff > 0 else "up"
+    for _ in range(abs(diff)):
+        emu.press_buttons([direction], frames=8)
+        emu.advance_frames(NAV_WAIT)
+
+    # Open party screen (triggers re-encryption)
+    emu.press_buttons(["a"], frames=8)
+    emu.advance_frames(MENU_WAIT)
+
+    # Close party screen
+    emu.press_buttons(["b"], frames=8)
+    emu.advance_frames(MENU_WAIT)
+
+    # Close pause menu
+    emu.press_buttons(["b"], frames=8)
+    emu.advance_frames(MENU_WAIT)
+
+
 # ── Party Reading ──
 
-def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
-    """Read all party slots from memory. Returns list of Pokemon dicts."""
+def read_party(emu: EmulatorClient, refresh: bool = False) -> list[dict[str, Any]]:
+    """Read all party slots from memory. Returns list of Pokemon dicts.
+
+    Args:
+        refresh: If True, briefly open/close the party screen first to force
+                 the game to re-encrypt party data. Guarantees full data
+                 (moves, IVs, EVs) but requires overworld with player control.
+                 If False (default), reads memory directly — may return partial
+                 data for slots with stale encrypted blocks.
+    """
+    if refresh:
+        _refresh_party_data(emu)
     sp_names = species_names()
     mv_names = move_names()
 
