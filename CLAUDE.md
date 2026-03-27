@@ -33,6 +33,7 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `route202_post_tristan_healed` | Route 202 (map 343) at (181, 819). After beating Youngster Tristan. Turtwig Lv11 (learned Curse), 31/35 HP. |
 | `tristan_battle_start` | Youngster Tristan battle start. Turtwig Lv10 vs Hoothoot Lv7. Debug state for 2-Pokemon trainer battle. |
 | `tristan_switch_prompt` | Mid-battle "Will you switch?" prompt. After KO'ing Hoothoot, before Starly. Debug state. |
+| `wild_zigzagoon_route202` | Wild Zigzagoon Lv5 battle. Route 202, at action prompt. For catch tool testing. |
 
 ## Renegade MCP Tools
 
@@ -51,6 +52,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `battle_init` | Snapshot text baseline at battle start |
 | `battle_poll(auto_press=false)` | Poll for turn narration after selecting a move |
 | `battle_turn(move_index)` | Full automated turn: init + FIGHT + move + poll + state detection |
+| `throw_ball` | Throw a Poké Ball in wild battle: BAG + ball select + USE + catch result |
 | `decode_rom_message(file_index)` | Decode ROM message archive (species, moves, items, etc.) |
 | `search_rom_messages(query)` | Search all 724 message files for text |
 | `use_item(item_name, party_slot)` | Use a Medicine item on a party Pokemon from overworld |

@@ -228,6 +228,27 @@ def create_server() -> FastMCP:
         emu = get_client()
         return _battle_turn(emu, move_index)
 
+    # ── Catch ──
+
+    @mcp.tool()
+    def throw_ball() -> dict[str, Any]:
+        """Throw a Poké Ball at the wild Pokemon.
+
+        Must be at the action prompt in a wild battle. Navigates BAG → Poké Balls,
+        selects the first ball, and throws it. Polls for catch result and handles
+        post-catch screens (Pokédex registration, nickname prompt).
+
+        States returned:
+        - CAUGHT: Pokemon caught, back in overworld
+        - NOT_CAUGHT: ball failed, back at action prompt — try again or fight
+        - BATTLE_ENDED: battle over (shouldn't happen normally)
+        - TIMEOUT: something unexpected — check game state
+        """
+        from renegade_mcp.catch import throw_ball as _throw_ball
+
+        emu = get_client()
+        return _throw_ball(emu)
+
     # ── ROM Message Decoding ──
 
     @mcp.tool()

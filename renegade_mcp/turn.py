@@ -183,6 +183,8 @@ def _reformat(result: dict[str, Any]) -> str:
         "SWITCH_PROMPT": "Trainer sending next Pokemon — switch or keep battling?",
         "BATTLE_ENDED": "Battle is over — back in overworld",
         "LEVEL_UP": "Level up with move learning — handle manually",
+        "CAUGHT": "Pokemon caught! Back in overworld",
+        "NOT_CAUGHT": "Ball failed — back at action prompt",
         "TIMEOUT": "Polling timed out — check game state manually",
         "NO_TEXT": "No battle text detected — move may not have registered",
     }
