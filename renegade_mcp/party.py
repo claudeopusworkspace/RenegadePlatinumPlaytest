@@ -48,14 +48,14 @@ NATURES = [
 
 # ── Gen 4 Decryption ──
 
-def _decrypt_data(data_128: bytes, checksum: int) -> bytes:
-    """Decrypt 128 bytes of Pokemon data using Gen 4 PRNG seeded with checksum."""
-    result = bytearray(128)
-    state = checksum
-    for i in range(0, 128, 2):
+def _prng_decrypt(data: bytes, seed: int) -> bytes:
+    """Decrypt data using Gen 4 PRNG. Works for both checksum-seeded blocks and PID-seeded battle stats."""
+    result = bytearray(len(data))
+    state = seed
+    for i in range(0, len(data), 2):
         state = (state * 0x41C64E6D + 0x6073) & 0xFFFFFFFF
         key = (state >> 16) & 0xFFFF
-        val = struct.unpack_from("<H", data_128, i)[0]
+        val = struct.unpack_from("<H", data, i)[0]
         struct.pack_into("<H", result, i, val ^ key)
     return bytes(result)
 
@@ -79,7 +79,7 @@ def _decode_encrypted_pokemon(raw_236: bytes) -> dict[str, Any] | None:
     if pid == 0:
         return None
 
-    decrypted = _decrypt_data(encrypted, checksum)
+    decrypted = _prng_decrypt(encrypted, checksum)
     blocks = _unshuffle_blocks(decrypted, pid)
 
     # Validate checksum
@@ -119,6 +119,12 @@ def _decode_encrypted_pokemon(raw_236: bytes) -> dict[str, Any] | None:
     nature_idx = pid % 25
     nature = NATURES[nature_idx]
 
+    # Battle stats extension (bytes 136-235, encrypted with PID)
+    battle_ext = _prng_decrypt(raw_236[136:236], pid)
+    ext_level = battle_ext[4]
+    ext_cur_hp = struct.unpack_from("<H", battle_ext, 6)[0]
+    ext_max_hp = struct.unpack_from("<H", battle_ext, 8)[0]
+
     return {
         "pid": pid,
         "species_id": species,
@@ -133,6 +139,9 @@ def _decode_encrypted_pokemon(raw_236: bytes) -> dict[str, Any] | None:
         "nature_idx": nature_idx,
         "ivs": ivs,
         "evs": evs,
+        "ext_level": ext_level,
+        "ext_cur_hp": ext_cur_hp,
+        "ext_max_hp": ext_max_hp,
     }
 
 
@@ -177,6 +186,11 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
             cur_hp = struct.unpack_from("<H", summary_slot, OFF_CUR_HP)[0]
             max_hp = struct.unpack_from("<H", summary_slot, OFF_MAX_HP)[0]
             level = summary_slot[OFF_LEVEL]
+        elif decoded.get("ext_level", 0) > 0:
+            # Summary struct zeroed (e.g. after battle) — use encrypted extension
+            level = decoded["ext_level"]
+            cur_hp = decoded["ext_cur_hp"]
+            max_hp = decoded["ext_max_hp"]
         else:
             cur_hp = -1
             max_hp = -1
