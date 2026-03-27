@@ -3,6 +3,10 @@
 Uses TWO data sources:
 1. Encrypted Gen 4 party data at 0x0227E270 (always available) — species, moves, PP, nature, etc.
 2. Party summary structure at 0x022C0130 (overworld only) — current HP, max HP, level.
+
+When the checksum-encrypted blocks are stale (mid-update), falls back to:
+- PID-encrypted extension for level, HP, and stats
+- Unencrypted species array at 0x0227F3E8 for species (by elimination)
 """
 
 from __future__ import annotations
@@ -22,6 +26,10 @@ ENCRYPTED_SLOT_SIZE = 236
 PARTY_SUMMARY_BASE = 0x022C0130
 PARTY_SLOT_SIZE = 0x2C  # 44 bytes
 PARTY_MAX_SLOTS = 6
+
+# Unencrypted species array (catch-order, 8 bytes per entry, u16 species at offset 0)
+SPECIES_ARRAY_BASE = 0x0227F3E8
+SPECIES_ARRAY_STRIDE = 8
 
 # Summary field offsets
 OFF_SPECIES = 0x04
@@ -71,7 +79,11 @@ def _unshuffle_blocks(data_128: bytes, pid: int) -> bytes:
 
 
 def _decode_encrypted_pokemon(raw_236: bytes) -> dict[str, Any] | None:
-    """Decode a 236-byte encrypted Pokemon structure. Returns None if invalid."""
+    """Decode a 236-byte encrypted Pokemon structure.
+
+    Returns None if the slot is empty (PID=0).
+    Returns partial data with "partial": True if checksum fails (stale blocks).
+    """
     pid = struct.unpack_from("<I", raw_236, 0)[0]
     checksum = struct.unpack_from("<H", raw_236, 6)[0]
     encrypted = raw_236[8:136]
@@ -79,15 +91,46 @@ def _decode_encrypted_pokemon(raw_236: bytes) -> dict[str, Any] | None:
     if pid == 0:
         return None
 
-    decrypted = _prng_decrypt(encrypted, checksum)
-    blocks = _unshuffle_blocks(decrypted, pid)
+    # Always decrypt the PID-encrypted extension (it's always valid)
+    battle_ext = _prng_decrypt(raw_236[136:236], pid)
+    ext_level = battle_ext[4]
+    ext_cur_hp = struct.unpack_from("<H", battle_ext, 6)[0]
+    ext_max_hp = struct.unpack_from("<H", battle_ext, 8)[0]
 
-    # Validate checksum
+    nature_idx = pid % 25
+    nature = NATURES[nature_idx]
+
+    # Try to decrypt the checksum-encrypted blocks
+    decrypted = _prng_decrypt(encrypted, checksum)
+
     calc_checksum = sum(
         struct.unpack_from("<H", decrypted, i)[0] for i in range(0, 128, 2)
     ) & 0xFFFF
+
     if calc_checksum != checksum:
-        return None
+        # Checksum mismatch — encrypted blocks are stale/mid-update.
+        # Return what we can from the PID-encrypted extension.
+        return {
+            "pid": pid,
+            "partial": True,
+            "species_id": 0,  # will be deduced by elimination in read_party
+            "item_id": 0,
+            "exp": 0,
+            "friendship": 0,
+            "ability_idx": 0,
+            "moves": [0, 0, 0, 0],
+            "pp": [0, 0, 0, 0],
+            "pp_ups": [0, 0, 0, 0],
+            "nature": nature,
+            "nature_idx": nature_idx,
+            "ivs": {},
+            "evs": {},
+            "ext_level": ext_level,
+            "ext_cur_hp": ext_cur_hp,
+            "ext_max_hp": ext_max_hp,
+        }
+
+    blocks = _unshuffle_blocks(decrypted, pid)
 
     # Block A (Growth)
     species = struct.unpack_from("<H", blocks, 0)[0]
@@ -116,15 +159,6 @@ def _decode_encrypted_pokemon(raw_236: bytes) -> dict[str, Any] | None:
         "spd": (iv_raw >> 25) & 0x1F,
     }
 
-    nature_idx = pid % 25
-    nature = NATURES[nature_idx]
-
-    # Battle stats extension (bytes 136-235, encrypted with PID)
-    battle_ext = _prng_decrypt(raw_236[136:236], pid)
-    ext_level = battle_ext[4]
-    ext_cur_hp = struct.unpack_from("<H", battle_ext, 6)[0]
-    ext_max_hp = struct.unpack_from("<H", battle_ext, 8)[0]
-
     return {
         "pid": pid,
         "species_id": species,
@@ -143,6 +177,20 @@ def _decode_encrypted_pokemon(raw_236: bytes) -> dict[str, Any] | None:
         "ext_cur_hp": ext_cur_hp,
         "ext_max_hp": ext_max_hp,
     }
+
+
+def _read_species_array(emu: EmulatorClient) -> list[int]:
+    """Read the unencrypted species array (catch-order, not party-order)."""
+    raw = emu.read_memory_range(
+        SPECIES_ARRAY_BASE, size="byte", count=PARTY_MAX_SLOTS * SPECIES_ARRAY_STRIDE
+    )
+    data = bytes(raw)
+    species = []
+    for i in range(PARTY_MAX_SLOTS):
+        sp = struct.unpack_from("<H", data, i * SPECIES_ARRAY_STRIDE)[0]
+        if sp > 0 and sp <= 493:
+            species.append(sp)
+    return species
 
 
 # ── Party Reading ──
@@ -165,29 +213,58 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
         PARTY_SUMMARY_BASE, size="byte", count=PARTY_MAX_SLOTS * PARTY_SLOT_SIZE
     )
 
-    party = []
+    # First pass: decode all slots
+    decoded_slots = []
     for i in range(enc_party_count):
         enc_offset = i * ENCRYPTED_SLOT_SIZE
         enc_slot = bytes(enc_raw[enc_offset : enc_offset + ENCRYPTED_SLOT_SIZE])
-        decoded = _decode_encrypted_pokemon(enc_slot)
+        decoded_slots.append(_decode_encrypted_pokemon(enc_slot))
 
-        if not decoded or decoded["species_id"] == 0:
+    # Deduce species for partial slots via species array elimination
+    known_species: set[int] = set()
+    for d in decoded_slots:
+        if d and not d.get("partial") and d["species_id"] > 0:
+            known_species.add(d["species_id"])
+
+    has_partial = any(d and d.get("partial") for d in decoded_slots)
+    if has_partial:
+        all_species = _read_species_array(emu)
+        remaining = [s for s in all_species if s not in known_species]
+
+        for d in decoded_slots:
+            if d and d.get("partial") and d["species_id"] == 0:
+                if len(remaining) == 1:
+                    d["species_id"] = remaining[0]
+                    known_species.add(remaining[0])
+                    remaining.clear()
+                elif len(remaining) > 1:
+                    # Multiple unknowns — take the first remaining as best guess
+                    d["species_id"] = remaining.pop(0)
+                    known_species.add(d["species_id"])
+
+    # Second pass: build party list
+    party = []
+    for i, decoded in enumerate(decoded_slots):
+        if not decoded:
             continue
 
         species = decoded["species_id"]
-        name = sp_names.get(species, f"Pokemon#{species}")
+        if species == 0 and not decoded.get("partial"):
+            continue
+
+        name = sp_names.get(species, f"Pokemon#{species}") if species > 0 else "???"
 
         # Try HP/level from summary (valid in overworld only)
         summary_offset = i * PARTY_SLOT_SIZE
         summary_slot = bytes(summary_raw[summary_offset : summary_offset + PARTY_SLOT_SIZE])
         summary_species = struct.unpack_from("<H", summary_slot, OFF_SPECIES)[0]
 
-        if summary_species == species:
+        if summary_species == species and species > 0:
             cur_hp = struct.unpack_from("<H", summary_slot, OFF_CUR_HP)[0]
             max_hp = struct.unpack_from("<H", summary_slot, OFF_MAX_HP)[0]
             level = summary_slot[OFF_LEVEL]
         elif decoded.get("ext_level", 0) > 0:
-            # Summary struct zeroed (e.g. after battle) — use encrypted extension
+            # Summary unavailable or species mismatch — use encrypted extension
             level = decoded["ext_level"]
             cur_hp = decoded["ext_cur_hp"]
             max_hp = decoded["ext_max_hp"]
@@ -196,7 +273,9 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
             max_hp = -1
             level = -1
 
-        pokemon = {
+        partial = decoded.get("partial", False)
+
+        pokemon: dict[str, Any] = {
             "slot": i + 1,
             "species_id": species,
             "name": name,
@@ -215,6 +294,9 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
             "ivs": decoded.get("ivs", {}),
             "evs": decoded.get("evs", {}),
         }
+        if partial:
+            pokemon["partial"] = True
+
         party.append(pokemon)
 
     return party
@@ -238,9 +320,12 @@ def format_party(party: list[dict[str, Any]]) -> str:
         else:
             hp_str = "HP ?/?"
 
-        lines.append(f"  {p['slot']}. {p['name']} {level_str}{nature_str}  {hp_str}")
+        partial_tag = " [stale data]" if p.get("partial") else ""
+        lines.append(f"  {p['slot']}. {p['name']} {level_str}{nature_str}  {hp_str}{partial_tag}")
 
-        if p.get("move_names"):
+        if p.get("partial"):
+            lines.append("     (moves/IVs/EVs unavailable — encrypted data stale)")
+        elif p.get("move_names"):
             for mname, pp in zip(p["move_names"], p["pp"]):
                 if mname == "-":
                     continue
@@ -250,10 +335,10 @@ def format_party(party: list[dict[str, Any]]) -> str:
 
         ivs = p.get("ivs", {})
         evs = p.get("evs", {})
-        if ivs:
+        if ivs and not p.get("partial"):
             iv_str = "/".join(str(ivs[s]) for s in ["hp", "atk", "def", "spa", "spd", "spe"])
             lines.append(f"     IVs: {iv_str} (HP/Atk/Def/SpA/SpD/Spe)")
-        if evs and any(evs[s] > 0 for s in evs):
+        if evs and not p.get("partial") and any(evs[s] > 0 for s in evs):
             ev_str = "/".join(str(evs[s]) for s in ["hp", "atk", "def", "spa", "spd", "spe"])
             lines.append(f"     EVs: {ev_str}")
 
