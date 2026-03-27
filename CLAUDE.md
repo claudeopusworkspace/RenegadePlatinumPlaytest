@@ -51,6 +51,8 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `debug_move_learn_give_up_prompt` | At "Should this Pokemon give up on learning?" prompt. "Give up on Curse!" / "Don't give up on Curse!" buttons. |
 | `debug_move_learn_forget_prompt` | At "Make it forget another move?" prompt. "Forget a move!" / "Keep old moves!" buttons. |
 | `debug_move_select_screen` | Move selection grid visible: Tackle/Withdraw/Absorb/Razor Leaf + Curse. For move forget UI testing. |
+| `route202_grind_mid_session` | Route 202 (map 343). Mid-grind checkpoint. Piplup Lv7, Eevee Lv8, Shinx Lv7, Turtwig Lv12, Chimchar Lv8. |
+| `route202_grind_complete` | Route 202 (map 343). Grind complete. Eevee Lv9 (holding Potion), Shinx Lv8, Piplup Lv8, Turtwig Lv12, Chimchar Lv8. |
 
 ## Renegade MCP Tools
 
@@ -181,15 +183,15 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 ## Game Progress
 
 - **Character**: CLAUDE | **Rival**: AAAAAAA
-- **Location**: Sandgem Pokemon Center (map 420). Save state: `sandgem_pc_grind_session_end`.
-- **Shinx** Lv5 — Jolly (+Spe/-SpA), Guts. Moves: Tackle, Leer, Howl. Fainted, needs leveling.
-- **Piplup** Lv6 — Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble. Gift from Rowan's lab briefcase.
-- **Eevee** Lv7 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Tail Whip, Bite, Covet.
+- **Location**: Route 202 (map 343). Save state: `route202_grind_complete`.
+- **Eevee** Lv9 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Tail Whip, Bite, Covet. Holding Potion (stolen via Covet).
+- **Shinx** Lv8 — Jolly (+Spe/-SpA), Guts. Moves: Tackle, Leer, Howl, Quick Attack.
+- **Piplup** Lv8 — Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Water Sport. Gift from Rowan's lab briefcase.
 - **Turtwig** Lv12 — Naughty (+Atk/-SpD). Moves: Tackle, Curse, Absorb, Razor Leaf.
 - **Chimchar** Lv8 — Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Leer, Ember, Taunt. Gift from Rowan's lab briefcase.
-- **Key items**: Potion x2, Repel x10, Poke Ball x29, Bicycle, Poke Radar, Parcel (deliver to Barry).
+- **Key items**: Potion x1, Repel x10, Poke Ball x29, Bicycle, Poke Radar, Parcel (deliver to Barry).
 - **Defeated trainers**: Youngster Tristan (Route 202). Lost to Youngster Logan (Route 202, Growlithe/Burmy/Zigzagoon).
-- **Next**: Grind Shinx to Lv8+, Eevee to Lv9+, Piplup to Lv8+. Rematch Youngster Logan. Continue north to Jubilife City. Deliver Parcel to Barry.
+- **Next**: Rematch Youngster Logan. Continue north to Jubilife City. Deliver Parcel to Barry.
 
 See GAME_HISTORY.md for full chronological playthrough details.
 
