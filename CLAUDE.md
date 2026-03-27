@@ -31,6 +31,8 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `post_dawn_battle_route202` | Route 202 (map 343) at (180, 825). After beating Dawn's Piplup Lv9. Got 30 Poke Balls. Turtwig Lv9. |
 | `route202_mid_healed` | Route 202 (map 343) at (166, 815). Turtwig Lv10, healed. Pre-trainer area. |
 | `route202_post_tristan_healed` | Route 202 (map 343) at (181, 819). After beating Youngster Tristan. Turtwig Lv11 (learned Curse), 31/35 HP. |
+| `tristan_battle_start` | Youngster Tristan battle start. Turtwig Lv10 vs Hoothoot Lv7. Debug state for 2-Pokemon trainer battle. |
+| `tristan_switch_prompt` | Mid-battle "Will you switch?" prompt. After KO'ing Hoothoot, before Starly. Debug state. |
 
 ## Renegade MCP Tools
 
@@ -48,6 +50,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `read_dialogue(region="auto")` | Read dialogue/battle text from RAM |
 | `battle_init` | Snapshot text baseline at battle start |
 | `battle_poll(auto_press=false)` | Poll for turn narration after selecting a move |
+| `battle_turn(move_index)` | Full automated turn: init + FIGHT + move + poll + state detection |
 | `decode_rom_message(file_index)` | Decode ROM message archive (species, moves, items, etc.) |
 | `search_rom_messages(query)` | Search all 724 message files for text |
 | `use_item(item_name, party_slot)` | Use a Medicine item on a party Pokemon from overworld |
@@ -80,10 +83,20 @@ Key ROM file indices: 0392=items, 0412=species, 0610=abilities, 0647=moves, 0433
 
 ## Battle Workflow
 
+### Automated (preferred)
+1. **`read_battle`** — check enemy species, types, ability, stats, moves. Plan tactics.
+2. **`battle_turn(move_index)`** — executes full turn: init + FIGHT + move + poll + detect state.
+3. Handle the returned state:
+   - `WAIT_FOR_ACTION` — next turn, call `battle_turn` again.
+   - `SWITCH_PROMPT` — trainer sending next Pokemon. Use d-pad + A to choose.
+   - `BATTLE_ENDED` — back in overworld.
+   - `LEVEL_UP` — move learning prompt. Handle manually (d-pad + A for choice, touch for move selection).
+   - `TIMEOUT` / `NO_TEXT` — something unexpected. Screenshot + `read_battle` to diagnose.
+
+### Manual (for debugging)
 1. **`battle_init`** — run ONCE at battle start to snapshot text baseline.
-2. **`read_battle`** — check enemy species, types, ability, stats, moves. Do this FIRST to plan tactics.
-3. Select a move via touch screen, then **`battle_poll(auto_press=true)`** — polls for turn narration.
-4. **`read_battle`** again — check updated HP, PP, stat stages, status.
+2. Select a move via touch screen, then **`battle_poll(auto_press=true)`** — polls for turn narration.
+3. **`read_battle`** — check updated HP, PP, stat stages, status.
 
 ## DS Screen Layout
 

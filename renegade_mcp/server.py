@@ -202,6 +202,32 @@ def create_server() -> FastMCP:
         emu = get_client()
         return _battle_poll(emu, auto_press)
 
+    # ── Battle Turn ──
+
+    @mcp.tool()
+    def battle_turn(move_index: int) -> dict[str, Any]:
+        """Execute a full battle turn: select a move, poll for narration, detect outcome.
+
+        Combines battle_init + move selection + battle_poll into one call.
+        Automatically snapshots text baseline, taps FIGHT, taps the move,
+        polls for all battle narration (auto-dismissing mid-turn text), and
+        classifies the final state.
+
+        States returned:
+        - WAIT_FOR_ACTION: next turn ready, select another move
+        - SWITCH_PROMPT: trainer sending next Pokemon, switch or keep battling
+        - BATTLE_ENDED: battle over, back in overworld
+        - TIMEOUT: poll limit reached, check game state manually
+        - NO_TEXT: move may not have registered
+
+        Args:
+            move_index: Move slot 0-3 (top-left, top-right, bottom-left, bottom-right).
+        """
+        from renegade_mcp.turn import battle_turn as _battle_turn
+
+        emu = get_client()
+        return _battle_turn(emu, move_index)
+
     # ── ROM Message Decoding ──
 
     @mcp.tool()

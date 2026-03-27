@@ -167,7 +167,26 @@ Base address: `0x022C5774`. 4 slots x `0xC0` (192) bytes each. Slot 0 = player a
 | Current HP | +0x4C | u16 | Live battle HP |
 | Max HP | +0x50 | u16 | |
 
-Outside of battle, all slots contain stale/invalid data (detected automatically by `read_battle`).
+Outside of battle, all slots contain stale/invalid data. **Garbage detection:** Post-battle, the struct retains partially-valid data (e.g. species 396 = Starly passes the `<= 493` check) but with impossible values: `cur_hp > max_hp`, `max_hp > 999`, `level` drift, stats in the thousands. The most reliable garbage signal is `cur_hp > max_hp`, which is impossible during a real battle.
+
+### Battle State Detection (Text-Based)
+
+The battle struct has no dedicated "in battle" flag. Battle states are best detected via **text buffer patterns** in the battle narration region:
+
+| State | Text Pattern | Control Code | Notes |
+|-------|-------------|-------------|-------|
+| Action prompt | "What will X do?" | `[FFFE][0200]` (CTRL_VAR) | Normal move selection |
+| Switch prompt | "Will you switch your Pokémon?" | `[VAR][0200]` | Trainer's next Pokemon — enemy slot already updated |
+| Fainted message | "X fainted!" | AUTO_ADVANCE | Enemy HP = 0 in battle struct |
+| EXP gain | "gained X Exp. Points!" | AUTO_ADVANCE | |
+| Level up | "grew to Lv. X!" | AUTO_ADVANCE | Battle struct updates (level, stats) immediately |
+| Battle end | N/A | N/A | No text — detect via garbage in battle struct |
+
+**Key observations from debugging:**
+- Enemy slot updates to the **next Pokemon before** the switch prompt appears
+- Battle struct **level/stats update immediately** at level-up, before move learning
+- Move learning prompts use **d-pad + A for initial choice**, then **touch screen for move selection**
+- Post-battle, battle struct becomes garbage while still "looking valid" (species/level in range)
 
 ## Party Summary Structure
 

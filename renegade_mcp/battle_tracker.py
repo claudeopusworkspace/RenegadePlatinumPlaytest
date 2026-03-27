@@ -140,7 +140,12 @@ def _scan_for_new_text(data: bytes, base_addr: int, baseline: dict[str, str] | N
 
 
 def _classify_stop(vals: list[int]) -> str:
-    """Classify stop type from trailing values before END."""
+    """Classify stop type from trailing values before END.
+
+    Only [FFFE][0200] indicates an action prompt (move/switch selection).
+    Other FFFE codes like [FFFE][0202] are text variable substitutions
+    (e.g. level numbers in "grew to Lv. 11!") and should auto-advance.
+    """
     end_idx = None
     for i, v in enumerate(vals):
         if v == CTRL_END:
@@ -152,8 +157,9 @@ def _classify_stop(vals: list[int]) -> str:
     if vals[end_idx - 1] == CTRL_NEWLINE:
         return "WAIT_FOR_INPUT"
 
-    for j in range(max(0, end_idx - 5), end_idx):
-        if vals[j] == CTRL_VAR:
+    # Check for [FFFE][0200] — the specific action/switch prompt pattern
+    for j in range(max(0, end_idx - 5), end_idx - 1):
+        if vals[j] == CTRL_VAR and vals[j + 1] == 0x0200:
             return "WAIT_FOR_ACTION"
 
     return "AUTO_ADVANCE"
