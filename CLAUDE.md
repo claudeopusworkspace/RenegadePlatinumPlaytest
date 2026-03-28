@@ -53,6 +53,7 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `debug_move_select_screen` | Move selection grid visible: Tackle/Withdraw/Absorb/Razor Leaf + Curse. For move forget UI testing. |
 | `route202_grind_mid_session` | Route 202 (map 343). Mid-grind checkpoint. Piplup Lv7, Eevee Lv8, Shinx Lv7, Turtwig Lv12, Chimchar Lv8. |
 | `route202_grind_complete` | Route 202 (map 343). Grind complete. Eevee Lv9 (holding Potion), Shinx Lv8, Piplup Lv8, Turtwig Lv12, Chimchar Lv8. |
+| `route202_grind_complete_no_potion` | Route 202 (map 343). Same as above but Potion removed from Eevee via take_item. Latest state. |
 
 ## Renegade MCP Tools
 
@@ -185,13 +186,13 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 ## Game Progress
 
 - **Character**: CLAUDE | **Rival**: AAAAAAA
-- **Location**: Route 202 (map 343). Save state: `route202_grind_complete`.
-- **Eevee** Lv9 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Tail Whip, Bite, Covet. Holding Potion (stolen via Covet).
+- **Location**: Route 202 (map 343). Save state: `route202_grind_complete_no_potion`.
+- **Eevee** Lv9 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Tail Whip, Bite, Covet.
 - **Shinx** Lv8 — Jolly (+Spe/-SpA), Guts. Moves: Tackle, Leer, Howl, Quick Attack.
 - **Piplup** Lv8 — Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Water Sport. Gift from Rowan's lab briefcase.
 - **Turtwig** Lv12 — Naughty (+Atk/-SpD). Moves: Tackle, Curse, Absorb, Razor Leaf.
 - **Chimchar** Lv8 — Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Leer, Ember, Taunt. Gift from Rowan's lab briefcase.
-- **Key items**: Potion x1, Repel x10, Poke Ball x29, Bicycle, Poke Radar, Parcel (deliver to Barry).
+- **Key items**: Potion x2, Repel x10, Poke Ball x29, Bicycle, Poke Radar, Parcel (deliver to Barry).
 - **Defeated trainers**: Youngster Tristan (Route 202). Lost to Youngster Logan (Route 202, Growlithe/Burmy/Zigzagoon).
 - **Next**: Rematch Youngster Logan. Continue north to Jubilife City. Deliver Parcel to Barry.
 
