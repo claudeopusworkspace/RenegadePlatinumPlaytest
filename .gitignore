@@ -15,6 +15,9 @@ nav_view.txt
 # DeSmuME MCP subproject (separate repo)
 DesmumeMCP/
 
+# Reference decompilation (external repo, ~26k files)
+ref/
+
 # ROM extracted data (large, can be re-extracted)
 romdata/
 

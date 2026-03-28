@@ -194,18 +194,32 @@ def create_server() -> FastMCP:
     # ── Dialogue ──
 
     @mcp.tool()
-    def read_dialogue(region: str = "auto") -> dict[str, Any]:
-        """Read current dialogue or battle text from memory.
+    def read_dialogue(region: str = "auto", advance: bool = True) -> dict[str, Any]:
+        """Read dialogue text, optionally auto-advancing through the full conversation.
 
-        Scans RAM for active text slots with D2EC B6F8 markers. Decodes Gen 4
-        text encoding. Use "auto" to check overworld first, then battle.
+        With advance=True (default): Automatically presses B to advance through
+        all dialogue pages, collecting the full conversation. Stops at dialogue
+        end, Yes/No prompts, or unknown states requiring input. Uses the script
+        engine state machine (ScriptManager/ScriptContext/TextPrinter) for
+        reliable detection of when to press, when to wait, and when to stop.
+
+        With advance=False: Passive read — returns whatever text is currently
+        in the RAM buffer without pressing any buttons.
 
         Args:
             region: "auto" (try overworld then battle), "overworld", or "battle".
+                Only used when advance=False.
+            advance: If True, auto-advance through dialogue collecting all text.
+                If False, passive read only (original behavior).
         """
-        from renegade_mcp.dialogue import read_dialogue as _read_dialogue
+        from renegade_mcp.dialogue import (
+            advance_dialogue as _advance_dialogue,
+            read_dialogue as _read_dialogue,
+        )
 
         emu = get_client()
+        if advance:
+            return _advance_dialogue(emu)
         return _read_dialogue(emu, region)
 
     # ── Battle Turn ──
