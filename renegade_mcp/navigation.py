@@ -583,7 +583,10 @@ def _execute_path(
         emu.advance_frames(WAIT_FRAMES)
 
         new_map, new_x, new_y = _read_position(emu)
-        steps_taken += 1
+
+        blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
+        if not blocked:
+            steps_taken += 1
 
         entry: dict = {
             "step": steps_taken,
@@ -599,8 +602,6 @@ def _execute_path(
             if changes:
                 entry["npc_changes"] = changes
             prev_npcs = curr_npcs
-
-        blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
 
         if blocked:
             entry["blocked"] = True

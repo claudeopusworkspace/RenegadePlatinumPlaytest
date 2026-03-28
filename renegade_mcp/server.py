@@ -219,7 +219,7 @@ def create_server() -> FastMCP:
 
         Actions:
         - move_index (0-3): Tap FIGHT, select the move (top-left, top-right, bottom-left, bottom-right).
-        - switch_to (0-5): Tap POKEMON, navigate to party slot, confirm switch.
+        - switch_to (1-5): Tap POKEMON, navigate to party slot, confirm switch. Slot 0 is the active battler.
         - forget_move (0-3): At MOVE_LEARN prompt, forget this move slot and learn the new move.
         - forget_move=-1: At MOVE_LEARN prompt, skip learning the new move.
 

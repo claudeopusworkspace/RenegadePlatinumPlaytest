@@ -59,6 +59,8 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `jubilife_city_arrival` | Jubilife City (map 3) south entrance at (170, 798). Before Dawn/Looker cutscene. Great dialogue auto-advance test case. |
 | `debug_npc_blocking_jubilife` | Jubilife City (map 3) at (165, 752). Idol NPC blocking Jubilife TV door — was invisible before object limit fix. |
 | `jubilife_pokecenter_healed` | Jubilife Pokemon Center (map 6). Team healed. Latest state. |
+| `debug_logan_growlithe_low_hp` | Logan battle, Growlithe at 9 HP. One Tackle KOs → SWITCH_PROMPT (Burmy next). For switch prompt testing. |
+| `debug_tristan_dialogue_active` | Route 202 (map 343) at (181, 819). Stuck in Tristan's post-battle dialogue. For testing tool behavior during active dialogue. |
 
 ## Renegade MCP Tools
 

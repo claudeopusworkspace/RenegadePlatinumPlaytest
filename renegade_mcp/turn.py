@@ -79,6 +79,7 @@ RECOVERY_WAIT = 300  # frames between B presses (~5 seconds per press)
 
 # Timing
 ACTION_SETTLE = 120   # frames before first tap (covers send-out animations)
+PROMPT_SETTLE = 300   # frames before tapping switch/faint prompts (game delays control handoff)
 TAP_WAIT = 60         # frames between sequential taps
 DPAD_WAIT = 30        # frames between D-pad presses
 ACTION_PROMPT_MAX_POLLS = 120  # polls waiting for "What will X do?" (~30 sec)
@@ -350,17 +351,17 @@ def battle_turn(
 
     Normal turn (ACTION — "What will X do?"):
         move_index (0-3): Use FIGHT and select a move.
-        switch_to (0-5): Use POKEMON to switch voluntarily.
+        switch_to (1-5): Use POKEMON to switch voluntarily.
 
     Faint in wild battle (FAINT_SWITCH — "Use next Pokemon?"):
-        switch_to (0-5): Send in a replacement.
+        switch_to (1-5): Send in a replacement.
         No args / switch_to=-1: Flee the battle.
 
     Faint in trainer battle (FAINT_FORCED — party grid shown):
-        switch_to (0-5): Send in a replacement (required).
+        switch_to (1-5): Send in a replacement (required).
 
     Trainer switch prompt (SWITCH_PROMPT — "Will you switch?"):
-        switch_to (0-5): Switch to a different Pokemon.
+        switch_to (1-5): Switch to a different Pokemon.
         No args / switch_to=-1: Keep battling with current Pokemon.
 
     Move learning (MOVE_LEARN — "give up on learning?"):
@@ -397,27 +398,33 @@ def battle_turn(
         if has_move and has_switch:
             return {"error": "Specify move_index OR switch_to, not both."}
         if not has_move and not has_switch:
-            return {"error": "Must specify move_index (0-3) or switch_to (0-5)."}
+            return {"error": "Must specify move_index (0-3) or switch_to (1-5)."}
         if has_move and move_index > 3:
             return {"error": f"move_index must be 0-3, got {move_index}"}
+        if has_switch and switch_to == 0:
+            return {"error": "switch_to=0 is the active battler. Use 1-5 to switch to a different Pokemon."}
         if has_switch and switch_to > 5:
-            return {"error": f"switch_to must be 0-5, got {switch_to}"}
+            return {"error": f"switch_to must be 1-5, got {switch_to}"}
     elif pt in ("FAINT_SWITCH", "SWITCH_PROMPT"):
         if has_forget:
             return {"error": f"Not at a move learning prompt. Currently in {pt} state."}
         if has_move:
-            return {"error": f"Can't use a move in {pt} state. Use switch_to (0-5), or omit to {'flee' if pt == 'FAINT_SWITCH' else 'keep battling'}."}
+            return {"error": f"Can't use a move in {pt} state. Use switch_to (1-5), or omit to {'flee' if pt == 'FAINT_SWITCH' else 'keep battling'}."}
+        if has_switch and switch_to == 0:
+            return {"error": "switch_to=0 is the active battler. Use 1-5 to switch to a different Pokemon."}
         if has_switch and switch_to > 5:
-            return {"error": f"switch_to must be 0-5, got {switch_to}"}
+            return {"error": f"switch_to must be 1-5, got {switch_to}"}
     elif pt == "FAINT_FORCED":
         if has_forget:
             return {"error": "Not at a move learning prompt. Your Pokemon fainted — use switch_to."}
         if has_move:
-            return {"error": "Can't use a move — your Pokemon fainted. Use switch_to (0-5) to send a replacement."}
+            return {"error": "Can't use a move — your Pokemon fainted. Use switch_to (1-5) to send a replacement."}
         if not has_switch:
-            return {"error": "Must switch in a trainer battle — specify switch_to (0-5)."}
+            return {"error": "Must switch in a trainer battle — specify switch_to (1-5)."}
+        if has_switch and switch_to == 0:
+            return {"error": "switch_to=0 is the active battler. Use 1-5 to switch to a different Pokemon."}
         if switch_to > 5:
-            return {"error": f"switch_to must be 0-5, got {switch_to}"}
+            return {"error": f"switch_to must be 1-5, got {switch_to}"}
     elif pt == "MOVE_LEARN":
         if has_move or has_switch:
             return {"error": "At move learning prompt. Use forget_move (0-3) to forget a move, or forget_move=-1 to skip."}
@@ -479,6 +486,7 @@ def _execute_faint_switch(
     emu: EmulatorClient, prompt: dict, switch_to: int, has_switch: bool,
 ) -> dict[str, Any]:
     """Wild faint: send replacement or flee."""
+    emu.advance_frames(PROMPT_SETTLE)
     if has_switch:
         _prompt_switch_flow(emu, switch_to)
         return _poll_after_action(emu, prompt["log"])
@@ -500,6 +508,7 @@ def _execute_forced_switch(
     emu: EmulatorClient, prompt: dict, switch_to: int,
 ) -> dict[str, Any]:
     """Trainer faint: must send replacement."""
+    emu.advance_frames(PROMPT_SETTLE)
     _forced_switch_flow(emu, switch_to)
     return _poll_after_action(emu, prompt["log"])
 
@@ -508,6 +517,7 @@ def _execute_switch_prompt(
     emu: EmulatorClient, prompt: dict, switch_to: int, has_switch: bool,
 ) -> dict[str, Any]:
     """Trainer switch prompt: swap Pokemon or keep battling."""
+    emu.advance_frames(PROMPT_SETTLE)
     if has_switch:
         _prompt_switch_flow(emu, switch_to)
     else:
