@@ -85,6 +85,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `search_rom_messages(query)` | Search all 724 message files for text |
 | `use_item(item_name, party_slot)` | Use a Medicine item on a party Pokemon from overworld |
 | `take_item(party_slot)` | Remove held item from a party Pokemon via pause menu (overworld only) |
+| `heal_party` | Heal at Pokemon Center: finds Nurse Joy by graphicsID, interacts, advances dialogue, verifies HP. |
 
 The original Python scripts in `scripts/` still work for debugging but are no longer the primary interface.
 

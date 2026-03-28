@@ -338,6 +338,24 @@ def create_server() -> FastMCP:
         emu = get_client()
         return _take_item(emu, party_slot)
 
+    # ── Heal ──
+
+    @mcp.tool()
+    def heal_party() -> dict[str, Any]:
+        """Heal the entire party at a Pokemon Center.
+
+        Finds the Pokecenter Nurse on the current map by graphicsID, walks up,
+        talks to her, advances through the healing dialogue, and verifies all
+        party HP is restored. Must be inside a Pokemon Center.
+
+        Aborts gracefully if Nurse Joy isn't found, navigation is interrupted,
+        or the dialogue doesn't match the expected greeting (possible event).
+        """
+        from renegade_mcp.heal_party import heal_party as _heal_party
+
+        emu = get_client()
+        return _heal_party(emu)
+
     # ── Party Reorder ──
 
     @mcp.tool()

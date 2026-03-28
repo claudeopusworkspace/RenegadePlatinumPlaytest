@@ -44,11 +44,11 @@ MOVE_XY = [
 PARTY_TOUCH_XY = [
     (65, 30),    # Slot 0 — top-left
     (190, 30),   # Slot 1 — top-right
-    (65, 80),    # Slot 2 — mid-left (estimated)
-    (190, 80),   # Slot 3 — mid-right (estimated)
-    (65, 130),   # Slot 4 — bottom-left (estimated)
-    (190, 130),  # Slot 5 — bottom-right (estimated)
-]
+    (65, 80),    # Slot 2 — mid-left
+    (190, 80),   # Slot 3 — mid-right
+    (65, 130),   # Slot 4 — bottom-left
+    (190, 130),  # Slot 5 — bottom-right
+]  # Calibrated via gameplay with 5-Pokemon party
 SHIFT_XY = (128, 100)  # "SHIFT" confirmation button
 
 # ── Faint/switch prompt buttons (bottom screen) ──
