@@ -65,8 +65,9 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `read_bag(pocket="")` | Bag contents across all 7 pockets. Optional pocket filter. |
 | `view_map` | ASCII map with terrain, player position, NPCs |
 | `map_name(map_id=-1)` | Location name lookup. Defaults to current map. |
-| `navigate(directions)` | Manual walk: "d2 l3 u1" or "down down left left left" |
-| `navigate_to(x, y)` | BFS pathfind to target tile, then walk there |
+| `navigate(directions)` | Manual walk: "d2 l3 u1". Returns `encounter` key if battle/dialogue detected after movement. |
+| `navigate_to(x, y)` | BFS pathfind to target tile. Returns `encounter` key if battle/dialogue detected after movement. |
+| `seek_encounter(cave=false)` | Pace in grass until wild encounter. Returns at first action prompt with full battle state. `cave=true` for non-grass encounters. |
 | `read_dialogue(region="auto")` | Read dialogue/battle text from RAM |
 | `battle_turn(move_index, switch_to)` | Full automated turn: FIGHT + move OR POKEMON + switch. Returns battle log + state + read_battle data. |
 | `throw_ball` | Throw a Poké Ball in wild battle: BAG + ball select + USE + catch result |
@@ -74,6 +75,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `decode_rom_message(file_index)` | Decode ROM message archive (species, moves, items, etc.) |
 | `search_rom_messages(query)` | Search all 724 message files for text |
 | `use_item(item_name, party_slot)` | Use a Medicine item on a party Pokemon from overworld |
+| `take_item(party_slot)` | Remove held item from a party Pokemon via pause menu (overworld only) |
 
 The original Python scripts in `scripts/` still work for debugging but are no longer the primary interface.
 
