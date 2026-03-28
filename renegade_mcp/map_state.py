@@ -20,7 +20,8 @@ TERRAIN_ADDR = 0x0231D1E4
 TERRAIN_SIZE = 2048  # 32*32*2
 
 PLAYER_POS_BASE = 0x0227F450
-PLAYER_FACING_ADDR = 0x02335346
+# Player facing: MapObject[0].facingDir (0x022A1A38 + 0x28)
+PLAYER_FACING_ADDR = 0x022A1A60
 
 # Zone header table in ARM9 (Platinum US / Renegade Platinum).
 # Each entry is 24 bytes; first u16 is the matrix_id for that zone.
@@ -30,7 +31,7 @@ ZONE_HEADER_STRIDE = 24
 OBJ_ARRAY_FPX_BASE = 0x022A1AA8
 OBJ_STRUCT_BASE = OBJ_ARRAY_FPX_BASE - 0x70  # True start of MapObject[0]
 OBJ_STRIDE = 0x128
-OBJ_MAX_ENTRIES = 16
+OBJ_MAX_ENTRIES = 64
 
 # ── ROM data paths (relative to CWD = project root) ──
 ROMDATA_DIR = Path("romdata")
@@ -283,6 +284,22 @@ def read_objects(emu: EmulatorClient) -> list[dict[str, Any]]:
     consecutive_empty = 0
 
     for i in range(OBJ_MAX_ENTRIES):
+        struct_base = OBJ_STRUCT_BASE + (i * OBJ_STRIDE)
+
+        # Read struct header first: status, unk, localID, mapID, graphicsID,
+        # movementType, trainerType, flag, script (9 longs from struct base)
+        header = emu.read_memory_range(struct_base, size="long", count=9)
+        status = header[0] if header else 0
+
+        # Use status field for empty detection — position (0,0) doesn't mean
+        # empty (some objects are loaded at origin before being placed)
+        if status == 0:
+            consecutive_empty += 1
+            if consecutive_empty >= 3:
+                break
+            continue
+        consecutive_empty = 0
+
         fpx_addr = OBJ_ARRAY_FPX_BASE + (i * OBJ_STRIDE)
         fpy_addr = fpx_addr + 8
 
@@ -292,25 +309,13 @@ def read_objects(emu: EmulatorClient) -> list[dict[str, Any]]:
         tile_x = (fpx >> 16) & 0xFFFF
         tile_y = (fpy >> 16) & 0xFFFF
 
-        if fpx == 0 and fpy == 0:
-            consecutive_empty += 1
-            if consecutive_empty >= 3:
-                break
-            continue
-
         if tile_x > 10000 or tile_y > 10000:
-            consecutive_empty = 0
             continue
 
-        consecutive_empty = 0
         obj: dict[str, Any] = {
             "index": i, "x": tile_x, "y": tile_y, "fpx": fpx, "fpy": fpy,
         }
 
-        # Read struct header: status, unk, localID, mapID, graphicsID,
-        # movementType, trainerType, flag, script (9 longs from struct base)
-        struct_base = OBJ_STRUCT_BASE + (i * OBJ_STRIDE)
-        header = emu.read_memory_range(struct_base, size="long", count=9)
         if len(header) >= 9:
             gfx_id = header[4]
             obj["local_id"] = header[2]
@@ -332,7 +337,7 @@ def read_player_state(emu: EmulatorClient) -> tuple[int, int, int, int]:
     map_id = emu.read_memory(PLAYER_POS_BASE, size="long")
     x = emu.read_memory(PLAYER_POS_BASE + 8, size="long")
     y = emu.read_memory(PLAYER_POS_BASE + 12, size="long")
-    facing = emu.read_memory(PLAYER_FACING_ADDR, size="byte")
+    facing = emu.read_memory(PLAYER_FACING_ADDR, size="long")
     return map_id, x, y, facing
 
 
@@ -368,9 +373,19 @@ def get_map_state(emu: EmulatorClient) -> dict[str, Any] | None:
 
     local_px = px - origin_x
     local_py = py - origin_y
+    height = len(terrain)
+    width = len(terrain[0]) if terrain else 0
     for obj in objects:
-        obj["local_x"] = obj["x"] - origin_x
-        obj["local_y"] = obj["y"] - origin_y
+        lx = obj["x"] - origin_x
+        ly = obj["y"] - origin_y
+        obj["local_x"] = lx
+        obj["local_y"] = ly
+        # Record terrain behavior underneath this object
+        if 0 <= ly < height and 0 <= lx < width:
+            tile_val = terrain[ly][lx]
+            behavior = tile_val & 0x00FF
+            if behavior != 0:
+                obj["standing_on"] = f"0x{behavior:02X}"
 
     return {
         "terrain": terrain,
@@ -395,7 +410,13 @@ def render_map(terrain: list, objects: list, player_local_x: int, player_local_y
             if obj["index"] == 0:
                 obj_at[(lx, ly)] = FACING_ARROWS.get(facing, "P")
             else:
-                obj_at[(lx, ly)] = chr(ord("A") + obj["index"] - 1)
+                idx = obj["index"]
+                if 1 <= idx <= 26:
+                    obj_at[(lx, ly)] = chr(ord("A") + idx - 1)
+                elif 27 <= idx <= 52:
+                    obj_at[(lx, ly)] = chr(ord("a") + idx - 27)
+                else:
+                    obj_at[(lx, ly)] = "?"
 
     # Find map bounds
     min_row, max_row = 31, 0
@@ -461,7 +482,7 @@ def render_map(terrain: list, objects: list, player_local_x: int, player_local_y
     lines.append("")
     lines.append("Legend:")
     lines.append("  ^v<> = player (facing direction)")
-    lines.append("  A-Z  = NPC/dynamic object")
+    lines.append("  A-Z, a-z = NPC/dynamic object")
     lines.append("  .    = void  #  = wall  _  = walkable ground")
     lines.append("  xx   = tile behavior (hex)")
 
@@ -505,7 +526,12 @@ def view_map(emu: EmulatorClient) -> dict[str, Any]:
     obj_info = []
     for obj in state["objects"]:
         idx = obj["index"]
-        letter = chr(ord("A") + idx - 1) if 1 <= idx <= 26 else f"#{idx}"
+        if 1 <= idx <= 26:
+            letter = chr(ord("A") + idx - 1)
+        elif 27 <= idx <= 52:
+            letter = chr(ord("a") + idx - 27)
+        else:
+            letter = f"#{idx}"
         name = obj.get("name", "")
         if idx == 0:
             label = "PLAYER"

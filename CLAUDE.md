@@ -57,7 +57,7 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `pre_logan_rematch` | Route 202 (map 343) at (174, 825). Full team healed, Turtwig leading. Pre-rematch. |
 | `post_logan_victory` | Route 202 (map 343). After beating Youngster Logan. Turtwig Lv13, Piplup Lv9, Chimchar Lv9. |
 | `jubilife_city_arrival` | Jubilife City (map 3) south entrance at (170, 798). Before Dawn/Looker cutscene. Great dialogue auto-advance test case. |
-| `debug_npc_blocking_jubilife` | Jubilife City (map 3) at (165, 752). Invisible event NPC blocking Jubilife TV door — not detected by view_map/navigate_to. |
+| `debug_npc_blocking_jubilife` | Jubilife City (map 3) at (165, 752). Idol NPC blocking Jubilife TV door — was invisible before object limit fix. |
 | `jubilife_pokecenter_healed` | Jubilife Pokemon Center (map 6). Team healed. Latest state. |
 
 ## Renegade MCP Tools
@@ -72,7 +72,8 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `view_map` | ASCII map with terrain, player position, NPCs |
 | `map_name(map_id=-1)` | Location name lookup. Defaults to current map. |
 | `navigate(directions)` | Manual walk: "d2 l3 u1". Returns `encounter` key if battle/dialogue detected after movement. |
-| `navigate_to(x, y)` | BFS pathfind to target tile. Returns `encounter` key if battle/dialogue detected after movement. |
+| `navigate_to(x, y)` | BFS pathfind to target tile. Auto-handles door/stair transitions (0x69, 0x65, 0x5F, 0x5E). Returns `encounter` key if battle/dialogue detected. |
+| `interact_with(object_index)` | Navigate to a map object/NPC by index and interact. Handles adjacent tiles, counter NPCs, facing, and dialogue. |
 | `seek_encounter(cave=false)` | Pace in grass until wild encounter. Returns at first action prompt with full battle state. `cave=true` for non-grass encounters. |
 | `read_dialogue(region="auto")` | Read dialogue/battle text from RAM |
 | `battle_turn(move_index, switch_to)` | Full automated turn: FIGHT + move OR POKEMON + switch. Returns battle log + state + read_battle data. |

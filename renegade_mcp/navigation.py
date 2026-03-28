@@ -18,6 +18,7 @@ from renegade_mcp.map_state import (
     get_matrix_for_map,
     load_terrain_from_rom,
     read_objects,
+    read_player_state,
 )
 from renegade_mcp.turn import _wait_for_action_prompt
 
@@ -42,6 +43,19 @@ BFS_MOVES = [(0, -1, "up"), (0, 1, "down"), (-1, 0, "left"), (1, 0, "right")]
 LEDGE_DIRECTIONS = {
     0x38: "down", 0x39: "up", 0x3A: "left", 0x3B: "right",
 }
+
+# Door/warp tile behaviors and how to activate them.
+# None = walk-into triggers warp automatically; string = press this direction after standing on tile.
+DOOR_ACTIVATION: dict[int, str | None] = {
+    0x69: None,     # Overworld building entrance (blocked, warp overrides collision)
+    0x65: "down",   # Interior exit mat — stand on tile, press down
+    0x6E: None,     # Auto-enter door — walk into it
+    0x5F: "left",   # Stairs down — stand on tile, press left
+    0x5E: "right",  # Stairs up — stand on tile, press right
+}
+
+DOOR_TRANSITION_POLLS = 30   # polls to wait for map transition (30 * 15 = 450 frames)
+DOOR_POLL_FRAMES = 15
 
 
 def _read_position(emu: EmulatorClient) -> tuple[int, int, int]:
@@ -332,6 +346,45 @@ def _post_nav_check(emu: EmulatorClient) -> dict[str, Any] | None:
             }
 
         emu.advance_frames(POST_NAV_POLL_FRAMES)
+
+    return None
+
+
+# ── Door transition ──
+
+
+def _handle_door_transition(
+    emu: EmulatorClient, behavior: int, original_map: int,
+) -> dict[str, Any] | None:
+    """Handle a door/warp tile after navigation reaches it.
+
+    For walk-into doors (0x69, 0x6E), the warp may have already triggered.
+    For step-on doors (0x65, 0x5F, 0x5E), presses the activation direction.
+    Waits for map transition to complete and returns new position info.
+
+    Returns dict with new map info, or None if no transition occurred.
+    """
+    activation = DOOR_ACTIVATION.get(behavior)
+
+    # For doors that need a direction press, do it now
+    if activation is not None:
+        emu.advance_frames(HOLD_FRAMES, buttons=[activation])
+        emu.advance_frames(WAIT_FRAMES)
+
+    # Poll for map transition — map_id should change
+    for _ in range(DOOR_TRANSITION_POLLS):
+        new_map, new_x, new_y = _read_position(emu)
+        if new_map != original_map:
+            # Transition happened — settle and return new position
+            emu.advance_frames(SETTLE_FRAMES)
+            final_map, final_x, final_y = _read_position(emu)
+            return {
+                "door_entered": True,
+                "door_behavior": f"0x{behavior:02X}",
+                "new_map": final_map,
+                "new_position": {"x": final_x, "y": final_y, "map": final_map},
+            }
+        emu.advance_frames(DOOR_POLL_FRAMES)
 
     return None
 
@@ -694,6 +747,19 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
             "grid_oy": origin_y,
         }
 
+    # Check if target tile is a door/warp
+    target_behavior = None
+    if is_global and chunked:
+        ti = combined_terrain
+        tx_local, ty_local = rel_tx, rel_ty
+    else:
+        ti = terrain_info
+        tx_local, ty_local = (target_x, target_y) if not is_global else (rel_tx, rel_ty)
+    if 0 <= ty_local < len(ti) and 0 <= tx_local < len(ti[0]):
+        _, target_behavior = ti[ty_local][tx_local]
+
+    is_door = target_behavior in DOOR_ACTIVATION
+
     if path is None:
         return {
             "error": "No path found. Target may be unreachable or blocked.",
@@ -702,6 +768,24 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
         }
 
     if len(path) == 0:
+        if is_door:
+            # Already standing on the door tile — activate it
+            door_result = _handle_door_transition(emu, target_behavior, map_id)
+            result: dict[str, Any] = {
+                "path_summary": "Already at door",
+                "total_directions": 0,
+                "steps_taken": 0,
+                "stopped_early": False,
+                "start": {"x": px, "y": py, "map": map_id},
+            }
+            if door_result:
+                result.update(door_result)
+                result["final"] = door_result["new_position"]
+            else:
+                result["final"] = {"x": px, "y": py, "map": map_id}
+                result["note"] = "Door activation did not trigger a map transition."
+            return result
+
         emu.advance_frames(SETTLE_FRAMES)
         return {
             "path_summary": "Already at target!",
@@ -716,11 +800,53 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
         emu, path, repath_ctx=repath_ctx,
     )
 
-    # Post-navigation: poll for encounter or dialogue (also serves as settle)
+    # For door targets, check if the warp already triggered during path execution
+    if is_door and not stopped_early:
+        cur_map, cur_x, cur_y = _read_position(emu)
+        if cur_map != map_id:
+            # Warp already happened (walk-into door like 0x69)
+            emu.advance_frames(SETTLE_FRAMES)
+            final_map, final_x, final_y = _read_position(emu)
+            result = {
+                "path_summary": _summarize_path(path),
+                "total_directions": len(path),
+                "steps_taken": steps_taken,
+                "stopped_early": False,
+                "start": {"x": px, "y": py, "map": map_id},
+                "target": {"x": target_x, "y": target_y},
+                "final": {"x": final_x, "y": final_y, "map": final_map},
+                "door_entered": True,
+                "door_behavior": f"0x{target_behavior:02X}",
+                "new_map": final_map,
+                "log": log,
+            }
+            return result
+
+        # Warp didn't trigger yet — activate the door
+        door_result = _handle_door_transition(emu, target_behavior, map_id)
+        result = {
+            "path_summary": _summarize_path(path),
+            "total_directions": len(path),
+            "steps_taken": steps_taken,
+            "stopped_early": False,
+            "start": {"x": px, "y": py, "map": map_id},
+            "target": {"x": target_x, "y": target_y},
+            "log": log,
+        }
+        if door_result:
+            result.update(door_result)
+            result["final"] = door_result["new_position"]
+        else:
+            final_map, final_x, final_y = _read_position(emu)
+            result["final"] = {"x": final_x, "y": final_y, "map": final_map}
+            result["note"] = "Door activation did not trigger a map transition."
+        return result
+
+    # Non-door target: standard post-nav check
     encounter = _post_nav_check(emu)
     final_map, final_x, final_y = _read_position(emu)
 
-    result: dict[str, Any] = {
+    result = {
         "path_summary": _summarize_path(path),
         "total_directions": len(path),
         "steps_taken": steps_taken,
@@ -740,3 +866,190 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
         result["steps_with_npc_movement"] = npc_steps
 
     return result
+
+
+# ── Interact with object ──
+
+# Direction to face the target from each adjacent offset
+_ADJACENT_OFFSETS = [
+    (0, -1, "down"),   # tile above target → face down
+    (0,  1, "up"),     # tile below target → face up
+    (-1, 0, "right"),  # tile left of target → face right
+    (1,  0, "left"),   # tile right of target → face left
+]
+
+INTERACT_DIALOGUE_WAIT = 60  # frames to wait for auto-interaction
+INTERACT_A_WAIT = 60         # frames to wait after pressing A
+
+
+def interact_with(emu: EmulatorClient, object_index: int) -> dict[str, Any]:
+    """Navigate to an object/NPC and interact with it.
+
+    Finds the target object by index, pathfinds to the best adjacent tile,
+    faces the target, and attempts interaction. Returns dialogue if any.
+    """
+    # ── Read current state ──
+    state = get_map_state(emu)
+    if state is None:
+        return {"error": "Could not read map state."}
+
+    objects = state["objects"]
+    target = next((o for o in objects if o["index"] == object_index), None)
+    if target is None:
+        return {"error": f"Object index {object_index} not found in current map objects."}
+
+    target_x, target_y = target["x"], target["y"]
+    target_name = target.get("name", f"Object {object_index}")
+    map_id = state["map_id"]
+    px, py = state["px"], state["py"]
+    chunked = state["chunked"]
+
+    # ── Build terrain and NPC set ──
+    is_global = target_x > 31 or target_y > 31 or chunked
+
+    if is_global and chunked:
+        mc_result = _build_multi_chunk_terrain(emu, map_id, px, py, target_x, target_y)
+        if mc_result is None:
+            return {"error": "Could not load multi-chunk terrain."}
+
+        terrain_info, grid_ox, grid_oy, grid_w, grid_h = mc_result
+
+        # Build NPC set, excluding the target object
+        npc_set = set()
+        for obj in objects:
+            if obj["index"] == 0 or obj["index"] == object_index:
+                continue
+            nx = obj["x"] - grid_ox
+            ny = obj["y"] - grid_oy
+            if 0 <= nx < grid_w and 0 <= ny < grid_h:
+                npc_set.add((nx, ny))
+
+        rel_px = px - grid_ox
+        rel_py = py - grid_oy
+        rel_tx = target_x - grid_ox
+        rel_ty = target_y - grid_oy
+        width, height = grid_w, grid_h
+    else:
+        origin_x = state.get("origin_x", 0)
+        origin_y = state.get("origin_y", 0)
+        terrain_info, npc_set = _build_terrain_info(state["terrain"], state["objects"])
+        # Remove target from NPC set so adjacency checks work
+        rel_tx = target_x - origin_x if target_x > 31 else target_x
+        rel_ty = target_y - origin_y if target_y > 31 else target_y
+        npc_set.discard((rel_tx, rel_ty))
+        rel_px = state["local_px"]
+        rel_py = state["local_py"]
+        width, height = 32, 32
+        grid_ox, grid_oy = origin_x, origin_y
+
+    # ── Find shortest path to any adjacent tile ──
+    candidates = []
+    for dx, dy, face_dir in _ADJACENT_OFFSETS:
+        adj_x, adj_y = rel_tx + dx, rel_ty + dy
+        if not (0 <= adj_x < width and 0 <= adj_y < height):
+            continue
+        passable, behavior = terrain_info[adj_y][adj_x]
+        if not passable:
+            continue
+        if (adj_x, adj_y) in npc_set:
+            continue
+        path = _bfs_pathfind(terrain_info, npc_set, rel_px, rel_py,
+                             adj_x, adj_y, width=width, height=height)
+        if path is not None:
+            candidates.append((len(path), path, adj_x, adj_y, face_dir))
+
+    # ── Fallback: try across-counter interaction (2 tiles away) ──
+    if not candidates:
+        for dx, dy, face_dir in _ADJACENT_OFFSETS:
+            # Check if intermediate tile is a counter
+            mid_x, mid_y = rel_tx + dx, rel_ty + dy
+            far_x, far_y = rel_tx + dx * 2, rel_ty + dy * 2
+            if not (0 <= mid_x < width and 0 <= mid_y < height):
+                continue
+            if not (0 <= far_x < width and 0 <= far_y < height):
+                continue
+            _, mid_behavior = terrain_info[mid_y][mid_x]
+            if mid_behavior != 0x80:  # not a counter tile
+                continue
+            far_passable, _ = terrain_info[far_y][far_x]
+            if not far_passable or (far_x, far_y) in npc_set:
+                continue
+            path = _bfs_pathfind(terrain_info, npc_set, rel_px, rel_py,
+                                 far_x, far_y, width=width, height=height)
+            if path is not None:
+                candidates.append((len(path), path, far_x, far_y, face_dir))
+
+    if not candidates:
+        return {
+            "error": f"No reachable tile adjacent to {target_name} at ({target_x}, {target_y}). "
+                     "Fully surrounded by obstacles.",
+            "target": {"index": object_index, "name": target_name, "x": target_x, "y": target_y},
+        }
+
+    # Pick shortest path
+    candidates.sort(key=lambda c: c[0])
+    _, best_path, dest_x, dest_y, face_dir = candidates[0]
+
+    # ── Execute path ──
+    nav_result: dict[str, Any] = {
+        "target": {"index": object_index, "name": target_name, "x": target_x, "y": target_y},
+        "destination": {"x": dest_x + grid_ox, "y": dest_y + grid_oy},
+        "face_direction": face_dir,
+    }
+
+    if len(best_path) > 0:
+        repath_ctx = {
+            "terrain_info": terrain_info,
+            "goal_x": dest_x,
+            "goal_y": dest_y,
+            "grid_w": width,
+            "grid_h": height,
+            "grid_ox": grid_ox,
+            "grid_oy": grid_oy,
+        }
+        stopped_early, steps_taken, repaths_used, log = _execute_path(
+            emu, best_path, repath_ctx=repath_ctx,
+        )
+        nav_result["path_summary"] = _summarize_path(best_path)
+        nav_result["steps_taken"] = steps_taken
+        if stopped_early:
+            encounter = _post_nav_check(emu)
+            if encounter:
+                nav_result["encounter"] = encounter
+                nav_result["interrupted"] = True
+                return nav_result
+            nav_result["stopped_early"] = True
+            return nav_result
+    else:
+        nav_result["path_summary"] = "Already adjacent"
+        nav_result["steps_taken"] = 0
+
+    # ── Face the target ──
+    _, _, _, cur_facing = read_player_state(emu)
+    desired_facing = {"up": 0, "down": 1, "left": 2, "right": 3}[face_dir]
+    if cur_facing != desired_facing:
+        emu.advance_frames(HOLD_FRAMES, buttons=[face_dir])
+        emu.advance_frames(WAIT_FRAMES)
+        nav_result["turned_to_face"] = face_dir
+
+    # ── Check for auto-interaction (signs auto-trigger when faced) ──
+    emu.advance_frames(INTERACT_DIALOGUE_WAIT)
+    dialogue = read_dialogue(emu, region="overworld")
+    if dialogue["region"] != "none":
+        nav_result["dialogue"] = dialogue
+        return nav_result
+
+    # ── Press A to interact ──
+    emu.press_buttons(["a"], frames=8)
+    emu.advance_frames(INTERACT_A_WAIT)
+
+    dialogue = read_dialogue(emu, region="overworld")
+    if dialogue["region"] != "none":
+        nav_result["dialogue"] = dialogue
+        nav_result["pressed_a"] = True
+        return nav_result
+
+    # ── No dialogue found ──
+    nav_result["dialogue"] = None
+    nav_result["note"] = f"{target_name} did not produce any dialogue when interacted with."
+    return nav_result
