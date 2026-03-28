@@ -307,6 +307,21 @@ def create_server() -> FastMCP:
         emu = get_client()
         return _use_item(emu, item_name, party_slot)
 
+    @mcp.tool()
+    def take_item(party_slot: int = 0) -> dict[str, Any]:
+        """Take the held item from a party Pokemon in the overworld.
+
+        Opens pause menu → Pokemon → select slot → Item → Take. Verifies
+        the item was removed afterward.
+
+        Args:
+            party_slot: Party index 0-5 (0 = first Pokemon).
+        """
+        from renegade_mcp.take_item import take_item as _take_item
+
+        emu = get_client()
+        return _take_item(emu, party_slot)
+
     # ── Party Reorder ──
 
     @mcp.tool()
