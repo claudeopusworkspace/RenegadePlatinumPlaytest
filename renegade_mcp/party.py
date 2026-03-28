@@ -31,12 +31,14 @@ PARTY_MAX_SLOTS = 6
 SPECIES_ARRAY_BASE = 0x0227F3E8
 SPECIES_ARRAY_STRIDE = 8
 
-# Pause menu (for refresh sync)
-PAUSE_CURSOR_ADDR = 0x0229FA28
+# Pause menu (for refresh sync) — constants imported from pause_menu module
+from renegade_mcp.pause_menu import (
+    MENU_WAIT,
+    NAV_WAIT,
+    PAUSE_CURSOR_ADDR,
+    open_pause_menu,
+)
 POKEMON_MENU_INDEX = 1
-PAUSE_MENU_SIZE = 7
-MENU_WAIT = 300  # frames after major menu transitions
-NAV_WAIT = 60    # frames after D-pad
 
 # Summary field offsets
 OFF_SPECIES = 0x04
@@ -208,9 +210,9 @@ def _refresh_party_data(emu: EmulatorClient) -> None:
     Must be called from the overworld with player control. Navigates:
     X (pause) → Pokemon → B (close party) → B (close pause).
     """
-    # Open pause menu
-    emu.press_buttons(["x"], frames=8)
-    emu.advance_frames(MENU_WAIT)
+    # Open pause menu (with readiness check)
+    if not open_pause_menu(emu):
+        return  # Can't open menu — refresh silently fails, stale data returned
 
     # Navigate to Pokemon
     cursor = emu.read_memory(PAUSE_CURSOR_ADDR, size="byte")

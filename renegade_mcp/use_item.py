@@ -10,6 +10,11 @@ from typing import TYPE_CHECKING, Any
 
 from renegade_mcp.bag import read_bag
 from renegade_mcp.party import read_party
+from renegade_mcp.pause_menu import (
+    MENU_SIZE,
+    PAUSE_CURSOR_ADDR,
+    open_pause_menu,
+)
 
 if TYPE_CHECKING:
     from desmume_mcp.client import EmulatorClient
@@ -20,9 +25,7 @@ NAV_WAIT = 60         # frames to wait after D-pad navigation
 DISMISS_WAIT = 120    # frames to wait after B press to dismiss text
 
 # ── Pause menu ──
-PAUSE_CURSOR_ADDR = 0x0229FA28  # byte: 0=Pokedex..2=Bag..6=Exit
 BAG_INDEX = 2
-MENU_SIZE = 7
 
 # ── Bag pocket touch coords (bottom screen) ──
 POCKET_COORDS = {
@@ -114,8 +117,9 @@ def use_item(emu: EmulatorClient, item_name: str, party_slot: int = 0) -> dict[s
             "scrolling not yet implemented. Only the first 5 items are selectable."
         )
 
-    # ── Step 1: Open pause menu ──
-    _press(emu, ["x"], wait=MENU_WAIT)
+    # ── Step 1: Open pause menu (with readiness check) ──
+    if not open_pause_menu(emu):
+        return _error("Could not open pause menu — player may not have control.")
 
     # ── Step 2: Navigate to Bag ──
     cursor = emu.read_memory(PAUSE_CURSOR_ADDR, size="byte")

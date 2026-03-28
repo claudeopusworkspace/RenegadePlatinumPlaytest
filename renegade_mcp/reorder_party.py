@@ -9,6 +9,10 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from renegade_mcp.party import read_party
+from renegade_mcp.pause_menu import (
+    PAUSE_CURSOR_ADDR,
+    open_pause_menu,
+)
 
 if TYPE_CHECKING:
     from desmume_mcp.client import EmulatorClient
@@ -18,7 +22,6 @@ MENU_WAIT = 300       # frames after major menu transitions
 NAV_WAIT = 60         # frames after D-pad navigation
 
 # ── Pause menu ──
-PAUSE_CURSOR_ADDR = 0x0229FA28
 POKEMON_INDEX = 1     # 0=Pokedex, 1=Pokemon, 2=Bag, ...
 MENU_SIZE = 7
 
@@ -86,8 +89,9 @@ def reorder_party(
     if not (0 <= from_slot <= 5 and 0 <= to_slot <= 5):
         return _error(f"Slots must be 0-5, got from={from_slot} to={to_slot}.")
 
-    # ── Step 1: Open pause menu ──
-    _press(emu, ["x"], wait=MENU_WAIT)
+    # ── Step 1: Open pause menu (with readiness check) ──
+    if not open_pause_menu(emu):
+        return _error("Could not open pause menu — player may not have control.")
 
     # ── Step 2: Navigate to POKEMON ──
     cursor = emu.read_memory(PAUSE_CURSOR_ADDR, size="byte")
