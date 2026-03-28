@@ -61,6 +61,7 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `jubilife_pokecenter_healed` | Jubilife Pokemon Center (map 6). Team healed. Latest state. |
 | `debug_logan_growlithe_low_hp` | Logan battle, Growlithe at 9 HP. One Tackle KOs → SWITCH_PROMPT (Burmy next). For switch prompt testing. |
 | `debug_tristan_dialogue_active` | Route 202 (map 343) at (181, 819). Stuck in Tristan's post-battle dialogue. For testing tool behavior during active dialogue. |
+| `debug_pre_heal_animation` | Sandgem Pokemon Center (map 420). Nurse Joy dialogue at "OK, I'll take your Pokémon for a few seconds." Right before healing animation. |
 
 ## Renegade MCP Tools
 
@@ -77,7 +78,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `navigate_to(x, y)` | BFS pathfind to target tile. Auto-handles door/stair transitions (0x69, 0x65, 0x5F, 0x5E). Returns `encounter` key if battle/dialogue detected. |
 | `interact_with(object_index)` | Navigate to a map object/NPC by index and interact. Handles adjacent tiles, counter NPCs, facing, and dialogue. |
 | `seek_encounter(cave=false)` | Pace in grass until wild encounter. Returns at first action prompt with full battle state. `cave=true` for non-grass encounters. |
-| `read_dialogue(region="auto")` | Read dialogue/battle text from RAM |
+| `read_dialogue(advance=true)` | Auto-advance through dialogue, collect full conversation. Stops at Yes/No prompts. `advance=false` for passive read. |
 | `battle_turn(move_index, switch_to)` | Full automated turn: FIGHT + move OR POKEMON + switch. Returns battle log + state + read_battle data. |
 | `throw_ball` | Throw a Poké Ball in wild battle: BAG + ball select + USE + catch result |
 | `reorder_party(from_slot, to_slot)` | Swap two party Pokemon via pause menu (overworld only) |
@@ -108,7 +109,7 @@ Multi-chunk maps (overworld, large caves) use a matrix/chunk system detected aut
 - **`read_bag`** — all 7 bag pockets. Pass `pocket="Key Items"` to filter.
 - **`read_battle`** — live battle data for all active battlers. Returns empty if not in battle. See MEMORY_MAP.md for struct layout.
 - **`map_name`** — location name from map ID. No args = current map.
-- **`read_dialogue`** — text from RAM buffers. Pass `region="overworld"` or `"battle"` to target specific buffers.
+- **`read_dialogue(advance=true)`** — auto-advances through overworld dialogue, collecting the full conversation. Stops at Yes/No prompts (returns `status: "yes_no_prompt"`) or dialogue end (`status: "completed"`). Uses the ScriptManager/ScriptContext/TextPrinter state machine for reliable detection. Pass `advance=false` for passive read (old behavior). Pass `region="battle"` with `advance=false` for battle text.
 - **`decode_rom_message(file_index)`** / **`search_rom_messages(query)`** — ROM data lookup (no emulator needed).
 
 Key ROM file indices: 0392=items, 0412=species, 0610=abilities, 0647=moves, 0433=locations, 0646=move descriptions.
@@ -234,7 +235,7 @@ See GAME_HISTORY.md for full chronological playthrough details.
 
 - Save state frequently — this is a difficulty hack, expect challenges.
 - **Use `read_battle` at the start of every battle** — Renegade Platinum changes abilities and movesets from vanilla.
-- Use `read_dialogue` to read text from memory — more reliable than timing screenshots.
+- **`read_dialogue` auto-advances by default** — just call it after triggering dialogue and it handles everything. Returns full conversation + status. Only need manual intervention for Yes/No prompts.
 - The `load_state` tool may occasionally hang — check `get_status` to verify.
 - Addresses must be passed as decimal integers to DeSmuME MCP tools, not hex strings.
 - **Touch screen taps default to `frames=8`** — changed from 1 to avoid missed inputs.
