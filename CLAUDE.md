@@ -53,7 +53,12 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `debug_move_select_screen` | Move selection grid visible: Tackle/Withdraw/Absorb/Razor Leaf + Curse. For move forget UI testing. |
 | `route202_grind_mid_session` | Route 202 (map 343). Mid-grind checkpoint. Piplup Lv7, Eevee Lv8, Shinx Lv7, Turtwig Lv12, Chimchar Lv8. |
 | `route202_grind_complete` | Route 202 (map 343). Grind complete. Eevee Lv9 (holding Potion), Shinx Lv8, Piplup Lv8, Turtwig Lv12, Chimchar Lv8. |
-| `route202_grind_complete_no_potion` | Route 202 (map 343). Same as above but Potion removed from Eevee via take_item. Latest state. |
+| `route202_grind_complete_no_potion` | Route 202 (map 343). Same as above but Potion removed from Eevee via take_item. |
+| `pre_logan_rematch` | Route 202 (map 343) at (174, 825). Full team healed, Turtwig leading. Pre-rematch. |
+| `post_logan_victory` | Route 202 (map 343). After beating Youngster Logan. Turtwig Lv13, Piplup Lv9, Chimchar Lv9. |
+| `jubilife_city_arrival` | Jubilife City (map 3) south entrance at (170, 798). Before Dawn/Looker cutscene. Great dialogue auto-advance test case. |
+| `debug_npc_blocking_jubilife` | Jubilife City (map 3) at (165, 752). Invisible event NPC blocking Jubilife TV door — not detected by view_map/navigate_to. |
+| `jubilife_pokecenter_healed` | Jubilife Pokemon Center (map 6). Team healed. Latest state. |
 
 ## Renegade MCP Tools
 
@@ -186,15 +191,16 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 ## Game Progress
 
 - **Character**: CLAUDE | **Rival**: AAAAAAA
-- **Location**: Route 202 (map 343). Save state: `route202_grind_complete_no_potion`.
-- **Eevee** Lv9 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Tail Whip, Bite, Covet.
+- **Location**: Jubilife City (map 3). Save state: `jubilife_pokecenter_healed`.
+- **Turtwig** Lv13 — Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Absorb, Razor Leaf.
 - **Shinx** Lv8 — Jolly (+Spe/-SpA), Guts. Moves: Tackle, Leer, Howl, Quick Attack.
-- **Piplup** Lv8 — Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Water Sport. Gift from Rowan's lab briefcase.
-- **Turtwig** Lv12 — Naughty (+Atk/-SpD). Moves: Tackle, Curse, Absorb, Razor Leaf.
-- **Chimchar** Lv8 — Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Leer, Ember, Taunt. Gift from Rowan's lab briefcase.
-- **Key items**: Potion x2, Repel x10, Poke Ball x29, Bicycle, Poke Radar, Parcel (deliver to Barry).
-- **Defeated trainers**: Youngster Tristan (Route 202). Lost to Youngster Logan (Route 202, Growlithe/Burmy/Zigzagoon).
-- **Next**: Rematch Youngster Logan. Continue north to Jubilife City. Deliver Parcel to Barry.
+- **Piplup** Lv9 — Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Water Sport.
+- **Eevee** Lv9 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Tail Whip, Bite, Covet.
+- **Chimchar** Lv9 — Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Leer, Ember, Taunt.
+- **Key items**: Potion x1, Repel x10, Poke Ball x29, Bicycle, Poke Radar, Town Map, Vs. Recorder, Scope Lens.
+- **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202).
+- **Story progress**: Delivered Parcel to Barry at Trainer's School. Met Looker (International Police). Barry headed to Oreburgh City.
+- **Next**: Explore Jubilife City (Poketch Company, remaining NPCs/items). Then Route 203 east toward Oreburgh Gate and first Gym.
 
 See GAME_HISTORY.md for full chronological playthrough details.
 
