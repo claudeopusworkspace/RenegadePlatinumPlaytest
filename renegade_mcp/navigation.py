@@ -336,6 +336,167 @@ def _post_nav_check(emu: EmulatorClient) -> dict[str, Any] | None:
     return None
 
 
+# ── Encounter seeking ──
+
+SEEK_MAX_STEPS = 200
+GRASS_BEHAVIOR = 0x02
+OPPOSITE_DIR = {"up": "down", "down": "up", "left": "right", "right": "left"}
+
+
+def _find_pacing_pair(
+    terrain: list, local_px: int, local_py: int,
+    npc_set: set, cave: bool = False,
+    width: int = 32, height: int = 32,
+) -> tuple | None:
+    """Find two adjacent tiles to pace between, plus path to reach them.
+
+    For grass mode: both tiles must have behavior 0x02 (tall grass).
+    For cave mode: any walkable non-ledge tiles.
+
+    Returns (tile_a, tile_b, dir_a_to_b, path_to_a) or None.
+    """
+    def is_valid(x: int, y: int) -> bool:
+        if not (0 <= x < width and 0 <= y < height):
+            return False
+        val = terrain[y][x]
+        if val & 0x8000:
+            return False
+        if (x, y) in npc_set:
+            return False
+        behavior = val & 0x00FF
+        if cave:
+            return behavior not in LEDGE_DIRECTIONS
+        return behavior == GRASS_BEHAVIOR
+
+    def valid_neighbor(x: int, y: int) -> tuple | None:
+        for dx, dy, direction in BFS_MOVES:
+            nx, ny = x + dx, y + dy
+            if is_valid(nx, ny):
+                return nx, ny, direction
+        return None
+
+    # Player already on a valid tile?
+    if is_valid(local_px, local_py):
+        nb = valid_neighbor(local_px, local_py)
+        if nb:
+            return (local_px, local_py), (nb[0], nb[1]), nb[2], []
+
+    # BFS to nearest valid tile that has a valid neighbor
+    visited = {(local_px, local_py)}
+    queue: deque[tuple[int, int, list[str]]] = deque([(local_px, local_py, [])])
+
+    while queue:
+        x, y, path = queue.popleft()
+        for dx, dy, direction in BFS_MOVES:
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < width and 0 <= ny < height):
+                continue
+            if (nx, ny) in visited:
+                continue
+            visited.add((nx, ny))
+            val = terrain[ny][nx]
+            if val & 0x8000:
+                continue
+            new_path = path + [direction]
+            if is_valid(nx, ny):
+                nb = valid_neighbor(nx, ny)
+                if nb:
+                    return (nx, ny), (nb[0], nb[1]), nb[2], new_path
+            queue.append((nx, ny, new_path))
+
+    return None
+
+
+def seek_encounter(emu: EmulatorClient, cave: bool = False) -> dict[str, Any]:
+    """Walk back and forth in grass (or cave) until a wild encounter triggers.
+
+    Finds the nearest pair of adjacent grass tiles (or any walkable tiles in
+    cave mode), navigates there if needed, then paces between them. Checks
+    for battle/dialogue whenever a step is blocked. Caps at 200 steps.
+
+    Returns dict with result type, steps taken, and encounter data if found.
+    """
+    state = get_map_state(emu)
+    if state is None:
+        return {"error": "Could not read map state."}
+
+    map_id = state["map_id"]
+    local_px, local_py = state["local_px"], state["local_py"]
+    terrain = state["terrain"]
+    origin_x = state.get("origin_x", 0)
+    origin_y = state.get("origin_y", 0)
+    height = len(terrain)
+    width = len(terrain[0]) if terrain else 32
+
+    # Build NPC set in local coords
+    npc_set: set[tuple[int, int]] = set()
+    for obj in state.get("objects", []):
+        if obj["index"] == 0:
+            continue
+        lx = obj.get("local_x", obj["x"]) - origin_x
+        ly = obj.get("local_y", obj["y"]) - origin_y
+        if 0 <= lx < width and 0 <= ly < height:
+            npc_set.add((lx, ly))
+
+    pair = _find_pacing_pair(terrain, local_px, local_py, npc_set,
+                             cave=cave, width=width, height=height)
+    if pair is None:
+        kind = "walkable" if cave else "grass"
+        return {"error": f"No adjacent {kind} tiles found nearby."}
+
+    tile_a, tile_b, dir_a_to_b, path_to_a = pair
+    dir_b_to_a = OPPOSITE_DIR[dir_a_to_b]
+    steps_taken = 0
+
+    # Walk to first pacing tile if needed
+    for direction in path_to_a:
+        if steps_taken >= SEEK_MAX_STEPS:
+            break
+        old_map, old_x, old_y = _read_position(emu)
+        emu.advance_frames(HOLD_FRAMES, buttons=[direction])
+        emu.advance_frames(WAIT_FRAMES)
+        new_map, new_x, new_y = _read_position(emu)
+        steps_taken += 1
+
+        if (old_x, old_y, old_map) == (new_x, new_y, new_map):
+            encounter = _post_nav_check(emu)
+            if encounter is not None:
+                return {"result": "encounter", "steps_taken": steps_taken,
+                        "encounter": encounter}
+            return {"result": "blocked", "steps_taken": steps_taken,
+                    "position": {"x": new_x, "y": new_y, "map": new_map}}
+
+    # Pace back and forth
+    current_dir = dir_a_to_b
+
+    while steps_taken < SEEK_MAX_STEPS:
+        old_map, old_x, old_y = _read_position(emu)
+        emu.advance_frames(HOLD_FRAMES, buttons=[current_dir])
+        emu.advance_frames(WAIT_FRAMES)
+        new_map, new_x, new_y = _read_position(emu)
+        steps_taken += 1
+
+        if (old_x, old_y, old_map) == (new_x, new_y, new_map):
+            encounter = _post_nav_check(emu)
+            if encounter is not None:
+                return {"result": "encounter", "steps_taken": steps_taken,
+                        "encounter": encounter}
+            return {"result": "blocked", "steps_taken": steps_taken,
+                    "position": {"x": new_x, "y": new_y, "map": new_map}}
+
+        current_dir = dir_b_to_a if current_dir == dir_a_to_b else dir_a_to_b
+
+    # Max steps — final check
+    encounter = _post_nav_check(emu)
+    if encounter is not None:
+        return {"result": "encounter", "steps_taken": steps_taken,
+                "encounter": encounter}
+
+    final_map, final_x, final_y = _read_position(emu)
+    return {"result": "max_steps", "steps_taken": steps_taken,
+            "position": {"x": final_x, "y": final_y, "map": final_map}}
+
+
 # ── Path execution ──
 
 def _execute_path(

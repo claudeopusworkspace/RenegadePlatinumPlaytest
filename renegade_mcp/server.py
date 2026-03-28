@@ -157,6 +157,24 @@ def create_server() -> FastMCP:
         emu = get_client()
         return _navigate_to(emu, x, y)
 
+    @mcp.tool()
+    def seek_encounter(cave: bool = False) -> dict[str, Any]:
+        """Walk back and forth in grass until a wild encounter triggers.
+
+        Finds the nearest pair of adjacent grass tiles, navigates there if
+        needed, then paces between them until an encounter or 200 steps.
+        When a battle triggers, advances through the transition to the first
+        action prompt and returns full battle state — ready for battle_turn.
+
+        Args:
+            cave: If True, pace between any walkable tiles instead of grass.
+                  Use in caves or other areas with encounters on normal ground.
+        """
+        from renegade_mcp.navigation import seek_encounter as _seek_encounter
+
+        emu = get_client()
+        return _seek_encounter(emu, cave=cave)
+
     # ── Dialogue ──
 
     @mcp.tool()
