@@ -309,6 +309,10 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
 
     _collect_text()
 
+    # Track ctrlUI to detect Yes/No transitions (0 → non-zero = new prompt).
+    # ctrlUI is never cleared once set, so we can only detect NEW prompts.
+    last_ctrl_ui: int = emu.read_memory(mgr + SM_OFF_CTRL_UI, size="long")
+
     def _script_still_alive() -> bool:
         """Check if the ScriptManager magic is still present (script hasn't ended)."""
         try:
@@ -328,8 +332,6 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
             ss2 = _read_script_state(emu, mgr)
             if ss2["is_msg_box_open"]:
                 return None  # text came back — continue advancing
-            if ss2["has_choice_menu"]:
-                return None  # choice appeared
         return "completed"  # script alive but no text after long wait
 
     # ── Main advance loop ──
@@ -349,9 +351,16 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
             _collect_text()
             continue
 
-        # Yes/No (or other choice) menu active?
-        if ss["has_choice_menu"]:
+        # Yes/No (or other choice) menu — detect via ctrlUI transition.
+        # ctrlUI is never freed once set, so we track its value and only
+        # report a prompt when it changes from 0 or to a NEW pointer value
+        # (indicating a fresh ShowYesNoMenu call, not a stale leftover).
+        current_ctrl_ui = emu.read_memory(mgr + SM_OFF_CTRL_UI, size="long")
+        if current_ctrl_ui != 0 and current_ctrl_ui != last_ctrl_ui:
+            # New ctrlUI value — wait for text to finish, then report
+            emu.advance_frames(SETTLE_FRAMES)
             _collect_text()
+            last_ctrl_ui = current_ctrl_ui
             return _result("yes_no_prompt", conversation, start_frame, emu)
 
         # Pick the active ScriptContext
@@ -369,9 +378,6 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
                     _collect_text()
                     return _result("completed", conversation, start_frame, emu)
                 ss2 = _read_script_state(emu, mgr)
-                if ss2["has_choice_menu"]:
-                    _collect_text()
-                    return _result("yes_no_prompt", conversation, start_frame, emu)
                 if not ss2["is_msg_box_open"]:
                     # Msg box closed during animation — wait for it to come back
                     outcome = _wait_for_msgbox_or_script_end()
@@ -404,9 +410,6 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
             if not ss2["is_msg_box_open"]:
                 _collect_text()
                 return _result("completed", conversation, start_frame, emu)
-            if ss2["has_choice_menu"]:
-                _collect_text()
-                return _result("yes_no_prompt", conversation, start_frame, emu)
 
             # Re-check TP — if it transitioned to waiting, handle on next iteration
             tp2 = _read_tp_state(emu)
@@ -420,8 +423,16 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
                 _collect_text()
                 continue
 
-            # Still WAITING with TP.state=0: likely WAITABPRESS or similar.
-            # Press B to dismiss.
+            # Still WAITING with TP.state=0: could be WAITABPRESS, text
+            # finishing, or a Yes/No about to appear.  Re-check ctrlUI before
+            # pressing B — the script may have just issued ShowYesNoMenu.
+            current_ctrl_ui = emu.read_memory(mgr + SM_OFF_CTRL_UI, size="long")
+            if current_ctrl_ui != 0 and current_ctrl_ui != last_ctrl_ui:
+                last_ctrl_ui = current_ctrl_ui
+                _collect_text()
+                return _result("yes_no_prompt", conversation, start_frame, emu)
+
+            # Safe to press B — dismiss WAITABPRESS or advance.
             emu.press_buttons(["b"], frames=ADVANCE_HOLD)
             emu.advance_frames(SETTLE_FRAMES)
             _collect_text()
