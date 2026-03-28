@@ -10,6 +10,8 @@ import re
 from collections import deque
 from typing import TYPE_CHECKING, Any
 
+from renegade_mcp.battle import format_battle, read_battle
+from renegade_mcp.dialogue import read_dialogue
 from renegade_mcp.map_state import (
     CHUNK_SIZE,
     get_map_state,
@@ -17,6 +19,7 @@ from renegade_mcp.map_state import (
     load_terrain_from_rom,
     read_objects,
 )
+from renegade_mcp.turn import _wait_for_action_prompt
 
 if TYPE_CHECKING:
     from desmume_mcp.client import EmulatorClient
@@ -281,6 +284,58 @@ def _try_repath(
     )
 
 
+# ── Post-navigation encounter/dialogue detection ──
+
+POST_NAV_POLL_FRAMES = 15
+POST_NAV_MAX_POLLS = 20  # 20 * 15 = 300 frames
+
+
+def _post_nav_check(emu: EmulatorClient) -> dict[str, Any] | None:
+    """Check for battle encounter or overworld dialogue after navigation.
+
+    Polls up to 300 frames (15 at a time). On each iteration, checks
+    read_battle and read_dialogue BEFORE advancing, so frame 0 is checked.
+
+    If a battle is detected, advances through the transition to the first
+    action prompt (ability announcements, send-out text, etc.) and returns
+    the battle state, intro log, and prompt info — ready for battle_turn.
+
+    If overworld dialogue is detected, returns the dialogue text.
+
+    Returns None if neither is detected within 300 frames.
+    """
+    for _ in range(POST_NAV_MAX_POLLS):
+        # Check for battle encounter
+        battlers = read_battle(emu)
+        if battlers:
+            prompt_result = _wait_for_action_prompt(emu)
+            battle_state = read_battle(emu)
+            result: dict[str, Any] = {
+                "encounter": "battle",
+                "battle_log": prompt_result["log"],
+                "battle_state": battle_state,
+                "battle_state_formatted": format_battle(battle_state),
+                "prompt_ready": prompt_result["ready"],
+            }
+            if prompt_result.get("prompt_type"):
+                result["prompt_type"] = prompt_result["prompt_type"]
+            if prompt_result.get("state"):
+                result["final_state"] = prompt_result["state"]
+            return result
+
+        # Check for overworld dialogue
+        dialogue = read_dialogue(emu, region="overworld")
+        if dialogue["region"] != "none":
+            return {
+                "encounter": "dialogue",
+                "dialogue": dialogue,
+            }
+
+        emu.advance_frames(POST_NAV_POLL_FRAMES)
+
+    return None
+
+
 # ── Path execution ──
 
 def _execute_path(
@@ -389,7 +444,8 @@ def navigate_manual(emu: EmulatorClient, directions_str: str) -> dict[str, Any]:
     start_map, start_x, start_y = _read_position(emu)
     stopped_early, steps_taken, _, log = _execute_path(emu, directions, track_npcs=True)
 
-    emu.advance_frames(SETTLE_FRAMES)
+    # Post-navigation: poll for encounter or dialogue (also serves as settle)
+    encounter = _post_nav_check(emu)
     final_map, final_x, final_y = _read_position(emu)
 
     result: dict[str, Any] = {
@@ -401,6 +457,9 @@ def navigate_manual(emu: EmulatorClient, directions_str: str) -> dict[str, Any]:
         "final": {"x": final_x, "y": final_y, "map": final_map},
         "log": log,
     }
+
+    if encounter is not None:
+        result["encounter"] = encounter
 
     npc_steps = sum(1 for e in log if "npc_changes" in e)
     if npc_steps > 0:
@@ -496,7 +555,8 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
         emu, path, repath_ctx=repath_ctx,
     )
 
-    emu.advance_frames(SETTLE_FRAMES)
+    # Post-navigation: poll for encounter or dialogue (also serves as settle)
+    encounter = _post_nav_check(emu)
     final_map, final_x, final_y = _read_position(emu)
 
     result: dict[str, Any] = {
@@ -510,6 +570,8 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
         "log": log,
     }
 
+    if encounter is not None:
+        result["encounter"] = encounter
     if repaths_used > 0:
         result["repaths"] = repaths_used
     npc_steps = sum(1 for e in log if "npc_changes" in e)
