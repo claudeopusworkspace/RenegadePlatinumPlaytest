@@ -44,6 +44,8 @@ CTX_OFF_STATE = 0x01   # u8: CTX_STOPPED / CTX_RUNNING / CTX_WAITING
 TP_BASE = 0x02271534
 TP_OFF_ACTIVE = 0x27   # u8: 1 while printer is running
 TP_OFF_STATE = 0x28    # u8: 0=HANDLE_CHAR, 1=WAIT, 2=CLEAR, 3=START_SCROLL
+TP_OFF_CURR_X = 0x0C   # u16: current X draw position (advances as chars render)
+TP_OFF_CURR_Y = 0x0E   # u16: current Y draw position (advances on line wrap)
 
 # Timing constants
 ADVANCE_HOLD = 8       # frames to hold B button
@@ -52,7 +54,8 @@ RENDER_POLL = 15       # frames between polls while text renders
 ANIM_POLL = 15         # frames between polls during animation
 MAX_ITERATIONS = 200   # max main-loop iterations
 MAX_ANIM_POLLS = 200   # max polls waiting for animation to finish
-YES_NO_VERIFY_POLLS = 15  # polls to verify Yes/No vs slow text (15*15=225 frames)
+YES_NO_VERIFY_POLLS = 20  # max polls for Yes/No cursor-idle detection
+YES_NO_STATIC_THRESHOLD = 3  # consecutive polls with static cursor = Yes/No confirmed
 
 # Scan range for ScriptManager magic search
 SM_SCAN_START = 0x0229F000
@@ -441,20 +444,34 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
             # Also guard against false positives at dialogue end (msg box
             # closing or script ending while TP.state is still 0).
             if current_ctrl_ui != 0:
-                yes_no_detected = True
+                # Track TextPrinter cursor to distinguish rendering from Yes/No.
+                # Active rendering: currX advances each frame as chars are drawn.
+                # Yes/No prompt: currX is static (text done, menu took over).
+                yes_no_detected = False
+                static_count = 0
+                cursor_pos = emu.read_memory(TP_BASE + TP_OFF_CURR_X, size="short")
                 for _ in range(YES_NO_VERIFY_POLLS):
                     emu.advance_frames(RENDER_POLL)
                     if not _script_still_alive():
-                        yes_no_detected = False
-                        break  # Script ended — not a Yes/No
+                        break  # Script ended
                     ss3 = _read_script_state(emu, mgr)
                     if not ss3["is_msg_box_open"]:
-                        yes_no_detected = False
-                        break  # Msg box closed — dialogue ending
+                        break  # Msg box closed
                     tp3 = _read_tp_state(emu)
                     if tp3["state"] >= 1:
-                        yes_no_detected = False
-                        break  # Scroll arrow appeared — normal text
+                        break  # Scroll arrow — normal text
+                    ctx3 = _read_context_state(emu, ctx_ptr)
+                    if ctx3["state"] != CTX_WAITING:
+                        break  # Script running
+                    new_pos = emu.read_memory(TP_BASE + TP_OFF_CURR_X, size="short")
+                    if new_pos != cursor_pos:
+                        static_count = 0  # Cursor moved — still rendering
+                        cursor_pos = new_pos
+                    else:
+                        static_count += 1
+                        if static_count >= YES_NO_STATIC_THRESHOLD:
+                            yes_no_detected = True
+                            break  # Cursor idle 45+ frames → Yes/No
                 if yes_no_detected:
                     _collect_text()
                     return _result("yes_no_prompt", conversation, start_frame, emu)
