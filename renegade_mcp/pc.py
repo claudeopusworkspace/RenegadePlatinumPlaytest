@@ -223,19 +223,6 @@ def deposit_pokemon(emu: EmulatorClient, party_slots: list[int]) -> dict[str, An
     # Sort descending so highest-index deposits first (lower indices don't shift)
     sorted_slots = sorted(party_slots, reverse=True)
 
-    # Check for slot 5 in a 6-member party (unreachable from D-pad)
-    if party_size == 6 and 5 in sorted_slots:
-        if len(sorted_slots) > 1:
-            # Another slot will be deposited first, shifting slot 5 → slot 4
-            sorted_slots.remove(5)
-            sorted_slots.append(5)
-        else:
-            return _error(
-                "Slot 5 (bottom-right) is not reachable via D-pad in a 6-member party. "
-                "Reorder the Pokemon to a different slot first, or deposit another "
-                "Pokemon first to shrink the party."
-            )
-
     deposited = []
     current_party_size = party_size
 
