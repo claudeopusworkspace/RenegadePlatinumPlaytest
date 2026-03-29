@@ -39,6 +39,7 @@ CTX_WAITING = 2   # paused on a callback
 
 # ScriptContext struct offsets
 CTX_OFF_STATE = 0x01   # u8: CTX_STOPPED / CTX_RUNNING / CTX_WAITING
+CTX_OFF_SHOULD_RESUME = 0x04  # u32: ShouldResumeScriptFunc (callback ptr)
 
 # TextPrinter struct (heap-allocated, stable address observed across sessions)
 TP_BASE = 0x02271534
@@ -54,8 +55,7 @@ RENDER_POLL = 15       # frames between polls while text renders
 ANIM_POLL = 15         # frames between polls during animation
 MAX_ITERATIONS = 200   # max main-loop iterations
 MAX_ANIM_POLLS = 200   # max polls waiting for animation to finish
-YES_NO_VERIFY_POLLS = 20  # max polls for Yes/No cursor-idle detection
-YES_NO_STATIC_THRESHOLD = 3  # consecutive polls with static cursor = Yes/No confirmed
+YES_NO_VERIFY_POLLS = 30  # max polls for Yes/No cursor-idle detection (30*15=450 frames)
 
 # Scan range for ScriptManager magic search
 SM_SCAN_START = 0x0229F000
@@ -63,6 +63,7 @@ SM_SCAN_SIZE = 0x11000  # 68KB covers 0x0229F000-0x022B0000
 
 # Session-level cache
 _script_mgr_addr: int | None = None
+_yes_no_resume_addr: int | None = None  # shouldResume callback for WaitForYesNoResult
 
 HEADER_MARKER = b"\xEC\xD2\xF8\xB6"
 MAX_TEXT_CHARS = 512
@@ -361,7 +362,13 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
         # (indicating a fresh ShowYesNoMenu call, not a stale leftover).
         current_ctrl_ui = emu.read_memory(mgr + SM_OFF_CTRL_UI, size="long")
         if current_ctrl_ui != 0 and current_ctrl_ui != last_ctrl_ui:
-            # New ctrlUI value — wait for text to finish, then report
+            # New ctrlUI value — wait for text to finish, then report.
+            # Capture shouldResume so we can verify reused-pointer prompts later.
+            global _yes_no_resume_addr
+            if _yes_no_resume_addr is None:
+                _yes_no_resume_addr = emu.read_memory(
+                    ctx_ptr + CTX_OFF_SHOULD_RESUME, size="long"
+                )
             emu.advance_frames(SETTLE_FRAMES)
             _collect_text()
             last_ctrl_ui = current_ctrl_ui
@@ -432,6 +439,11 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
             # pressing B — the script may have just issued ShowYesNoMenu.
             current_ctrl_ui = emu.read_memory(mgr + SM_OFF_CTRL_UI, size="long")
             if current_ctrl_ui != 0 and current_ctrl_ui != last_ctrl_ui:
+                # Capture shouldResume for reused-pointer verification
+                if _yes_no_resume_addr is None:
+                    _yes_no_resume_addr = emu.read_memory(
+                        ctx_ptr + CTX_OFF_SHOULD_RESUME, size="long"
+                    )
                 last_ctrl_ui = current_ctrl_ui
                 _collect_text()
                 return _result("yes_no_prompt", conversation, start_frame, emu)
@@ -445,33 +457,47 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
             # closing or script ending while TP.state is still 0).
             if current_ctrl_ui != 0:
                 # Track TextPrinter cursor to distinguish rendering from Yes/No.
-                # Active rendering: currX advances each frame as chars are drawn.
-                # Yes/No prompt: currX is static (text done, menu took over).
-                yes_no_detected = False
-                static_count = 0
+                # Active rendering: currX advances as chars are drawn → break.
+                # Dialogue ending: isMsgBoxOpen/script/TP.active changes → break.
+                # Yes/No prompt: nothing changes for all polls → exhausted.
+                yes_no_detected = True  # Assume Yes/No; disproven by any break
                 cursor_pos = emu.read_memory(TP_BASE + TP_OFF_CURR_X, size="short")
                 for _ in range(YES_NO_VERIFY_POLLS):
                     emu.advance_frames(RENDER_POLL)
                     if not _script_still_alive():
+                        yes_no_detected = False
                         break  # Script ended
                     ss3 = _read_script_state(emu, mgr)
                     if not ss3["is_msg_box_open"]:
+                        yes_no_detected = False
                         break  # Msg box closed
                     tp3 = _read_tp_state(emu)
                     if tp3["state"] >= 1:
+                        yes_no_detected = False
                         break  # Scroll arrow — normal text
+                    if not tp3["active"]:
+                        yes_no_detected = False
+                        break  # TextPrinter finished
                     ctx3 = _read_context_state(emu, ctx_ptr)
                     if ctx3["state"] != CTX_WAITING:
-                        break  # Script running
+                        yes_no_detected = False
+                        break  # Script resumed
                     new_pos = emu.read_memory(TP_BASE + TP_OFF_CURR_X, size="short")
                     if new_pos != cursor_pos:
-                        static_count = 0  # Cursor moved — still rendering
-                        cursor_pos = new_pos
-                    else:
-                        static_count += 1
-                        if static_count >= YES_NO_STATIC_THRESHOLD:
-                            yes_no_detected = True
-                            break  # Cursor idle 45+ frames → Yes/No
+                        yes_no_detected = False
+                        break  # Cursor moved — still rendering
+                    cursor_pos = new_pos
+                if yes_no_detected:
+                    # Verify via shouldResume: if we captured the Yes/No callback
+                    # from the first ctrlUI transition, confirm this is the same.
+                    # This distinguishes Yes/No menus from WaitABPress without
+                    # a scroll arrow (e.g. Nurse Joy "We hope to see you again!").
+                    if _yes_no_resume_addr is not None:
+                        current_resume = emu.read_memory(
+                            ctx_ptr + CTX_OFF_SHOULD_RESUME, size="long"
+                        )
+                        if current_resume != _yes_no_resume_addr:
+                            yes_no_detected = False  # Different wait — not Yes/No
                 if yes_no_detected:
                     _collect_text()
                     return _result("yes_no_prompt", conversation, start_frame, emu)
