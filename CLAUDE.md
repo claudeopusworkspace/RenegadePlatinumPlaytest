@@ -67,6 +67,7 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `pokecenter_pc_booted` | Jubilife Pokemon Center (map 6). At PC, "CLAUDE booted up the PC." dialogue active. For PC tool testing. |
 | `pc_deposit_screen` | Inside PC deposit screen. Cursor on Turtwig (slot 0). 5 Pokemon party. |
 | `pc_at_storage_menu` | Inside PC at storage system menu (DEPOSIT/WITHDRAW/MOVE/SEE YA!). 5 Pokemon party. |
+| `pokecenter_1party_5boxed` | Jubilife Pokemon Center (map 6). Turtwig Lv14 only in party. Shinx, Piplup, Eevee, Chimchar, Bulbasaur in Box 1. For withdraw tool testing. |
 
 ## Renegade MCP Tools
 
