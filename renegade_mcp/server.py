@@ -391,6 +391,37 @@ def create_server() -> FastMCP:
         return _deposit_pokemon(emu, party_slots)
 
     @mcp.tool()
+    def withdraw_pokemon(box_slots: list[int]) -> dict[str, Any]:
+        """Withdraw Pokemon from PC Box 1 to the party.
+
+        Must be called after open_pc (at the storage system menu).
+        Withdraws each specified box slot, then returns to the storage menu.
+        Can withdraw multiple Pokemon in one call.
+
+        Args:
+            box_slots: List of 0-indexed box slots to withdraw (e.g. [0, 1, 2]).
+        """
+        from renegade_mcp.pc import withdraw_pokemon as _withdraw_pokemon
+
+        emu = get_client()
+        return _withdraw_pokemon(emu, box_slots)
+
+    @mcp.tool()
+    def read_box(box: int = 1) -> dict[str, Any]:
+        """Read Pokemon data from a PC box directly from memory.
+
+        No UI interaction needed — reads encrypted box data from RAM
+        and decrypts it. Works anytime (overworld, in PC, during menus).
+
+        Args:
+            box: Box number 1-18 (default: Box 1).
+        """
+        from renegade_mcp.pc import read_box as _read_box
+
+        emu = get_client()
+        return _read_box(emu, box)
+
+    @mcp.tool()
     def close_pc() -> dict[str, Any]:
         """Close the PC and return to the overworld.
 

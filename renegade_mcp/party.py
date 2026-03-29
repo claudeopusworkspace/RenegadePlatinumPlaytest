@@ -87,24 +87,28 @@ def _unshuffle_blocks(data_128: bytes, pid: int) -> bytes:
     return bytes(result)
 
 
-def _decode_encrypted_pokemon(raw_236: bytes) -> dict[str, Any] | None:
-    """Decode a 236-byte encrypted Pokemon structure.
+def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
+    """Decode an encrypted Pokemon structure (136-byte box or 236-byte party).
 
     Returns None if the slot is empty (PID=0).
     Returns partial data with "partial": True if checksum fails (stale blocks).
     """
-    pid = struct.unpack_from("<I", raw_236, 0)[0]
-    checksum = struct.unpack_from("<H", raw_236, 6)[0]
-    encrypted = raw_236[8:136]
+    pid = struct.unpack_from("<I", raw, 0)[0]
+    checksum = struct.unpack_from("<H", raw, 6)[0]
+    encrypted = raw[8:136]
 
     if pid == 0:
         return None
 
-    # Always decrypt the PID-encrypted extension (it's always valid)
-    battle_ext = _prng_decrypt(raw_236[136:236], pid)
-    ext_level = battle_ext[4]
-    ext_cur_hp = struct.unpack_from("<H", battle_ext, 6)[0]
-    ext_max_hp = struct.unpack_from("<H", battle_ext, 8)[0]
+    # Decrypt the PID-encrypted extension if present (party format, 236 bytes)
+    ext_level = 0
+    ext_cur_hp = 0
+    ext_max_hp = 0
+    if len(raw) >= 236:
+        battle_ext = _prng_decrypt(raw[136:236], pid)
+        ext_level = battle_ext[4]
+        ext_cur_hp = struct.unpack_from("<H", battle_ext, 6)[0]
+        ext_max_hp = struct.unpack_from("<H", battle_ext, 8)[0]
 
     nature_idx = pid % 25
     nature = NATURES[nature_idx]
