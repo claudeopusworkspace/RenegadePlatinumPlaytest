@@ -357,6 +357,51 @@ def create_server() -> FastMCP:
         emu = get_client()
         return _take_item(emu, party_slot)
 
+    # ── PC Storage ──
+
+    @mcp.tool()
+    def open_pc() -> dict[str, Any]:
+        """Boot up the Pokemon Storage PC and reach the storage menu.
+
+        Finds the PC tile (behavior 0x83) on the current map, navigates to it,
+        interacts, and advances through dialogue to the storage system menu
+        (DEPOSIT / WITHDRAW / MOVE / MOVE ITEMS / SEE YA!).
+
+        Must be in a building with a PC (e.g., Pokemon Center).
+        """
+        from renegade_mcp.pc import open_pc as _open_pc
+
+        emu = get_client()
+        return _open_pc(emu)
+
+    @mcp.tool()
+    def deposit_pokemon(party_slots: list[int]) -> dict[str, Any]:
+        """Deposit party Pokemon into PC Box 1.
+
+        Must be called after open_pc (at the storage system menu).
+        Deposits each specified party slot, then returns to the storage menu.
+        Can deposit multiple Pokemon in one call.
+
+        Args:
+            party_slots: List of 0-indexed party slots to deposit (e.g. [4, 5]).
+        """
+        from renegade_mcp.pc import deposit_pokemon as _deposit_pokemon
+
+        emu = get_client()
+        return _deposit_pokemon(emu, party_slots)
+
+    @mcp.tool()
+    def close_pc() -> dict[str, Any]:
+        """Close the PC and return to the overworld.
+
+        Must be called from the storage system menu (after open_pc or deposit_pokemon).
+        Selects SEE YA!, exits through the PC menus, and returns to free movement.
+        """
+        from renegade_mcp.pc import close_pc as _close_pc
+
+        emu = get_client()
+        return _close_pc(emu)
+
     # ── Heal ──
 
     @mcp.tool()

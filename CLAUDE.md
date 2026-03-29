@@ -64,6 +64,9 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `debug_pre_heal_animation` | Sandgem Pokemon Center (map 420). Nurse Joy dialogue at "OK, I'll take your Pokémon for a few seconds." Right before healing animation. |
 | `debug_shinx_pre_levelup_ko` | Wild Sentret Lv5 battle, Route 202. Sentret at 10 HP. Shinx Lv5 (3 moves). Tackle KOs → Lv6 → auto-learns Quick Attack. |
 | `debug_shinx_pre_levelup_ko_5hp` | Same as above but Sentret at 5 HP. Tighter repro for auto-learn bug testing. |
+| `pokecenter_pc_booted` | Jubilife Pokemon Center (map 6). At PC, "CLAUDE booted up the PC." dialogue active. For PC tool testing. |
+| `pc_deposit_screen` | Inside PC deposit screen. Cursor on Turtwig (slot 0). 5 Pokemon party. |
+| `pc_at_storage_menu` | Inside PC at storage system menu (DEPOSIT/WITHDRAW/MOVE/SEE YA!). 5 Pokemon party. |
 
 ## Renegade MCP Tools
 
@@ -78,7 +81,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `map_name(map_id=-1)` | Location name lookup. Defaults to current map. |
 | `navigate(directions)` | Manual walk: "d2 l3 u1". Returns `encounter` key if battle/dialogue detected after movement. |
 | `navigate_to(x, y)` | BFS pathfind to target tile. Auto-handles door/stair transitions (0x69, 0x65, 0x5F, 0x5E). Returns `encounter` key if battle/dialogue detected. |
-| `interact_with(object_index)` | Navigate to a map object/NPC by index and interact. Handles adjacent tiles, counter NPCs, facing, and dialogue. |
+| `interact_with(object_index, x, y)` | Navigate to a map object/NPC by index OR static tile by (x,y) and interact. Handles adjacent tiles, counter NPCs, facing, and dialogue. |
 | `seek_encounter(cave=false)` | Pace in grass until wild encounter. Returns at first action prompt with full battle state. `cave=true` for non-grass encounters. |
 | `read_dialogue(advance=true)` | Auto-advance through dialogue, collect full conversation. Stops at Yes/No prompts. `advance=false` for passive read. |
 | `battle_turn(move_index, switch_to)` | Full automated turn: FIGHT + move OR POKEMON + switch. Returns battle log + state + read_battle data. |
@@ -89,6 +92,9 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `use_item(item_name, party_slot)` | Use a Medicine item on a party Pokemon from overworld |
 | `take_item(party_slot)` | Remove held item from a party Pokemon via pause menu (overworld only) |
 | `heal_party` | Heal at Pokemon Center: finds Nurse Joy by graphicsID, interacts, advances dialogue, verifies HP. |
+| `open_pc` | Boot up the PC: finds 0x83 tile, navigates, interacts, advances to storage menu (DEPOSIT/WITHDRAW/MOVE/SEE YA!). |
+| `deposit_pokemon(party_slots)` | Deposit party Pokemon into Box 1. Takes list of 0-indexed slots. Multi-deposit supported. Must call open_pc first. |
+| `close_pc` | Exit the PC from storage menu and return to overworld. |
 
 The original Python scripts in `scripts/` still work for debugging but are no longer the primary interface.
 
