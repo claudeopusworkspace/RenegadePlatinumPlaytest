@@ -62,6 +62,8 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 | `debug_logan_growlithe_low_hp` | Logan battle, Growlithe at 9 HP. One Tackle KOs → SWITCH_PROMPT (Burmy next). For switch prompt testing. |
 | `debug_tristan_dialogue_active` | Route 202 (map 343) at (181, 819). Stuck in Tristan's post-battle dialogue. For testing tool behavior during active dialogue. |
 | `debug_pre_heal_animation` | Sandgem Pokemon Center (map 420). Nurse Joy dialogue at "OK, I'll take your Pokémon for a few seconds." Right before healing animation. |
+| `debug_shinx_pre_levelup_ko` | Wild Sentret Lv5 battle, Route 202. Sentret at 10 HP. Shinx Lv5 (3 moves). Tackle KOs → Lv6 → auto-learns Quick Attack. |
+| `debug_shinx_pre_levelup_ko_5hp` | Same as above but Sentret at 5 HP. Tighter repro for auto-learn bug testing. |
 
 ## Renegade MCP Tools
 
