@@ -58,7 +58,7 @@ STATUS_FREEZE = 0x20
 STATUS_PARALYSIS = 0x40
 STATUS_TOXIC = 0x80
 
-STAGE_NAMES = ["Atk", "Def", "Spe", "SpA", "SpD", "Acc", "Eva", "Crit"]
+STAGE_NAMES = ["Atk", "Def", "Spe", "SpA", "SpD", "Acc", "Eva"]
 
 
 def _decode_status(status_val: int) -> str | None:
@@ -117,7 +117,8 @@ def read_battle(emu: EmulatorClient) -> list[dict[str, Any]]:
         moves = [struct.unpack_from("<H", data, OFF_MOVES + i * 2)[0] for i in range(4)]
         pp = [data[OFF_PP + i] for i in range(4)]
 
-        stages_raw = list(data[OFF_STAGES : OFF_STAGES + 8])
+        # statBoosts[0] is HP (unused in battle), so skip it — Atk starts at +1
+        stages_raw = list(data[OFF_STAGES + 1 : OFF_STAGES + 1 + len(STAGE_NAMES)])
         stages = {STAGE_NAMES[i]: stages_raw[i] - 6 for i in range(len(STAGE_NAMES))}
 
         type1 = data[OFF_TYPES]

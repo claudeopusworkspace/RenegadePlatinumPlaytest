@@ -13,6 +13,7 @@ import struct
 from typing import TYPE_CHECKING, Any
 
 from renegade_mcp.battle import format_battle, read_battle
+from renegade_mcp.party import read_party
 from renegade_mcp.battle_tracker import (
     _tracker,
     _classify_stop,
@@ -449,6 +450,10 @@ def battle_turn(
     if result["final_state"] == "MOVE_LEARN":
         _enrich_move_learn_result(result, emu)
 
+    # 4.5. Add party order for switch states
+    if result["final_state"] in ("SWITCH_PROMPT", "FAINT_SWITCH", "FAINT_FORCED"):
+        _enrich_switch_result(result, emu)
+
     # 5. Format and append battle state
     result["formatted"] = _reformat(result)
     battlers = read_battle(emu)
@@ -568,6 +573,19 @@ def _recover_from_level_up(emu: EmulatorClient, result: dict[str, Any]) -> dict[
     return result
 
 
+def _enrich_switch_result(result: dict[str, Any], emu: EmulatorClient) -> None:
+    """Add current party order to switch state results for informed slot selection.
+
+    Only includes slot index, species, and level — NOT HP, since party HP data
+    is stale during battle (doesn't reflect in-battle damage).
+    """
+    party = read_party(emu)
+    result["party"] = [
+        {"slot": p["slot"], "name": p["name"], "level": p["level"]}
+        for p in party
+    ]
+
+
 def _enrich_move_learn_result(result: dict[str, Any], emu: EmulatorClient) -> None:
     """Add move_to_learn and current_moves info to a MOVE_LEARN result."""
     move_name = _extract_new_move_name(result.get("log", []))
@@ -650,5 +668,11 @@ def _reformat(result: dict[str, Any]) -> str:
     }
     label = state_labels.get(state, state)
     lines.append(f"\nState: {state} — {label}")
+
+    # Show party order for switch states (slot + species only, no HP — it's stale during battle)
+    if state in ("SWITCH_PROMPT", "FAINT_SWITCH", "FAINT_FORCED") and "party" in result:
+        lines.append("  Party:")
+        for p in result["party"]:
+            lines.append(f"    {p['slot']}. {p['name']} Lv{p['level']}")
 
     return "\n".join(lines)
