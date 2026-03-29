@@ -126,10 +126,16 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     def navigate(directions: str) -> dict[str, Any]:
-        """Walk a manual path in the overworld.
+        """Walk a manual path in the overworld using explicit directions.
 
-        Moves one tile per direction (16 frames hold + 8 frames wait), verifying
-        each step. Stops early if blocked (collision, encounter, cutscene).
+        USE THIS ONLY when you need precise directional control — e.g., walking
+        through a narrow corridor in a specific sequence, activating a warp by
+        stepping in a particular direction, or nudging one tile. For getting from
+        point A to point B, use navigate_to(x, y) instead — it pathfinds
+        automatically and avoids walls.
+
+        Pre-validates the entire path against terrain before moving. If any step
+        would hit an impassable tile, returns an error without moving at all.
 
         Args:
             directions: Space-separated directions: up/down/left/right (or u/d/l/r)
@@ -142,14 +148,20 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     def navigate_to(x: int, y: int) -> dict[str, Any]:
-        """Pathfind to a target tile using BFS, then walk there.
+        """Pathfind to a target tile using BFS, then walk there automatically.
 
-        Reads terrain and NPC positions, computes shortest path, and executes it
-        step by step with position verification. Supports local (0-31) and global
-        coordinates (auto-detected). Handles multi-chunk overworld maps.
+        THIS IS THE DEFAULT NAVIGATION TOOL. Use this whenever you need to move
+        to a specific tile — it reads the terrain, avoids walls and NPCs, and
+        finds the shortest path. Use view_map to find target coordinates.
+
+        Only fall back to navigate(directions) when you need precise directional
+        control (e.g., activating warps, single-tile nudges, or specific sequences).
+
+        Supports local (0-31) and global coordinates (auto-detected).
+        Handles multi-chunk overworld maps and door/stair transitions.
 
         Args:
-            x: Target X coordinate (local or global).
+            x: Target X coordinate (local or global). Use view_map to find these.
             y: Target Y coordinate (local or global).
         """
         from renegade_mcp.navigation import navigate_to as _navigate_to
