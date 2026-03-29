@@ -196,16 +196,17 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 ## Game Progress
 
 - **Character**: CLAUDE | **Rival**: AAAAAAA
-- **Location**: Jubilife City (map 3). Save state: `jubilife_pokecenter_healed`.
-- **Turtwig** Lv13 — Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Absorb, Razor Leaf.
+- **Location**: Jubilife Pokemon Center (map 6). Save state: `jubilife_post_barry_wipe`.
+- **Turtwig** Lv14 — Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Bullet Seed, Razor Leaf.
 - **Shinx** Lv8 — Jolly (+Spe/-SpA), Guts. Moves: Tackle, Leer, Howl, Quick Attack.
 - **Piplup** Lv9 — Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Water Sport.
 - **Eevee** Lv9 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Tail Whip, Bite, Covet.
 - **Chimchar** Lv9 — Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Leer, Ember, Taunt.
-- **Key items**: Potion x1, Repel x10, Poke Ball x29, Bicycle, Poke Radar, Town Map, Vs. Recorder, Scope Lens.
-- **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202).
-- **Story progress**: Delivered Parcel to Barry at Trainer's School. Met Looker (International Police). Barry headed to Oreburgh City.
-- **Next**: Explore Jubilife City (Poketch Company, remaining NPCs/items). Then Route 203 east toward Oreburgh Gate and first Gym.
+- **Bulbasaur** Lv5 — Docile, Chlorophyll. Held: Miracle Seed. Moves: Tackle, Growl.
+- **Key items**: Potion x1, Repel x10, Poke Ball x29, Bicycle, Poke Radar, Town Map, Vs. Recorder, Scope Lens, Poketch.
+- **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202), Reporter Kayla (Jubilife Pokemon Center).
+- **Story progress**: Got Poketch from Poketch Company president. Won Bulbasaur from Jubilife TV quiz. Lost to Rival AAAAAAA on Route 203 (his Chimchar Lv11). Charmander + Squirtle available from Reporter in Jubilife PC (need party space / PC box access).
+- **Next**: Grind team to ~Lv12+ before Route 203 rival rematch. Deposit a Pokemon to pick up Charmander/Squirtle. Then Route 203 east toward Oreburgh Gate and first Gym.
 
 See GAME_HISTORY.md for full chronological playthrough details.
 
