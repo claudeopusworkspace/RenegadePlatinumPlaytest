@@ -52,6 +52,7 @@ RENDER_POLL = 15       # frames between polls while text renders
 ANIM_POLL = 15         # frames between polls during animation
 MAX_ITERATIONS = 200   # max main-loop iterations
 MAX_ANIM_POLLS = 200   # max polls waiting for animation to finish
+YES_NO_VERIFY_POLLS = 15  # polls to verify Yes/No vs slow text (15*15=225 frames)
 
 # Scan range for ScriptManager magic search
 SM_SCAN_START = 0x0229F000
@@ -431,6 +432,32 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
                 last_ctrl_ui = current_ctrl_ui
                 _collect_text()
                 return _result("yes_no_prompt", conversation, start_frame, emu)
+
+            # ctrlUI pointer can be reused across consecutive Yes/No prompts
+            # (the game never clears it; the heap reuses the same address).
+            # When ctrlUI is non-zero, distinguish normal text rendering
+            # (TP.state transitions to >= 1 within ~100-200 frames) from
+            # an active Yes/No menu (TP.state stays at 0 indefinitely).
+            # Also guard against false positives at dialogue end (msg box
+            # closing or script ending while TP.state is still 0).
+            if current_ctrl_ui != 0:
+                yes_no_detected = True
+                for _ in range(YES_NO_VERIFY_POLLS):
+                    emu.advance_frames(RENDER_POLL)
+                    if not _script_still_alive():
+                        yes_no_detected = False
+                        break  # Script ended — not a Yes/No
+                    ss3 = _read_script_state(emu, mgr)
+                    if not ss3["is_msg_box_open"]:
+                        yes_no_detected = False
+                        break  # Msg box closed — dialogue ending
+                    tp3 = _read_tp_state(emu)
+                    if tp3["state"] >= 1:
+                        yes_no_detected = False
+                        break  # Scroll arrow appeared — normal text
+                if yes_no_detected:
+                    _collect_text()
+                    return _result("yes_no_prompt", conversation, start_frame, emu)
 
             # Safe to press B — dismiss WAITABPRESS or advance.
             emu.press_buttons(["b"], frames=ADVANCE_HOLD)
