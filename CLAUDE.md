@@ -46,6 +46,20 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 
 The original Python scripts in `scripts/` still work for debugging but are no longer the primary interface.
 
+### Adding New Tools
+
+All state-changing tools (anything that presses buttons, advances frames, or writes memory) **must** create a checkpoint before performing any emulator interaction. This enables undo/revert when a tool bugs out. Pattern in `server.py`:
+
+```python
+emu = get_client()
+emu.create_checkpoint(action="tool_name(relevant args)")
+return _do_stuff(emu, ...)
+```
+
+Read-only tools (pure memory reads like `read_party`, `read_battle`, `read_bag`) do **not** need checkpoints. If a tool is read-only by default but has a mode that presses buttons (e.g., `read_party(refresh=True)`), checkpoint only in that mode.
+
+Checkpoints share a unified ring buffer (300 slots) with the DeSmuME MCP's own checkpoints. One checkpoint per tool call is the right granularity — don't checkpoint inside helper functions.
+
 ## Navigation
 
 **CRITICAL: Do not rely on screenshots for spatial reasoning in the overworld.** The isometric/overhead camera makes it very difficult to judge tile positions, room boundaries, and exits from pixel images. Instead:

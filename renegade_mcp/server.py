@@ -37,6 +37,8 @@ def create_server() -> FastMCP:
         from renegade_mcp.party import format_party, read_party as _read_party
 
         emu = get_client()
+        if refresh:
+            emu.create_checkpoint(action="read_party(refresh=True)")
         party = _read_party(emu, refresh=refresh)
         return {
             "count": len(party),
@@ -144,6 +146,7 @@ def create_server() -> FastMCP:
         from renegade_mcp.navigation import navigate_manual
 
         emu = get_client()
+        emu.create_checkpoint(action=f"navigate: {directions}")
         return navigate_manual(emu, directions)
 
     @mcp.tool()
@@ -167,6 +170,7 @@ def create_server() -> FastMCP:
         from renegade_mcp.navigation import navigate_to as _navigate_to
 
         emu = get_client()
+        emu.create_checkpoint(action=f"navigate_to({x}, {y})")
         return _navigate_to(emu, x, y)
 
     @mcp.tool()
@@ -188,6 +192,8 @@ def create_server() -> FastMCP:
         from renegade_mcp.navigation import interact_with as _interact_with
 
         emu = get_client()
+        target = f"object {object_index}" if object_index >= 0 else f"({x}, {y})"
+        emu.create_checkpoint(action=f"interact_with {target}")
         return _interact_with(emu, object_index=object_index, x=x, y=y)
 
     @mcp.tool()
@@ -206,6 +212,8 @@ def create_server() -> FastMCP:
         from renegade_mcp.navigation import seek_encounter as _seek_encounter
 
         emu = get_client()
+        mode = "cave" if cave else "grass"
+        emu.create_checkpoint(action=f"seek_encounter({mode})")
         return _seek_encounter(emu, cave=cave)
 
     # ── Dialogue ──
@@ -236,6 +244,7 @@ def create_server() -> FastMCP:
 
         emu = get_client()
         if advance:
+            emu.create_checkpoint(action="read_dialogue(advance)")
             return _advance_dialogue(emu)
         return _read_dialogue(emu, region)
 
@@ -265,6 +274,15 @@ def create_server() -> FastMCP:
         from renegade_mcp.turn import battle_turn as _battle_turn
 
         emu = get_client()
+        if move_index >= 0:
+            desc = f"battle_turn(move={move_index})"
+        elif switch_to >= 0:
+            desc = f"battle_turn(switch_to={switch_to})"
+        elif forget_move >= -1:
+            desc = f"battle_turn(forget_move={forget_move})"
+        else:
+            desc = "battle_turn"
+        emu.create_checkpoint(action=desc)
         return _battle_turn(emu, move_index=move_index, switch_to=switch_to, forget_move=forget_move)
 
     # ── Catch ──
@@ -286,6 +304,7 @@ def create_server() -> FastMCP:
         from renegade_mcp.catch import throw_ball as _throw_ball
 
         emu = get_client()
+        emu.create_checkpoint(action="throw_ball")
         return _throw_ball(emu)
 
     # ── ROM Message Decoding ──
@@ -366,6 +385,7 @@ def create_server() -> FastMCP:
         from renegade_mcp.use_item import use_item as _use_item
 
         emu = get_client()
+        emu.create_checkpoint(action=f"use_item({item_name}, slot {party_slot})")
         return _use_item(emu, item_name, party_slot)
 
     @mcp.tool()
@@ -381,6 +401,7 @@ def create_server() -> FastMCP:
         from renegade_mcp.take_item import take_item as _take_item
 
         emu = get_client()
+        emu.create_checkpoint(action=f"take_item(slot {party_slot})")
         return _take_item(emu, party_slot)
 
     # ── PC Storage ──
@@ -398,6 +419,7 @@ def create_server() -> FastMCP:
         from renegade_mcp.pc import open_pc as _open_pc
 
         emu = get_client()
+        emu.create_checkpoint(action="open_pc")
         return _open_pc(emu)
 
     @mcp.tool()
@@ -414,6 +436,7 @@ def create_server() -> FastMCP:
         from renegade_mcp.pc import deposit_pokemon as _deposit_pokemon
 
         emu = get_client()
+        emu.create_checkpoint(action=f"deposit_pokemon({party_slots})")
         return _deposit_pokemon(emu, party_slots)
 
     @mcp.tool()
@@ -430,6 +453,7 @@ def create_server() -> FastMCP:
         from renegade_mcp.pc import withdraw_pokemon as _withdraw_pokemon
 
         emu = get_client()
+        emu.create_checkpoint(action=f"withdraw_pokemon({box_slots})")
         return _withdraw_pokemon(emu, box_slots)
 
     @mcp.tool()
@@ -457,6 +481,7 @@ def create_server() -> FastMCP:
         from renegade_mcp.pc import close_pc as _close_pc
 
         emu = get_client()
+        emu.create_checkpoint(action="close_pc")
         return _close_pc(emu)
 
     # ── Heal ──
@@ -475,6 +500,7 @@ def create_server() -> FastMCP:
         from renegade_mcp.heal_party import heal_party as _heal_party
 
         emu = get_client()
+        emu.create_checkpoint(action="heal_party")
         return _heal_party(emu)
 
     # ── Party Reorder ──
@@ -493,6 +519,7 @@ def create_server() -> FastMCP:
         from renegade_mcp.reorder_party import reorder_party as _reorder_party
 
         emu = get_client()
+        emu.create_checkpoint(action=f"reorder_party({from_slot}, {to_slot})")
         return _reorder_party(emu, from_slot, to_slot)
 
     return mcp
