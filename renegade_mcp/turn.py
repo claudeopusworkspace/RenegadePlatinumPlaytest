@@ -551,10 +551,13 @@ def _execute_move_learn(
 def _recover_from_level_up(emu: EmulatorClient, result: dict[str, Any]) -> dict[str, Any]:
     """After level-up causes a timeout, press B to advance through stat screens."""
     for _ in range(RECOVERY_PRESSES):
+        # Init baseline BEFORE dismissing, so text that appears after B
+        # (like "learned Quick Attack!") is detected as new by the poll.
+        _tracker.init(emu)
+
         emu.press_buttons(["b"], frames=8)
         emu.advance_frames(RECOVERY_WAIT)
 
-        _tracker.init(emu)
         poll = _tracker.poll(emu, auto_press=True)
 
         if poll["final_state"] == "WAIT_FOR_ACTION":
