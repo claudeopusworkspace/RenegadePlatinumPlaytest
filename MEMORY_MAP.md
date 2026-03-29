@@ -301,18 +301,20 @@ The game maintains a party summary array at `0x022C0130`. Each slot is **44 byte
 
 **Note:** The standard Gen 4 party structure (PID + encrypted blocks + battle stats) was NOT found anywhere in the 4MB main RAM during overworld play. The game appears to use the PokePara tree exclusively and only constructs flat structures when saving or entering battle.
 
-## Save File Structure (from PKHeX / Bulbapedia)
+## Save File Structure
 
-The save file uses an encrypted format in RAM. String searches (e.g. trainer name) won't work on raw memory.
-Save file offsets (relative to small block start) are documented but the RAM base address for the save block
-has not been confirmed in our environment.
+**Small save block base: `0x0227E1D0`** (confirmed). Derived from encrypted party data:
+party count @ `0x0227E26C` = base + `0x9C`, party data @ `0x0227E270` = base + `0xA0`.
 
-| Save Offset | Field | Notes |
-|------------|-------|-------|
-| `+0x0068`  | Trainer Name | UTF-16LE, encrypted in RAM |
-| `+0x1280`  | Map ID (save) | UInt16 |
-| `+0x1288`  | X position (save) | UInt16 — this is the SAVE copy, not the live runtime value |
-| `+0x128C`  | Y position (save) | UInt16 — this is the SAVE copy, not the live runtime value |
+| Address | Save Offset | Size | Field | Status |
+|---------|------------|------|-------|--------|
+| `0x0227E24C` | `+0x7C` | u32 | **Money** | **Verified** — tracked across 4 save states with trainer battle deltas |
+| `0x0227E26C` | `+0x9C` | u32 | Party count | Verified |
+| `0x0227E270` | `+0xA0` | 236×6 | Party data | Verified |
+| `0x0227E800` | `+0x630` | 1844 | Bag data | Verified |
+| `???` | `+0x82`? | u8 | Badges (bitfield) | **Unconfirmed** — have 0 badges, will verify at first gym |
+
+**Note:** Trainer name and some other fields may use additional encryption within the save block. String searches won't find them in raw memory.
 
 ## Text / Dialogue Buffers
 

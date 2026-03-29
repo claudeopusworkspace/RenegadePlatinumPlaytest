@@ -644,6 +644,44 @@ def _execute_path(
 
 # ── Public API ──
 
+def _validate_path(
+    terrain_info: list,
+    start_x: int,
+    start_y: int,
+    directions: list[str],
+    width: int = 32,
+    height: int = 32,
+) -> tuple[bool, int, str, tuple[int, int]]:
+    """Simulate a path on the terrain grid and check for collisions.
+
+    Returns (ok, step_index, direction, tile) where:
+    - ok=True means path is clear (step_index etc. are meaningless)
+    - ok=False means step_index'th direction hits a wall at tile (x, y)
+
+    Off-grid tiles are allowed (map transitions).
+    """
+    cx, cy = start_x, start_y
+    deltas = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
+
+    for i, d in enumerate(directions):
+        dx, dy = deltas[d]
+        nx, ny = cx + dx, cy + dy
+
+        # Off-grid = possible map transition, allow it
+        if not (0 <= nx < width and 0 <= ny < height):
+            cx, cy = nx, ny
+            continue
+
+        passable, behavior = terrain_info[ny][nx]
+        # Allow door/warp tiles even if collision flag is set (0x69 etc.)
+        if not passable:
+            return False, i, d, (nx, ny)
+
+        cx, cy = nx, ny
+
+    return True, -1, "", (0, 0)
+
+
 def navigate_manual(emu: EmulatorClient, directions_str: str) -> dict[str, Any]:
     """Walk a manual path. Returns result dict with steps taken and final position."""
     directions = parse_directions(directions_str)
@@ -656,7 +694,38 @@ def navigate_manual(emu: EmulatorClient, directions_str: str) -> dict[str, Any]:
     if not directions:
         return {"error": "No directions provided."}
 
+    # Pre-validate path against terrain before walking
     start_map, start_x, start_y = _read_position(emu)
+    state = get_map_state(emu)
+    if state is not None:
+        origin_x = state.get("origin_x", 0)
+        origin_y = state.get("origin_y", 0)
+        terrain_info, _ = _build_terrain_info(state["terrain"], state["objects"])
+        local_x = start_x - origin_x
+        local_y = start_y - origin_y
+        h = len(terrain_info)
+        w = len(terrain_info[0]) if h > 0 else 32
+
+        ok, step_idx, step_dir, (wall_x, wall_y) = _validate_path(
+            terrain_info, local_x, local_y, directions, width=w, height=h,
+        )
+        if not ok:
+            global_wall_x = wall_x + origin_x
+            global_wall_y = wall_y + origin_y
+            return {
+                "error": (
+                    f"Path would hit a wall at step {step_idx + 1} ({step_dir}): "
+                    f"tile ({global_wall_x}, {global_wall_y}) is impassable. "
+                    f"No movement was performed. "
+                    f"Tip: use `view_map` to see the terrain layout, "
+                    f"or `navigate_to(x, y)` for automatic pathfinding around obstacles!"
+                ),
+                "blocked_step": step_idx + 1,
+                "blocked_direction": step_dir,
+                "blocked_tile": {"x": global_wall_x, "y": global_wall_y},
+                "start": {"x": start_x, "y": start_y, "map": start_map},
+            }
+
     stopped_early, steps_taken, _, log = _execute_path(emu, directions, track_npcs=True)
 
     # Post-navigation: poll for encounter or dialogue (also serves as settle)

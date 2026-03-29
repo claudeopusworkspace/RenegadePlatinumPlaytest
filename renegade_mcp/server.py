@@ -324,6 +324,20 @@ def create_server() -> FastMCP:
             "matches": matches,
         }
 
+    # ── Trainer Status ──
+
+    @mcp.tool()
+    def read_trainer_status() -> dict[str, Any]:
+        """Read trainer money and badge count from memory.
+
+        Pure memory read — works anytime, no UI interaction.
+        Returns current money and badge count (badges TBD until first gym).
+        """
+        from renegade_mcp.trainer import read_trainer_status as _read_status
+
+        emu = get_client()
+        return _read_status(emu)
+
     # ── Item Use ──
 
     @mcp.tool()

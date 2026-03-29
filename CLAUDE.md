@@ -42,6 +42,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `withdraw_pokemon(box_slots)` | Withdraw Pokemon from Box 1 to party. Takes list of 0-indexed box slots. Multi-withdraw supported. Must call open_pc first. |
 | `read_box(box=1)` | Read all Pokemon in a PC box from RAM. No UI needed — works anytime. Returns species, moves, nature, IVs, EVs, held item. |
 | `close_pc` | Exit the PC from storage menu and return to overworld. |
+| `read_trainer_status` | Read money and badges from memory. No UI needed. |
 
 The original Python scripts in `scripts/` still work for debugging but are no longer the primary interface.
 
