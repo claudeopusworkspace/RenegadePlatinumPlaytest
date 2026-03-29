@@ -158,20 +158,25 @@ def create_server() -> FastMCP:
         return _navigate_to(emu, x, y)
 
     @mcp.tool()
-    def interact_with(object_index: int) -> dict[str, Any]:
-        """Navigate to a map object/NPC and interact with it.
+    def interact_with(object_index: int = -1, x: int = -1, y: int = -1) -> dict[str, Any]:
+        """Navigate to a map object/NPC or static tile and interact with it.
 
-        Looks up the object by its index (from view_map output), pathfinds to
-        the nearest adjacent tile, faces the target, and attempts interaction.
-        Returns any dialogue produced, or reports if the object isn't interactable.
+        Two modes:
+        - **Object mode**: Pass object_index (from view_map) to target a dynamic object/NPC.
+        - **Coordinate mode**: Pass x and y to target a static tile (PCs, bookshelves, etc.).
+
+        Pathfinds to the nearest adjacent tile, faces the target, presses A,
+        and returns any dialogue produced.
 
         Args:
-            object_index: The object's index from the view_map objects list.
+            object_index: The object's index from the view_map objects list. Default -1 (unused).
+            x: Target tile X coordinate (global). Use with y for static tiles.
+            y: Target tile Y coordinate (global). Use with x for static tiles.
         """
         from renegade_mcp.navigation import interact_with as _interact_with
 
         emu = get_client()
-        return _interact_with(emu, object_index)
+        return _interact_with(emu, object_index=object_index, x=x, y=y)
 
     @mcp.tool()
     def seek_encounter(cave: bool = False) -> dict[str, Any]:

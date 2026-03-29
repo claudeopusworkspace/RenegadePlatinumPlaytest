@@ -883,27 +883,48 @@ INTERACT_DIALOGUE_WAIT = 60  # frames to wait for auto-interaction
 INTERACT_A_WAIT = 60         # frames to wait after pressing A
 
 
-def interact_with(emu: EmulatorClient, object_index: int) -> dict[str, Any]:
-    """Navigate to an object/NPC and interact with it.
+def _target_info(has_object: bool, object_index: int, name: str, x: int, y: int) -> dict:
+    """Build target dict for interact_with results."""
+    info: dict[str, Any] = {"name": name, "x": x, "y": y}
+    if has_object:
+        info["index"] = object_index
+    return info
 
-    Finds the target object by index, pathfinds to the best adjacent tile,
-    faces the target, and attempts interaction. Returns dialogue if any.
+
+def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: int = -1) -> dict[str, Any]:
+    """Navigate to an object/NPC or static tile and interact with it.
+
+    Object mode (object_index): looks up by index, pathfinds to adjacent tile.
+    Coordinate mode (x, y): targets a specific tile directly (for PCs, bookshelves, etc.).
     """
+    has_object = object_index >= 0
+    has_coords = x >= 0 and y >= 0
+    if not has_object and not has_coords:
+        return {"error": "Provide either object_index or both x and y."}
+    if has_object and has_coords:
+        return {"error": "Provide object_index OR (x, y), not both."}
+
     # ── Read current state ──
     state = get_map_state(emu)
     if state is None:
         return {"error": "Could not read map state."}
 
     objects = state["objects"]
-    target = next((o for o in objects if o["index"] == object_index), None)
-    if target is None:
-        return {"error": f"Object index {object_index} not found in current map objects."}
-
-    target_x, target_y = target["x"], target["y"]
-    target_name = target.get("name", f"Object {object_index}")
     map_id = state["map_id"]
     px, py = state["px"], state["py"]
     chunked = state["chunked"]
+
+    if has_object:
+        target = next((o for o in objects if o["index"] == object_index), None)
+        if target is None:
+            return {"error": f"Object index {object_index} not found in current map objects."}
+        target_x, target_y = target["x"], target["y"]
+        target_name = target.get("name", f"Object {object_index}")
+        exclude_index = object_index
+    else:
+        target_x, target_y = x, y
+        target_name = f"Tile ({x}, {y})"
+        exclude_index = -1
 
     # ── Build terrain and NPC set ──
     is_global = target_x > 31 or target_y > 31 or chunked
@@ -918,7 +939,7 @@ def interact_with(emu: EmulatorClient, object_index: int) -> dict[str, Any]:
         # Build NPC set, excluding the target object
         npc_set = set()
         for obj in objects:
-            if obj["index"] == 0 or obj["index"] == object_index:
+            if obj["index"] == 0 or obj["index"] == exclude_index:
                 continue
             nx = obj["x"] - grid_ox
             ny = obj["y"] - grid_oy
@@ -984,7 +1005,7 @@ def interact_with(emu: EmulatorClient, object_index: int) -> dict[str, Any]:
         return {
             "error": f"No reachable tile adjacent to {target_name} at ({target_x}, {target_y}). "
                      "Fully surrounded by obstacles.",
-            "target": {"index": object_index, "name": target_name, "x": target_x, "y": target_y},
+            "target": _target_info(has_object, object_index, target_name, target_x, target_y),
         }
 
     # Pick shortest path
@@ -993,7 +1014,7 @@ def interact_with(emu: EmulatorClient, object_index: int) -> dict[str, Any]:
 
     # ── Execute path ──
     nav_result: dict[str, Any] = {
-        "target": {"index": object_index, "name": target_name, "x": target_x, "y": target_y},
+        "target": _target_info(has_object, object_index, target_name, target_x, target_y),
         "destination": {"x": dest_x + grid_ox, "y": dest_y + grid_oy},
         "face_direction": face_dir,
     }
