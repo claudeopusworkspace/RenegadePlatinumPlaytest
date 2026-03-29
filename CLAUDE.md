@@ -39,6 +39,8 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `heal_party` | Heal at Pokemon Center: finds Nurse Joy by graphicsID, interacts, advances dialogue, verifies HP. |
 | `open_pc` | Boot up the PC: finds 0x83 tile, navigates, interacts, advances to storage menu (DEPOSIT/WITHDRAW/MOVE/SEE YA!). |
 | `deposit_pokemon(party_slots)` | Deposit party Pokemon into Box 1. Takes list of 0-indexed slots. Multi-deposit supported. Must call open_pc first. |
+| `withdraw_pokemon(box_slots)` | Withdraw Pokemon from Box 1 to party. Takes list of 0-indexed box slots. Multi-withdraw supported. Must call open_pc first. |
+| `read_box(box=1)` | Read all Pokemon in a PC box from RAM. No UI needed — works anytime. Returns species, moves, nature, IVs, EVs, held item. |
 | `close_pc` | Exit the PC from storage menu and return to overworld. |
 
 The original Python scripts in `scripts/` still work for debugging but are no longer the primary interface.

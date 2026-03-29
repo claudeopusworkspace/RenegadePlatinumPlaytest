@@ -142,6 +142,31 @@ Each slot: PID (4 bytes) + checksum (2 bytes) + 4 shuffled/encrypted 32-byte blo
 
 This data is always available (overworld + battle). See also Party Summary Structure below for the runtime overlay with current HP/level.
 
+## PC Box Storage (Gen 4)
+
+**Status: SOLVED.**
+
+PC boxes use the same Gen 4 encrypted format as party data, but only 136 bytes per slot (no PID-encrypted battle stats extension). Level must be derived from EXP + species growth rate.
+
+| Address      | Size | Field |
+|-------------|------|-------|
+| `0x0228B100` | 73,440 bytes | Box data: 18 boxes × 30 slots × 136 bytes |
+
+**Per-slot layout (136 bytes):**
+- Bytes 0-3: PID (u32, unencrypted)
+- Bytes 4-5: Padding (0x0000)
+- Bytes 6-7: Checksum (u16)
+- Bytes 8-135: 4 encrypted 32-byte blocks (A/B/C/D), same PRNG/shuffle as party
+
+**Address calculation:**
+- `GetBoxSlotAddr(box, slot) = 0x0228B100 + (box - 1) * 30 * 136 + slot * 136`
+- Box 1 slot 0: `0x0228B100`
+- Box 2 slot 0: `0x0228C0F0`
+
+**Box names (UI/display):** 18 entries at `0x0229CFE0`, 40-byte stride, Gen 4 text encoding.
+
+**Discovery method:** Loaded save state with 5 known Pokemon in Box 1. Read their PIDs from a prior party state, searched 4MB RAM for those PIDs. Found all 5 at 136-byte intervals with valid checksums.
+
 ## Bag Data
 
 Base address: `0x0227E800` (1844 bytes total). Each pocket is an array of `(item_id u16, qty u16)` pairs.
