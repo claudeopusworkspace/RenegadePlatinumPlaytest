@@ -655,7 +655,10 @@ def _validate_path(
     """Simulate a path on the terrain grid and check for collisions.
 
     Returns (ok, step_index, direction, tile) where:
-    - ok=True means path is clear (step_index etc. are meaningless)
+    - ok=True, step_index=-1 means full path is clear
+    - ok=True, step_index>=0, direction="transition" means path is valid but
+      should be trimmed at step_index (inclusive) — that step walks off a
+      door/stair tile in its activation direction, triggering a map transition.
     - ok=False means step_index'th direction hits a wall at tile (x, y)
 
     Off-grid tiles are allowed (map transitions).
@@ -664,6 +667,17 @@ def _validate_path(
     deltas = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
 
     for i, d in enumerate(directions):
+        # Check if current tile is a door/stair whose activation direction
+        # matches this step — if so, this step triggers a map transition
+        # regardless of what's on the destination tile.
+        if 0 <= cx < width and 0 <= cy < height:
+            _, cur_behavior = terrain_info[cy][cx]
+            activation = DOOR_ACTIVATION.get(cur_behavior)
+            if activation is not None and activation == d:
+                dx, dy = deltas[d]
+                nx, ny = cx + dx, cy + dy
+                return True, i, "transition", (nx, ny)
+
         dx, dy = deltas[d]
         nx, ny = cx + dx, cy + dy
 
@@ -725,6 +739,9 @@ def navigate_manual(emu: EmulatorClient, directions_str: str) -> dict[str, Any]:
                 "blocked_tile": {"x": global_wall_x, "y": global_wall_y},
                 "start": {"x": start_x, "y": start_y, "map": start_map},
             }
+        # Trim path at door/stair transition — that step is the last before map change
+        if step_idx >= 0 and step_dir == "transition":
+            directions = directions[:step_idx + 1]
 
     stopped_early, steps_taken, _, log = _execute_path(emu, directions, track_npcs=True)
 
@@ -912,7 +929,39 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
             result["note"] = "Door activation did not trigger a map transition."
         return result
 
-    # Non-door target: standard post-nav check
+    # Non-door target: check if we ended up adjacent to a walk-into door (0x69, 0x6E)
+    if not is_door and not stopped_early:
+        cur_map, cur_x, cur_y = _read_position(emu)
+        ti = repath_ctx["terrain_info"]
+        gw, gh = repath_ctx["grid_w"], repath_ctx["grid_h"]
+        gox, goy = repath_ctx["grid_ox"], repath_ctx["grid_oy"]
+        lx, ly = cur_x - gox, cur_y - goy
+        for dx, dy, direction in BFS_MOVES:
+            adj_lx, adj_ly = lx + dx, ly + dy
+            if not (0 <= adj_lx < gw and 0 <= adj_ly < gh):
+                continue
+            _, adj_behavior = ti[adj_ly][adj_lx]
+            if adj_behavior in DOOR_ACTIVATION and DOOR_ACTIVATION[adj_behavior] is None:
+                # Walk into the door tile to trigger warp
+                emu.advance_frames(HOLD_FRAMES, buttons=[direction])
+                emu.advance_frames(WAIT_FRAMES)
+                door_result = _handle_door_transition(emu, adj_behavior, cur_map)
+                if door_result:
+                    result = {
+                        "path_summary": _summarize_path(path),
+                        "total_directions": len(path),
+                        "steps_taken": steps_taken,
+                        "stopped_early": False,
+                        "start": {"x": px, "y": py, "map": map_id},
+                        "target": {"x": target_x, "y": target_y},
+                        "log": log,
+                    }
+                    result.update(door_result)
+                    result["final"] = door_result["new_position"]
+                    return result
+                break  # Only try one adjacent door
+
+    # Standard post-nav check
     encounter = _post_nav_check(emu)
     final_map, final_x, final_y = _read_position(emu)
 
