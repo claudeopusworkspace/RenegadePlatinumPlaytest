@@ -39,7 +39,9 @@
 | `jubilife_post_barry_wipe` | Jubilife Pokemon Center. After losing to Barry on Route 203. |
 | `jubilife_healed_grind2` | Jubilife Pokemon Center. Team grinded on Route 202. Shinx/Piplup/Chimchar Lv12, Charmander Lv11, Eevee Lv10, Turtwig Lv14. |
 | `jubilife_healed_pre_rival` | Jubilife Pokemon Center. Full team Lv12+ healed. Pre-rival rematch. |
-| `route203_post_rival` | Route 203 (map 344). Defeated Rival AAAAAAA. Got Exp. Share. Turtwig Lv15, rest Lv12. Latest gameplay state. |
+| `route203_post_rival` | Route 203 (map 344). Defeated Rival AAAAAAA. Got Exp. Share. Turtwig Lv15, rest Lv12. |
+| `pre_shinx_evolution_grind` | Route 202 north entrance. Shinx Lv12 in slot 0, full team healed. Pre-grind. |
+| `route202_post_shinx_evolution` | Route 202 grass. Shinx evolved into Luxio Lv15. Post-evolution test. Latest gameplay state. |
 
 ## Debug & Testing
 
@@ -71,3 +73,5 @@
 | `pc_at_storage_menu` | Inside PC at storage menu (DEPOSIT/WITHDRAW/MOVE/SEE YA!). 5 Pokemon party. |
 | `pc_deposited_chimchar` | Inside PC. Chimchar deposited to Box 1. |
 | `pokecenter_1party_5boxed` | Jubilife Pokemon Center. Turtwig Lv14 only in party. 5 boxed in Box 1. |
+| `debug_shinx_pre_evolution_ko` | Wild Sentret Lv5 battle. Shinx Lv14. Bite KOs → Lv15 → Charge learn → evolution. |
+| `debug_shinx_move_learn_pre_evolution` | At "Make it forget another move?" for Charge. Shinx Lv15 pre-evolution. |

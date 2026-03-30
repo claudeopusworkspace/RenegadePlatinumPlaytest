@@ -4,7 +4,7 @@ Handles all battle states:
 - Normal turns: FIGHT + move or POKEMON + switch
 - Faint recovery: wild (flee or switch) and trainer (forced switch)
 - Trainer switch prompts: swap Pokemon or keep battling
-- Level-up, move learning, battle end detection
+- Level-up, move learning, evolution, battle end detection
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from renegade_mcp.battle_tracker import (
     _tracker,
     _classify_stop,
     _scan_for_new_text,
+    _scan_markers,
     POLL_FRAMES,
     SCAN_SIZE,
     SCAN_START,
@@ -81,6 +82,10 @@ BATTLE_SLOT_SIZE = 0xC0
 # Post-timeout recovery: press B to advance through stat screens / text
 RECOVERY_PRESSES = 8
 RECOVERY_WAIT = 300  # frames between B presses (~5 seconds per press)
+
+# Evolution animation handling
+EVOLUTION_ADVANCE = 60      # ~1 second per poll chunk
+EVOLUTION_MAX_CHUNKS = 40   # 40 seconds max wait for animation
 
 # Timing
 ACTION_SETTLE = 120   # frames before first tap (covers send-out animations)
@@ -169,6 +174,74 @@ def _advance_text(emu: EmulatorClient, presses: int = 1, wait: int = TEXT_ADVANC
     for _ in range(presses):
         emu.press_buttons(["b"], frames=8)
         emu.advance_frames(wait)
+
+
+def _is_evolution_text_on_screen(emu: EmulatorClient) -> bool:
+    """Check if evolution text is currently displayed (e.g. 'is evolving!')."""
+    raw = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
+    data = bytes(raw)
+    markers = _scan_markers(data, SCAN_START)
+    for text in markers.values():
+        if "is evolving" in text.replace("\n", " "):
+            return True
+    return False
+
+
+def _wait_for_evolution(emu: EmulatorClient, result: dict[str, Any]) -> dict[str, Any]:
+    """Wait for evolution animation to complete without pressing B.
+
+    Gen 4 evolution: 'is evolving!' text → ~10-15s animation → 'evolved into [Species]!'
+    Pressing B during the animation cancels it. This function dismisses the
+    evolution text (single B), then waits passively for completion.
+    """
+    # Dismiss "is evolving" text if still on screen
+    if _is_evolution_text_on_screen(emu):
+        # Capture the actual text for the log
+        raw = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
+        markers = _scan_markers(bytes(raw), SCAN_START)
+        for text in markers.values():
+            if "is evolving" in text.replace("\n", " "):
+                result["log"].append({"text": text, "stop": "AUTO_ADVANCE"})
+                break
+        emu.press_buttons(["b"], frames=8)
+        emu.advance_frames(60)
+
+    # Wait passively for the animation to complete.
+    # Scan periodically for "evolved into" text (appears after animation).
+    for _ in range(EVOLUTION_MAX_CHUNKS):
+        emu.advance_frames(EVOLUTION_ADVANCE)
+
+        raw = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
+        markers = _scan_markers(bytes(raw), SCAN_START)
+
+        for text in markers.values():
+            clean = text.replace("\n", " ")
+            if "evolved into" in clean:
+                result["log"].append({"text": text, "stop": "AUTO_ADVANCE"})
+                # Advance through post-evolution text (congratulations, etc.)
+                _advance_text(emu, presses=5, wait=180)
+                emu.advance_frames(300)
+                # Re-poll for any further prompts (post-evolution move learn)
+                _tracker.init(emu)
+                poll = _tracker.poll(emu, auto_press=True)
+                if poll.get("log"):
+                    result["log"].extend(poll.get("log", []))
+                final = _classify_final_state(emu, poll)
+                if final in ("TIMEOUT", "NO_TEXT"):
+                    result["final_state"] = "BATTLE_ENDED" if _is_battle_over(emu) else final
+                else:
+                    result["final_state"] = final
+                return result
+
+            if "stopped evolving" in clean:
+                result["log"].append({"text": text, "stop": "AUTO_ADVANCE"})
+                emu.advance_frames(300)
+                result["final_state"] = "BATTLE_ENDED" if _is_battle_over(emu) else "TIMEOUT"
+                return result
+
+    # Timed out waiting — check if we ended up in overworld
+    result["final_state"] = "BATTLE_ENDED" if _is_battle_over(emu) else "TIMEOUT"
+    return result
 
 
 # ── Prompt detection ──
@@ -294,10 +367,12 @@ def _decline_flow(emu: EmulatorClient) -> None:
     emu.tap_touch_screen(PROMPT_NO_XY[0], PROMPT_NO_XY[1], frames=8)
 
 
-def _skip_move_learn_flow(emu: EmulatorClient) -> None:
+def _skip_move_learn_flow(emu: EmulatorClient) -> bool:
     """Skip learning the new move from Prompt 1 ('Make it forget another move?').
 
     Flow: 'Keep old moves!' → Prompt 2 text scroll → 'Give up on [Move]!' → confirmation text.
+
+    Returns True if evolution text was detected (caller must handle via _wait_for_evolution).
     """
     # Prompt 1: tap "Keep old moves!" (bottom) → triggers Prompt 2 text
     emu.tap_touch_screen(KEEP_OLD_MOVES_XY[0], KEEP_OLD_MOVES_XY[1], frames=8)
@@ -309,14 +384,21 @@ def _skip_move_learn_flow(emu: EmulatorClient) -> None:
     emu.tap_touch_screen(GIVE_UP_XY[0], GIVE_UP_XY[1], frames=8)
     emu.advance_frames(TAP_WAIT)
 
-    # Advance through "did not learn [Move]" text
-    _advance_text(emu, presses=3, wait=180)
+    # Advance through "did not learn [Move]" text, stopping if evolution starts
+    for _ in range(3):
+        if _is_evolution_text_on_screen(emu):
+            return True
+        emu.press_buttons(["b"], frames=8)
+        emu.advance_frames(180)
+    return _is_evolution_text_on_screen(emu)
 
 
-def _learn_move_flow(emu: EmulatorClient, forget_index: int) -> None:
+def _learn_move_flow(emu: EmulatorClient, forget_index: int) -> bool:
     """Forget a move and learn the new one from Prompt 1 ('Make it forget another move?').
 
     Steps: 'Forget a move!' → move grid (no B!) → tap slot → FORGET → confirmation text.
+
+    Returns True if evolution text was detected (caller must handle via _wait_for_evolution).
     """
     # 1. Tap "Forget a move!" (red, top) on Prompt 1
     emu.tap_touch_screen(FORGET_A_MOVE_XY[0], FORGET_A_MOVE_XY[1], frames=8)
@@ -332,7 +414,13 @@ def _learn_move_flow(emu: EmulatorClient, forget_index: int) -> None:
     emu.advance_frames(ACTION_SETTLE)
 
     # 4. Advance through "1, 2, and... Poof!" / "forgot [old]" / "learned [new]" text
-    _advance_text(emu, presses=6, wait=180)
+    #    Stop pressing B if evolution text appears to avoid cancelling it.
+    for _ in range(6):
+        if _is_evolution_text_on_screen(emu):
+            return True
+        emu.press_buttons(["b"], frames=8)
+        emu.advance_frames(180)
+    return _is_evolution_text_on_screen(emu)
 
 
 def _poll_after_action(emu: EmulatorClient, prompt_log: list[dict]) -> dict[str, Any]:
@@ -554,9 +642,13 @@ def _execute_move_learn(
         return {"log": prompt["log"], "final_state": "MOVE_LEARN"}
 
     if forget_move == -1:
-        _skip_move_learn_flow(emu)
+        evolving = _skip_move_learn_flow(emu)
     else:
-        _learn_move_flow(emu, forget_move)
+        evolving = _learn_move_flow(emu, forget_move)
+
+    if evolving:
+        result: dict[str, Any] = {"log": prompt["log"]}
+        return _wait_for_evolution(emu, result)
 
     return _poll_after_action(emu, prompt["log"])
 
@@ -572,6 +664,12 @@ def _recover_from_level_up(emu: EmulatorClient, result: dict[str, Any]) -> dict[
 
         emu.press_buttons(["b"], frames=8)
         emu.advance_frames(RECOVERY_WAIT)
+
+        # Check for evolution text BEFORE polling — the poll's auto_press
+        # would dismiss it with B and subsequent B presses would cancel
+        # the evolution animation.
+        if _is_evolution_text_on_screen(emu):
+            return _wait_for_evolution(emu, result)
 
         poll = _tracker.poll(emu, auto_press=True)
 

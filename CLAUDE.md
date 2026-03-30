@@ -196,9 +196,9 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 ## Game Progress
 
 - **Character**: CLAUDE | **Rival**: AAAAAAA
-- **Location**: Route 203 (map 344), post-rival battle. Save state: `route203_post_rival`.
+- **Location**: Route 202 (map 343), post-Shinx evolution. Save state: `route202_post_shinx_evolution`.
 - **Charmander** Lv12 — Hardy, Blaze. Held: Charcoal. Moves: Scratch, Metal Claw, Ember, Smokescreen.
-- **Shinx** Lv12 — Jolly (+Spe/-SpA), Guts. Moves: Spark, Bite, Howl, Quick Attack.
+- **Luxio** Lv15 — Jolly (+Spe/-SpA), Guts. Moves: Spark, Bite, Howl, Quick Attack. (Evolved from Shinx)
 - **Eevee** Lv12 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Quick Attack, Bite, Covet.
 - **Piplup** Lv12 — Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Peck.
 - **Turtwig** Lv15 — Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Bullet Seed, Razor Leaf.
@@ -206,7 +206,7 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 - **Box 1**: Bulbasaur Lv5 (Docile, Chlorophyll, Miracle Seed), Squirtle Lv5 (Gentle, Mystic Water).
 - **Key items**: Repel x10, Poke Ball x29, Bicycle, Poke Radar, Town Map, Vs. Recorder, Scope Lens, Poketch, Exp. Share.
 - **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202), Reporter Kayla (Jubilife Pokemon Center), Rival AAAAAAA (Route 203).
-- **Story progress**: Got Poketch from Poketch Company president. Won Bulbasaur from Jubilife TV quiz. Lost to Rival AAAAAAA on Route 203 (first attempt). Picked up Charmander + Squirtle from Reporter in Jubilife PC. Deposited Bulbasaur + Squirtle to Box 1. Grinded team on Route 202 using auto_grind tool. Beat Rival AAAAAAA on Route 203 rematch (Starly Lv10, Munchlax Lv10, Chimchar Lv11). Received Exp. Share from rival.
+- **Story progress**: Got Poketch from Poketch Company president. Won Bulbasaur from Jubilife TV quiz. Lost to Rival AAAAAAA on Route 203 (first attempt). Picked up Charmander + Squirtle from Reporter in Jubilife PC. Deposited Bulbasaur + Squirtle to Box 1. Grinded team on Route 202 using auto_grind tool. Beat Rival AAAAAAA on Route 203 rematch (Starly Lv10, Munchlax Lv10, Chimchar Lv11). Received Exp. Share from rival. Grinded Shinx to Lv15 on Route 202 → evolved into Luxio (first evolution, used to develop evolution handling).
 - **Next**: Continue east on Route 203 to Oreburgh Gate. Fight trainers on Route 203. Oreburgh City for first Gym (Rock type). More starters available from NPCs in Oreburgh and Floaroma.
 
 See GAME_HISTORY.md for full chronological playthrough details.
@@ -246,4 +246,4 @@ See GAME_HISTORY.md for full chronological playthrough details.
 - **`battle_turn` detects battle end via text absence** — after seeing battle narration, 20 consecutive polls (~5 sec) with no text markers triggers early exit. Log-based heuristic ("fainted" + "Exp. Points") classifies as BATTLE_ENDED. Level-up cases ("grew to" in log) defer to recovery instead.
 - **Pause menu remembers cursor position** — cursor index stored at `0x0229FA28`. The `use_item` tool reads this automatically; for manual menu navigation, read this address first.
 - **Trainer battles may have multiple Pokemon** — handle "Will you switch?" prompt before next action.
-- **Evolution is untested** — similar to the stat screen, evolution is a long graphical sequence with no text markers. The 5-second text absence threshold may need tuning. Test with Chimchar→Monferno (Lv14) or Turtwig→Grotle (Lv18).
+- **Evolution is handled** — after level-up + move-learn resolution, `battle_turn` detects "is evolving" text, dismisses it with a single B press, then waits passively (no B) for the ~15s animation. "evolved into [Species]!" is captured in the log. Tested with Shinx→Luxio (Lv15). Works in both `battle_turn` and `auto_grind` flows.
