@@ -1,0 +1,364 @@
+"""Auto-grind tool — seek encounters and battle automatically until a stop condition."""
+
+from __future__ import annotations
+
+import re
+import time
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from desmume_mcp.client import EmulatorClient
+
+from renegade_mcp.navigation import seek_encounter as _seek_encounter
+from renegade_mcp.party import read_party as _read_party
+from renegade_mcp.turn import battle_turn as _battle_turn
+
+
+# States that mean "battle is over, back in overworld"
+_BATTLE_OVER = {"BATTLE_ENDED"}
+
+# States that mean "need user decision on move learning"
+_MOVE_LEARN = {"MOVE_LEARN"}
+
+# States that mean "our Pokemon fainted"
+_FAINT = {"FAINT_SWITCH", "FAINT_FORCED"}
+
+# States that are unexpected / errors
+_ERROR = {"TIMEOUT", "NO_TEXT", "NO_ACTION_PROMPT", "LEVEL_UP"}
+
+
+def auto_grind(
+    emu: EmulatorClient,
+    move_index: int,
+    cave: bool = False,
+    target_level: int = 0,
+    forget_move: int = -2,
+) -> dict[str, Any]:
+    """Grind wild encounters automatically.
+
+    Loops: seek_encounter → battle (spam move_index) → repeat.
+
+    Args:
+        emu: Emulator client.
+        move_index: Move slot (0-3) to use every turn.
+        cave: Pass to seek_encounter for cave/indoor encounters.
+        target_level: Stop when slot-0 Pokemon reaches this level. 0 = no limit.
+        forget_move: If resuming from a MOVE_LEARN stop, pass the choice here
+                     (0-3 = forget that slot, -1 = skip learning). -2 = not resuming.
+
+    Returns:
+        Dict with stop_reason, battles fought, log of each battle, and party state.
+    """
+    battles: list[dict[str, Any]] = []
+    stop_reason = ""
+    stop_detail = ""
+
+    # ── If resuming from a MOVE_LEARN, handle that first ──
+    if forget_move >= -1:
+        emu.create_checkpoint(action=f"auto_grind:resume(forget_move={forget_move})")
+        result = _battle_turn(emu, forget_move=forget_move)
+        state = result.get("final_state", "")
+
+        if state in _BATTLE_OVER:
+            # Move learn resolved, battle ended — check level then continue grinding
+            party = _read_party(emu)
+            slot0 = party[0] if party else None
+            if target_level > 0 and slot0 and slot0["level"] >= target_level:
+                return _finish(
+                    "target_level",
+                    f"Slot 0 reached Lv{slot0['level']} (target: {target_level}).",
+                    battles, party,
+                )
+            # Fall through to the main grind loop
+        elif state == "WAIT_FOR_ACTION":
+            # Move learn resolved mid-battle — continue this battle
+            stop_reason, stop_detail, battle_log, detected_level = _fight_battle(
+                emu, move_index, result, resuming=True,
+            )
+            battles.append({"turns": battle_log})
+            if stop_reason:
+                party = _read_party(emu)
+                return _finish(stop_reason, stop_detail, battles, party)
+            # Battle ended normally — check level from log first
+            if target_level > 0 and detected_level is not None and detected_level >= target_level:
+                party = _read_party(emu)
+                return _finish(
+                    "target_level",
+                    f"Slot 0 reached Lv{detected_level} (target: {target_level}).",
+                    battles, party,
+                )
+            # Fall back to read_party
+            party = _read_party(emu)
+            slot0 = party[0] if party else None
+            if target_level > 0 and slot0 and not slot0.get("partial") and slot0["level"] >= target_level:
+                return _finish(
+                    "target_level",
+                    f"Slot 0 reached Lv{slot0['level']} (target: {target_level}).",
+                    battles, party,
+                )
+            # Fall through to main loop
+        elif state in _MOVE_LEARN:
+            # Another move learn immediately — stop again for user input
+            return _finish(
+                "move_learn",
+                _move_learn_detail(result),
+                battles, _read_party(emu),
+                move_learn=result,
+            )
+        elif state in _FAINT:
+            return _finish(
+                "fainted",
+                f"Slot 0 fainted after move-learn resolution. State: {state}",
+                battles, _read_party(emu),
+            )
+        else:
+            return _finish(
+                "unexpected",
+                f"Unexpected state after move-learn resolution: {state}",
+                battles, _read_party(emu),
+            )
+
+    # ── Main grind loop ──
+    while True:
+        # Seek a wild encounter
+        mode = "cave" if cave else "grass"
+        emu.create_checkpoint(action=f"auto_grind:seek_encounter({mode})")
+        enc = _seek_encounter(emu, cave=cave)
+        enc_result = enc.get("result", "")
+
+        if enc_result != "encounter":
+            stop_reason = "seek_failed"
+            stop_detail = (
+                f"seek_encounter returned '{enc_result}' instead of 'encounter'. "
+                f"Position: {enc.get('position', '?')}. "
+                "Possible cutscene trigger or blocked path."
+            )
+            break
+
+        # We have a battle — fight it
+        # The encounter data already has the first action prompt ready
+        stop_reason, stop_detail, battle_log, detected_level = _fight_battle(emu, move_index)
+        battles.append({"turns": battle_log})
+
+        if stop_reason:
+            break
+
+        # Battle ended normally — check level from battle log first (immune
+        # to encryption-state issues), then fall back to read_party for PP.
+        if target_level > 0 and detected_level is not None and detected_level >= target_level:
+            stop_reason = "target_level"
+            stop_detail = f"Slot 0 reached Lv{detected_level} (target: {target_level})."
+            break
+
+        # Fall back to read_party for PP check and level (if log didn't have a level-up)
+        party = _read_party(emu)
+        slot0 = party[0] if party else None
+        if slot0 and slot0.get("partial"):
+            emu.advance_frames(120)
+            party = _read_party(emu)
+            slot0 = party[0] if party else None
+        if target_level > 0 and slot0 and not slot0.get("partial") and slot0["level"] >= target_level:
+            stop_reason = "target_level"
+            stop_detail = f"Slot 0 reached Lv{slot0['level']} (target: {target_level})."
+            break
+        if slot0 and not slot0.get("partial") and slot0["pp"][move_index] <= 0:
+            stop_reason = "pp_depleted"
+            stop_detail = (
+                f"Move slot {move_index} ({slot0['move_names'][move_index]}) "
+                f"has 0 PP. Pokemon is in the overworld — use an Ether or "
+                f"swap to a different spam move before continuing."
+            )
+            break
+
+    # Gather final party state
+    party = _read_party(emu)
+    return _finish(stop_reason, stop_detail, battles, party)
+
+
+def _fight_battle(
+    emu: EmulatorClient,
+    move_index: int,
+    initial_result: dict[str, Any] | None = None,
+    resuming: bool = False,
+) -> tuple[str, str, list[dict[str, Any]], int | None]:
+    """Fight a single wild battle by spamming move_index each turn.
+
+    Returns (stop_reason, stop_detail, battle_log, detected_level).
+    stop_reason is empty string if battle ended normally (BATTLE_ENDED).
+    detected_level is parsed from 'grew to Lv. N' in the battle log, or None.
+    """
+    battle_log: list[dict[str, Any]] = []
+    turn = 0
+
+    # If resuming mid-battle, the initial_result is the last battle_turn response
+    if resuming and initial_result:
+        battle_log.append({"turn": turn, "state": initial_result.get("final_state"), "log": initial_result.get("formatted", "")})
+        turn += 1
+
+    while True:
+        emu.create_checkpoint(action=f"auto_grind:battle_turn(move={move_index}, turn={turn})")
+        result = _battle_turn(emu, move_index=move_index)
+        state = result.get("final_state", "")
+        battle_log.append({"turn": turn, "state": state, "log": result.get("formatted", "")})
+        turn += 1
+
+        if state in _BATTLE_OVER:
+            # Normal end — no stop reason
+            return "", "", battle_log, _extract_level_from_log(battle_log)
+
+        if state == "WAIT_FOR_ACTION":
+            # Check PP for our spam move before next turn
+            pp = _get_move_pp(result, move_index)
+            if pp is not None and pp <= 0:
+                return (
+                    "pp_depleted",
+                    f"Move slot {move_index} has 0 PP. Battle still active — "
+                    "manual intervention needed (flee, use another move, or use an item).",
+                    battle_log,
+                    _extract_level_from_log(battle_log),
+                )
+            # Otherwise continue fighting
+            continue
+
+        if state == "SWITCH_PROMPT":
+            # Wild battle — opponent shouldn't be sending in new Pokemon.
+            # Just continue (battle_turn with no args = decline switch).
+            emu.create_checkpoint(action="auto_grind:decline_switch")
+            result2 = _battle_turn(emu)
+            state2 = result2.get("final_state", "")
+            battle_log.append({"turn": turn, "state": state2, "log": result2.get("formatted", "")})
+            turn += 1
+            if state2 in _BATTLE_OVER:
+                return "", "", battle_log, _extract_level_from_log(battle_log)
+            # If still going, continue the fight loop
+            continue
+
+        if state in _FAINT:
+            return (
+                "fainted",
+                f"Slot 0 Pokemon fainted. State: {state}. "
+                "Return to a Pokemon Center or use revives before continuing.",
+                battle_log,
+                _extract_level_from_log(battle_log),
+            )
+
+        if state in _MOVE_LEARN:
+            return (
+                "move_learn",
+                _move_learn_detail(result),
+                battle_log,
+                _extract_level_from_log(battle_log),
+            )
+
+        # Anything else is unexpected
+        return (
+            "unexpected",
+            f"Unexpected battle state: {state}. Check game manually.",
+            battle_log,
+            _extract_level_from_log(battle_log),
+        )
+
+
+def _get_move_pp(battle_turn_result: dict[str, Any], move_index: int) -> int | None:
+    """Extract PP for a specific move from battle_turn's battle_state."""
+    battlers = battle_turn_result.get("battle_state", [])
+    if not battlers:
+        return None
+    # Slot 0 = player's active Pokemon
+    player = battlers[0] if battlers else None
+    if not player:
+        return None
+    moves = player.get("moves", [])
+    for m in moves:
+        if m.get("id", -1) == 0:
+            continue
+        # moves is a list; move_index maps to the Nth non-empty move
+        # Actually, moves[move_index] directly corresponds to the slot
+    if move_index < len(moves):
+        return moves[move_index].get("pp")
+    return None
+
+
+def _extract_level_from_log(battle_log: list[dict[str, Any]]) -> int | None:
+    """Extract the highest 'grew to Lv. N' from a battle's turn logs."""
+    level = None
+    for turn in battle_log:
+        text = turn.get("log", "")
+        for m in re.finditer(r"grew to\s*/?\s*Lv\.\s*(\d+)", text):
+            level = int(m.group(1))
+    return level
+
+
+def _move_learn_detail(result: dict[str, Any]) -> str:
+    """Build a human-readable stop detail for MOVE_LEARN."""
+    move_to_learn = result.get("move_to_learn", "unknown")
+    current = result.get("current_moves", [])
+    current_str = ", ".join(
+        f"[{m['slot']}] {m['name']} (PP {m['pp']})" for m in current
+    ) if current else "unknown"
+    return (
+        f"Pokemon wants to learn {move_to_learn}. "
+        f"Current moves: {current_str}. "
+        "Call auto_grind again with forget_move=0-3 to replace a move, "
+        "or forget_move=-1 to skip learning."
+    )
+
+
+def _write_battle_log(battles: list[dict[str, Any]], stop_reason: str) -> str:
+    """Write full battle logs to a timestamped file. Returns the file path."""
+    log_dir = Path("/workspace/RenegadePlatinumPlaytest/logs")
+    log_dir.mkdir(exist_ok=True)
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    log_path = log_dir / f"auto_grind_{timestamp}.log"
+
+    lines: list[str] = []
+    for i, battle in enumerate(battles):
+        lines.append(f"=== Battle {i + 1} ===")
+        for turn in battle.get("turns", []):
+            lines.append(turn.get("log", ""))
+        lines.append("")
+    lines.append(f"Stop reason: {stop_reason}")
+
+    log_path.write_text("\n".join(lines))
+    return str(log_path)
+
+
+def _finish(
+    stop_reason: str,
+    stop_detail: str,
+    battles: list[dict[str, Any]],
+    party: list[dict[str, Any]],
+    move_learn: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Build the final return dict."""
+    # Write full logs to file, only return the last battle in response
+    log_file = _write_battle_log(battles, stop_reason)
+
+    slot0 = party[0] if party else None
+    summary = (
+        f"Stopped after {len(battles)} battle(s). Reason: {stop_reason}. "
+        f"{stop_detail}"
+    )
+    if slot0:
+        summary += (
+            f"\nSlot 0: {slot0.get('name', '?')} Lv{slot0.get('level', '?')} "
+            f"HP {slot0.get('hp', '?')}/{slot0.get('max_hp', '?')}"
+        )
+    summary += f"\nFull log: {log_file}"
+
+    last_battle = battles[-1] if battles else None
+
+    result: dict[str, Any] = {
+        "stop_reason": stop_reason,
+        "stop_detail": stop_detail,
+        "battles_fought": len(battles),
+        "last_battle": last_battle,
+        "log_file": log_file,
+        "party": party,
+        "formatted": summary,
+    }
+    if move_learn:
+        result["move_to_learn"] = move_learn.get("move_to_learn")
+        result["current_moves"] = move_learn.get("current_moves")
+    return result

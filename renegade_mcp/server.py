@@ -513,4 +513,53 @@ def create_server() -> FastMCP:
         emu.create_checkpoint(action=f"reorder_party({from_slot}, {to_slot})")
         return _reorder_party(emu, from_slot, to_slot)
 
+    # ── Auto Grind ──
+
+    @mcp.tool()
+    def auto_grind(
+        move_index: int,
+        cave: bool = False,
+        target_level: int = 0,
+        forget_move: int = -2,
+    ) -> dict[str, Any]:
+        """Grind wild encounters automatically: seek → battle → repeat.
+
+        Place the Pokemon to train in party slot 0 and stand in a grass/cave area.
+        The tool loops seek_encounter + battle_turn (spamming the given move) until
+        a stop condition is hit.
+
+        Stop conditions (returned as stop_reason):
+        - fainted: Slot 0 Pokemon fainted. Heal before continuing.
+        - pp_depleted: The spam move has 0 PP. Battle is still active — handle manually.
+        - target_level: Slot 0 reached the target level.
+        - seek_failed: Unexpected interruption while seeking encounters (cutscene, blocked path).
+        - move_learn: Pokemon wants to learn a new move but has no room. Call again with
+          forget_move to continue (0-3 = forget that slot, -1 = skip learning).
+        - unexpected: Unknown battle state — check game manually.
+
+        Args:
+            move_index: Move slot (0-3) to spam every turn.
+            cave: True for cave/indoor encounters (no grass tiles).
+            target_level: Stop when slot 0 reaches this level. 0 = no limit.
+            forget_move: Resume from a move_learn stop. 0-3 = forget that move slot,
+                        -1 = skip learning. -2 (default) = not resuming.
+        """
+        from renegade_mcp.auto_grind import auto_grind as _auto_grind
+
+        emu = get_client()
+        desc = f"auto_grind(move={move_index}, cave={cave}"
+        if target_level > 0:
+            desc += f", target_lv={target_level}"
+        if forget_move >= -1:
+            desc += f", forget={forget_move}"
+        desc += ")"
+        emu.create_checkpoint(action=desc)
+        return _auto_grind(
+            emu,
+            move_index=move_index,
+            cave=cave,
+            target_level=target_level,
+            forget_move=forget_move,
+        )
+
     return mcp

@@ -43,6 +43,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `read_box(box=1)` | Read all Pokemon in a PC box from RAM. No UI needed — works anytime. Returns species, moves, nature, IVs, EVs, held item. |
 | `close_pc` | Exit the PC from storage menu and return to overworld. |
 | `read_trainer_status` | Read money and badges from memory. No UI needed. |
+| `auto_grind(move_index, cave, target_level, forget_move)` | Automated grinding loop: seek encounters + spam a move until a stop condition. See Auto Grind Workflow below. |
 
 The original Python scripts in `scripts/` still work for debugging but are no longer the primary interface.
 
@@ -102,6 +103,35 @@ Key ROM file indices: 0392=items, 0412=species, 0610=abilities, 0647=moves, 0433
    - `TIMEOUT` / `NO_TEXT` — something unexpected. Screenshot + `read_battle` to diagnose.
 
 Note: `battle_turn` includes `read_battle` data in every response — no separate call needed.
+
+## Auto Grind Workflow
+
+`auto_grind` automates wild encounter grinding. Stand in a grass/cave area with the training target in party slot 0.
+
+### Basic call
+```
+auto_grind(move_index=0)                    # spam move slot 0, grind indefinitely
+auto_grind(move_index=2, target_level=15)   # stop at Lv15
+auto_grind(move_index=1, cave=true)         # cave encounters
+```
+
+### Stop conditions (returned as `stop_reason`)
+| Reason | Meaning | What to do |
+|--------|---------|------------|
+| `target_level` | Slot 0 reached the target level. | Done! |
+| `fainted` | Slot 0 fainted. | Heal, then grind again or switch lead. |
+| `pp_depleted` | Spam move has 0 PP mid-battle. | Handle manually: flee, use another move, or use an Ether. |
+| `move_learn` | Pokemon wants to learn a move but all 4 slots are full. | Call `auto_grind` again with `forget_move` to continue (see below). |
+| `seek_failed` | `seek_encounter` didn't find a battle (cutscene, blocked path). | Investigate manually. |
+| `unexpected` | Unknown battle state. | Screenshot + `read_battle` to diagnose. |
+
+### Continuing from move_learn
+When stopped for `move_learn`, the response includes `move_to_learn` and `current_moves` (with slot indices). Resume with:
+```
+auto_grind(move_index=0, forget_move=2)     # forget move slot 2, learn the new move, keep grinding
+auto_grind(move_index=0, forget_move=-1)    # skip learning, keep grinding
+```
+All other parameters (cave, target_level) should be re-supplied when resuming.
 
 ## DS Screen Layout
 
