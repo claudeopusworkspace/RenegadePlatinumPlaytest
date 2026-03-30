@@ -14,7 +14,7 @@ from __future__ import annotations
 import struct
 from typing import TYPE_CHECKING, Any
 
-from renegade_mcp.data import move_names, species_names
+from renegade_mcp.data import ability_names, move_names, species_names
 
 if TYPE_CHECKING:
     from desmume_mcp.client import EmulatorClient
@@ -255,6 +255,7 @@ def read_party(emu: EmulatorClient, refresh: bool = False) -> list[dict[str, Any
         _refresh_party_data(emu)
     sp_names = species_names()
     mv_names = move_names()
+    ab_names = ability_names()
 
     enc_count_raw = emu.read_memory_range(ENCRYPTED_PARTY_COUNT, size="long", count=1)
     enc_party_count = min(enc_count_raw[0], PARTY_MAX_SLOTS)
@@ -332,7 +333,7 @@ def read_party(emu: EmulatorClient, refresh: bool = False) -> list[dict[str, Any
         partial = decoded.get("partial", False)
 
         pokemon: dict[str, Any] = {
-            "slot": i + 1,
+            "slot": i,
             "species_id": species,
             "name": name,
             "level": level,
@@ -344,6 +345,8 @@ def read_party(emu: EmulatorClient, refresh: bool = False) -> list[dict[str, Any
             ],
             "pp": decoded["pp"],
             "nature": decoded["nature"],
+            "ability_id": decoded.get("ability_idx", 0),
+            "ability": ab_names.get(decoded.get("ability_idx", 0), f"#{decoded.get('ability_idx', 0)}"),
             "item_id": decoded.get("item_id", 0),
             "friendship": decoded.get("friendship", 0),
             "exp": decoded.get("exp", 0),
@@ -376,8 +379,9 @@ def format_party(party: list[dict[str, Any]]) -> str:
         else:
             hp_str = "HP ?/?"
 
+        ability_str = f"  [{p['ability']}]" if p.get("ability") and p.get("ability") != "-" else ""
         partial_tag = " [stale data]" if p.get("partial") else ""
-        lines.append(f"  {p['slot']}. {p['name']} {level_str}{nature_str}  {hp_str}{partial_tag}")
+        lines.append(f"  {p['slot']}. {p['name']} {level_str}{nature_str}{ability_str}  {hp_str}{partial_tag}")
 
         if p.get("partial"):
             lines.append("     (moves/IVs/EVs unavailable — encrypted data stale)")

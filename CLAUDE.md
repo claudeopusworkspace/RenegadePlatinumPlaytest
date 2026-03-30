@@ -11,7 +11,7 @@ You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum 
 
 ## Save States
 
-See [SAVE_STATES.md](SAVE_STATES.md) for the full save state table (55+ entries).
+See [SAVE_STATES.md](SAVE_STATES.md) for the full save state table (60+ entries).
 
 ## Renegade MCP Tools
 
@@ -166,17 +166,18 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 ## Game Progress
 
 - **Character**: CLAUDE | **Rival**: AAAAAAA
-- **Location**: Jubilife Pokemon Center (map 6). Save state: `jubilife_post_barry_wipe`.
-- **Turtwig** Lv14 — Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Bullet Seed, Razor Leaf.
-- **Shinx** Lv8 — Jolly (+Spe/-SpA), Guts. Moves: Tackle, Leer, Howl, Quick Attack.
-- **Piplup** Lv9 — Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Water Sport.
+- **Location**: Jubilife Pokemon Center (map 6). Save state: `jubilife_healed_grind1`.
+- **Shinx** Lv9 — Jolly (+Spe/-SpA), Guts. Moves: Spark, Leer, Howl, Quick Attack.
 - **Eevee** Lv9 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Tail Whip, Bite, Covet.
+- **Piplup** Lv9 — Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Water Sport.
 - **Chimchar** Lv9 — Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Leer, Ember, Taunt.
-- **Bulbasaur** Lv5 — Docile, Chlorophyll. Held: Miracle Seed. Moves: Tackle, Growl.
-- **Key items**: Potion x1, Repel x10, Poke Ball x29, Bicycle, Poke Radar, Town Map, Vs. Recorder, Scope Lens, Poketch.
+- **Turtwig** Lv14 — Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Bullet Seed, Razor Leaf.
+- **Charmander** Lv8 — Hardy, Blaze. Held: Charcoal. Moves: Scratch, Growl, Ember, Smokescreen.
+- **Box 1**: Bulbasaur Lv5 (Docile, Chlorophyll, Miracle Seed), Eevee duplicate? check — actually Squirtle Lv5 (Gentle, Mystic Water).
+- **Key items**: Repel x10, Poke Ball x29, Bicycle, Poke Radar, Town Map, Vs. Recorder, Scope Lens, Poketch.
 - **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202), Reporter Kayla (Jubilife Pokemon Center).
-- **Story progress**: Got Poketch from Poketch Company president. Won Bulbasaur from Jubilife TV quiz. Lost to Rival AAAAAAA on Route 203 (his Chimchar Lv11). Charmander + Squirtle available from Reporter in Jubilife PC (need party space / PC box access).
-- **Next**: Grind team to ~Lv12+ before Route 203 rival rematch. Deposit a Pokemon to pick up Charmander/Squirtle. Then Route 203 east toward Oreburgh Gate and first Gym.
+- **Story progress**: Got Poketch from Poketch Company president. Won Bulbasaur from Jubilife TV quiz. Lost to Rival AAAAAAA on Route 203 (his Chimchar Lv11). Picked up Charmander + Squirtle from Reporter in Jubilife PC. Deposited Bulbasaur + Squirtle to Box 1.
+- **Next**: Grind team to ~Lv12+ before Route 203 rival rematch. Then Route 203 east toward Oreburgh Gate and first Gym. More starters available from NPCs in Oreburgh and Floaroma.
 
 See GAME_HISTORY.md for full chronological playthrough details.
 
