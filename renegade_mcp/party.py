@@ -1,12 +1,17 @@
 """Read party Pokemon data from emulator memory.
 
 Uses TWO data sources:
-1. Encrypted Gen 4 party data at 0x0227E270 (always available) — species, moves, PP, nature, etc.
+1. Gen 4 party data at 0x0227E270 (always available) — species, moves, PP, nature, etc.
 2. Party summary structure at 0x022C0130 (overworld only) — current HP, max HP, level.
 
-When the checksum-encrypted blocks are stale (mid-update), falls back to:
-- PID-encrypted extension for level, HP, and stats
-- Unencrypted species array at 0x0227F3E8 for species (by elimination)
+The game encrypts party data in RAM and temporarily decrypts in-place when
+accessing it (party screen, battle init, etc.). Flags at offset 0x004 of each
+slot track the current encryption state:
+  - bit 0: partyDecrypted (party extension bytes 136-235 are plaintext)
+  - bit 1: boxDecrypted   (data blocks bytes 8-135 are plaintext)
+
+We check these flags before decrypting, so reads are reliable regardless of
+whether the game currently has the data in a decryption context.
 """
 
 from __future__ import annotations
@@ -30,15 +35,6 @@ PARTY_MAX_SLOTS = 6
 # Unencrypted species array (catch-order, 8 bytes per entry, u16 species at offset 0)
 SPECIES_ARRAY_BASE = 0x0227F3E8
 SPECIES_ARRAY_STRIDE = 8
-
-# Pause menu (for refresh sync) — constants imported from pause_menu module
-from renegade_mcp.pause_menu import (
-    MENU_WAIT,
-    NAV_WAIT,
-    PAUSE_CURSOR_ADDR,
-    open_pause_menu,
-)
-POKEMON_MENU_INDEX = 1
 
 # Summary field offsets
 OFF_SPECIES = 0x04
@@ -88,24 +84,34 @@ def _unshuffle_blocks(data_128: bytes, pid: int) -> bytes:
 
 
 def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
-    """Decode an encrypted Pokemon structure (136-byte box or 236-byte party).
+    """Decode a Pokemon structure (136-byte box or 236-byte party).
+
+    Checks the partyDecrypted/boxDecrypted flags at offset 0x004 to determine
+    whether the data is currently encrypted or sitting in a decryption context.
+    Handles both states correctly — no more "stale data" from double-decrypting.
 
     Returns None if the slot is empty (PID=0).
-    Returns partial data with "partial": True if checksum fails (stale blocks).
     """
     pid = struct.unpack_from("<I", raw, 0)[0]
+    flags = struct.unpack_from("<H", raw, 4)[0]
     checksum = struct.unpack_from("<H", raw, 6)[0]
-    encrypted = raw[8:136]
 
     if pid == 0:
         return None
 
-    # Decrypt the PID-encrypted extension if present (party format, 236 bytes)
+    party_decrypted = bool(flags & 0x01)
+    box_decrypted = bool(flags & 0x02)
+
+    # Party extension (bytes 136-235): decrypt only if currently encrypted
     ext_level = 0
     ext_cur_hp = 0
     ext_max_hp = 0
     if len(raw) >= 236:
-        battle_ext = _prng_decrypt(raw[136:236], pid)
+        ext_raw = raw[136:236]
+        if party_decrypted:
+            battle_ext = ext_raw
+        else:
+            battle_ext = _prng_decrypt(ext_raw, pid)
         ext_level = battle_ext[4]
         ext_cur_hp = struct.unpack_from("<H", battle_ext, 6)[0]
         ext_max_hp = struct.unpack_from("<H", battle_ext, 8)[0]
@@ -113,20 +119,24 @@ def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
     nature_idx = pid % 25
     nature = NATURES[nature_idx]
 
-    # Try to decrypt the checksum-encrypted blocks
-    decrypted = _prng_decrypt(encrypted, checksum)
+    # Data blocks (bytes 8-135): decrypt only if currently encrypted
+    block_data = raw[8:136]
+    if box_decrypted:
+        decrypted = block_data
+    else:
+        decrypted = _prng_decrypt(block_data, checksum)
 
+    # Validate checksum (works in both states: checksum = sum of decrypted blocks)
     calc_checksum = sum(
         struct.unpack_from("<H", decrypted, i)[0] for i in range(0, 128, 2)
     ) & 0xFFFF
 
     if calc_checksum != checksum:
-        # Checksum mismatch — encrypted blocks are stale/mid-update.
-        # Return what we can from the PID-encrypted extension.
+        # Genuine corruption or mid-PRNG-cycle — return partial data
         return {
             "pid": pid,
             "partial": True,
-            "species_id": 0,  # will be deduced by elimination in read_party
+            "species_id": 0,
             "item_id": 0,
             "exp": 0,
             "friendship": 0,
@@ -206,53 +216,15 @@ def _read_species_array(emu: EmulatorClient) -> list[int]:
     return species
 
 
-# ── Party Sync ──
-
-def _refresh_party_data(emu: EmulatorClient) -> None:
-    """Open and close the party screen to force re-encryption of party data.
-
-    Must be called from the overworld with player control. Navigates:
-    X (pause) → Pokemon → B (close party) → B (close pause).
-    """
-    # Open pause menu (with readiness check)
-    if not open_pause_menu(emu):
-        return  # Can't open menu — refresh silently fails, stale data returned
-
-    # Navigate to Pokemon
-    cursor = emu.read_memory(PAUSE_CURSOR_ADDR, size="byte")
-    diff = POKEMON_MENU_INDEX - cursor
-    direction = "down" if diff > 0 else "up"
-    for _ in range(abs(diff)):
-        emu.press_buttons([direction], frames=8)
-        emu.advance_frames(NAV_WAIT)
-
-    # Open party screen (triggers re-encryption)
-    emu.press_buttons(["a"], frames=8)
-    emu.advance_frames(MENU_WAIT)
-
-    # Close party screen
-    emu.press_buttons(["b"], frames=8)
-    emu.advance_frames(MENU_WAIT)
-
-    # Close pause menu
-    emu.press_buttons(["b"], frames=8)
-    emu.advance_frames(MENU_WAIT)
-
-
 # ── Party Reading ──
 
-def read_party(emu: EmulatorClient, refresh: bool = False) -> list[dict[str, Any]]:
+def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
     """Read all party slots from memory. Returns list of Pokemon dicts.
 
-    Args:
-        refresh: If True, briefly open/close the party screen first to force
-                 the game to re-encrypt party data. Guarantees full data
-                 (moves, IVs, EVs) but requires overworld with player control.
-                 If False (default), reads memory directly — may return partial
-                 data for slots with stale encrypted blocks.
+    Checks encryption-state flags on each slot, so reads are reliable whether
+    the game has data encrypted (normal) or in a decryption context (party
+    screen open, battle init, etc.). No refresh/sync step needed.
     """
-    if refresh:
-        _refresh_party_data(emu)
     sp_names = species_names()
     mv_names = move_names()
     ab_names = ability_names()

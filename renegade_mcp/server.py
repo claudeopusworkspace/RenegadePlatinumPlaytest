@@ -20,26 +20,17 @@ def create_server() -> FastMCP:
     # ── Party ──
 
     @mcp.tool()
-    def read_party(refresh: bool = False) -> dict[str, Any]:
+    def read_party() -> dict[str, Any]:
         """Read party Pokemon from memory.
 
         Returns species, level, HP, moves with PP, nature, IVs, EVs for each party member.
-        Works in overworld and battle (HP/level unavailable during battle).
-
-        If any slot has stale encrypted data, it returns partial info (species,
-        level, HP, nature) with a "partial" flag — moves/IVs/EVs will be missing.
-
-        Args:
-            refresh: If True, briefly open/close the party screen to force the
-                     game to re-encrypt data. Guarantees full data but only works
-                     in the overworld with player control. Do not use in battle.
+        Works in overworld and battle — checks encryption-state flags on each slot,
+        so reads are reliable whether the game has data encrypted or in a decryption context.
         """
         from renegade_mcp.party import format_party, read_party as _read_party
 
         emu = get_client()
-        if refresh:
-            emu.create_checkpoint(action="read_party(refresh=True)")
-        party = _read_party(emu, refresh=refresh)
+        party = _read_party(emu)
         return {
             "count": len(party),
             "party": party,

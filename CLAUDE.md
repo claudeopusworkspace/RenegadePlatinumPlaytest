@@ -19,7 +19,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 
 | Tool | Purpose |
 |------|---------|
-| `read_party(refresh=false)` | Party Pokemon: species, level, HP, moves, PP, nature, IVs, EVs. `refresh=true` opens/closes party screen to force re-encryption (overworld only). |
+| `read_party` | Party Pokemon: species, level, HP, moves, PP, nature, IVs, EVs. Checks encryption-state flags automatically — works reliably in overworld, battle, menus, anywhere. |
 | `read_battle` | Live battle state: all battlers with stats, moves, ability, types, status |
 | `read_bag(pocket="")` | Bag contents across all 7 pockets. Optional pocket filter. |
 | `view_map` | ASCII map with terrain, player position, NPCs |
@@ -56,7 +56,7 @@ emu.create_checkpoint(action="tool_name(relevant args)")
 return _do_stuff(emu, ...)
 ```
 
-Read-only tools (pure memory reads like `read_party`, `read_battle`, `read_bag`) do **not** need checkpoints. If a tool is read-only by default but has a mode that presses buttons (e.g., `read_party(refresh=True)`), checkpoint only in that mode.
+Read-only tools (pure memory reads like `read_party`, `read_battle`, `read_bag`) do **not** need checkpoints.
 
 Checkpoints share a unified ring buffer (300 slots) with the DeSmuME MCP's own checkpoints. One checkpoint per tool call is the right granularity — don't checkpoint inside helper functions.
 
@@ -75,7 +75,7 @@ Multi-chunk maps (overworld, large caves) use a matrix/chunk system detected aut
 
 **Use these tools instead of navigating in-game menus** — faster, more reliable, no accidental inputs.
 
-- **`read_party`** — full party data from encrypted RAM. Works in overworld + battle. Pass `refresh=true` to force re-encryption via party screen (overworld only) — guarantees full data when encrypted blocks are stale. See MEMORY_MAP.md for data format.
+- **`read_party`** — full party data from RAM. Works in overworld + battle. Checks encryption-state flags on each slot automatically, so reads are reliable whether data is encrypted or in a decryption context. See MEMORY_MAP.md for data format.
 - **`read_bag`** — all 7 bag pockets. Pass `pocket="Key Items"` to filter.
 - **`read_battle`** — live battle data for all active battlers. Returns empty if not in battle. See MEMORY_MAP.md for struct layout.
 - **`map_name`** — location name from map ID. No args = current map.
@@ -193,7 +193,7 @@ See GAME_HISTORY.md for full chronological playthrough details.
 3. Or `battle_turn(switch_to=1)` — switch Pokemon instead of attacking.
 
 ### Checking inventory/party (overworld)
-1. `read_party` — full party with moves, PP, nature, IVs, EVs. Use `refresh=true` if data looks stale.
+1. `read_party` — full party with moves, PP, nature, IVs, EVs. Reliable in any game state.
 2. `read_bag` — all items across all pockets
 
 ### Using items (overworld)
