@@ -44,6 +44,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `close_pc` | Exit the PC from storage menu and return to overworld. |
 | `read_trainer_status` | Read money and badges from memory. No UI needed. |
 | `read_shop` | Read PokéMart inventory for current city. Badge-gated common items + city specialty items with ROM prices. Pure lookup, no UI. |
+| `buy_item(item_name, quantity)` | Buy from a standard PokéMart. Must be inside the mart (FS room). Finds correct cashier (common vs specialty), scrolls to item by ROM-calculated position, purchases, exits. Pre-checks money. |
 | `auto_grind(move_index, cave, target_level, forget_move)` | Automated grinding loop: seek encounters + spam a move until a stop condition. See Auto Grind Workflow below. |
 
 The original Python scripts in `scripts/` still work for debugging but are no longer the primary interface.
