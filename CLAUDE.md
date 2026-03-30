@@ -22,10 +22,10 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `read_party` | Party Pokemon: species, level, HP, moves, PP, nature, IVs, EVs. Three-tier encryption handling: flag-based, opposite-flag fallback, and mixed-state split-point recovery for mid-encrypt/decrypt frames. Works reliably in any game state. |
 | `read_battle` | Live battle state: all battlers with stats, moves, ability, types, status |
 | `read_bag(pocket="")` | Bag contents across all 7 pockets. Optional pocket filter. |
-| `view_map` | ASCII map with terrain, player position, NPCs |
+| `view_map` | ASCII map with terrain, player position, NPCs, and warp destinations (from ROM zone_event data). Warp coordinates can be passed directly to `navigate_to`. |
 | `map_name(map_id=-1)` | Location name lookup. Defaults to current map. |
-| `navigate(directions)` | Manual walk: "d2 l3 u1". Returns `encounter` key if battle/dialogue detected after movement. |
-| `navigate_to(x, y)` | BFS pathfind to target tile. Auto-handles door/stair transitions (0x69, 0x65, 0x5F, 0x5E). Returns `encounter` key if battle/dialogue detected. |
+| `navigate(directions)` | Manual walk: "d2 l3 u1". Validates path before moving; auto-trims at door/stair transitions (0x65 down, 0x5F left, 0x5E right). Returns `encounter` key if battle/dialogue detected. |
+| `navigate_to(x, y)` | BFS pathfind to target tile. Auto-handles door/stair transitions (0x69, 0x65, 0x5F, 0x5E, 0x6E). Auto-enters adjacent walk-into doors (0x69, 0x6E) after reaching target. Returns `encounter` key if battle/dialogue detected. |
 | `interact_with(object_index, x, y)` | Navigate to a map object/NPC by index OR static tile by (x,y) and interact. Handles adjacent tiles, counter NPCs, facing, and dialogue. |
 | `seek_encounter(cave=false)` | Pace in grass until wild encounter. Returns at first action prompt with full battle state. `cave=true` for non-grass encounters. |
 | `read_dialogue(advance=true)` | Auto-advance through dialogue, collect full conversation. Stops at Yes/No prompts. `advance=false` for passive read. |
@@ -65,10 +65,12 @@ Checkpoints share a unified ring buffer (300 slots) with the DeSmuME MCP's own c
 
 **CRITICAL: Do not rely on screenshots for spatial reasoning in the overworld.** The isometric/overhead camera makes it very difficult to judge tile positions, room boundaries, and exits from pixel images. Instead:
 
-- **Use `view_map`** to get a full map with terrain, player, and NPCs — all read live from the emulator.
-- **Use `navigate` or `navigate_to`** to walk paths — they verify each step and stop on collision.
+- **Use `view_map`** to get a full map with terrain, player, NPCs, and **warp destinations** — all read live from the emulator. The `warps` list shows every door/stair exit with its destination name and tile coordinates.
+- **Use warp coordinates from `view_map` with `navigate_to`** to enter buildings — the (x, y) from a warp entry can be passed directly to `navigate_to` for seamless transitions.
+- **Use `navigate` or `navigate_to`** to walk paths — they verify each step and stop on collision. `navigate` auto-trims paths at door/stair transitions. `navigate_to` auto-enters adjacent walk-into doors (0x69, 0x6E).
 - **When stuck navigating, ask Michael for visual help** rather than brute-forcing positions.
 - Screenshots are fine for reading dialogue, menus, and battle screens — just not for spatial navigation.
+- **Position dicts** (start/final in navigate responses) include full map name info (`map_id`, `name`, `display`, `code`, `room`) instead of a bare map ID. No need to call `map_name` separately.
 
 Multi-chunk maps (overworld, large caves) use a matrix/chunk system detected automatically by `view_map` and `navigate_to`. See MEMORY_MAP.md for collision data format, tile behaviors, and dynamic object details.
 
@@ -214,8 +216,8 @@ See GAME_HISTORY.md for full chronological playthrough details.
 ## Quick Reference: Common Workflows
 
 ### Entering a new area
-1. `map_name` — get map ID, location name, and coordinates
-2. `view_map` — see the map layout, NPCs, exits
+1. `view_map` — see the map layout, NPCs, exits, and **warp destinations** with coordinates
+2. `navigate_to(x, y)` — use warp coordinates from `view_map` to enter buildings directly
 
 ### Before/during battle
 1. `read_battle` — enemy species, types, ability, stats, moves, HP
