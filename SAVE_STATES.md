@@ -36,7 +36,10 @@
 | `jubilife_city_arrival` | Jubilife City south entrance at (170, 798). Before Dawn/Looker cutscene. |
 | `jubilife_pokecenter_healed` | Jubilife Pokemon Center. Team healed. |
 | `jubilife_pokecenter_got_bulbasaur` | Jubilife Pokemon Center. After winning Bulbasaur from quiz. 6 Pokemon. |
-| `jubilife_post_barry_wipe` | Jubilife Pokemon Center. After losing to Barry on Route 203. Latest gameplay state. |
+| `jubilife_post_barry_wipe` | Jubilife Pokemon Center. After losing to Barry on Route 203. |
+| `jubilife_healed_grind2` | Jubilife Pokemon Center. Team grinded on Route 202. Shinx/Piplup/Chimchar Lv12, Charmander Lv11, Eevee Lv10, Turtwig Lv14. |
+| `jubilife_healed_pre_rival` | Jubilife Pokemon Center. Full team Lv12+ healed. Pre-rival rematch. |
+| `route203_post_rival` | Route 203 (map 344). Defeated Rival AAAAAAA. Got Exp. Share. Turtwig Lv15, rest Lv12. Latest gameplay state. |
 
 ## Debug & Testing
 

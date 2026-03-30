@@ -196,18 +196,18 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 ## Game Progress
 
 - **Character**: CLAUDE | **Rival**: AAAAAAA
-- **Location**: Jubilife Pokemon Center (map 6). Save state: `jubilife_healed_grind2`.
-- **Charmander** Lv11 — Hardy, Blaze. Held: Charcoal. Moves: Scratch, Metal Claw, Ember, Smokescreen.
+- **Location**: Route 203 (map 344), post-rival battle. Save state: `route203_post_rival`.
+- **Charmander** Lv12 — Hardy, Blaze. Held: Charcoal. Moves: Scratch, Metal Claw, Ember, Smokescreen.
 - **Shinx** Lv12 — Jolly (+Spe/-SpA), Guts. Moves: Spark, Bite, Howl, Quick Attack.
-- **Eevee** Lv10 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Quick Attack, Bite, Covet.
+- **Eevee** Lv12 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Quick Attack, Bite, Covet.
 - **Piplup** Lv12 — Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Peck.
-- **Turtwig** Lv14 — Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Bullet Seed, Razor Leaf.
+- **Turtwig** Lv15 — Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Bullet Seed, Razor Leaf.
 - **Chimchar** Lv12 — Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Fury Swipes, Ember, Taunt.
 - **Box 1**: Bulbasaur Lv5 (Docile, Chlorophyll, Miracle Seed), Squirtle Lv5 (Gentle, Mystic Water).
-- **Key items**: Repel x10, Poke Ball x29, Bicycle, Poke Radar, Town Map, Vs. Recorder, Scope Lens, Poketch.
-- **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202), Reporter Kayla (Jubilife Pokemon Center).
-- **Story progress**: Got Poketch from Poketch Company president. Won Bulbasaur from Jubilife TV quiz. Lost to Rival AAAAAAA on Route 203 (his Chimchar Lv11). Picked up Charmander + Squirtle from Reporter in Jubilife PC. Deposited Bulbasaur + Squirtle to Box 1. Grinded team on Route 202 using auto_grind tool.
-- **Next**: Finish grinding Eevee (Lv10→12) and Charmander (Lv11→12), then Route 203 rival rematch. Route 203 east toward Oreburgh Gate and first Gym. More starters available from NPCs in Oreburgh and Floaroma.
+- **Key items**: Repel x10, Poke Ball x29, Bicycle, Poke Radar, Town Map, Vs. Recorder, Scope Lens, Poketch, Exp. Share.
+- **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202), Reporter Kayla (Jubilife Pokemon Center), Rival AAAAAAA (Route 203).
+- **Story progress**: Got Poketch from Poketch Company president. Won Bulbasaur from Jubilife TV quiz. Lost to Rival AAAAAAA on Route 203 (first attempt). Picked up Charmander + Squirtle from Reporter in Jubilife PC. Deposited Bulbasaur + Squirtle to Box 1. Grinded team on Route 202 using auto_grind tool. Beat Rival AAAAAAA on Route 203 rematch (Starly Lv10, Munchlax Lv10, Chimchar Lv11). Received Exp. Share from rival.
+- **Next**: Continue east on Route 203 to Oreburgh Gate. Fight trainers on Route 203. Oreburgh City for first Gym (Rock type). More starters available from NPCs in Oreburgh and Floaroma.
 
 See GAME_HISTORY.md for full chronological playthrough details.
 

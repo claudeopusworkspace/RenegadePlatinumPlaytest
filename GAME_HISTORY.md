@@ -96,3 +96,43 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - **Eevee** Lv9: Tackle, Tail Whip, Bite, Covet.
 - **Chimchar** Lv9: Scratch, Leer, Ember, Taunt.
 - **Bulbasaur** Lv5: Tackle, Growl, Vine Whip. Held: Miracle Seed. Needs major leveling.
+
+## Chapter 4: Grinding & Route 203 Rival Rematch
+
+### Jubilife Pokemon Center — Charmander & Squirtle Pickup
+- Previously received Charmander Lv5 (Hardy, Blaze, Charcoal) and Squirtle Lv5 (Gentle, Mystic Water) from Reporter in Jubilife Pokemon Center.
+- Deposited Bulbasaur + Squirtle to Box 1 to make room for grinding team.
+
+### Route 202 Grinding (auto_grind tool)
+- Used `auto_grind` tool for automated wild encounter grinding on Route 202.
+- **Shinx** Lv8 → Lv12: Learned Spark (Lv10), Bite (Lv12). Spark replaced Leer, Bite replaced Tackle.
+- **Piplup** Lv9 → Lv12: Learned Peck (replaced Water Sport).
+- **Chimchar** Lv9 → Lv12: Learned Fury Swipes (replaced Leer).
+- **Eevee** Lv9 → Lv12: Learned Quick Attack (replaced Tail Whip). Bite PP ran out during grind; finished with Tackle.
+- **Charmander** Lv5 → Lv12: Learned Metal Claw, Ember, Smokescreen along the way.
+- All grinding done across two sessions. Route 202 wilds (Lv3-6) were no threat at these levels.
+
+### Route 203 — Rival Rematch (VICTORY)
+- Healed at Jubilife Pokemon Center, saved state `jubilife_healed_pre_rival`.
+- Navigated east through Jubilife City to Route 203.
+- Rival AAAAAAA intercepted us on Route 203 (map 344).
+- **Barry's team**: Starly Lv10, Munchlax Lv10, Chimchar Lv11.
+
+**Starly Lv10** (Normal/Flying, Reckless): Charmander led with Ember. Starly used Growl turn 1, Wing Attack turn 2 (13 damage). Barry used a Potion when Starly got low. Charmander took 3 turns of Ember to KO. Charmander ended at 7/35 HP.
+
+**Munchlax Lv10** (Normal, Thick Fat): Switched to Turtwig (Lv14) to avoid Thick Fat halving Ember. Razor Leaf hit hard against Munchlax's low Def (14). Munchlax used Rock Tomb (8 damage, -1 Speed). Second Razor Leaf was a critical hit — Munchlax down. Turtwig leveled to Lv15.
+
+**Chimchar Lv11** (Fire, Iron Fist, Oran Berry): Switched to Piplup for Water vs Fire. Bubble hit super effective; Chimchar's Oran Berry healed once. Ember was not very effective against Piplup (5 damage). Chimchar wasted a turn on redundant Taunt. Three Bubbles KO'd Chimchar. Piplup barely scratched at 33/38.
+
+- **Won 1100 prize money.**
+- Post-battle: Rival gave us the **Exp. Share**!
+- Saved state `route203_post_rival`.
+
+### Pokemon Status (end of Chapter 4)
+- **Charmander** Lv12: Hardy, Blaze. Held: Charcoal. Moves: Scratch, Metal Claw, Ember, Smokescreen.
+- **Shinx** Lv12: Jolly (+Spe/-SpA), Guts. Moves: Spark, Bite, Howl, Quick Attack.
+- **Eevee** Lv12: Gentle (+SpD/-Def), Run Away. Moves: Tackle, Quick Attack, Bite, Covet.
+- **Piplup** Lv12: Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Peck.
+- **Turtwig** Lv15: Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Bullet Seed, Razor Leaf.
+- **Chimchar** Lv12: Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Fury Swipes, Ember, Taunt.
+- **Box 1**: Bulbasaur Lv5, Squirtle Lv5.
