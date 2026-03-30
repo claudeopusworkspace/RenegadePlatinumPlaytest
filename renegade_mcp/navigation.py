@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 
 from renegade_mcp.battle import format_battle, read_battle
 from renegade_mcp.dialogue import read_dialogue
+from renegade_mcp.map_names import lookup_map_name
 from renegade_mcp.map_state import (
     CHUNK_SIZE,
     get_map_state,
@@ -64,6 +65,13 @@ def _read_position(emu: EmulatorClient) -> tuple[int, int, int]:
     x = emu.read_memory(POSITION_BASE + 8, size="long")
     y = emu.read_memory(POSITION_BASE + 12, size="long")
     return map_id, x, y
+
+
+def _pos_with_map(x: int, y: int, map_id: int) -> dict[str, Any]:
+    """Build a position dict with resolved map name info instead of a raw ID."""
+    result = {"x": x, "y": y}
+    result.update(lookup_map_name(map_id))
+    return result
 
 
 def _normalize_direction(d: str) -> str:
@@ -382,7 +390,7 @@ def _handle_door_transition(
                 "door_entered": True,
                 "door_behavior": f"0x{behavior:02X}",
                 "new_map": final_map,
-                "new_position": {"x": final_x, "y": final_y, "map": final_map},
+                "new_position": _pos_with_map(final_x, final_y, final_map),
             }
         emu.advance_frames(DOOR_POLL_FRAMES)
 
@@ -517,7 +525,7 @@ def seek_encounter(emu: EmulatorClient, cave: bool = False) -> dict[str, Any]:
                 return {"result": "encounter", "steps_taken": steps_taken,
                         "encounter": encounter}
             return {"result": "blocked", "steps_taken": steps_taken,
-                    "position": {"x": new_x, "y": new_y, "map": new_map}}
+                    "position": _pos_with_map(new_x, new_y, new_map)}
 
     # Pace back and forth
     current_dir = dir_a_to_b
@@ -535,7 +543,7 @@ def seek_encounter(emu: EmulatorClient, cave: bool = False) -> dict[str, Any]:
                 return {"result": "encounter", "steps_taken": steps_taken,
                         "encounter": encounter}
             return {"result": "blocked", "steps_taken": steps_taken,
-                    "position": {"x": new_x, "y": new_y, "map": new_map}}
+                    "position": _pos_with_map(new_x, new_y, new_map)}
 
         current_dir = dir_b_to_a if current_dir == dir_a_to_b else dir_a_to_b
 
@@ -547,7 +555,7 @@ def seek_encounter(emu: EmulatorClient, cave: bool = False) -> dict[str, Any]:
 
     final_map, final_x, final_y = _read_position(emu)
     return {"result": "max_steps", "steps_taken": steps_taken,
-            "position": {"x": final_x, "y": final_y, "map": final_map}}
+            "position": _pos_with_map(final_x, final_y, final_map)}
 
 
 # ── Path execution ──
@@ -591,8 +599,8 @@ def _execute_path(
         entry: dict = {
             "step": steps_taken,
             "direction": direction,
-            "from": {"x": old_x, "y": old_y, "map": old_map},
-            "to": {"x": new_x, "y": new_y, "map": new_map},
+            "from": {"x": old_x, "y": old_y},
+            "to": {"x": new_x, "y": new_y},
         }
 
         # Track NPC movement
@@ -737,7 +745,7 @@ def navigate_manual(emu: EmulatorClient, directions_str: str) -> dict[str, Any]:
                 "blocked_step": step_idx + 1,
                 "blocked_direction": step_dir,
                 "blocked_tile": {"x": global_wall_x, "y": global_wall_y},
-                "start": {"x": start_x, "y": start_y, "map": start_map},
+                "start": _pos_with_map(start_x, start_y, start_map),
             }
         # Trim path at door/stair transition — that step is the last before map change
         if step_idx >= 0 and step_dir == "transition":
@@ -754,8 +762,8 @@ def navigate_manual(emu: EmulatorClient, directions_str: str) -> dict[str, Any]:
         "total_directions": len(directions),
         "steps_taken": steps_taken,
         "stopped_early": stopped_early,
-        "start": {"x": start_x, "y": start_y, "map": start_map},
-        "final": {"x": final_x, "y": final_y, "map": final_map},
+        "start": _pos_with_map(start_x, start_y, start_map),
+        "final": _pos_with_map(final_x, final_y, final_map),
         "log": log,
     }
 
@@ -847,10 +855,12 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
 
     is_door = target_behavior in DOOR_ACTIVATION
 
+    start_pos = _pos_with_map(px, py, map_id)
+
     if path is None:
         return {
             "error": "No path found. Target may be unreachable or blocked.",
-            "start": {"x": px, "y": py, "map": map_id},
+            "start": start_pos,
             "target": {"x": target_x, "y": target_y},
         }
 
@@ -863,13 +873,13 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
                 "total_directions": 0,
                 "steps_taken": 0,
                 "stopped_early": False,
-                "start": {"x": px, "y": py, "map": map_id},
+                "start": start_pos,
             }
             if door_result:
                 result.update(door_result)
                 result["final"] = door_result["new_position"]
             else:
-                result["final"] = {"x": px, "y": py, "map": map_id}
+                result["final"] = start_pos
                 result["note"] = "Door activation did not trigger a map transition."
             return result
 
@@ -879,8 +889,8 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
             "total_directions": 0,
             "steps_taken": 0,
             "stopped_early": False,
-            "start": {"x": px, "y": py, "map": map_id},
-            "final": {"x": px, "y": py, "map": map_id},
+            "start": start_pos,
+            "final": start_pos,
         }
 
     stopped_early, steps_taken, repaths_used, log = _execute_path(
@@ -899,9 +909,9 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
                 "total_directions": len(path),
                 "steps_taken": steps_taken,
                 "stopped_early": False,
-                "start": {"x": px, "y": py, "map": map_id},
+                "start": start_pos,
                 "target": {"x": target_x, "y": target_y},
-                "final": {"x": final_x, "y": final_y, "map": final_map},
+                "final": _pos_with_map(final_x, final_y, final_map),
                 "door_entered": True,
                 "door_behavior": f"0x{target_behavior:02X}",
                 "new_map": final_map,
@@ -916,7 +926,7 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
             "total_directions": len(path),
             "steps_taken": steps_taken,
             "stopped_early": False,
-            "start": {"x": px, "y": py, "map": map_id},
+            "start": start_pos,
             "target": {"x": target_x, "y": target_y},
             "log": log,
         }
@@ -925,7 +935,7 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
             result["final"] = door_result["new_position"]
         else:
             final_map, final_x, final_y = _read_position(emu)
-            result["final"] = {"x": final_x, "y": final_y, "map": final_map}
+            result["final"] = _pos_with_map(final_x, final_y, final_map)
             result["note"] = "Door activation did not trigger a map transition."
         return result
 
@@ -952,7 +962,7 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
                         "total_directions": len(path),
                         "steps_taken": steps_taken,
                         "stopped_early": False,
-                        "start": {"x": px, "y": py, "map": map_id},
+                        "start": start_pos,
                         "target": {"x": target_x, "y": target_y},
                         "log": log,
                     }
@@ -970,9 +980,9 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
         "total_directions": len(path),
         "steps_taken": steps_taken,
         "stopped_early": stopped_early,
-        "start": {"x": px, "y": py, "map": map_id},
+        "start": start_pos,
         "target": {"x": target_x, "y": target_y},
-        "final": {"x": final_x, "y": final_y, "map": final_map},
+        "final": _pos_with_map(final_x, final_y, final_map),
         "log": log,
     }
 
