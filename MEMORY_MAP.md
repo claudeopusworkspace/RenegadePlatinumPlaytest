@@ -140,7 +140,7 @@ Each slot: PID (4 bytes) + checksum (2 bytes) + 4 shuffled/encrypted 32-byte blo
 - **Block C (EVs):** HP/Atk/Def/Spe/SpA/SpD EVs, contest stats
 - **Block D (Misc):** Nature (from PID in Gen 4), origin info, IVs (packed u32)
 
-This data is always available (overworld + battle). See also Party Summary Structure below for the runtime overlay with current HP/level.
+This data is always available (overworld + battle). Level, HP, and calculated stats come from the party extension (bytes 136-235 of each 236-byte slot).
 
 ## PC Box Storage (Gen 4)
 
@@ -276,30 +276,9 @@ The battle struct has no dedicated "in battle" flag. Battle states are best dete
 - Move learning prompts use **d-pad + A for initial choice**, then **touch screen for move selection**
 - Post-battle, battle struct becomes garbage while still "looking valid" (species/level in range)
 
-## Party Summary Structure
+## Party Summary Structure (Deprecated)
 
-**Status: PARTIALLY SOLVED.** Species, level, and HP are confirmed. Move data and some fields are still unknown.
-
-The game maintains a party summary array at `0x022C0130`. Each slot is **44 bytes (0x2C)**, up to 6 party members. Empty slots have species = 0.
-
-| Offset | Size | Field | Notes |
-|--------|------|-------|-------|
-| +0x00 | long | Data pointer | Points to full PokePara tree structure |
-| +0x04 | u16 | Species | National Dex number (e.g., 387 = Turtwig) |
-| +0x06 | u16 | Current HP | |
-| +0x08 | u16 | Max HP | |
-| +0x0A | u8 | Level | |
-| +0x0B | u8 | Status? | 0 = no status (tentative) |
-| +0x0C | u16 | Held item? | 0 = none (tentative) |
-| +0x0E | u8 | Unknown | Always 0x07 for occupied slots |
-| +0x0F | u8 | Unknown | Varies per Pokemon |
-| +0x10-0x23 | varies | Unknown | Various values, purpose unclear |
-| +0x24 | long | Display pointer | Points to sprite/rendering data |
-| +0x28 | u32 | Flags? | 0x00000100 for occupied slots |
-
-**The full PokePara tree** (at the data pointer) uses a node-based structure with linked pointers, NOT the standard flat 236-byte party format. Property nodes contain individual attributes (name at prop_id=11, etc.). Move data has not been located yet.
-
-**Note:** The standard Gen 4 party structure (PID + encrypted blocks + battle stats) was NOT found anywhere in the 4MB main RAM during overworld play. The game appears to use the PokePara tree exclusively and only constructs flat structures when saving or entering battle.
+**No longer used by read_party.** The summary array at `0x022C0130` was unreliable — it contained pointer tables rather than actual party data in many game states. The party extension (bytes 136-235 of each encrypted slot at `0x0227E270`) now provides level, HP, maxHP, and calculated stats reliably via encryption-state auto-detection.
 
 ## Save File Structure
 

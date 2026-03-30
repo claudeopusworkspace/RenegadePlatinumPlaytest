@@ -1,17 +1,18 @@
 """Read party Pokemon data from emulator memory.
 
-Uses TWO data sources:
-1. Gen 4 party data at 0x0227E270 (always available) — species, moves, PP, nature, etc.
-2. Party summary structure at 0x022C0130 (overworld only) — current HP, max HP, level.
+Reads Gen 4 party data at 0x0227E270 — each slot is 236 bytes containing:
+  - Data blocks (bytes 8-135): species, moves, IVs, EVs, ability, nature, etc.
+  - Party extension (bytes 136-235): level, HP, maxHP, calculated stats.
 
 The game encrypts party data in RAM and temporarily decrypts in-place when
 accessing it (party screen, battle init, etc.). Flags at offset 0x004 of each
 slot track the current encryption state:
-  - bit 0: partyDecrypted (party extension bytes 136-235 are plaintext)
-  - bit 1: boxDecrypted   (data blocks bytes 8-135 are plaintext)
+  - bit 0: partyDecrypted (party extension is plaintext)
+  - bit 1: boxDecrypted   (data blocks are plaintext)
 
-We check these flags before decrypting, so reads are reliable regardless of
-whether the game currently has the data in a decryption context.
+We auto-detect the actual encryption state using checksum validation (blocks)
+and sanity checks (extension), handling both flag-indicated states AND transient
+mid-GetValue states where blocks/extension can be independently encrypted.
 """
 
 from __future__ import annotations
@@ -28,19 +29,11 @@ if TYPE_CHECKING:
 ENCRYPTED_PARTY_COUNT = 0x0227E26C
 ENCRYPTED_PARTY_BASE = 0x0227E270
 ENCRYPTED_SLOT_SIZE = 236
-PARTY_SUMMARY_BASE = 0x022C0130
-PARTY_SLOT_SIZE = 0x2C  # 44 bytes
 PARTY_MAX_SLOTS = 6
 
 # Unencrypted species array (catch-order, 8 bytes per entry, u16 species at offset 0)
 SPECIES_ARRAY_BASE = 0x0227F3E8
 SPECIES_ARRAY_STRIDE = 8
-
-# Summary field offsets
-OFF_SPECIES = 0x04
-OFF_CUR_HP = 0x06
-OFF_MAX_HP = 0x08
-OFF_LEVEL = 0x0A
 
 # All 24 permutations of ABCD (block unshuffle table)
 BLOCK_ORDERS = [
@@ -313,9 +306,6 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
     enc_raw = emu.read_memory_range(
         ENCRYPTED_PARTY_BASE, size="byte", count=enc_party_count * ENCRYPTED_SLOT_SIZE
     )
-    summary_raw = emu.read_memory_range(
-        PARTY_SUMMARY_BASE, size="byte", count=PARTY_MAX_SLOTS * PARTY_SLOT_SIZE
-    )
 
     # First pass: decode all slots
     decoded_slots = []
@@ -358,24 +348,9 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
 
         name = sp_names.get(species, f"Pokemon#{species}") if species > 0 else "???"
 
-        # Try HP/level from summary (valid in overworld only)
-        summary_offset = i * PARTY_SLOT_SIZE
-        summary_slot = bytes(summary_raw[summary_offset : summary_offset + PARTY_SLOT_SIZE])
-        summary_species = struct.unpack_from("<H", summary_slot, OFF_SPECIES)[0]
-
-        if summary_species == species and species > 0:
-            cur_hp = struct.unpack_from("<H", summary_slot, OFF_CUR_HP)[0]
-            max_hp = struct.unpack_from("<H", summary_slot, OFF_MAX_HP)[0]
-            level = summary_slot[OFF_LEVEL]
-        elif decoded.get("ext_level", 0) > 0:
-            # Summary unavailable or species mismatch — use encrypted extension
-            level = decoded["ext_level"]
-            cur_hp = decoded["ext_cur_hp"]
-            max_hp = decoded["ext_max_hp"]
-        else:
-            cur_hp = -1
-            max_hp = -1
-            level = -1
+        level = decoded.get("ext_level", 0) or -1
+        cur_hp = decoded.get("ext_cur_hp", 0) or -1
+        max_hp = decoded.get("ext_max_hp", 0) or -1
 
         partial = decoded.get("partial", False)
 
