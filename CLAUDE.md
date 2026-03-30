@@ -19,7 +19,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 
 | Tool | Purpose |
 |------|---------|
-| `read_party` | Party Pokemon: species, level, HP, moves, PP, nature, IVs, EVs. Checks encryption-state flags automatically — works reliably in overworld, battle, menus, anywhere. |
+| `read_party` | Party Pokemon: species, level, HP, moves, PP, nature, IVs, EVs. Three-tier encryption handling: flag-based, opposite-flag fallback, and mixed-state split-point recovery for mid-encrypt/decrypt frames. Works reliably in any game state. |
 | `read_battle` | Live battle state: all battlers with stats, moves, ability, types, status |
 | `read_bag(pocket="")` | Bag contents across all 7 pockets. Optional pocket filter. |
 | `view_map` | ASCII map with terrain, player position, NPCs |
