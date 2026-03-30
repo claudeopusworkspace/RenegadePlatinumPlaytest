@@ -196,18 +196,18 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 ## Game Progress
 
 - **Character**: CLAUDE | **Rival**: AAAAAAA
-- **Location**: Jubilife Pokemon Center (map 6). Save state: `jubilife_healed_grind1`.
-- **Shinx** Lv9 — Jolly (+Spe/-SpA), Guts. Moves: Spark, Leer, Howl, Quick Attack.
-- **Eevee** Lv9 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Tail Whip, Bite, Covet.
-- **Piplup** Lv9 — Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Water Sport.
-- **Chimchar** Lv9 — Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Leer, Ember, Taunt.
+- **Location**: Jubilife Pokemon Center (map 6). Save state: `jubilife_healed_grind2`.
+- **Charmander** Lv11 — Hardy, Blaze. Held: Charcoal. Moves: Scratch, Metal Claw, Ember, Smokescreen.
+- **Shinx** Lv12 — Jolly (+Spe/-SpA), Guts. Moves: Spark, Bite, Howl, Quick Attack.
+- **Eevee** Lv10 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Quick Attack, Bite, Covet.
+- **Piplup** Lv12 — Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Peck.
 - **Turtwig** Lv14 — Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Bullet Seed, Razor Leaf.
-- **Charmander** Lv8 — Hardy, Blaze. Held: Charcoal. Moves: Scratch, Growl, Ember, Smokescreen.
-- **Box 1**: Bulbasaur Lv5 (Docile, Chlorophyll, Miracle Seed), Eevee duplicate? check — actually Squirtle Lv5 (Gentle, Mystic Water).
+- **Chimchar** Lv12 — Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Fury Swipes, Ember, Taunt.
+- **Box 1**: Bulbasaur Lv5 (Docile, Chlorophyll, Miracle Seed), Squirtle Lv5 (Gentle, Mystic Water).
 - **Key items**: Repel x10, Poke Ball x29, Bicycle, Poke Radar, Town Map, Vs. Recorder, Scope Lens, Poketch.
 - **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202), Reporter Kayla (Jubilife Pokemon Center).
-- **Story progress**: Got Poketch from Poketch Company president. Won Bulbasaur from Jubilife TV quiz. Lost to Rival AAAAAAA on Route 203 (his Chimchar Lv11). Picked up Charmander + Squirtle from Reporter in Jubilife PC. Deposited Bulbasaur + Squirtle to Box 1.
-- **Next**: Grind team to ~Lv12+ before Route 203 rival rematch. Then Route 203 east toward Oreburgh Gate and first Gym. More starters available from NPCs in Oreburgh and Floaroma.
+- **Story progress**: Got Poketch from Poketch Company president. Won Bulbasaur from Jubilife TV quiz. Lost to Rival AAAAAAA on Route 203 (his Chimchar Lv11). Picked up Charmander + Squirtle from Reporter in Jubilife PC. Deposited Bulbasaur + Squirtle to Box 1. Grinded team on Route 202 using auto_grind tool.
+- **Next**: Finish grinding Eevee (Lv10→12) and Charmander (Lv11→12), then Route 203 rival rematch. Route 203 east toward Oreburgh Gate and first Gym. More starters available from NPCs in Oreburgh and Floaroma.
 
 See GAME_HISTORY.md for full chronological playthrough details.
 
