@@ -83,6 +83,86 @@ def _unshuffle_blocks(data_128: bytes, pid: int) -> bytes:
     return bytes(result)
 
 
+def _checksum_blocks(data: bytes, checksum: int) -> bool:
+    """Validate that decrypted block data matches the stored checksum."""
+    calc = sum(
+        struct.unpack_from("<H", data, i)[0] for i in range(0, 128, 2)
+    ) & 0xFFFF
+    return calc == checksum
+
+
+def _resolve_block_encryption(
+    block_data: bytes, checksum: int, flag_says_decrypted: bool
+) -> tuple[bytes | None, bool]:
+    """Determine the actual encryption state of data blocks and return decrypted data.
+
+    Tries the flag-indicated state first. If checksum fails, tries the opposite.
+    This handles save states captured mid-GetValue where data is transiently
+    decrypted but the flag wasn't set.
+
+    Returns (decrypted_data, actual_decrypted_state), or (None, False) if neither validates.
+    """
+    if flag_says_decrypted:
+        # Flag says plaintext — try reading directly
+        if _checksum_blocks(block_data, checksum):
+            return block_data, True
+        # Flag lied? Try decrypting
+        attempt = _prng_decrypt(block_data, checksum)
+        if _checksum_blocks(attempt, checksum):
+            return attempt, False
+    else:
+        # Flag says encrypted — try decrypting
+        attempt = _prng_decrypt(block_data, checksum)
+        if _checksum_blocks(attempt, checksum):
+            return attempt, False
+        # Flag lied? Try reading as plaintext
+        if _checksum_blocks(block_data, checksum):
+            return block_data, True
+    return None, False
+
+
+def _ext_sane(data: bytes) -> bool:
+    """Check if party extension bytes look like valid decrypted data."""
+    level = data[4]
+    hp = struct.unpack_from("<H", data, 6)[0]
+    max_hp = struct.unpack_from("<H", data, 8)[0]
+    if level < 1 or level > 100:
+        return False
+    if max_hp < 1 or max_hp > 999:
+        return False
+    if hp > max_hp:
+        return False
+    return True
+
+
+def _resolve_party_extension(
+    ext_raw: bytes, pid: int, flag_says_decrypted: bool
+) -> tuple[int, int, int]:
+    """Resolve the actual encryption state of the party extension and extract level/HP.
+
+    The extension has no checksum, so we try the flag-indicated state first,
+    then fall back to the opposite if values look insane. This handles save
+    states captured mid-GetValue where blocks and extension can be in
+    different encryption states.
+
+    Returns (level, cur_hp, max_hp).
+    """
+    if flag_says_decrypted:
+        primary, secondary = ext_raw, _prng_decrypt(ext_raw, pid)
+    else:
+        primary, secondary = _prng_decrypt(ext_raw, pid), ext_raw
+
+    if _ext_sane(primary):
+        src = primary
+    elif _ext_sane(secondary):
+        src = secondary
+    else:
+        # Neither looks right — return primary and hope for the best
+        src = primary
+
+    return src[4], struct.unpack_from("<H", src, 6)[0], struct.unpack_from("<H", src, 8)[0]
+
+
 def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
     """Decode a Pokemon structure (136-byte box or 236-byte party).
 
@@ -102,37 +182,20 @@ def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
     party_decrypted = bool(flags & 0x01)
     box_decrypted = bool(flags & 0x02)
 
-    # Party extension (bytes 136-235): decrypt only if currently encrypted
-    ext_level = 0
-    ext_cur_hp = 0
-    ext_max_hp = 0
-    if len(raw) >= 236:
-        ext_raw = raw[136:236]
-        if party_decrypted:
-            battle_ext = ext_raw
-        else:
-            battle_ext = _prng_decrypt(ext_raw, pid)
-        ext_level = battle_ext[4]
-        ext_cur_hp = struct.unpack_from("<H", battle_ext, 6)[0]
-        ext_max_hp = struct.unpack_from("<H", battle_ext, 8)[0]
-
     nature_idx = pid % 25
     nature = NATURES[nature_idx]
 
-    # Data blocks (bytes 8-135): decrypt only if currently encrypted
+    # Determine actual encryption state for data blocks.
+    # First try per the flags; if checksum fails, try the opposite interpretation.
+    # Pokemon_GetValue temporarily decrypts WITHOUT setting flags, so a save state
+    # captured mid-GetValue can have decrypted data with flags=0.
     block_data = raw[8:136]
-    if box_decrypted:
-        decrypted = block_data
-    else:
-        decrypted = _prng_decrypt(block_data, checksum)
+    decrypted, actual_box_decrypted = _resolve_block_encryption(
+        block_data, checksum, box_decrypted
+    )
 
-    # Validate checksum (works in both states: checksum = sum of decrypted blocks)
-    calc_checksum = sum(
-        struct.unpack_from("<H", decrypted, i)[0] for i in range(0, 128, 2)
-    ) & 0xFFFF
-
-    if calc_checksum != checksum:
-        # Genuine corruption or mid-PRNG-cycle — return partial data
+    if decrypted is None:
+        # Neither interpretation validates — genuine corruption
         return {
             "pid": pid,
             "partial": True,
@@ -148,10 +211,22 @@ def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
             "nature_idx": nature_idx,
             "ivs": {},
             "evs": {},
-            "ext_level": ext_level,
-            "ext_cur_hp": ext_cur_hp,
-            "ext_max_hp": ext_max_hp,
+            "ext_level": 0,
+            "ext_cur_hp": 0,
+            "ext_max_hp": 0,
         }
+
+    # Party extension: try both interpretations, pick whichever is sane.
+    # Save states can capture mid-GetValue where blocks and extension are in
+    # different encryption states (one decrypted, other not yet touched).
+    ext_level = 0
+    ext_cur_hp = 0
+    ext_max_hp = 0
+    if len(raw) >= 236:
+        ext_raw = raw[136:236]
+        ext_level, ext_cur_hp, ext_max_hp = _resolve_party_extension(
+            ext_raw, pid, party_decrypted
+        )
 
     blocks = _unshuffle_blocks(decrypted, pid)
 
