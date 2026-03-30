@@ -98,7 +98,7 @@ Key ROM file indices: 0392=items, 0412=species, 0610=abilities, 0647=moves, 0433
    - `FAINT_SWITCH` — your Pokemon fainted (wild battle). Call `battle_turn(switch_to=N)` to send replacement, or `battle_turn()` to flee.
    - `FAINT_FORCED` — your Pokemon fainted (trainer battle). Call `battle_turn(switch_to=N)` to send replacement (required).
    - `BATTLE_ENDED` — back in overworld.
-   - `MOVE_LEARN` — Pokemon wants to learn a new move. Response includes `current_moves` with slot indices (and `move_to_learn` when the name is in the log). Call `battle_turn(forget_move=N)` to forget move N (0-3) and learn the new move, or `battle_turn(forget_move=-1)` to skip. Works in both trainer and wild battles.
+   - `MOVE_LEARN` — Pokemon wants to learn a new move. Response includes `move_to_learn` (the new move name, read directly from memory) and `current_moves` with slot indices. Call `battle_turn(forget_move=N)` to forget move N (0-3) and learn the new move, or `battle_turn(forget_move=-1)` to skip. Works in both trainer and wild battles.
    - `NO_ACTION_PROMPT` — action prompt never appeared (~30 sec timeout). Game may need manual input.
    - `TIMEOUT` / `NO_TEXT` — something unexpected. Screenshot + `read_battle` to diagnose.
 

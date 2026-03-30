@@ -137,28 +137,31 @@ def _classify_prompt(text: str) -> str:
     return "ACTION"
 
 
-def _extract_new_move_name(log: list[dict]) -> str | None:
-    """Extract the new move name from a LEVEL_UP/MOVE_LEARN log.
+def _scan_move_name_from_memory(emu: EmulatorClient) -> str | None:
+    """Scan the full text region for a standalone move name marker.
 
-    Scans log entries between 'grew to' and the move-learn prompt text,
-    matching against known move names from the ROM.
+    During move-learn prompts, the game writes the new move name as a
+    standalone text marker (D2EC header + move name + END).  This marker
+    lives in a different memory region (~0x02301XXX) than the battle
+    narration text (~0x0229XXXX), so the narrow poll window never sees it.
+
+    Doing a full-region scan and matching against known move names is the
+    most reliable way to extract the pending move.
     """
     from renegade_mcp.data import move_names
     known_moves = set(move_names().values())
 
-    in_range = False
-    candidate = None
-    for entry in log:
-        text = entry.get("text", "").strip()
-        t = text.replace("\n", " ")
-        if "grew to" in t:
-            in_range = True
-            continue
-        if "give up on" in t or "forget another move" in t:
-            break
-        if in_range and text in known_moves:
-            candidate = text
-    return candidate
+    raw_bytes = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
+    if not raw_bytes:
+        return None
+
+    data = bytes(raw_bytes)
+    results = _scan_for_new_text(data, SCAN_START, {})
+
+    for _, text, _, _ in results:
+        if text.strip() in known_moves:
+            return text.strip()
+    return None
 
 
 def _advance_text(emu: EmulatorClient, presses: int = 1, wait: int = TEXT_ADVANCE_WAIT) -> None:
@@ -603,7 +606,7 @@ def _enrich_switch_result(result: dict[str, Any], emu: EmulatorClient) -> None:
 
 def _enrich_move_learn_result(result: dict[str, Any], emu: EmulatorClient) -> None:
     """Add move_to_learn and current_moves info to a MOVE_LEARN result."""
-    move_name = _extract_new_move_name(result.get("log", []))
+    move_name = _scan_move_name_from_memory(emu)
     if move_name:
         result["move_to_learn"] = move_name
 
