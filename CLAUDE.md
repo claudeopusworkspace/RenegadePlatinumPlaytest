@@ -43,6 +43,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `read_box(box=1)` | Read all Pokemon in a PC box from RAM. No UI needed — works anytime. Returns species, moves, nature, IVs, EVs, held item. |
 | `close_pc` | Exit the PC from storage menu and return to overworld. |
 | `read_trainer_status` | Read money and badges from memory. No UI needed. |
+| `read_shop` | Read PokéMart inventory for current city. Badge-gated common items + city specialty items with ROM prices. Pure lookup, no UI. |
 | `auto_grind(move_index, cave, target_level, forget_move)` | Automated grinding loop: seek encounters + spam a move until a stop condition. See Auto Grind Workflow below. |
 
 The original Python scripts in `scripts/` still work for debugging but are no longer the primary interface.
@@ -83,6 +84,7 @@ Multi-chunk maps (overworld, large caves) use a matrix/chunk system detected aut
 - **`read_battle`** — live battle data for all active battlers. Returns empty if not in battle. See MEMORY_MAP.md for struct layout.
 - **`map_name`** — location name from map ID. No args = current map.
 - **`read_dialogue(advance=true)`** — auto-advances through overworld dialogue, collecting the full conversation. Stops at Yes/No prompts (returns `status: "yes_no_prompt"`) or dialogue end (`status: "completed"`). Uses the ScriptManager/ScriptContext/TextPrinter state machine for reliable detection. Pass `advance=false` for passive read (old behavior). Pass `region="battle"` with `advance=false` for battle text.
+- **`read_shop`** — PokéMart inventory for current city. Detects city from map code prefix (works inside buildings). Returns badge-gated common items + city specialty items with prices from ROM (`pl_item_data.narc`). Returns error if not in a city/town.
 - **`decode_rom_message(file_index)`** / **`search_rom_messages(query)`** — ROM data lookup (no emulator needed).
 
 Key ROM file indices: 0392=items, 0412=species, 0610=abilities, 0647=moves, 0433=locations, 0646=move descriptions.
