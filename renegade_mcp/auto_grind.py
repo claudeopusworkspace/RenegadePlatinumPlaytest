@@ -154,10 +154,6 @@ def auto_grind(
         # Fall back to read_party for PP check and level (if log didn't have a level-up)
         party = _read_party(emu)
         slot0 = party[0] if party else None
-        if slot0 and slot0.get("partial"):
-            emu.advance_frames(120)
-            party = _read_party(emu)
-            slot0 = party[0] if party else None
         if target_level > 0 and slot0 and not slot0.get("partial") and slot0["level"] >= target_level:
             stop_reason = "target_level"
             stop_detail = f"Slot 0 reached Lv{slot0['level']} (target: {target_level})."

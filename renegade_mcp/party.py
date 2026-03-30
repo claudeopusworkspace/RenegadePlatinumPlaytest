@@ -10,9 +10,16 @@ slot track the current encryption state:
   - bit 0: partyDecrypted (party extension is plaintext)
   - bit 1: boxDecrypted   (data blocks are plaintext)
 
-We auto-detect the actual encryption state using checksum validation (blocks)
-and sanity checks (extension), handling both flag-indicated states AND transient
-mid-GetValue states where blocks/extension can be independently encrypted.
+We auto-detect the actual encryption state using a three-tier approach:
+  1. Try the flag-indicated state, then the opposite (handles normal + transient
+     mid-GetValue states where the game decrypts without setting flags).
+  2. If neither validates, try mixed-state split-point recovery. Frame boundaries
+     can land mid-loop inside Pokemon_DecryptData/EncryptData, leaving the first
+     K words in one state and the rest in the other. Since the PRNG keystream is
+     deterministic (seeded by checksum), we sweep all 126 possible split points
+     and validate each against the checksum to recover the correct plaintext.
+  3. The block recovery direction also infers the extension state: mid-decrypt
+     means the extension is plaintext, mid-encrypt means it's encrypted.
 """
 
 from __future__ import annotations
@@ -86,32 +93,100 @@ def _checksum_blocks(data: bytes, checksum: int) -> bool:
 
 def _resolve_block_encryption(
     block_data: bytes, checksum: int, flag_says_decrypted: bool
-) -> tuple[bytes | None, bool]:
+) -> tuple[bytes | None, str]:
     """Determine the actual encryption state of data blocks and return decrypted data.
 
-    Tries the flag-indicated state first. If checksum fails, tries the opposite.
-    This handles save states captured mid-GetValue where data is transiently
-    decrypted but the flag wasn't set.
+    Three-tier resolution:
+      1. Try flag-indicated state, then opposite (handles normal + transient GetValue).
+      2. If neither validates, try mixed-state recovery — the frame boundary may have
+         landed mid-loop inside Pokemon_DecryptData/EncryptData, leaving the first K
+         words in one state and the rest in the other.
 
-    Returns (decrypted_data, actual_decrypted_state), or (None, False) if neither validates.
+    Returns (decrypted_data, method):
+      - "decrypted": data was already plaintext
+      - "encrypted": data was encrypted, now decrypted
+      - "mid_decrypt": recovered from mid-decryption split (ext is plaintext)
+      - "mid_encrypt": recovered from mid-encryption split (ext is encrypted)
+      - (None, "failed"): unrecoverable
     """
     if flag_says_decrypted:
-        # Flag says plaintext — try reading directly
         if _checksum_blocks(block_data, checksum):
-            return block_data, True
-        # Flag lied? Try decrypting
+            return block_data, "decrypted"
         attempt = _prng_decrypt(block_data, checksum)
         if _checksum_blocks(attempt, checksum):
-            return attempt, False
+            return attempt, "encrypted"
     else:
-        # Flag says encrypted — try decrypting
         attempt = _prng_decrypt(block_data, checksum)
         if _checksum_blocks(attempt, checksum):
-            return attempt, False
-        # Flag lied? Try reading as plaintext
+            return attempt, "encrypted"
         if _checksum_blocks(block_data, checksum):
-            return block_data, True
-    return None, False
+            return block_data, "decrypted"
+
+    # Neither full interpretation valid — try mixed-state split-point recovery
+    recovered = _try_mixed_state_recovery(block_data, checksum)
+    if recovered is not None:
+        return recovered
+
+    return None, "failed"
+
+
+def _try_mixed_state_recovery(
+    block_data: bytes, checksum: int
+) -> tuple[bytes, str] | None:
+    """Recover blocks caught mid-encrypt/decrypt by finding the split point.
+
+    The game's PRNG XOR loop in Pokemon_DecryptData / Pokemon_EncryptData
+    processes u16 words sequentially. If the frame boundary landed mid-loop,
+    words 0..K-1 are in one encryption state and words K..63 in the other.
+
+    We know the full PRNG keystream (seeded by checksum), so we can try all
+    126 possible split points (63 mid-decrypt + 63 mid-encrypt) and validate
+    each candidate against the checksum. Only the correct split validates.
+
+    Returns (decrypted_bytes, direction) or None.
+    direction is "mid_decrypt" (ext is plaintext) or "mid_encrypt" (ext is encrypted).
+    """
+    # Pre-compute PRNG keystream (same algorithm as _prng_decrypt)
+    keystream: list[int] = []
+    state = checksum
+    for _ in range(64):
+        state = (state * 0x41C64E6D + 0x6073) & 0xFFFFFFFF
+        keystream.append((state >> 16) & 0xFFFF)
+
+    # Read raw u16 words from block data
+    raw = [struct.unpack_from("<H", block_data, i * 2)[0] for i in range(64)]
+
+    # Compute fully-decrypted version (XOR each word with its keystream value)
+    decrypted = [raw[i] ^ keystream[i] for i in range(64)]
+
+    # ── Mid-decryption: words 0..K-1 already plain, K..63 still encrypted ──
+    # Fully-decrypted candidate = raw[:K] + decrypted[K:]
+    # Use incremental checksum starting from all-decrypted (K=0, already tried)
+    running = sum(decrypted)
+    for k in range(1, 64):
+        running += raw[k - 1] - decrypted[k - 1]
+        if (running & 0xFFFF) == checksum:
+            words = raw[:k] + decrypted[k:]
+            return _words_to_bytes(words), "mid_decrypt"
+
+    # ── Mid-encryption: words 0..K-1 re-encrypted, K..63 still plain ──
+    # Fully-decrypted candidate = decrypted[:K] + raw[K:]
+    running = sum(raw)  # K=0 case = all plaintext (already tried)
+    for k in range(1, 64):
+        running += decrypted[k - 1] - raw[k - 1]
+        if (running & 0xFFFF) == checksum:
+            words = decrypted[:k] + raw[k:]
+            return _words_to_bytes(words), "mid_encrypt"
+
+    return None
+
+
+def _words_to_bytes(words: list[int]) -> bytes:
+    """Convert a list of u16 words to a little-endian byte string."""
+    result = bytearray(len(words) * 2)
+    for i, w in enumerate(words):
+        struct.pack_into("<H", result, i * 2, w)
+    return bytes(result)
 
 
 def _ext_sane(data: bytes) -> bool:
@@ -179,16 +254,14 @@ def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
     nature = NATURES[nature_idx]
 
     # Determine actual encryption state for data blocks.
-    # First try per the flags; if checksum fails, try the opposite interpretation.
-    # Pokemon_GetValue temporarily decrypts WITHOUT setting flags, so a save state
-    # captured mid-GetValue can have decrypted data with flags=0.
+    # Three-tier: flag-indicated → opposite → mixed-state split-point recovery.
     block_data = raw[8:136]
-    decrypted, actual_box_decrypted = _resolve_block_encryption(
+    decrypted, method = _resolve_block_encryption(
         block_data, checksum, box_decrypted
     )
 
     if decrypted is None:
-        # Neither interpretation validates — genuine corruption
+        # All recovery methods failed — genuine corruption
         return {
             "pid": pid,
             "partial": True,
@@ -209,17 +282,29 @@ def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
             "ext_max_hp": 0,
         }
 
-    # Party extension: try both interpretations, pick whichever is sane.
-    # Save states can capture mid-GetValue where blocks and extension are in
-    # different encryption states (one decrypted, other not yet touched).
+    # Party extension: use mixed-state direction hint when available.
+    # If blocks were mid-decrypt (Step B), extension already finished Step A → plaintext.
+    # If blocks were mid-encrypt (Step D), extension already finished Step C → encrypted.
+    # Otherwise, use the flag + heuristic approach.
     ext_level = 0
     ext_cur_hp = 0
     ext_max_hp = 0
     if len(raw) >= 236:
         ext_raw = raw[136:236]
-        ext_level, ext_cur_hp, ext_max_hp = _resolve_party_extension(
-            ext_raw, pid, party_decrypted
-        )
+        if method == "mid_decrypt":
+            # Extension is plaintext — try that first (True = plaintext priority)
+            ext_level, ext_cur_hp, ext_max_hp = _resolve_party_extension(
+                ext_raw, pid, True
+            )
+        elif method == "mid_encrypt":
+            # Extension is encrypted — try that first (False = encrypted priority)
+            ext_level, ext_cur_hp, ext_max_hp = _resolve_party_extension(
+                ext_raw, pid, False
+            )
+        else:
+            ext_level, ext_cur_hp, ext_max_hp = _resolve_party_extension(
+                ext_raw, pid, party_decrypted
+            )
 
     blocks = _unshuffle_blocks(decrypted, pid)
 
