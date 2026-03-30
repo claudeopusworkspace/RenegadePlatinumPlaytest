@@ -12,6 +12,8 @@ import struct
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from renegade_mcp.map_names import lookup_map_name
+
 if TYPE_CHECKING:
     from desmume_mcp.client import EmulatorClient
 
@@ -37,7 +39,18 @@ OBJ_MAX_ENTRIES = 64
 ROMDATA_DIR = Path("romdata")
 LAND_DATA_DIR = ROMDATA_DIR / "land_data"
 MATRIX_DIR = ROMDATA_DIR / "map_matrix"
+ZONE_EVENT_DIR = ROMDATA_DIR / "zone_event"
 CHUNK_SIZE = 32
+
+# Zone event struct sizes (bytes)
+_BG_EVENT_SIZE = 20
+_OBJ_EVENT_SIZE = 32
+_WARP_EVENT_SIZE = 12
+
+# Offset from ZONE_HEADER_BASE to eventsArchiveID within the zone header.
+# ZONE_HEADER_BASE points to mapMatrixID (+0x02 in the C struct), so
+# eventsArchiveID (+0x10 in the C struct) is at relative offset +0x0E.
+_EVENTS_ARCHIVE_OFFSET = 0x0E
 
 # ── Display constants ──
 FACING_ARROWS = {0: "^", 1: "v", 2: "<", 3: ">"}
@@ -238,6 +251,40 @@ def get_matrix_for_map(emu: "EmulatorClient", map_id: int) -> tuple | None:
 
     w, h, header_ids, terrain_ids = parse_matrix(matrix_path)
     return matrix_id, w, h, header_ids, terrain_ids
+
+
+def read_warps_from_rom(emu: "EmulatorClient", map_id: int) -> list[dict[str, int]]:
+    """Read warp events for a map from the ROM zone_event data.
+
+    Returns list of dicts with keys: x, y (tile coords), dest_map, dest_warp.
+    """
+    addr = ZONE_HEADER_BASE + map_id * ZONE_HEADER_STRIDE + _EVENTS_ARCHIVE_OFFSET
+    events_id = emu.read_memory(addr, size="short")
+
+    event_path = ZONE_EVENT_DIR / f"{events_id:04d}.bin"
+    if not event_path.exists():
+        return []
+
+    data = event_path.read_bytes()
+    off = 0
+
+    # Skip BG events
+    num_bg = struct.unpack_from("<I", data, off)[0]; off += 4
+    off += num_bg * _BG_EVENT_SIZE
+
+    # Skip Object events
+    num_obj = struct.unpack_from("<I", data, off)[0]; off += 4
+    off += num_obj * _OBJ_EVENT_SIZE
+
+    # Read Warp events
+    num_warps = struct.unpack_from("<I", data, off)[0]; off += 4
+    warps = []
+    for _ in range(num_warps):
+        wx, wz, dest_map, dest_warp = struct.unpack_from("<HHHH", data, off)
+        off += _WARP_EVENT_SIZE
+        warps.append({"x": wx, "y": wz, "dest_map": dest_map, "dest_warp": dest_warp})
+
+    return warps
 
 
 def resolve_terrain_from_rom(emu: "EmulatorClient", map_id: int, px: int, py: int) -> tuple:
@@ -551,6 +598,26 @@ def view_map(emu: EmulatorClient) -> dict[str, Any]:
             entry["trainer"] = True
         obj_info.append(entry)
 
+    # Warp destinations within displayed grid
+    origin_x = state["origin_x"]
+    origin_y = state["origin_y"]
+    terrain = state["terrain"]
+    grid_h = len(terrain)
+    grid_w = len(terrain[0]) if grid_h > 0 else 0
+
+    all_warps = read_warps_from_rom(emu, state["map_id"])
+    warp_info = []
+    for w in all_warps:
+        lx = w["x"] - origin_x
+        ly = w["y"] - origin_y
+        if 0 <= lx < grid_w and 0 <= ly < grid_h:
+            dest = lookup_map_name(w["dest_map"])
+            warp_info.append({
+                "x": w["x"], "y": w["y"],
+                "dest_name": dest["name"],
+                "dest_map_id": w["dest_map"],
+            })
+
     return {
         "map": header + "\n\n" + map_str,
         "map_id": state["map_id"],
@@ -562,4 +629,5 @@ def view_map(emu: EmulatorClient) -> dict[str, Any]:
         "origin": {"x": state["origin_x"], "y": state["origin_y"]},
         "chunked": state["chunked"],
         "objects": obj_info,
+        "warps": warp_info,
     }
