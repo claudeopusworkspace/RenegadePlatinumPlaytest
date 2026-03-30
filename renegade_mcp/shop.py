@@ -1,4 +1,4 @@
-"""Read PokéMart inventory for the player's current city.
+"""PokéMart inventory lookup and purchasing.
 
 Mart data is sourced from the ROM (mart_items.h in the decompilation).
 Item prices come from pl_item_data.narc (extracted to data/item_prices.json).
@@ -9,6 +9,12 @@ Two inventory systems:
 
 Badge-gating uses the same switch logic as the game (scrcmd_shop.c):
   0 badges → threshold 1, 1-2 → 2, 3-4 → 3, 5-6 → 4, 7 → 5, 8 → 6
+
+PokéMart rooms use city code prefix "FS" (Friendly Shop).
+All standard marts share identical layouts:
+  - Cashier F at (3, 5) — common items
+  - Cashier M at (2, 5) — specialty items
+  - Exit warp at (3, 11)
 """
 
 from __future__ import annotations
@@ -211,3 +217,202 @@ def read_shop(emu: EmulatorClient, badge_count: int | None = None) -> dict[str, 
         "specialty_items": specialty,
         "formatted": "\n".join(lines),
     }
+
+
+# ── Buy Item ──
+
+# Timing constants (frames)
+_TEXT_WAIT = 120      # dialogue line render
+_MENU_WAIT = 300      # shop menu transition (camera pan + list load)
+_SETTLE_WAIT = 120    # post-dialogue settle
+
+
+def _press(emu: EmulatorClient, buttons: list[str], wait: int = _TEXT_WAIT) -> None:
+    """Press buttons and wait."""
+    emu.press_buttons(buttons, frames=8)
+    emu.advance_frames(wait)
+
+
+def _available_common_items(threshold: int) -> list[int]:
+    """Return item IDs for common mart items available at the given badge threshold."""
+    return [item_id for item_id, req in COMMON_MART_ITEMS if threshold >= req]
+
+
+def _find_item_position(
+    item_name: str,
+    threshold: int,
+    city_code: str,
+) -> tuple[str, int, int] | None:
+    """Find which cashier sells an item and its menu position.
+
+    Returns (cashier_type, menu_index, item_id) or None if not found.
+    cashier_type is "common" or "specialty".
+    menu_index is the 0-based position in that cashier's item list.
+    """
+    names = item_names()
+    target = item_name.lower()
+
+    # Check common items (badge-filtered, in array order)
+    available = _available_common_items(threshold)
+    for idx, item_id in enumerate(available):
+        if names.get(item_id, "").lower() == target:
+            return ("common", idx, item_id)
+
+    # Check specialty items
+    specialty_ids = SPECIALTY_MARTS.get(city_code, [])
+    for idx, item_id in enumerate(specialty_ids):
+        if names.get(item_id, "").lower() == target:
+            return ("specialty", idx, item_id)
+
+    return None
+
+
+def buy_item(
+    emu: EmulatorClient,
+    item_name: str,
+    quantity: int = 1,
+    badge_count: int | None = None,
+) -> dict[str, Any]:
+    """Buy an item from the PokéMart. Player must be inside a standard mart.
+
+    Finds the correct cashier (common vs specialty), navigates to them,
+    opens the shop, scrolls to the item, selects quantity, confirms, and exits.
+
+    Args:
+        emu: Emulator client.
+        item_name: Item name (e.g. "Potion", "Heal Ball"). Case-insensitive.
+        quantity: How many to buy (default 1).
+        badge_count: Player's badge count for filtering. If None, defaults to 0.
+    """
+    from renegade_mcp.map_state import get_map_state, read_player_state
+    from renegade_mcp.navigation import interact_with
+    from renegade_mcp.trainer import read_trainer_status
+
+    # ── Verify we're in a PokéMart ──
+    map_id, _x, _y, _facing = read_player_state(emu)
+    entry = map_table().get(map_id, {})
+    code = entry.get("code", "")
+    if "FS" not in code:
+        city_code = _city_code_from_map(map_id)
+        loc = _city_name(city_code) if city_code else entry.get("name", f"Map {map_id}")
+        return _error(f"Not inside a PokéMart (current map: {loc}, code: {code}). "
+                       "Navigate into the mart building first.")
+
+    city_code = _city_code_from_map(map_id)
+    if city_code is None:
+        return _error(f"Cannot determine city from map code: {code}")
+
+    # ── Resolve badge threshold ──
+    badges = badge_count if badge_count is not None else 0
+    threshold = _badge_threshold(badges)
+
+    # ── Find item in shop inventory ──
+    result = _find_item_position(item_name, threshold, city_code)
+    if result is None:
+        # Build helpful error with available items
+        names = item_names()
+        avail_common = [names.get(i, "?") for i in _available_common_items(threshold)]
+        avail_spec = [names.get(i, "?") for i in SPECIALTY_MARTS.get(city_code, [])]
+        return _error(
+            f"Item \"{item_name}\" not found in shop. "
+            f"Common: {', '.join(avail_common)}. "
+            f"Specialty: {', '.join(avail_spec) if avail_spec else '(none)'}."
+        )
+
+    cashier_type, menu_index, item_id = result
+    prices = item_prices()
+    price = prices.get(item_id, 0)
+    total_cost = price * quantity
+    display_name = item_names().get(item_id, item_name)
+
+    # ── Check money ──
+    status = read_trainer_status(emu)
+    money = status.get("money", 0)
+    if total_cost > money:
+        return _error(
+            f"Not enough money. {display_name} x{quantity} costs ¥{total_cost:,} "
+            f"but you only have ¥{money:,}."
+        )
+
+    # ── Find the correct cashier NPC ──
+    state = get_map_state(emu)
+    if state is None:
+        return _error("Could not read map state.")
+
+    cashier_name = "Cashier F" if cashier_type == "common" else "Cashier M"
+    cashier = next(
+        (obj for obj in state["objects"] if obj.get("name") == cashier_name),
+        None,
+    )
+    if cashier is None:
+        npc_names = [obj.get("name", "?") for obj in state["objects"] if obj["index"] != 0]
+        return _error(f"No {cashier_name} found. NPCs: {', '.join(npc_names)}")
+
+    # ── Walk to cashier and interact ──
+    nav_result = interact_with(emu, cashier["index"])
+
+    if nav_result.get("interrupted") or nav_result.get("encounter"):
+        return _error(f"Navigation to {cashier_name} interrupted: {nav_result}")
+    if nav_result.get("stopped_early"):
+        return _error(f"Could not reach {cashier_name} — path blocked.")
+
+    # Dialogue: "Welcome! What do you need?"
+    # ── Press A to advance greeting, then A to select BUY ──
+    _press(emu, ["a"])               # advance greeting text
+    _press(emu, ["a"], _MENU_WAIT)   # select BUY (cursor defaults to BUY)
+
+    # ── Navigate item list to target item ──
+    for _ in range(menu_index):
+        _press(emu, ["down"], wait=30)
+
+    # ── Select item ──
+    _press(emu, ["a"])               # "Certainly. How many would you like?"
+    _press(emu, ["a"])               # text finishes → quantity selector (x01)
+
+    # ── Set quantity (up arrow to increase from 1) ──
+    for _ in range(quantity - 1):
+        _press(emu, ["up"], wait=15)
+
+    # ── Confirm quantity → YES/NO → purchase ──
+    _press(emu, ["a"])               # confirm qty → "That will be ¥X..." text
+    _press(emu, ["a"])               # text finishes → YES/NO prompt
+    _press(emu, ["a"])               # select YES → "Here you are! Thank you!"
+
+    # ── Post-purchase dialogue ──
+    _press(emu, ["a"])               # advance "Here you are!"
+    _press(emu, ["a"])               # "You put away the [item] in the [pocket]."
+    _press(emu, ["a"], _MENU_WAIT)   # dismiss → back to item list
+
+    # ── Exit shop: B → See Ya ──
+    _press(emu, ["b"], _MENU_WAIT)   # back to Buy/Sell/See Ya
+    _press(emu, ["down"], wait=30)   # → SELL
+    _press(emu, ["down"], wait=30)   # → SEE YA!
+    _press(emu, ["a"])               # "Please come again!"
+    _press(emu, ["a"], _SETTLE_WAIT) # dismiss farewell, back to overworld
+
+    # ── Verify purchase ──
+    new_status = read_trainer_status(emu)
+    new_money = new_status.get("money", 0)
+    spent = money - new_money
+
+    return {
+        "success": True,
+        "item": display_name,
+        "item_id": item_id,
+        "quantity": quantity,
+        "unit_price": price,
+        "total_cost": total_cost,
+        "money_before": money,
+        "money_after": new_money,
+        "money_spent": spent,
+        "cashier": cashier_type,
+        "formatted": (
+            f"Bought {display_name} x{quantity} for ¥{total_cost:,}. "
+            f"Money: ¥{money:,} → ¥{new_money:,}"
+        ),
+    }
+
+
+def _error(message: str) -> dict[str, Any]:
+    """Return a standardized error result."""
+    return {"success": False, "error": message, "formatted": f"Error: {message}"}

@@ -386,6 +386,33 @@ def create_server() -> FastMCP:
 
         return _read_shop(emu, badge_count=badge_count)
 
+    @mcp.tool()
+    def buy_item(item_name: str, quantity: int = 1) -> dict[str, Any]:
+        """Buy an item from a standard PokéMart.
+
+        Player must be inside a PokéMart building (FS room code). Finds the
+        correct cashier (Cashier F for common items, Cashier M for specialty),
+        navigates to them, opens the shop, scrolls to the item, purchases the
+        specified quantity, and exits.
+
+        Item position is calculated from ROM data — common items appear first
+        (badge-filtered, in PokeMartCommonItems[] order), then specialty items.
+
+        Args:
+            item_name: Item to buy (e.g. "Potion", "Heal Ball"). Case-insensitive.
+            quantity: How many to buy (default 1).
+        """
+        from renegade_mcp.shop import buy_item as _buy_item
+        from renegade_mcp.trainer import read_trainer_status as _read_status
+
+        emu = get_client()
+        emu.create_checkpoint(action=f"buy_item({item_name!r}, {quantity})")
+
+        status = _read_status(emu)
+        badge_count = status.get("badges") if isinstance(status.get("badges"), int) else None
+
+        return _buy_item(emu, item_name, quantity=quantity, badge_count=badge_count)
+
     # ── Item Use ──
 
     @mcp.tool()
