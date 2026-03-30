@@ -57,9 +57,13 @@ PROMPT_YES_XY = (128, 67)     # "Use next Pokemon" / "Switch Pokemon" (red)
 PROMPT_NO_XY = (128, 127)     # "Flee" / "Keep battling" (blue)
 
 # ── Move learn prompt buttons (bottom screen) ──
-GIVE_UP_XY = (128, 75)        # "Give up on [Move]!" (red, top)
-DONT_GIVE_UP_XY = (128, 145)  # "Don't give up on [Move]!" (green, bottom)
+# Prompt 1: "Make it forget another move?" (appears first in battle flow)
 FORGET_A_MOVE_XY = (128, 75)  # "Forget a move!" (red, top)
+KEEP_OLD_MOVES_XY = (128, 145)  # "Keep old moves!" (blue, bottom) → goes to Prompt 2
+# Prompt 2: "Should this Pokemon give up on learning this new move?"
+GIVE_UP_XY = (128, 75)        # "Give up on [Move]!" (red, top)
+DONT_GIVE_UP_XY = (128, 145)  # "Don't give up on [Move]!" (green, bottom) → back to Prompt 1
+# Move detail view
 FORGET_BTN_XY = (128, 178)    # "FORGET" button on move detail view
 
 # Move forget screen grid (shifted down from battle MOVE_XY due to Pokemon info header)
@@ -123,11 +127,12 @@ def _log_has(log: list[dict], text: str) -> bool:
 
 def _classify_prompt(text: str) -> str:
     """Classify a WAIT_FOR_ACTION prompt by its text content."""
-    if "Use next" in text:
+    t = text.replace("\n", " ")
+    if "Use next" in t:
         return "FAINT_SWITCH"
-    if "Will you switch" in text:
+    if "Will you switch" in t:
         return "SWITCH_PROMPT"
-    if "give up on" in text or "forget another move" in text:
+    if "give up on" in t or "forget another move" in t:
         return "MOVE_LEARN"
     return "ACTION"
 
@@ -145,10 +150,11 @@ def _extract_new_move_name(log: list[dict]) -> str | None:
     candidate = None
     for entry in log:
         text = entry.get("text", "").strip()
-        if "grew to" in text:
+        t = text.replace("\n", " ")
+        if "grew to" in t:
             in_range = True
             continue
-        if "give up on" in text or "forget another move" in text:
+        if "give up on" in t or "forget another move" in t:
             break
         if in_range and text in known_moves:
             candidate = text
@@ -286,46 +292,43 @@ def _decline_flow(emu: EmulatorClient) -> None:
 
 
 def _skip_move_learn_flow(emu: EmulatorClient) -> None:
-    """Tap 'Give up on [Move]!' to skip learning the new move."""
+    """Skip learning the new move from Prompt 1 ('Make it forget another move?').
+
+    Flow: 'Keep old moves!' → Prompt 2 text scroll → 'Give up on [Move]!' → confirmation text.
+    """
+    # Prompt 1: tap "Keep old moves!" (bottom) → triggers Prompt 2 text
+    emu.tap_touch_screen(KEEP_OLD_MOVES_XY[0], KEEP_OLD_MOVES_XY[1], frames=8)
+    # Prompt 2 text scrolls for ~600 frames; B presses speed it up
+    _advance_text(emu, presses=2, wait=120)
+    emu.advance_frames(300)  # Wait for touch buttons to appear
+
+    # Prompt 2: tap "Give up on [Move]!" (top)
     emu.tap_touch_screen(GIVE_UP_XY[0], GIVE_UP_XY[1], frames=8)
     emu.advance_frames(TAP_WAIT)
+
     # Advance through "did not learn [Move]" text
     _advance_text(emu, presses=3, wait=180)
 
 
 def _learn_move_flow(emu: EmulatorClient, forget_index: int) -> None:
-    """Navigate from 'give up?' prompt through move selection to learn the new move.
+    """Forget a move and learn the new one from Prompt 1 ('Make it forget another move?').
 
-    Steps: Don't give up → text → Forget a move! → move grid → tap slot → FORGET
+    Steps: 'Forget a move!' → move grid (no B!) → tap slot → FORGET → confirmation text.
     """
-    # 1. Tap "Don't give up on [Move]!" (green button)
-    emu.tap_touch_screen(DONT_GIVE_UP_XY[0], DONT_GIVE_UP_XY[1], frames=8)
-    emu.advance_frames(TAP_WAIT)
-
-    # 2. Advance through "wants to learn" / "can't learn more than four" text
-    #    Two text boxes, each needs B to complete scroll + B to advance.
-    #    Stop before the "Forget a move?" touch prompt appears.
-    _advance_text(emu, presses=4, wait=90)
-    emu.advance_frames(300)  # Wait for "Forget a move?" touch prompt
-
-    # 3. Tap "Forget a move!" (red button)
+    # 1. Tap "Forget a move!" (red, top) on Prompt 1
     emu.tap_touch_screen(FORGET_A_MOVE_XY[0], FORGET_A_MOVE_XY[1], frames=8)
-    emu.advance_frames(TAP_WAIT)
+    emu.advance_frames(300)  # Wait for move grid to render (do NOT press B — it exits the screen)
 
-    # 4. Advance through "Which move should be forgotten?" text
-    _advance_text(emu, presses=2, wait=120)
-    emu.advance_frames(180)  # Wait for move grid to render
-
-    # 5. Tap the target move slot on the grid
+    # 2. Tap the target move slot on the grid
     mx, my = FORGET_MOVE_XY[forget_index]
     emu.tap_touch_screen(mx, my, frames=8)
     emu.advance_frames(ACTION_SETTLE)
 
-    # 6. Tap FORGET on the detail view
+    # 3. Tap FORGET on the detail view
     emu.tap_touch_screen(FORGET_BTN_XY[0], FORGET_BTN_XY[1], frames=8)
     emu.advance_frames(ACTION_SETTLE)
 
-    # 7. Advance through "1, 2, and... Poof!" / "forgot [old]" / "learned [new]" text
+    # 4. Advance through "1, 2, and... Poof!" / "forgot [old]" / "learned [new]" text
     _advance_text(emu, presses=6, wait=180)
 
 
@@ -335,6 +338,15 @@ def _poll_after_action(emu: EmulatorClient, prompt_log: list[dict]) -> dict[str,
     result = _tracker.poll(emu, auto_press=True)
     # Classify on poll-only log first (avoids stale prompt text contamination)
     result["final_state"] = _classify_final_state(emu, result)
+
+    # If NO_TEXT but still in battle, the action prompt may already be on screen
+    # (captured in baseline). Fall back to a fresh prompt scan.
+    if result["final_state"] == "NO_TEXT" and not _is_battle_over(emu):
+        prompt = _wait_for_action_prompt(emu)
+        if prompt["ready"]:
+            result["log"].extend(prompt["log"])
+            result["final_state"] = prompt["prompt_type"]
+
     # Then prepend prompt log for complete display
     result["log"] = prompt_log + result.get("log", [])
     return result
@@ -612,12 +624,12 @@ def _classify_final_state(emu: EmulatorClient, result: dict[str, Any]) -> str:
 
     if raw_state == "WAIT_FOR_ACTION":
         for entry in result.get("log", []):
-            text = entry.get("text", "")
-            if "Use next" in text:
+            t = entry.get("text", "").replace("\n", " ")
+            if "Use next" in t:
                 return "FAINT_SWITCH"
-            if "Will you switch" in text:
+            if "Will you switch" in t:
                 return "SWITCH_PROMPT"
-            if "give up on" in text or "forget another move" in text:
+            if "give up on" in t or "forget another move" in t:
                 return "MOVE_LEARN"
         return "WAIT_FOR_ACTION"
 

@@ -268,7 +268,11 @@ class BattleTracker:
                 if stop == "AUTO_ADVANCE":
                     seen_auto = True
                     log.append({"text": text, "stop": stop})
-                elif seen_auto:
+                elif seen_auto or stop == "WAIT_FOR_ACTION":
+                    # WAIT_FOR_ACTION ([FFFE][0200]) is a definitive action
+                    # prompt — always return it, even without prior AUTO_ADVANCE.
+                    # This prevents move-learn prompts from being silently
+                    # dropped during _recover_from_level_up re-polls.
                     log.append({"text": text, "stop": stop})
                     emu.advance_frames(SETTLE_FRAMES)
 
