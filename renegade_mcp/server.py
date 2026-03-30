@@ -360,6 +360,32 @@ def create_server() -> FastMCP:
         emu = get_client()
         return _read_status(emu)
 
+    # ── Shop ──
+
+    @mcp.tool()
+    def read_shop() -> dict[str, Any]:
+        """Read the PokéMart inventory for the player's current city.
+
+        Detects which city/town the player is in, looks up the standard
+        PokéMart stock (common items filtered by badge count + city-specific
+        specialty items), and returns all items with names and prices.
+
+        Prices are read from ROM data (pl_item_data.narc). Common mart items
+        are badge-gated using the same thresholds as the game.
+
+        Pure data lookup — no UI interaction, no checkpoint needed.
+        """
+        from renegade_mcp.shop import read_shop as _read_shop
+        from renegade_mcp.trainer import read_trainer_status as _read_status
+
+        emu = get_client()
+
+        # Read badge count (may be unconfirmed)
+        status = _read_status(emu)
+        badge_count = status.get("badges") if isinstance(status.get("badges"), int) else None
+
+        return _read_shop(emu, badge_count=badge_count)
+
     # ── Item Use ──
 
     @mcp.tool()

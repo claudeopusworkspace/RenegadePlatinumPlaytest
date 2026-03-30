@@ -26,6 +26,7 @@ _species_names: dict[int, str] | None = None
 _move_names: dict[int, str] | None = None
 _item_names: dict[int, str] | None = None
 _ability_names: dict[int, str] | None = None
+_item_prices: dict[int, int] | None = None
 _map_table: dict[int, dict] | None = None
 
 
@@ -55,6 +56,14 @@ def ability_names() -> dict[int, str]:
     if _ability_names is None:
         _ability_names = _load_int_keyed_json("ability_names.json")
     return _ability_names
+
+
+def item_prices() -> dict[int, int]:
+    """Load item ID → buy price table (extracted from pl_item_data.narc)."""
+    global _item_prices
+    if _item_prices is None:
+        _item_prices = _load_int_keyed_json("item_prices.json")
+    return _item_prices
 
 
 def map_table() -> dict[int, dict]:
