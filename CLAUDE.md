@@ -196,7 +196,7 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 ## Game Progress
 
 - **Character**: CLAUDE | **Rival**: AAAAAAA
-- **Location**: Route 202 (map 343), post-Shinx evolution. Save state: `route202_post_shinx_evolution`.
+- **Location**: Jubilife Pokemon Center (map 6), healed. Save state: `jubilife_pokecenter_post_evolution`.
 - **Charmander** Lv12 — Hardy, Blaze. Held: Charcoal. Moves: Scratch, Metal Claw, Ember, Smokescreen.
 - **Luxio** Lv15 — Jolly (+Spe/-SpA), Guts. Moves: Spark, Bite, Howl, Quick Attack. (Evolved from Shinx)
 - **Eevee** Lv12 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Quick Attack, Bite, Covet.

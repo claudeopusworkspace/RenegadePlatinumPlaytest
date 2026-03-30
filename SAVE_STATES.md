@@ -41,7 +41,8 @@
 | `jubilife_healed_pre_rival` | Jubilife Pokemon Center. Full team Lv12+ healed. Pre-rival rematch. |
 | `route203_post_rival` | Route 203 (map 344). Defeated Rival AAAAAAA. Got Exp. Share. Turtwig Lv15, rest Lv12. |
 | `pre_shinx_evolution_grind` | Route 202 north entrance. Shinx Lv12 in slot 0, full team healed. Pre-grind. |
-| `route202_post_shinx_evolution` | Route 202 grass. Shinx evolved into Luxio Lv15. Post-evolution test. Latest gameplay state. |
+| `route202_post_shinx_evolution` | Route 202 grass. Shinx evolved into Luxio Lv15. Post-evolution test. |
+| `jubilife_pokecenter_post_evolution` | Jubilife Pokemon Center. Luxio Lv15, full team healed. Latest gameplay state. |
 
 ## Debug & Testing
 
