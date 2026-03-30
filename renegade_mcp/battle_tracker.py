@@ -27,6 +27,7 @@ MAX_POLLS = 150
 DISCOVERY_POLLS = 30
 POLL_FRAMES = 15
 SETTLE_FRAMES = 120
+NO_TEXT_EXIT_THRESHOLD = 20  # consecutive None scans before declaring battle over (~5 sec)
 
 
 def _decode_text(vals: list[int]) -> tuple[str, list[int]]:
@@ -252,6 +253,7 @@ class BattleTracker:
         log: list[dict] = []
         prev_text = None
         seen_auto = False
+        consecutive_none = 0
 
         for poll in range(MAX_POLLS):
             emu.advance_frames(POLL_FRAMES)
@@ -259,7 +261,19 @@ class BattleTracker:
             active_baseline = baseline if not seen_auto else None
             text, vals = self._scan_battle_text(emu, scan_start, scan_size, active_baseline)
             if text is None:
+                consecutive_none += 1
+                # After processing battle text, prolonged absence of text
+                # markers means the battle scene has ended.  Text markers
+                # are ephemeral (only present during active dialogue), so
+                # ~5 seconds of silence is a reliable end-of-battle signal.
+                if seen_auto and consecutive_none >= NO_TEXT_EXIT_THRESHOLD:
+                    return {
+                        "log": log,
+                        "final_state": "TIMEOUT",
+                        "formatted": _format_log(log, "TIMEOUT"),
+                    }
                 continue
+            consecutive_none = 0
             stop = _classify_stop(vals)
 
             if text and text != prev_text:

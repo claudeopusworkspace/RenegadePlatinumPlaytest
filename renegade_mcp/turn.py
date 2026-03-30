@@ -587,7 +587,15 @@ def _recover_from_level_up(emu: EmulatorClient, result: dict[str, Any]) -> dict[
             result["final_state"] = "BATTLE_ENDED"
             return result
 
-    result["final_state"] = "LEVEL_UP"
+    # Exhausted all recovery presses without finding an action prompt.
+    # If the log shows a completed KO (fainted + EXP), the battle ended
+    # after the level-up.  The battle struct never goes to garbage, so
+    # this log-based check is the reliable fallback.
+    all_log = result.get("log", [])
+    if _log_has(all_log, "fainted") and _log_has(all_log, "Exp. Points"):
+        result["final_state"] = "BATTLE_ENDED"
+    else:
+        result["final_state"] = "LEVEL_UP"
     return result
 
 
@@ -642,6 +650,17 @@ def _classify_final_state(emu: EmulatorClient, result: dict[str, Any]) -> str:
         # Trainer faint: no text prompt, player HP = 0, battle still active
         if _log_has(result.get("log", []), "fainted") and _get_player_hp(emu) == 0:
             return "FAINT_FORCED"
+        # Log-based battle end: if we saw "fainted" + "Exp. Points" and
+        # then text disappeared, the battle is over.  The battle struct
+        # retains valid-looking data after battle (never goes to garbage),
+        # so this text-pattern check is the primary end-of-battle signal.
+        # EXCEPTION: "grew to" means a level-up stat screen caused the
+        # text gap — don't declare battle over yet; _recover_from_level_up
+        # needs to press B through the stat screen first.
+        log = result.get("log", [])
+        if (_log_has(log, "fainted") and _log_has(log, "Exp. Points")
+                and not _log_has(log, "grew to")):
+            return "BATTLE_ENDED"
 
     return raw_state
 
