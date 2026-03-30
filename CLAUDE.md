@@ -243,6 +243,7 @@ See GAME_HISTORY.md for full chronological playthrough details.
 - **Touch screen taps default to `frames=8`** — changed from 1 to avoid missed inputs.
 - **Wait 300 frames between UI navigation steps** — Pokemon ignores input during forced text delays.
 - **Always check the bottom screen for Yes/No prompts** — battle/switch prompts use touch screen.
-- **`battle_turn` has a built-in timeout** (150 polls / ~37 seconds) — returns TIMEOUT rather than hanging forever.
+- **`battle_turn` detects battle end via text absence** — after seeing battle narration, 20 consecutive polls (~5 sec) with no text markers triggers early exit. Log-based heuristic ("fainted" + "Exp. Points") classifies as BATTLE_ENDED. Level-up cases ("grew to" in log) defer to recovery instead.
 - **Pause menu remembers cursor position** — cursor index stored at `0x0229FA28`. The `use_item` tool reads this automatically; for manual menu navigation, read this address first.
 - **Trainer battles may have multiple Pokemon** — handle "Will you switch?" prompt before next action.
+- **Evolution is untested** — similar to the stat screen, evolution is a long graphical sequence with no text markers. The 5-second text absence threshold may need tuning. Test with Chimchar→Monferno (Lv14) or Turtwig→Grotle (Lv18).
