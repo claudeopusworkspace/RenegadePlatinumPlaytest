@@ -24,8 +24,8 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `read_bag(pocket="")` | Bag contents across all 7 pockets. Optional pocket filter. |
 | `view_map` | ASCII map with terrain, player position, NPCs, and warp destinations (from ROM zone_event data). Warp coordinates can be passed directly to `navigate_to`. |
 | `map_name(map_id=-1)` | Location name lookup. Defaults to current map. |
-| `navigate(directions)` | Manual walk: "d2 l3 u1". Validates path before moving; auto-trims at door/stair transitions (0x65 down, 0x5F left, 0x5E right). Returns `encounter` key if battle/dialogue detected. |
-| `navigate_to(x, y)` | BFS pathfind to target tile. Auto-handles door/stair transitions (0x69, 0x65, 0x5F, 0x5E, 0x6E). Auto-enters adjacent walk-into doors (0x69, 0x6E) after reaching target. Returns `encounter` key if battle/dialogue detected. |
+| `navigate(directions)` | Manual walk: "d2 l3 u1". Validates path before moving; auto-trims at door/stair/warp transitions. Returns `encounter` key if battle/dialogue detected. |
+| `navigate_to(x, y)` | BFS pathfind to target tile. Handles all 14 warp tile types: doors (0x69, 0x6E), stairs (0x5E, 0x5F), cave entrances (0x62-0x65), side entries (0x6C-0x6F), panels (0x67), escalators (0x6A-0x6B). Direction-aware for directional warps. Water tiles blocked. Returns `encounter` key if battle/dialogue detected. |
 | `interact_with(object_index, x, y)` | Navigate to a map object/NPC by index OR static tile by (x,y) and interact. Handles adjacent tiles, counter NPCs, facing, and dialogue. |
 | `seek_encounter(cave=false)` | Pace in grass until wild encounter. Returns at first action prompt with full battle state. `cave=true` for non-grass encounters. |
 | `read_dialogue(advance=true)` | Auto-advance through dialogue, collect full conversation. Stops at Yes/No prompts. `advance=false` for passive read. |
@@ -34,9 +34,9 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `reorder_party(from_slot, to_slot)` | Swap two party Pokemon via pause menu (overworld only) |
 | `decode_rom_message(file_index)` | Decode ROM message archive (species, moves, items, etc.) |
 | `search_rom_messages(query)` | Search all 724 message files for text |
-| `use_item(item_name, party_slot)` | Use a Medicine item on a party Pokemon from overworld |
+| `use_item(item_name, party_slot)` | Use a Medicine item on a party Pokemon from overworld. Reads bag cursor state to handle remembered positions. |
 | `take_item(party_slot)` | Remove held item from a party Pokemon via pause menu (overworld only) |
-| `give_item(item_name, party_slot)` | Give a held item to a party Pokemon via pause menu (overworld only). Pokemon must not already hold an item. |
+| `give_item(item_name, party_slot)` | Give a held item to a party Pokemon via pause menu (overworld only). Pokemon must not already hold an item. Reads bag cursor state to handle remembered positions. |
 | `heal_party` | Heal at Pokemon Center: finds Nurse Joy by graphicsID, interacts, advances dialogue, verifies HP. |
 | `open_pc` | Boot up the PC: finds 0x83 tile, navigates, interacts, advances to storage menu (DEPOSIT/WITHDRAW/MOVE/SEE YA!). |
 | `deposit_pokemon(party_slots)` | Deposit party Pokemon into Box 1. Takes list of 0-indexed slots. Multi-deposit supported. Must call open_pc first. |
