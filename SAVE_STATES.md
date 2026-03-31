@@ -47,11 +47,20 @@
 | `route203_shopping_done` | Route 203 west entrance at (199, 757). Bought Potion x10, Antidote x3. |
 | `route203_first_double_battle` | Route 203 double battle vs Youngster D. Luxio/Charmander vs Kricketot/Shinx. At first action prompt. |
 | `route203_post_double_battle` | Route 203 after first double battle. Charmander Lv13. |
+| `route203_post_double_battle_overworld` | Route 203 overworld after double battle. Luxio 25/45, Charmander fainted. |
+| `route203_cleared` | Route 203 trainers cleared. Pre-Oreburgh Gate entrance. Luxio Lv17. |
+| `oreburgh_city_arrival` | Oreburgh City entrance from Oreburgh Gate. Charmander fainted, team battle-worn. |
+| `oreburgh_healed` | Oreburgh Pokemon Center. Full team healed. Ready for mine/gym. |
+| `oreburgh_mine_entrance` | Oreburgh Mine 1F entrance. Team healed. |
+| `oreburgh_mine_floor1` | Oreburgh Mine 1F. Got Muscle Band pickup. |
+| `oreburgh_mine_roark_talked` | Oreburgh Mine B1F. After talking to Roark + getting Fire Stone. Roark returning to Gym. Luxio Lv18, Turtwig Lv16. **Current session end state.** |
 
 ## Debug & Testing
 
 | Name | Description |
 |------|-------------|
+| `route203_cave_entrance_debug` | Route 203 at Oreburgh Gate entrance (246, 749). Cave warp tile (0x62) not handled by navigate_to. |
+| `oreburgh_mine_roark_dialogue_bug` | Oreburgh Mine B1F. Roark's multi-choice stone quiz. read_dialogue infinite loop on non-Yes/No prompt. |
 | `wild_starly_battle_start` | Wild Starly Lv4 battle on Route 201. Turtwig Lv7. |
 | `wild_zigzagoon_route202` | Wild Zigzagoon Lv5 battle on Route 202. At action prompt. |
 | `tristan_battle_start` | Youngster Tristan battle. Turtwig Lv10 vs Hoothoot Lv7. 2-Pokemon trainer battle. |

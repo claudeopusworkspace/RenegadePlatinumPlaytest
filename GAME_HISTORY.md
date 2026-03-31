@@ -157,4 +157,48 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - **Piplup** Lv12: Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Peck.
 - **Turtwig** Lv15: Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Bullet Seed, Razor Leaf.
 - **Chimchar** Lv12: Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Fury Swipes, Ember, Taunt.
+- **Box 1 (Ch5)**: Bulbasaur Lv5, Squirtle Lv5.
+
+## Chapter 6: Route 203 to Oreburgh Mine
+
+### Route 203 — Trainer Gauntlet
+- Healed Luxio with Potion (25→45 HP). Charmander confirmed fainted (no Revive available).
+- Fought **Youngster Sebastian**: Makuhita Lv10 (Fake Out flinch, then Sparked), Machop Lv10 (Sparked, paralyzed, Quick Attack finish). Luxio leveled to 16, skipped learning Charge. Won $160.
+- Fought **Lass Kaitlin**: Spearow Lv9 (Sparked, super effective), Cubone Lv9 (swapped to Turtwig, Razor Leaf 1-shot), Azurill Lv9 (Razor Leaf — noted **Fairy type** in Renegade Platinum, showed as Normal/???). Won $144.
+- Fought **Lass Madeline**: Psyduck Lv10 (Sparked, super effective, Luxio to Lv17), Sunkern Lv10 (swapped to Chimchar, Ember x2). Won $160.
+- Route 203 trainers cleared. Note: Youngster B and Lass E were non-battle NPCs (flavor dialogue only).
+
+### Oreburgh Gate (Map 258)
+- Entered via cave warp at (246, 749) — **first cave side-entry warp**, required manual button press (navigate_to treats 0x62 as impassable). Bug logged.
+- **Hiker** gave **HM Rock Smash** (usable in field after Oreburgh Badge).
+- Fought **Camper Curtis**: Seedot Lv10 (Bite crit KO), Diglett Lv10 (swapped Turtwig, Razor Leaf super effective). Turtwig to Lv16. Won $160.
+- Fought **Picnicker Diana**: Whismur Lv10 (Spark crit KO), Wooper Lv10 (Turtwig Razor Leaf 4x super effective). Won $160.
+- **interact_with trainer-spotted race condition** discovered: walking to one NPC triggered another trainer's sight line, causing the tool to miss dialogue. Bug logged.
+
+### Oreburgh City (Map 45)
+- Arrived via manual cave exit. Got **Oval Stone** from greeter NPC (evolves Happiny→Chansey).
+- NPC auto-walked us to the Gym entrance. Talked to **Barry** — says Roark is tough, Gym Leader is at the coal mine.
+- Explored city buildings (learned to use warp code names: PC=PokéCenter, FS=FriendlyShop, GYM=Gym).
+- **Healed at Oreburgh Pokemon Center** (C03PC0101 at 303, 756). All Pokemon restored including fainted Charmander.
+- Navigated south through mining district to **Oreburgh Mine** entrance (300-304, 795).
+
+### Oreburgh Mine 1F (Map 198)
+- Picked up **Muscle Band** (boosts physical moves 10%).
+- Wild encounters: Onix Lv10 (Turtwig Razor Leaf), Aron Lv9 (Spark crit), Whismur Lv9 x2 (Spark). Luxio to Lv18.
+
+### Oreburgh Mine B1F (Map 199)
+- More wild encounters on the way down: Onix Lv11 (Turtwig), Zubat Lv10 (Spark), Trapinch Lv11 (Bug/Ground in Renegade Platinum! Bite x2).
+- Found **Roark** at bottom of mine. Multi-choice quiz: "What stone did I find?" — correctly guessed **Fire Stone**. Received it as reward.
+- **read_dialogue infinite loop bug** discovered on multi-choice prompt (not Yes/No). Required /mcp reconnect to break. Bug logged with debug save state.
+- Roark heading back to Gym. Session ended here.
+
+### Pokemon Status (end of Chapter 6)
+- **Luxio** Lv18: Jolly, Guts. Held: Scope Lens. Moves: Spark, Bite, Howl, Quick Attack. MVP — Scope Lens crits everywhere.
+- **Charmander** Lv13: Hardy, Blaze. Held: Charcoal. Moves: Scratch, Metal Claw, Ember, Smokescreen.
+- **Eevee** Lv12: Gentle, Run Away. Moves: Tackle, Quick Attack, Bite, Covet.
+- **Piplup** Lv12: Lax, Vital Spirit. Moves: Pound, Growl, Bubble, Peck.
+- **Turtwig** Lv16: Naughty, Overgrow. Moves: Tackle, Curse, Bullet Seed, Razor Leaf.
+- **Chimchar** Lv12: Careful, Iron Fist. Moves: Scratch, Fury Swipes, Ember, Taunt.
 - **Box 1**: Bulbasaur Lv5, Squirtle Lv5.
+- **New items**: HM Rock Smash, Oval Stone, Muscle Band, Fire Stone.
+- **Money**: ~$2,660+.

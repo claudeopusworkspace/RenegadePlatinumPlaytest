@@ -204,18 +204,18 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 ## Game Progress
 
 - **Character**: CLAUDE | **Rival**: AAAAAAA
-- **Location**: Route 203, post first double battle. Save state: `route203_post_double_battle`.
+- **Location**: Oreburgh Mine B1F, after talking to Roark. Save state: `oreburgh_mine_roark_talked`. **Note: currently inside the mine with high encounter rate — consider using Repel next session or healing at Oreburgh PC first.**
+- **Luxio** Lv18 — Jolly (+Spe/-SpA), Guts. Held: Scope Lens. Moves: Spark, Bite, Howl, Quick Attack.
 - **Charmander** Lv13 — Hardy, Blaze. Held: Charcoal. Moves: Scratch, Metal Claw, Ember, Smokescreen.
-- **Luxio** Lv15 — Jolly (+Spe/-SpA), Guts. Held: Scope Lens. Moves: Spark, Bite, Howl, Quick Attack. (Evolved from Shinx)
 - **Eevee** Lv12 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Quick Attack, Bite, Covet.
 - **Piplup** Lv12 — Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Peck.
-- **Turtwig** Lv15 — Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Bullet Seed, Razor Leaf.
+- **Turtwig** Lv16 — Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Bullet Seed, Razor Leaf.
 - **Chimchar** Lv12 — Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Fury Swipes, Ember, Taunt.
 - **Box 1**: Bulbasaur Lv5 (Docile, Chlorophyll, Miracle Seed), Squirtle Lv5 (Gentle, Mystic Water).
-- **Key items**: Repel x10, Poke Ball x29, Potion x10, Antidote x3, Silk Scarf, TM58 Endure, Bicycle, Poke Radar, Town Map, Vs. Recorder, Poketch, Exp. Share.
-- **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202), Reporter Kayla (Jubilife Pokemon Center), Rival AAAAAAA (Route 203), Youngster D (Route 203 double battle).
-- **Story progress**: Got Poketch from Poketch Company president. Won Bulbasaur from Jubilife TV quiz. Lost to Rival AAAAAAA on Route 203 (first attempt). Picked up Charmander + Squirtle from Reporter in Jubilife PC. Deposited Bulbasaur + Squirtle to Box 1. Grinded team on Route 202 using auto_grind tool. Beat Rival AAAAAAA on Route 203 rematch (Starly Lv10, Munchlax Lv10, Chimchar Lv11). Received Exp. Share from rival. Grinded Shinx to Lv15 on Route 202 → evolved into Luxio (first evolution, used to develop evolution handling).
-- **Next**: Continue east on Route 203 to Oreburgh Gate. Fight remaining trainers on Route 203 (Youngster B, Youngster A, Lass C, Lass E). Oreburgh City for first Gym (Rock type). More starters available from NPCs in Oreburgh and Floaroma. Shroomish on Route 203 wants an Oran Berry (come back later).
+- **Key items**: Repel x10, Poke Ball x29, Potion x9, Antidote x3, Silk Scarf, TM58 Endure, Bicycle, Poke Radar, Town Map, Vs. Recorder, Poketch, Exp. Share, Oval Stone, Muscle Band, Fire Stone, HM Rock Smash.
+- **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202), Reporter Kayla (Jubilife Pokemon Center), Rival AAAAAAA (Route 203), Youngster D (Route 203 double battle), Youngster Sebastian (Route 203), Lass Kaitlin (Route 203), Lass Madeline (Route 203), Camper Curtis (Oreburgh Gate), Picnicker Diana (Oreburgh Gate).
+- **Story progress**: Got Poketch from Poketch Company president. Won Bulbasaur from Jubilife TV quiz. Lost to Rival AAAAAAA on Route 203 (first attempt). Picked up Charmander + Squirtle from Reporter in Jubilife PC. Deposited Bulbasaur + Squirtle to Box 1. Grinded team on Route 202 using auto_grind tool. Beat Rival AAAAAAA on Route 203 rematch (Starly Lv10, Munchlax Lv10, Chimchar Lv11). Received Exp. Share from rival. Grinded Shinx to Lv15 on Route 202 → evolved into Luxio (first evolution, used to develop evolution handling). Cleared Route 203 trainers. Traversed Oreburgh Gate (got HM Rock Smash from Hiker). Arrived Oreburgh City — got Oval Stone from greeter NPC. Barry at Gym says Roark is at the mine. Healed at Oreburgh Pokemon Center. Entered Oreburgh Mine — got Muscle Band on 1F. Found Roark on B1F, correctly guessed Fire Stone, received it. Roark heading back to Gym.
+- **Next**: Exit Oreburgh Mine (use Repel!). Heal at Oreburgh Pokemon Center. Challenge Roark at Oreburgh Gym (Rock type). Good coverage: Turtwig (Razor Leaf 4x vs Rock/Ground), Piplup (Bubble), Chimchar (future Fighting). Give Muscle Band to a physical attacker. Consider evolving Eevee with Fire Stone (Flareon). Shroomish on Route 203 wants an Oran Berry (come back later).
 
 See GAME_HISTORY.md for full chronological playthrough details.
 
