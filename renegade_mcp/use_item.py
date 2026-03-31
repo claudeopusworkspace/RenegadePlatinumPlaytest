@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from renegade_mcp.bag import read_bag
+from renegade_mcp.bag_cursor import get_pocket_cursor
 from renegade_mcp.party import read_party
 from renegade_mcp.pause_menu import (
     MENU_SIZE,
@@ -110,13 +111,6 @@ def use_item(emu: EmulatorClient, item_name: str, party_slot: int = 0) -> dict[s
     target_mon = party[party_slot]
     target_name = target_mon.get("name", f"Slot {party_slot}")
 
-    # Check if item is beyond visible list (bag shows ~4-5 items at a time)
-    if item_index > 4:
-        return _error(
-            f"'{item_entry['name']}' is at position {item_index} in Medicine pocket — "
-            "scrolling not yet implemented. Only the first 5 items are selectable."
-        )
-
     # ── Step 1: Open pause menu (with readiness check) ──
     if not open_pause_menu(emu):
         return _error("Could not open pause menu — player may not have control.")
@@ -135,7 +129,10 @@ def use_item(emu: EmulatorClient, item_name: str, party_slot: int = 0) -> dict[s
     _tap(emu, mx, my, wait=MENU_WAIT)
 
     # ── Step 4: Select item ──
-    # Cursor starts on first item. Press Down to reach target index.
+    # The game remembers cursor position per pocket. Reset to top first.
+    scroll, index = get_pocket_cursor(emu, "Medicine")
+    for _ in range(scroll + index):
+        _press(emu, ["up"])
     for _ in range(item_index):
         _press(emu, ["down"])
 
