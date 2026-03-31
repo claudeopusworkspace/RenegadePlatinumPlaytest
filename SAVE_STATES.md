@@ -76,3 +76,5 @@
 | `pokecenter_1party_5boxed` | Jubilife Pokemon Center. Turtwig Lv14 only in party. 5 boxed in Box 1. |
 | `debug_shinx_pre_evolution_ko` | Wild Sentret Lv5 battle. Shinx Lv14. Bite KOs → Lv15 → Charge learn → evolution. |
 | `debug_shinx_move_learn_pre_evolution` | At "Make it forget another move?" for Charge. Shinx Lv15 pre-evolution. |
+| `jubilife_pokecenter_post_evolution` | Jubilife Pokemon Center. Post Shinx→Luxio evolution. Full party of 6, healed. |
+| `jubilife_pokecenter_post_give_item` | Jubilife Pokemon Center. Gave Scope Lens to Luxio. Latest adventure state. |

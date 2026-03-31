@@ -136,3 +136,25 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - **Turtwig** Lv15: Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Bullet Seed, Razor Leaf.
 - **Chimchar** Lv12: Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Fury Swipes, Ember, Taunt.
 - **Box 1**: Bulbasaur Lv5, Squirtle Lv5.
+
+## Chapter 5: Evolution & Tool Development
+
+### Route 202 — Shinx → Luxio Evolution
+- Continued grinding Shinx on Route 202 using `auto_grind`.
+- Shinx Lv12 → Lv15. Learned Charge at Lv15 (skipped — kept Spark/Bite/Howl/Quick Attack).
+- **Shinx evolved into Luxio** at Lv15. First evolution in the playtest — used to develop and test evolution handling in `battle_turn` and `auto_grind`.
+- Evolution handling: detects "is evolving" text, dismisses with single B, waits passively for ~15s animation, captures "evolved into Luxio!" in log.
+
+### Jubilife Pokemon Center — Item Management
+- Healed at Jubilife Pokemon Center.
+- Gave **Scope Lens** (crit rate boost) to Luxio using new `give_item` tool.
+- Save state: `jubilife_pokecenter_post_give_item`.
+
+### Pokemon Status (end of Chapter 5)
+- **Luxio** Lv15: Jolly (+Spe/-SpA), Guts. Held: Scope Lens. Moves: Spark, Bite, Howl, Quick Attack.
+- **Charmander** Lv12: Hardy, Blaze. Held: Charcoal. Moves: Scratch, Metal Claw, Ember, Smokescreen.
+- **Eevee** Lv12: Gentle (+SpD/-Def), Run Away. Moves: Tackle, Quick Attack, Bite, Covet.
+- **Piplup** Lv12: Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Peck.
+- **Turtwig** Lv15: Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Bullet Seed, Razor Leaf.
+- **Chimchar** Lv12: Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Fury Swipes, Ember, Taunt.
+- **Box 1**: Bulbasaur Lv5, Squirtle Lv5.
