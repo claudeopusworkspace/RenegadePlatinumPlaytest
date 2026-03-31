@@ -45,6 +45,9 @@ LEDGE_DIRECTIONS = {
     0x38: "down", 0x39: "up", 0x3A: "left", 0x3B: "right",
 }
 
+# Water tiles — impassable until Surf is available
+WATER_BEHAVIORS = {0x10, 0x13, 0x15}  # water, waterfall, sea
+
 # Door/warp tile behaviors and how to activate them.
 # None = walk-into triggers warp automatically; string = press this direction after standing on tile.
 DOOR_ACTIVATION: dict[int, str | None] = {
@@ -127,7 +130,7 @@ def _build_terrain_info(
             val = terrain[row][col]
             is_blocked = (val & 0x8000) != 0
             behavior = val & 0x00FF
-            passable = (not is_blocked) or behavior in WARP_PASSABLE or behavior in LEDGE_DIRECTIONS
+            passable = ((not is_blocked) or behavior in WARP_PASSABLE or behavior in LEDGE_DIRECTIONS) and behavior not in WATER_BEHAVIORS
             grid[row][col] = (passable, behavior)
 
     npc_set = set()
@@ -245,7 +248,7 @@ def _build_multi_chunk_terrain(
                     val = chunk_terrain[row][col]
                     is_blocked = (val & 0x8000) != 0
                     behavior = val & 0x00FF
-                    passable = (not is_blocked) or behavior in WARP_PASSABLE or behavior in LEDGE_DIRECTIONS
+                    passable = ((not is_blocked) or behavior in WARP_PASSABLE or behavior in LEDGE_DIRECTIONS) and behavior not in WATER_BEHAVIORS
                     combined[base_y + row][base_x + col] = (passable, behavior)
 
     return combined, grid_origin_x, grid_origin_y, grid_w, grid_h
