@@ -242,7 +242,7 @@ def create_server() -> FastMCP:
     # ── Battle Turn ──
 
     @mcp.tool()
-    def battle_turn(move_index: int = -1, switch_to: int = -1, forget_move: int = -2) -> dict[str, Any]:
+    def battle_turn(move_index: int = -1, switch_to: int = -1, forget_move: int = -2, target: int = -1) -> dict[str, Any]:
         """Execute a full battle turn: use a move OR switch Pokemon.
 
         Combines battle_init + action + battle_poll into one call.
@@ -253,9 +253,12 @@ def create_server() -> FastMCP:
         - switch_to (1-5): Tap POKEMON, navigate to party slot, confirm switch. Slot 0 is the active battler.
         - forget_move (0-3): At MOVE_LEARN prompt, forget this move slot and learn the new move.
         - forget_move=-1: At MOVE_LEARN prompt, skip learning the new move.
+        - target (doubles only): Target for the move. 0=left enemy, 1=right enemy, 2=self/ally.
+          -1 (default) auto-targets the first enemy. Only used when move_index is set.
 
         States returned:
         - WAIT_FOR_ACTION: next turn ready, select another move
+        - WAIT_FOR_PARTNER_ACTION: double battle — first Pokemon acted, select action for second
         - SWITCH_PROMPT: trainer sending next Pokemon, switch or keep battling
         - MOVE_LEARN: move learning prompt — includes move_to_learn and current_moves
         - BATTLE_ENDED: battle over, back in overworld
@@ -266,7 +269,7 @@ def create_server() -> FastMCP:
 
         emu = get_client()
         if move_index >= 0:
-            desc = f"battle_turn(move={move_index})"
+            desc = f"battle_turn(move={move_index}, target={target})"
         elif switch_to >= 0:
             desc = f"battle_turn(switch_to={switch_to})"
         elif forget_move >= -1:
@@ -274,7 +277,7 @@ def create_server() -> FastMCP:
         else:
             desc = "battle_turn"
         emu.create_checkpoint(action=desc)
-        return _battle_turn(emu, move_index=move_index, switch_to=switch_to, forget_move=forget_move)
+        return _battle_turn(emu, move_index=move_index, switch_to=switch_to, forget_move=forget_move, target=target)
 
     # ── Catch ──
 

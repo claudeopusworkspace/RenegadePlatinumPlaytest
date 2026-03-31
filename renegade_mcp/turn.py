@@ -31,6 +31,15 @@ if TYPE_CHECKING:
 FIGHT_XY = (128, 90)
 POKEMON_XY = (210, 170)  # Bottom-right of action screen (green button)
 
+# Double battle target selection screen (bottom screen, after move selection)
+# Layout: two enemies on top row, ally/self on bottom.
+# Coordinates calibrated from Route 203 double battle.
+TARGET_XY = [
+    (70, 50),    # 0: top-left enemy (left side of field from player's view)
+    (190, 50),   # 1: top-right enemy (right side of field from player's view)
+    (100, 130),  # 2: bottom — self or ally
+]
+
 # Move selection screen (bottom screen, after tapping FIGHT)
 MOVE_XY = [
     (70, 50),    # Move 0 — top-left
@@ -244,6 +253,31 @@ def _wait_for_evolution(emu: EmulatorClient, result: dict[str, Any]) -> dict[str
     return result
 
 
+# ── Double battle helpers ──
+
+def _is_double_battle(emu: EmulatorClient) -> bool:
+    """Check if current battle has 2 active Pokemon on the player's side."""
+    battlers = read_battle(emu)
+    player_active = sum(1 for b in battlers if b.get("side") == "player" and b.get("hp", 0) > 0)
+    return player_active >= 2
+
+
+def _target_flow(emu: EmulatorClient, target: int) -> None:
+    """Tap a target on the doubles target selection screen.
+
+    Called after _fight_flow in double battles. Waits for the target screen
+    to appear, then taps the requested position.
+
+    Args:
+        target: 0=top-left enemy, 1=top-right enemy, 2=self/ally.
+                -1 defaults to 0 (first enemy).
+    """
+    emu.advance_frames(count=TAP_WAIT)  # Wait for target screen to render
+    idx = target if 0 <= target <= 2 else 0
+    tx, ty = TARGET_XY[idx]
+    emu.tap_touch_screen(tx, ty, frames=8)
+
+
 # ── Prompt detection ──
 
 def _wait_for_action_prompt(emu: EmulatorClient) -> dict[str, Any]:
@@ -447,7 +481,7 @@ def _poll_after_action(emu: EmulatorClient, prompt_log: list[dict]) -> dict[str,
 
 def battle_turn(
     emu: EmulatorClient, move_index: int = -1, switch_to: int = -1,
-    forget_move: int = -2,
+    forget_move: int = -2, target: int = -1,
 ) -> dict[str, Any]:
     """Execute a battle action: move, switch, flee, keep battling, or handle move learning.
 
@@ -456,6 +490,7 @@ def battle_turn(
     Normal turn (ACTION — "What will X do?"):
         move_index (0-3): Use FIGHT and select a move.
         switch_to (1-5): Use POKEMON to switch voluntarily.
+        target (doubles only): 0=left enemy, 1=right enemy, 2=self/ally. -1=auto (first enemy).
 
     Faint in wild battle (FAINT_SWITCH — "Use next Pokemon?"):
         switch_to (1-5): Send in a replacement.
@@ -472,6 +507,10 @@ def battle_turn(
         forget_move (0-3): Forget that move slot and learn the new move.
         forget_move=-1: Skip learning the new move.
         No forget_move: Return MOVE_LEARN state with move info for decision.
+
+    In double battles, returns WAIT_FOR_PARTNER_ACTION after the first Pokemon's
+    action — call battle_turn again for the second Pokemon. After both actions are
+    submitted, the turn executes and polling returns the result as normal.
 
     Returns dict with: log, final_state, formatted, battle_state.
     """
@@ -537,7 +576,7 @@ def battle_turn(
 
     # 3. Execute the appropriate flow
     if pt == "ACTION":
-        result = _execute_action(emu, prompt, move_index, switch_to, has_move)
+        result = _execute_action(emu, prompt, move_index, switch_to, has_move, target)
     elif pt == "FAINT_SWITCH":
         result = _execute_faint_switch(emu, prompt, switch_to, has_switch)
     elif pt == "FAINT_FORCED":
@@ -568,14 +607,19 @@ def battle_turn(
 # ── State-specific execution ──
 
 def _execute_action(
-    emu: EmulatorClient, prompt: dict, move_index: int, switch_to: int, has_move: bool,
+    emu: EmulatorClient, prompt: dict, move_index: int, switch_to: int,
+    has_move: bool, target: int = -1,
 ) -> dict[str, Any]:
-    """Normal turn: FIGHT + move or POKEMON + switch."""
+    """Normal turn: FIGHT + move (+ target in doubles) or POKEMON + switch."""
     _tracker.init(emu)
     emu.advance_frames(ACTION_SETTLE)
 
+    is_double = _is_double_battle(emu)
+
     if has_move:
         _fight_flow(emu, move_index)
+        if is_double:
+            _target_flow(emu, target)
     else:
         _switch_flow(emu, switch_to)
 
@@ -583,6 +627,23 @@ def _execute_action(
     # Classify on poll-only log (avoids stale prompt text contamination)
     result["final_state"] = _classify_final_state(emu, result)
     result["log"] = prompt["log"] + result.get("log", [])
+
+    # The fainted+EXP heuristic can misfire in doubles (one enemy KO'd but battle
+    # continues) or multi-Pokemon trainer battles. If BATTLE_ENDED was declared
+    # but the battle struct is still valid, wait for the actual action prompt.
+    if result["final_state"] == "BATTLE_ENDED" and not _is_battle_over(emu):
+        prompt2 = _wait_for_action_prompt(emu)
+        if prompt2["ready"]:
+            result["log"].extend(prompt2["log"])
+            result["final_state"] = prompt2["prompt_type"]
+
+    # In doubles, after first action the partner's prompt appears immediately
+    # (no battle narration in between). Detect this and return a distinct state.
+    if is_double and result["final_state"] == "WAIT_FOR_ACTION":
+        poll_entries = [e for e in result.get("log", []) if e not in prompt["log"]]
+        has_narration = any("used" in e.get("text", "") for e in poll_entries)
+        if not has_narration:
+            result["final_state"] = "WAIT_FOR_PARTNER_ACTION"
 
     if result["final_state"] == "TIMEOUT" and _log_has(result.get("log", []), "grew to"):
         result = _recover_from_level_up(emu, result)
@@ -789,6 +850,7 @@ def _reformat(result: dict[str, Any]) -> str:
 
     state_labels = {
         "WAIT_FOR_ACTION": "Your turn — select next move",
+        "WAIT_FOR_PARTNER_ACTION": "Double battle — select action for your second Pokemon (call battle_turn again with move_index + target)",
         "SWITCH_PROMPT": "Opponent sending next Pokemon — use battle_turn(switch_to=N) to swap, or battle_turn() to keep battling",
         "FAINT_SWITCH": "Your Pokemon fainted (wild) — use battle_turn(switch_to=N) to send replacement, or battle_turn() to flee",
         "FAINT_FORCED": "Your Pokemon fainted (trainer) — use battle_turn(switch_to=N) to send replacement",
