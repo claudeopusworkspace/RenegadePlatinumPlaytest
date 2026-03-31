@@ -212,3 +212,19 @@ No adventure progress — focused on fixing the two remaining backlog bugs:
 - **What didn't**: Team too underleveled (Lv12-13 Pokemon get OHKO'd), no answer for Onix's 57 Def wall, 3 Fire types is terrible composition, Eevee has no role.
 - **Party concerns**: Charmander redundant with Chimchar. Eevee (Gentle/Run Away) is dead weight. Need better type diversity — no Flying, Fighting, Ice, Psychic, or Ground coverage.
 - **Rematch plan**: Grind to Lv16-18+. Turtwig → Grotle at Lv18 for bulk. Keep Turtwig away from Geodude's Fire Punch. Scout wild encounters while grinding for potential team additions. Consider dropping Charmander and/or Eevee for better coverage.
+
+## Session 8: Dev Session — auto_grind Improvements & Bug Fix (2026-03-31)
+
+### Tool Improvements
+- **auto_grind `iterations` parameter**: New optional arg stops after N wild encounters (alternative/complement to `target_level`). Useful for scouting routes without open-ended grinding. `auto_grind(move_index=0, iterations=5)` runs 5 encounters and stops.
+- **auto_grind encounter log**: Every response now includes an `encounters` list with `species` (name) and `checkpoint_id` (hash). Reverting to a checkpoint lands at the start of that specific battle, ready to throw a ball — trade XP gained since for a catch opportunity. Tested on Route 202: Shinx + 2x Sentret, reverted to Shinx checkpoint and confirmed battle state.
+
+### Bug Fix: Level-Up Recovery After Move-Learn
+- **Root cause**: `_poll_after_action()` (shared exit path for move-learn, switch, faint flows) lacked level-up recovery. When Turtwig resolved a move-learn and Piplup (Exp Share) leveled up next, the "grew to" text scrolled past during the move-learn flow's B presses. The tracker was re-initialized after, so the poll saw a static stat screen with no text markers → TIMEOUT.
+- **Fix**: `_poll_after_action` now calls `_recover_from_level_up` on any TIMEOUT where battle isn't over (not gated on "grew to" in log). Tested from `debug_piplup_levelup_in_battle` save state — recovered through Piplup Lv13 stat screen and reached SWITCH_PROMPT for Omanyte.
+
+### Backlog Cleanup
+- Removed stale `read_party` encryption timing issue (root cause fixed in earlier session).
+- Removed `advance_frames` parameter naming note (convention, not a bug).
+- Removed fixed `battle_turn` level-up bug (just fixed above).
+- Remaining: auto_grind cancellation (MCP limitation), unconfirmed shop cursor bug.
