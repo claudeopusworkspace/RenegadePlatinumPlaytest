@@ -48,12 +48,31 @@ LEDGE_DIRECTIONS = {
 # Door/warp tile behaviors and how to activate them.
 # None = walk-into triggers warp automatically; string = press this direction after standing on tile.
 DOOR_ACTIVATION: dict[int, str | None] = {
-    0x69: None,     # Overworld building entrance (blocked, warp overrides collision)
-    0x65: "down",   # Interior exit mat — stand on tile, press down
-    0x6E: None,     # Auto-enter door — walk into it
-    0x5F: "left",   # Stairs down — stand on tile, press left
-    0x5E: "right",  # Stairs up — stand on tile, press right
+    0x69: None,     # DOOR — building entrance (walk into from any direction)
+    0x6E: None,     # WARP_NORTH — walk into
+    0x65: "down",   # WARP_ENTRANCE_SOUTH — stand on tile, press down
+    0x5F: "left",   # WARP_STAIRS_WEST — stand on tile, press left
+    0x5E: "right",  # WARP_STAIRS_EAST — stand on tile, press right
+    0x67: None,     # WARP_PANEL — teleport pad (step on, auto warp)
+    0x6A: None,     # ESCALATOR_FLIP_FACE — step on, auto
+    0x6B: None,     # ESCALATOR — step on, auto
 }
+
+# Directional walk-into warps: warp triggers when stepping ONTO the tile
+# while moving in the specified direction. These tiles have collision flags
+# but are passable from the correct approach direction.
+# Behavior → required movement direction
+DIRECTIONAL_WARP: dict[int, str] = {
+    0x62: "right",  # WARP_ENTRANCE_EAST — walk east into cave
+    0x63: "left",   # WARP_ENTRANCE_WEST — walk west into cave
+    0x64: "up",     # WARP_ENTRANCE_NORTH — walk north into cave
+    0x6C: "right",  # WARP_EAST — side entry, walk east
+    0x6D: "left",   # WARP_WEST — side entry, walk west
+    0x6F: "down",   # WARP_SOUTH — side entry, walk south
+}
+
+# All warp behaviors that should be passable despite collision flags
+WARP_PASSABLE = {0x69} | set(DIRECTIONAL_WARP.keys())
 
 DOOR_TRANSITION_POLLS = 30   # polls to wait for map transition (30 * 15 = 450 frames)
 DOOR_POLL_FRAMES = 15
@@ -108,7 +127,7 @@ def _build_terrain_info(
             val = terrain[row][col]
             is_blocked = (val & 0x8000) != 0
             behavior = val & 0x00FF
-            passable = (not is_blocked) or behavior == 0x69 or behavior in LEDGE_DIRECTIONS
+            passable = (not is_blocked) or behavior in WARP_PASSABLE or behavior in LEDGE_DIRECTIONS
             grid[row][col] = (passable, behavior)
 
     npc_set = set()
@@ -151,6 +170,10 @@ def _bfs_pathfind(
 
             passable, behavior = terrain_info[ny][nx]
             if not passable:
+                continue
+
+            # Directional warps only allow entry from the correct direction
+            if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
                 continue
 
             if behavior in LEDGE_DIRECTIONS and LEDGE_DIRECTIONS[behavior] != direction:
@@ -222,7 +245,7 @@ def _build_multi_chunk_terrain(
                     val = chunk_terrain[row][col]
                     is_blocked = (val & 0x8000) != 0
                     behavior = val & 0x00FF
-                    passable = (not is_blocked) or behavior == 0x69 or behavior in LEDGE_DIRECTIONS
+                    passable = (not is_blocked) or behavior in WARP_PASSABLE or behavior in LEDGE_DIRECTIONS
                     combined[base_y + row][base_x + col] = (passable, behavior)
 
     return combined, grid_origin_x, grid_origin_y, grid_w, grid_h
@@ -695,9 +718,12 @@ def _validate_path(
             continue
 
         passable, behavior = terrain_info[ny][nx]
-        # Allow door/warp tiles even if collision flag is set (0x69 etc.)
         if not passable:
             return False, i, d, (nx, ny)
+
+        # Stepping onto a directional warp in its activation direction = transition
+        if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] == d:
+            return True, i, "transition", (nx, ny)
 
         cx, cy = nx, ny
 
@@ -853,7 +879,7 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
     if 0 <= ty_local < len(ti) and 0 <= tx_local < len(ti[0]):
         _, target_behavior = ti[ty_local][tx_local]
 
-    is_door = target_behavior in DOOR_ACTIVATION
+    is_door = target_behavior in DOOR_ACTIVATION or target_behavior in DIRECTIONAL_WARP
 
     start_pos = _pos_with_map(px, py, map_id)
 
@@ -939,7 +965,7 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
             result["note"] = "Door activation did not trigger a map transition."
         return result
 
-    # Non-door target: check if we ended up adjacent to a walk-into door (0x69, 0x6E)
+    # Non-door target: check if we ended up adjacent to a walk-into door/warp
     if not is_door and not stopped_early:
         cur_map, cur_x, cur_y = _read_position(emu)
         ti = repath_ctx["terrain_info"]
@@ -951,8 +977,12 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
             if not (0 <= adj_lx < gw and 0 <= adj_ly < gh):
                 continue
             _, adj_behavior = ti[adj_ly][adj_lx]
-            if adj_behavior in DOOR_ACTIVATION and DOOR_ACTIVATION[adj_behavior] is None:
-                # Walk into the door tile to trigger warp
+            # Walk-into doors (any direction)
+            is_walkin_door = adj_behavior in DOOR_ACTIVATION and DOOR_ACTIVATION[adj_behavior] is None
+            # Directional warps (only from correct direction)
+            is_dir_warp = adj_behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[adj_behavior] == direction
+            if is_walkin_door or is_dir_warp:
+                # Walk into the warp tile to trigger transition
                 emu.advance_frames(HOLD_FRAMES, buttons=[direction])
                 emu.advance_frames(WAIT_FRAMES)
                 door_result = _handle_door_transition(emu, adj_behavior, cur_map)
