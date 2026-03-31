@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from desmume_mcp.client import EmulatorClient
 
+from renegade_mcp.battle import read_battle as _read_battle
 from renegade_mcp.navigation import seek_encounter as _seek_encounter
 from renegade_mcp.party import read_party as _read_party
 from renegade_mcp.turn import battle_turn as _battle_turn
@@ -33,6 +34,7 @@ def auto_grind(
     move_index: int,
     cave: bool = False,
     target_level: int = 0,
+    iterations: int = 0,
     forget_move: int = -2,
 ) -> dict[str, Any]:
     """Grind wild encounters automatically.
@@ -44,13 +46,16 @@ def auto_grind(
         move_index: Move slot (0-3) to use every turn.
         cave: Pass to seek_encounter for cave/indoor encounters.
         target_level: Stop when slot-0 Pokemon reaches this level. 0 = no limit.
+        iterations: Stop after this many wild encounters. 0 = no limit.
         forget_move: If resuming from a MOVE_LEARN stop, pass the choice here
                      (0-3 = forget that slot, -1 = skip learning). -2 = not resuming.
 
     Returns:
-        Dict with stop_reason, battles fought, log of each battle, and party state.
+        Dict with stop_reason, battles fought, encounters list (species + checkpoint),
+        log of each battle, and party state.
     """
     battles: list[dict[str, Any]] = []
+    encounters: list[dict[str, str]] = []
     stop_reason = ""
     stop_detail = ""
 
@@ -136,12 +141,30 @@ def auto_grind(
             )
             break
 
+        # Log the encountered species + checkpoint for potential revert-to-catch
+        # Checkpoint here = in battle, before first battle_turn — revert lands on
+        # this exact encounter ready to throw a ball.
+        battlers = _read_battle(emu)
+        enemy_species = "unknown"
+        for b in battlers:
+            if b.get("side") == "enemy":
+                enemy_species = b.get("species", "unknown")
+                break
+        enc_cp = emu.create_checkpoint(action=f"auto_grind:encounter({enemy_species})")
+        encounters.append({"species": enemy_species, "checkpoint_id": enc_cp.get("checkpoint_id", "")})
+
         # We have a battle — fight it
         # The encounter data already has the first action prompt ready
         stop_reason, stop_detail, battle_log, detected_level = _fight_battle(emu, move_index)
         battles.append({"turns": battle_log})
 
         if stop_reason:
+            break
+
+        # Check iterations limit
+        if iterations > 0 and len(battles) >= iterations:
+            stop_reason = "iterations"
+            stop_detail = f"Completed {iterations} encounter(s) as requested."
             break
 
         # Battle ended normally — check level from battle log first (immune
@@ -169,7 +192,7 @@ def auto_grind(
 
     # Gather final party state
     party = _read_party(emu)
-    return _finish(stop_reason, stop_detail, battles, party)
+    return _finish(stop_reason, stop_detail, battles, party, encounters=encounters)
 
 
 def _fight_battle(
@@ -326,10 +349,13 @@ def _finish(
     battles: list[dict[str, Any]],
     party: list[dict[str, Any]],
     move_learn: dict[str, Any] | None = None,
+    encounters: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Build the final return dict."""
     # Write full logs to file, only return the last battle in response
     log_file = _write_battle_log(battles, stop_reason)
+
+    enc_list = encounters or []
 
     slot0 = party[0] if party else None
     summary = (
@@ -341,6 +367,10 @@ def _finish(
             f"\nSlot 0: {slot0.get('name', '?')} Lv{slot0.get('level', '?')} "
             f"HP {slot0.get('hp', '?')}/{slot0.get('max_hp', '?')}"
         )
+    if enc_list:
+        summary += "\n\nEncounters:"
+        for i, e in enumerate(enc_list, 1):
+            summary += f"\n  {i}. {e['species']} (checkpoint: {e['checkpoint_id']})"
     summary += f"\nFull log: {log_file}"
 
     last_battle = battles[-1] if battles else None
@@ -349,6 +379,7 @@ def _finish(
         "stop_reason": stop_reason,
         "stop_detail": stop_detail,
         "battles_fought": len(battles),
+        "encounters": enc_list,
         "last_battle": last_battle,
         "log_file": log_file,
         "party": party,

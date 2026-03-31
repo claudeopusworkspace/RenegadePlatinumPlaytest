@@ -595,6 +595,7 @@ def create_server() -> FastMCP:
         move_index: int,
         cave: bool = False,
         target_level: int = 0,
+        iterations: int = 0,
         forget_move: int = -2,
     ) -> dict[str, Any]:
         """Grind wild encounters automatically: seek → battle → repeat.
@@ -607,15 +608,20 @@ def create_server() -> FastMCP:
         - fainted: Slot 0 Pokemon fainted. Heal before continuing.
         - pp_depleted: The spam move has 0 PP. Battle is still active — handle manually.
         - target_level: Slot 0 reached the target level.
+        - iterations: Completed the requested number of encounters.
         - seek_failed: Unexpected interruption while seeking encounters (cutscene, blocked path).
         - move_learn: Pokemon wants to learn a new move but has no room. Call again with
           forget_move to continue (0-3 = forget that slot, -1 = skip learning).
         - unexpected: Unknown battle state — check game manually.
 
+        Returns an `encounters` list: each entry has `species` (name) and
+        `checkpoint_id` (hash to revert to for catching that Pokemon).
+
         Args:
             move_index: Move slot (0-3) to spam every turn.
             cave: True for cave/indoor encounters (no grass tiles).
             target_level: Stop when slot 0 reaches this level. 0 = no limit.
+            iterations: Stop after this many encounters. 0 = no limit.
             forget_move: Resume from a move_learn stop. 0-3 = forget that move slot,
                         -1 = skip learning. -2 (default) = not resuming.
         """
@@ -625,6 +631,8 @@ def create_server() -> FastMCP:
         desc = f"auto_grind(move={move_index}, cave={cave}"
         if target_level > 0:
             desc += f", target_lv={target_level}"
+        if iterations > 0:
+            desc += f", iters={iterations}"
         if forget_move >= -1:
             desc += f", forget={forget_move}"
         desc += ")"
@@ -634,6 +642,7 @@ def create_server() -> FastMCP:
             move_index=move_index,
             cave=cave,
             target_level=target_level,
+            iterations=iterations,
             forget_move=forget_move,
         )
 

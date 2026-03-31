@@ -46,7 +46,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `read_trainer_status` | Read money and badges from memory. No UI needed. |
 | `read_shop` | Read PokéMart inventory for current city. Badge-gated common items + city specialty items with ROM prices. Pure lookup, no UI. |
 | `buy_item(item_name, quantity)` | Buy from a standard PokéMart. Must be inside the mart (FS room). Finds correct cashier (common vs specialty), scrolls to item by ROM-calculated position, purchases, exits. Pre-checks money. |
-| `auto_grind(move_index, cave, target_level, forget_move)` | Automated grinding loop: seek encounters + spam a move until a stop condition. See Auto Grind Workflow below. |
+| `auto_grind(move_index, cave, target_level, iterations, forget_move)` | Automated grinding loop: seek encounters + spam a move until a stop condition. Returns encounter log with species + checkpoint IDs. See Auto Grind Workflow below. |
 
 The original Python scripts in `scripts/` still work for debugging but are no longer the primary interface.
 
@@ -121,17 +121,25 @@ Note: `battle_turn` includes `read_battle` data in every response — no separat
 auto_grind(move_index=0)                    # spam move slot 0, grind indefinitely
 auto_grind(move_index=2, target_level=15)   # stop at Lv15
 auto_grind(move_index=1, cave=true)         # cave encounters
+auto_grind(move_index=0, iterations=5)      # stop after 5 encounters (scouting)
+auto_grind(move_index=0, iterations=10, target_level=20)  # whichever comes first
 ```
 
 ### Stop conditions (returned as `stop_reason`)
 | Reason | Meaning | What to do |
 |--------|---------|------------|
 | `target_level` | Slot 0 reached the target level. | Done! |
+| `iterations` | Completed the requested number of encounters. | Review encounter log. |
 | `fainted` | Slot 0 fainted. | Heal, then grind again or switch lead. |
 | `pp_depleted` | Spam move has 0 PP mid-battle. | Handle manually: flee, use another move, or use an Ether. |
 | `move_learn` | Pokemon wants to learn a move but all 4 slots are full. | Call `auto_grind` again with `forget_move` to continue (see below). |
 | `seek_failed` | `seek_encounter` didn't find a battle (cutscene, blocked path). | Investigate manually. |
 | `unexpected` | Unknown battle state. | Screenshot + `read_battle` to diagnose. |
+
+### Encounter log
+Every `auto_grind` response includes an `encounters` list. Each entry has:
+- `species`: The wild Pokemon's species name.
+- `checkpoint_id`: Hash of the checkpoint taken just before `seek_encounter`. Use `revert_to_checkpoint(checkpoint_id)` to return to the moment before that encounter — useful for catching a specific Pokemon at the cost of any XP gained after that point.
 
 ### Continuing from move_learn
 When stopped for `move_learn`, the response includes `move_to_learn` and `current_moves` (with slot indices). Resume with:
@@ -139,7 +147,7 @@ When stopped for `move_learn`, the response includes `move_to_learn` and `curren
 auto_grind(move_index=0, forget_move=2)     # forget move slot 2, learn the new move, keep grinding
 auto_grind(move_index=0, forget_move=-1)    # skip learning, keep grinding
 ```
-All other parameters (cave, target_level) should be re-supplied when resuming.
+All other parameters (cave, target_level, iterations) should be re-supplied when resuming.
 
 ## DS Screen Layout
 
