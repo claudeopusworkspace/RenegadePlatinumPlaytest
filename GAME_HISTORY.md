@@ -202,3 +202,11 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - **Box 1**: Bulbasaur Lv5, Squirtle Lv5.
 - **New items**: HM Rock Smash, Oval Stone, Muscle Band, Fire Stone.
 - **Money**: ~$2,660+.
+
+## Dev Session: Bug Fixes (2026-03-31)
+
+No adventure progress — focused on fixing the two remaining backlog bugs:
+
+1. **interact_with trainer-spotted race condition**: Reproduced in Oreburgh Gate using `route203_cave_entrance_debug` save state. Camper's trainer-spotted script seized player control mid-navigate, causing facing direction press to be silently ignored and dialogue check to return too early. Fixed by validating facing changed + falling back to `_post_nav_check` polling.
+
+2. **read_dialogue multi-choice infinite loop**: Reproduced using `oreburgh_mine_roark_dialogue_bug` save state. Roark's stone quiz uses a ListMenu (shouldResume callback 0x02040A51) that doesn't set ctrlUI like Yes/No menus. Code kept pressing B → cancel → "try again" → repeat. Fixed by tracking seen text segments and returning `"multi_choice_prompt"` on conversation loop detection.
