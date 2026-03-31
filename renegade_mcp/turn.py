@@ -472,6 +472,15 @@ def _poll_after_action(emu: EmulatorClient, prompt_log: list[dict]) -> dict[str,
             result["log"].extend(prompt["log"])
             result["final_state"] = prompt["prompt_type"]
 
+    # Level-up recovery: another Pokemon (e.g. Exp Share holder) may level up
+    # after a move-learn, switch, or faint flow. The "grew to" text may have
+    # scrolled by during the preceding flow's B presses (before the tracker was
+    # re-initialized), so the poll log won't contain it. If we timed out and the
+    # battle isn't over, try recovery regardless — pressing B through a stat
+    # screen is safe even if it's not a level-up.
+    if result["final_state"] == "TIMEOUT" and not _is_battle_over(emu):
+        result = _recover_from_level_up(emu, result)
+
     # Then prepend prompt log for complete display
     result["log"] = prompt_log + result.get("log", [])
     return result
