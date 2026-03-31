@@ -90,4 +90,15 @@
 | `debug_shinx_pre_evolution_ko` | Wild Sentret Lv5 battle. Shinx Lv14. Bite KOs → Lv15 → Charge learn → evolution. |
 | `debug_shinx_move_learn_pre_evolution` | At "Make it forget another move?" for Charge. Shinx Lv15 pre-evolution. |
 | `jubilife_pokecenter_post_evolution` | Jubilife Pokemon Center. Post Shinx→Luxio evolution. Full party of 6, healed. |
-| `jubilife_pokecenter_post_give_item` | Jubilife Pokemon Center. Gave Scope Lens to Luxio. Latest adventure state. |
+| `jubilife_pokecenter_post_give_item` | Jubilife Pokemon Center. Gave Scope Lens to Luxio. |
+| `pre_roark_gym` | Oreburgh Pokemon Center. Full party healed. Turtwig lead w/ Muscle Band, Piplup w/ Exp. Share. Pre-gym. |
+| `oreburgh_gym_trainers_cleared` | Inside Oreburgh Gym at (5,4). Both gym trainers defeated. Adjacent to Roark. |
+| `post_roark_loss_1` | Oreburgh Pokemon Center. After losing to Roark (3/6 defeated). Latest adventure state. |
+
+## Debug States (Roark Session)
+
+| Name | Description |
+|------|-------------|
+| `debug_piplup_levelup_in_battle` | Gym trainer battle. Piplup (Exp. Share) leveled to 13 during battle. battle_turn TIMEOUT. |
+| `debug_bullet_seed_timeout` | Roark battle. Before Bullet Seed 5-hit vs Nosepass. battle_turn TIMEOUT on long animation. |
+| `roark_nosepass_down_5hit` | Roark battle. After legendary 5-hit Bullet Seed KO on Nosepass. Mid-battle progress. |

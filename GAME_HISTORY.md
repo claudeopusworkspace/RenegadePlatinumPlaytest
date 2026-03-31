@@ -177,3 +177,38 @@ No adventure progress — focused on fixing the two remaining backlog bugs:
 1. **interact_with trainer-spotted race condition**: Reproduced in Oreburgh Gate using `route203_cave_entrance_debug` save state. Camper's trainer-spotted script seized player control mid-navigate, causing facing direction press to be silently ignored and dialogue check to return too early. Fixed by validating facing changed + falling back to `_post_nav_check` polling.
 
 2. **read_dialogue multi-choice infinite loop**: Reproduced using `oreburgh_mine_roark_dialogue_bug` save state. Roark's stone quiz uses a ListMenu (shouldResume callback 0x02040A51) that doesn't set ctrlUI like Yes/No menus. Code kept pressing B → cancel → "try again" → repeat. Fixed by tracking seen text segments and returning `"multi_choice_prompt"` on conversation loop detection.
+
+## Session: Roark Gym Challenge (2026-03-31)
+
+### Oreburgh Mine Exit
+- Loaded save state `oreburgh_mine_roark_talked` (Mine B1F).
+- Navigated to exit. Encountered wild Whismur Lv11 (Normal, Scrappy) on B1F — OHKO'd with Luxio Spark.
+- Exited mine to Oreburgh City.
+
+### Pre-Gym Prep
+- Healed at Oreburgh Pokemon Center.
+- Gave **Muscle Band** to Turtwig (slot 4) — boosts Razor Leaf for gym.
+- Gave **Exp. Share** to Piplup (slot 3) — passive leveling.
+- Reordered party: Turtwig to lead (slot 0), Luxio to slot 4.
+- Saved state: `pre_roark_gym`.
+
+### Oreburgh Gym — Trainers
+- **Youngster Jonathon** (3 Pokemon): Rhyhorn Lv13 (Ground/Rock, Rock Head — OHKO Razor Leaf), Omanyte Lv13 (Rock/Water, Swift Swim — OHKO Razor Leaf), Kabuto Lv13 (Rock/Water, Swift Swim — OHKO Razor Leaf, Turtwig took Rollout chip). Turtwig learned Bite over Tackle at Lv17. Piplup leveled to 13, 14 via Exp. Share.
+- **Youngster Darius** (3 Pokemon): Aron Lv13 (Steel/Rock, Rock Head — tanky at 37 Def, took 3 Razor Leafs, hit us with Rock Tomb + Mud-Slap + Metal Claw), Anorith Lv13 (Rock/Bug, Battle Armor — switched to Luxio, Spark + paralysis, finished with Bite), Lileep Lv13 (Rock/Grass, Suction Cups — Luxio Bite 3HKO, crit on last hit). Piplup leveled to 15.
+- **Bug found**: `battle_turn` doesn't handle inactive Pokemon level-up (Exp. Share holder). Caused TIMEOUT when Piplup leveled during Turtwig's battle. Debug save: `debug_piplup_levelup_in_battle`. Also found Bullet Seed animation count causes similar timeout — debug save: `debug_bullet_seed_timeout`.
+
+### Oreburgh Gym — Leader Roark (LOSS)
+- Healed at PC before challenge. Saved: `oreburgh_gym_trainers_cleared`.
+- **Roark has 6 Pokemon** (Renegade Platinum difficulty!).
+- **Nosepass Lv15** (Rock, Sturdy, Smooth Rock): Led with Sandstorm. Turtwig used **Bullet Seed — hit 5 times, bypassed Sturdy!** OHKO through Sturdy. Legendary RNG.
+- **Geodude Lv15** (Rock/Ground, Rock Head, Expert Belt): Razor Leaf **missed at 95% accuracy**. Geodude Rock Tomb'd + Fire Punch'd. Turtwig fainted to Fire Punch (SE + Expert Belt). Piplup sent in — Bubble did massive 4x SE damage (41→5), but Thunder Punch + Expert Belt nearly OHKO'd back. Roark used Super Potion on Geodude — Piplup Bubbled again through the heal. Piplup took Geodude down, then fainted to sandstorm at 1 HP. Heroic trade.
+- **Cranidos Lv16** (Rock, Rock Head, Sitrus Berry): Luxio sent in. 49 Atk monster but 19 Def. Spark chunked it, Sitrus Berry healed. Cranidos used Scary Face (-2 Spe) instead of attacking. Second Spark KO'd after eating Zen Headbutt. Luxio leveled to 19.
+- **Onix Lv15** (Rock/Ground, Rock Head, Muscle Band): 57 Def wall. Ground type = Spark immune. Bulldoze SE vs Electric — OHKO'd Luxio. Charmander OHKO'd by Bulldoze (SE vs Fire). Eevee survived one Bulldoze (neutral vs Normal), got 3 Bites in while Onix set up Stealth Rock + Sandstorm. Chimchar OHKO'd by Bulldoze after Stealth Rock entry damage.
+- **Pokemon 5 & 6**: Never saw. Onix still had 26/39 HP when we wiped.
+- **Result**: Lost. Blacked out to Oreburgh PC. Paid $152.
+
+### Post-Loss Analysis
+- **What worked**: Bullet Seed vs Sturdy, Piplup's Bubble vs Rock/Ground, Luxio 2HKO on Cranidos.
+- **What didn't**: Team too underleveled (Lv12-13 Pokemon get OHKO'd), no answer for Onix's 57 Def wall, 3 Fire types is terrible composition, Eevee has no role.
+- **Party concerns**: Charmander redundant with Chimchar. Eevee (Gentle/Run Away) is dead weight. Need better type diversity — no Flying, Fighting, Ice, Psychic, or Ground coverage.
+- **Rematch plan**: Grind to Lv16-18+. Turtwig → Grotle at Lv18 for bulk. Keep Turtwig away from Geodude's Fire Punch. Scout wild encounters while grinding for potential team additions. Consider dropping Charmander and/or Eevee for better coverage.
