@@ -43,6 +43,10 @@
 | `pre_shinx_evolution_grind` | Route 202 north entrance. Shinx Lv12 in slot 0, full team healed. Pre-grind. |
 | `route202_post_shinx_evolution` | Route 202 grass. Shinx evolved into Luxio Lv15. Post-evolution test. |
 | `jubilife_pokecenter_post_evolution` | Jubilife Pokemon Center. Luxio Lv15, full team healed. Latest gameplay state. |
+| `jubilife_pokecenter_post_give_item` | Jubilife Pokemon Center. Gave Scope Lens to Luxio. Latest adventure state. |
+| `route203_shopping_done` | Route 203 west entrance at (199, 757). Bought Potion x10, Antidote x3. |
+| `route203_first_double_battle` | Route 203 double battle vs Youngster D. Luxio/Charmander vs Kricketot/Shinx. At first action prompt. |
+| `route203_post_double_battle` | Route 203 after first double battle. Charmander Lv13. |
 
 ## Debug & Testing
 

@@ -94,12 +94,14 @@ Key ROM file indices: 0392=items, 0412=species, 0610=abilities, 0647=moves, 0433
 ## Battle Workflow
 
 ### Automated (preferred)
-1. **`read_battle`** — check enemy species, types, ability, stats, moves. Plan tactics.
+1. **`read_battle`** — check enemy species, types, ability, stats, moves. Plan tactics. Returns all 4 battlers in double battles.
 2. **`battle_turn(move_index=N)`** — use a move (0-3). Waits for action prompt automatically, then executes. Returns battle log + final state + updated battle state.
    - Or **`battle_turn(switch_to=N)`** — switch to party slot N (0-5) instead of attacking.
+   - In **double battles**, add `target=` to specify the target: `0`=left enemy, `1`=right enemy, `2`=self/ally. Default `-1` auto-targets first enemy.
    - Works on the very first turn of battle — no need to call twice.
 3. Handle the returned state:
    - `WAIT_FOR_ACTION` — next turn, call `battle_turn` again. Battle state is included in the response.
+   - `WAIT_FOR_PARTNER_ACTION` — double battle: first Pokemon's action submitted, call `battle_turn` again for second Pokemon.
    - `SWITCH_PROMPT` — trainer sending next Pokemon. Call `battle_turn(switch_to=N)` to swap, or `battle_turn()` to keep battling.
    - `FAINT_SWITCH` — your Pokemon fainted (wild battle). Call `battle_turn(switch_to=N)` to send replacement, or `battle_turn()` to flee.
    - `FAINT_FORCED` — your Pokemon fainted (trainer battle). Call `battle_turn(switch_to=N)` to send replacement (required).
@@ -202,18 +204,18 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 ## Game Progress
 
 - **Character**: CLAUDE | **Rival**: AAAAAAA
-- **Location**: Jubilife Pokemon Center (map 6), healed. Save state: `jubilife_pokecenter_post_give_item`.
-- **Charmander** Lv12 — Hardy, Blaze. Held: Charcoal. Moves: Scratch, Metal Claw, Ember, Smokescreen.
+- **Location**: Route 203, post first double battle. Save state: `route203_post_double_battle`.
+- **Charmander** Lv13 — Hardy, Blaze. Held: Charcoal. Moves: Scratch, Metal Claw, Ember, Smokescreen.
 - **Luxio** Lv15 — Jolly (+Spe/-SpA), Guts. Held: Scope Lens. Moves: Spark, Bite, Howl, Quick Attack. (Evolved from Shinx)
 - **Eevee** Lv12 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Quick Attack, Bite, Covet.
 - **Piplup** Lv12 — Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Peck.
 - **Turtwig** Lv15 — Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Bullet Seed, Razor Leaf.
 - **Chimchar** Lv12 — Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Fury Swipes, Ember, Taunt.
 - **Box 1**: Bulbasaur Lv5 (Docile, Chlorophyll, Miracle Seed), Squirtle Lv5 (Gentle, Mystic Water).
-- **Key items**: Repel x10, Poke Ball x29, Bicycle, Poke Radar, Town Map, Vs. Recorder, Poketch, Exp. Share.
-- **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202), Reporter Kayla (Jubilife Pokemon Center), Rival AAAAAAA (Route 203).
+- **Key items**: Repel x10, Poke Ball x29, Potion x10, Antidote x3, Silk Scarf, TM58 Endure, Bicycle, Poke Radar, Town Map, Vs. Recorder, Poketch, Exp. Share.
+- **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202), Reporter Kayla (Jubilife Pokemon Center), Rival AAAAAAA (Route 203), Youngster D (Route 203 double battle).
 - **Story progress**: Got Poketch from Poketch Company president. Won Bulbasaur from Jubilife TV quiz. Lost to Rival AAAAAAA on Route 203 (first attempt). Picked up Charmander + Squirtle from Reporter in Jubilife PC. Deposited Bulbasaur + Squirtle to Box 1. Grinded team on Route 202 using auto_grind tool. Beat Rival AAAAAAA on Route 203 rematch (Starly Lv10, Munchlax Lv10, Chimchar Lv11). Received Exp. Share from rival. Grinded Shinx to Lv15 on Route 202 → evolved into Luxio (first evolution, used to develop evolution handling).
-- **Next**: Continue east on Route 203 to Oreburgh Gate. Fight trainers on Route 203. Oreburgh City for first Gym (Rock type). More starters available from NPCs in Oreburgh and Floaroma.
+- **Next**: Continue east on Route 203 to Oreburgh Gate. Fight remaining trainers on Route 203 (Youngster B, Youngster A, Lass C, Lass E). Oreburgh City for first Gym (Rock type). More starters available from NPCs in Oreburgh and Floaroma. Shroomish on Route 203 wants an Oran Berry (come back later).
 
 See GAME_HISTORY.md for full chronological playthrough details.
 
