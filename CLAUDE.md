@@ -26,9 +26,9 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `map_name(map_id=-1)` | Location name lookup. Defaults to current map. |
 | `navigate(directions)` | Manual walk: "d2 l3 u1". Validates path before moving; auto-trims at door/stair/warp transitions. Returns `encounter` key if battle/dialogue detected. |
 | `navigate_to(x, y)` | BFS pathfind to target tile. Handles all 14 warp tile types: doors (0x69, 0x6E), stairs (0x5E, 0x5F), cave entrances (0x62-0x65), side entries (0x6C-0x6F), panels (0x67), escalators (0x6A-0x6B). Direction-aware for directional warps. Water tiles blocked. Returns `encounter` key if battle/dialogue detected. |
-| `interact_with(object_index, x, y)` | Navigate to a map object/NPC by index OR static tile by (x,y) and interact. Handles adjacent tiles, counter NPCs, facing, and dialogue. |
+| `interact_with(object_index, x, y)` | Navigate to a map object/NPC by index OR static tile by (x,y) and interact. Handles adjacent tiles, counter NPCs, facing, and dialogue. Detects trainer-spotted interruptions (facing seized by script) and falls back to polling for dialogue/battle. |
 | `seek_encounter(cave=false)` | Pace in grass until wild encounter. Returns at first action prompt with full battle state. `cave=true` for non-grass encounters. |
-| `read_dialogue(advance=true)` | Auto-advance through dialogue, collect full conversation. Stops at Yes/No prompts. `advance=false` for passive read. |
+| `read_dialogue(advance=true)` | Auto-advance through dialogue, collect full conversation. Stops at Yes/No prompts and multi-choice prompts. `advance=false` for passive read. |
 | `battle_turn(move_index, switch_to)` | Full automated turn: FIGHT + move OR POKEMON + switch. Returns battle log + state + read_battle data. |
 | `throw_ball` | Throw a Poké Ball in wild battle: BAG + ball select + USE + catch result |
 | `reorder_party(from_slot, to_slot)` | Swap two party Pokemon via pause menu (overworld only) |
@@ -85,7 +85,7 @@ Multi-chunk maps (overworld, large caves) use a matrix/chunk system detected aut
 - **`read_bag`** — all 7 bag pockets. Pass `pocket="Key Items"` to filter.
 - **`read_battle`** — live battle data for all active battlers. Returns empty if not in battle. See MEMORY_MAP.md for struct layout.
 - **`map_name`** — location name from map ID. No args = current map.
-- **`read_dialogue(advance=true)`** — auto-advances through overworld dialogue, collecting the full conversation. Stops at Yes/No prompts (returns `status: "yes_no_prompt"`) or dialogue end (`status: "completed"`). Uses the ScriptManager/ScriptContext/TextPrinter state machine for reliable detection. Pass `advance=false` for passive read (old behavior). Pass `region="battle"` with `advance=false` for battle text.
+- **`read_dialogue(advance=true)`** — auto-advances through overworld dialogue, collecting the full conversation. Stops at Yes/No prompts (returns `status: "yes_no_prompt"`), multi-choice prompts (`status: "multi_choice_prompt"`), or dialogue end (`status: "completed"`). Multi-choice detection uses conversation loop tracking — catches script cycles from non-Yes/No selection menus. Uses the ScriptManager/ScriptContext/TextPrinter state machine for reliable detection. Pass `advance=false` for passive read (old behavior). Pass `region="battle"` with `advance=false` for battle text.
 - **`read_shop`** — PokéMart inventory for current city. Detects city from map code prefix (works inside buildings). Returns badge-gated common items + city specialty items with prices from ROM (`pl_item_data.narc`). Returns error if not in a city/town.
 - **`decode_rom_message(file_index)`** / **`search_rom_messages(query)`** — ROM data lookup (no emulator needed).
 
@@ -245,7 +245,7 @@ See GAME_HISTORY.md for full chronological playthrough details.
 
 - Save state frequently — this is a difficulty hack, expect challenges.
 - **Use `read_battle` at the start of every battle** — Renegade Platinum changes abilities and movesets from vanilla.
-- **`read_dialogue` auto-advances by default** — just call it after triggering dialogue and it handles everything. Returns full conversation + status. Only need manual intervention for Yes/No prompts.
+- **`read_dialogue` auto-advances by default** — just call it after triggering dialogue and it handles everything. Returns full conversation + status. Only need manual intervention for Yes/No prompts and multi-choice prompts.
 - The `load_state` tool may occasionally hang — check `get_status` to verify.
 - Addresses must be passed as decimal integers to DeSmuME MCP tools, not hex strings.
 - **Touch screen taps default to `frames=8`** — changed from 1 to avoid missed inputs.

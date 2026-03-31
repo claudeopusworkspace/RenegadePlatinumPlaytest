@@ -11,7 +11,7 @@ from collections import deque
 from typing import TYPE_CHECKING, Any
 
 from renegade_mcp.battle import format_battle, read_battle
-from renegade_mcp.dialogue import read_dialogue
+from renegade_mcp.dialogue import _find_script_manager, _read_script_state, read_dialogue
 from renegade_mcp.map_names import lookup_map_name
 from renegade_mcp.map_state import (
     CHUNK_SIZE,
@@ -1210,10 +1210,28 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
     # ── Face the target ──
     _, _, _, cur_facing = read_player_state(emu)
     desired_facing = {"up": 0, "down": 1, "left": 2, "right": 3}[face_dir]
+    facing_seized = False
     if cur_facing != desired_facing:
         emu.advance_frames(HOLD_FRAMES, buttons=[face_dir])
         emu.advance_frames(WAIT_FRAMES)
-        nav_result["turned_to_face"] = face_dir
+        # Validate facing actually changed — if not, a script may have
+        # seized control (e.g. trainer-spotted animation)
+        _, _, _, new_facing = read_player_state(emu)
+        if new_facing == desired_facing:
+            nav_result["turned_to_face"] = face_dir
+        else:
+            facing_seized = True
+            nav_result["facing_seized"] = True
+
+    # ── If facing was seized, a trainer-spotted script likely has control.
+    #    Poll for the resulting dialogue or battle instead of pressing A. ──
+    if facing_seized:
+        encounter = _post_nav_check(emu)
+        if encounter:
+            nav_result["encounter"] = encounter
+            nav_result["interrupted"] = True
+            return nav_result
+        # Still nothing — fall through to normal interaction below
 
     # ── Check for auto-interaction (signs auto-trigger when faced) ──
     emu.advance_frames(INTERACT_DIALOGUE_WAIT)
@@ -1231,6 +1249,18 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
         nav_result["dialogue"] = dialogue
         nav_result["pressed_a"] = True
         return nav_result
+
+    # ── Fallback: check for script activation (trainer spotted during walk
+    #    but approach animation still in progress) ──
+    mgr = _find_script_manager(emu)
+    if mgr is not None:
+        ss = _read_script_state(emu, mgr)
+        if ss["is_msg_box_open"] or ss["sub_ctx_active"]:
+            encounter = _post_nav_check(emu)
+            if encounter:
+                nav_result["encounter"] = encounter
+                nav_result["interrupted"] = True
+                return nav_result
 
     # ── No dialogue found ──
     nav_result["dialogue"] = None

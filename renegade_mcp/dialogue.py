@@ -273,7 +273,7 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
     prompts, or unknown states.
 
     Returns a dict with:
-        status: "completed" | "yes_no_prompt" | "timeout" | "no_dialogue" | "unknown_prompt"
+        status: "completed" | "yes_no_prompt" | "multi_choice_prompt" | "timeout" | "no_dialogue"
         conversation: list of unique text segments collected
         text: joined conversation text
         region: "overworld"
@@ -302,13 +302,18 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
 
     # ── Collect initial text ──
     conversation: list[str] = []
+    seen_texts: set[str] = set()
     last_text = ""
+    loop_detected = False
 
     def _collect_text() -> None:
-        nonlocal last_text
+        nonlocal last_text, loop_detected
         d = read_dialogue(emu, "overworld")
         text = d.get("text", "")
         if text and text != "(no active text)" and text != last_text:
+            if text in seen_texts:
+                loop_detected = True
+            seen_texts.add(text)
             conversation.append(text)
             last_text = text
 
@@ -501,6 +506,12 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
                 if yes_no_detected:
                     _collect_text()
                     return _result("yes_no_prompt", conversation, start_frame, emu)
+
+            # Detect multi-choice prompt loop: if any text segment has
+            # appeared before, the script is cycling (e.g. Roark's stone quiz).
+            # Catch this BEFORE pressing B to avoid infinite looping.
+            if loop_detected:
+                return _result("multi_choice_prompt", conversation, start_frame, emu)
 
             # Safe to press B — dismiss WAITABPRESS or advance.
             emu.press_buttons(["b"], frames=ADVANCE_HOLD)
