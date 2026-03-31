@@ -21,6 +21,15 @@ ref/
 # ROM extracted data (large, can be re-extracted)
 romdata/
 
+# Emulator checkpoints (ring buffer, huge)
+checkpoints/
+
+# Auto-grind session logs
+logs/
+
+# DeSmuME MCP server logs (rotated)
+desmume_mcp.log*
+
 # IPC bridge socket
 .desmume_bridge.sock
 

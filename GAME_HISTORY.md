@@ -58,13 +58,6 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - Sentret's Fury Swipes is surprisingly dangerous — multi-hit moves with crits can burst down low-level Pokemon.
 - Beat Youngster Logan on rematch after grinding. Turtwig Lv13, Piplup Lv9, Chimchar Lv9.
 
-### Pokemon Status (end of Chapter 2)
-- **Turtwig** Lv13: Naughty (+Atk/-SpD). Moves: Tackle, Curse, Absorb, Razor Leaf. Team anchor.
-- **Chimchar** Lv9: Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Leer, Ember, Taunt.
-- **Eevee** Lv9: Gentle (+SpD/-Def). Moves: Tackle, Tail Whip, Bite, Covet. Evolution TBD.
-- **Piplup** Lv9: Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Water Sport.
-- **Shinx** Lv8: Jolly (+Spe/-SpA), Guts. Moves: Tackle, Leer, Howl, Quick Attack.
-
 ## Chapter 3: Jubilife City & Route 203 Rival Battle
 
 ### Jubilife Pokemon Center
@@ -88,14 +81,6 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - Barry's team is a real check in Renegade Platinum. Munchlax is an absolute wall and Chimchar with Iron Fist is the finisher.
 - Our support Pokemon (Lv8-9) are severely underleveled. Need grinding to ~Lv12+ before rematch.
 - Overgrow + STAB + stat drops = absurd damage. That Munchlax KO was the highlight.
-
-### Pokemon Status (end of Chapter 3)
-- **Turtwig** Lv14: Moves: Tackle, Curse, Bullet Seed, Razor Leaf. Team anchor.
-- **Shinx** Lv8: Tackle, Leer, Howl, Quick Attack.
-- **Piplup** Lv9: Pound, Growl, Bubble, Water Sport.
-- **Eevee** Lv9: Tackle, Tail Whip, Bite, Covet.
-- **Chimchar** Lv9: Scratch, Leer, Ember, Taunt.
-- **Bulbasaur** Lv5: Tackle, Growl, Vine Whip. Held: Miracle Seed. Needs major leveling.
 
 ## Chapter 4: Grinding & Route 203 Rival Rematch
 
@@ -128,15 +113,6 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - Post-battle: Rival gave us the **Exp. Share**!
 - Saved state `route203_post_rival`.
 
-### Pokemon Status (end of Chapter 4)
-- **Charmander** Lv12: Hardy, Blaze. Held: Charcoal. Moves: Scratch, Metal Claw, Ember, Smokescreen.
-- **Shinx** Lv12: Jolly (+Spe/-SpA), Guts. Moves: Spark, Bite, Howl, Quick Attack.
-- **Eevee** Lv12: Gentle (+SpD/-Def), Run Away. Moves: Tackle, Quick Attack, Bite, Covet.
-- **Piplup** Lv12: Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Peck.
-- **Turtwig** Lv15: Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Bullet Seed, Razor Leaf.
-- **Chimchar** Lv12: Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Fury Swipes, Ember, Taunt.
-- **Box 1**: Bulbasaur Lv5, Squirtle Lv5.
-
 ## Chapter 5: Evolution & Tool Development
 
 ### Route 202 — Shinx → Luxio Evolution
@@ -149,15 +125,6 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - Healed at Jubilife Pokemon Center.
 - Gave **Scope Lens** (crit rate boost) to Luxio using new `give_item` tool.
 - Save state: `jubilife_pokecenter_post_give_item`.
-
-### Pokemon Status (end of Chapter 5)
-- **Luxio** Lv15: Jolly (+Spe/-SpA), Guts. Held: Scope Lens. Moves: Spark, Bite, Howl, Quick Attack.
-- **Charmander** Lv12: Hardy, Blaze. Held: Charcoal. Moves: Scratch, Metal Claw, Ember, Smokescreen.
-- **Eevee** Lv12: Gentle (+SpD/-Def), Run Away. Moves: Tackle, Quick Attack, Bite, Covet.
-- **Piplup** Lv12: Lax (+Def/-SpD), Vital Spirit. Moves: Pound, Growl, Bubble, Peck.
-- **Turtwig** Lv15: Naughty (+Atk/-SpD), Overgrow. Moves: Tackle, Curse, Bullet Seed, Razor Leaf.
-- **Chimchar** Lv12: Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Fury Swipes, Ember, Taunt.
-- **Box 1 (Ch5)**: Bulbasaur Lv5, Squirtle Lv5.
 
 ## Chapter 6: Route 203 to Oreburgh Mine
 
