@@ -36,6 +36,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `search_rom_messages(query)` | Search all 724 message files for text |
 | `use_item(item_name, party_slot)` | Use a Medicine item on a party Pokemon from overworld |
 | `take_item(party_slot)` | Remove held item from a party Pokemon via pause menu (overworld only) |
+| `give_item(item_name, party_slot)` | Give a held item to a party Pokemon via pause menu (overworld only). Pokemon must not already hold an item. |
 | `heal_party` | Heal at Pokemon Center: finds Nurse Joy by graphicsID, interacts, advances dialogue, verifies HP. |
 | `open_pc` | Boot up the PC: finds 0x83 tile, navigates, interacts, advances to storage menu (DEPOSIT/WITHDRAW/MOVE/SEE YA!). |
 | `deposit_pokemon(party_slots)` | Deposit party Pokemon into Box 1. Takes list of 0-indexed slots. Multi-deposit supported. Must call open_pc first. |

@@ -448,6 +448,25 @@ def create_server() -> FastMCP:
         emu.create_checkpoint(action=f"take_item(slot {party_slot})")
         return _take_item(emu, party_slot)
 
+    @mcp.tool()
+    def give_item(item_name: str, party_slot: int = 0) -> dict[str, Any]:
+        """Give a held item to a party Pokemon in the overworld.
+
+        Opens pause menu → Pokemon → select slot → Item → Give → bag →
+        select item. Verifies the item was applied afterward.
+
+        Pokemon must not already be holding an item (use take_item first).
+
+        Args:
+            item_name: Item name (e.g. "Scope Lens"). Case-insensitive.
+            party_slot: Party index 0-5 (0 = first Pokemon).
+        """
+        from renegade_mcp.give_item import give_item as _give_item
+
+        emu = get_client()
+        emu.create_checkpoint(action=f"give_item({item_name}, slot {party_slot})")
+        return _give_item(emu, item_name, party_slot)
+
     # ── PC Storage ──
 
     @mcp.tool()
