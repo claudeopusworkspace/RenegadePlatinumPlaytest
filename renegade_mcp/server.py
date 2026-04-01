@@ -436,6 +436,109 @@ def create_server() -> FastMCP:
         return _use_item(emu, item_name, party_slot)
 
     @mcp.tool()
+    def teach_tm(
+        tm_name: str, party_slot: int = 0, forget_move: int | None = None
+    ) -> dict[str, Any]:
+        """Teach a TM or HM move to a party Pokemon from the overworld.
+
+        Opens pause menu → Bag → TMs & HMs → select TM → USE → dialogue →
+        party select → move-forget flow → close menus. Pre-validates that
+        the Pokemon can learn the move using ROM compatibility data.
+
+        Args:
+            tm_name: TM/HM label (e.g. "HM06", "TM76") or move name
+                     (e.g. "Rock Smash", "Stealth Rock"). Case-insensitive.
+            party_slot: Party index 0-5 (0 = first Pokemon).
+            forget_move: Move slot 0-3 to forget (required when Pokemon
+                         knows 4 moves). Pass -1 to cancel without teaching.
+        """
+        from renegade_mcp.teach_tm import teach_tm as _teach_tm
+
+        emu = get_client()
+        emu.create_checkpoint(
+            action=f"teach_tm({tm_name}, slot {party_slot}, forget {forget_move})"
+        )
+        return _teach_tm(emu, tm_name, party_slot, forget_move)
+
+    @mcp.tool()
+    def tm_compatibility(tm_name: str) -> dict[str, Any]:
+        """Check which party Pokemon can learn a given TM/HM.
+
+        Pure data lookup from ROM — no emulator interaction needed.
+
+        Args:
+            tm_name: TM/HM label (e.g. "HM06", "TM76") or move name
+                     (e.g. "Rock Smash"). Case-insensitive.
+        """
+        from renegade_mcp.bag import read_bag
+        from renegade_mcp.data import (
+            can_learn_tm,
+            item_id_to_tm_index,
+            tm_move_name,
+        )
+        from renegade_mcp.party import read_party
+
+        emu = get_client()
+        tm_lower = tm_name.strip().lower()
+
+        # Find the TM in the bag
+        bag = read_bag(emu)
+        tm_pocket = next(
+            (p for p in bag if p["name"] == "TMs & HMs"), None
+        )
+        if tm_pocket is None:
+            return {"success": False, "error": "TMs & HMs pocket not found."}
+
+        tm_idx = None
+        tm_label = None
+        for item in tm_pocket["items"]:
+            idx = item_id_to_tm_index(item["id"])
+            if idx is None:
+                continue
+            bag_name = item["name"].lower()
+            move = tm_move_name(idx)
+            if bag_name == tm_lower or move.lower() == tm_lower:
+                tm_idx = idx
+                tm_label = item["name"]
+                break
+
+        if tm_idx is None:
+            return {"success": False, "error": f"'{tm_name}' not found in bag."}
+
+        move = tm_move_name(tm_idx)
+        party = read_party(emu)
+        results = []
+        for i, mon in enumerate(party):
+            sid = mon.get("species_id", 0)
+            name = mon.get("name", f"Slot {i}")
+            able = can_learn_tm(sid, tm_idx)
+            already = any(
+                mn.lower() == move.lower()
+                for mn in mon.get("move_names", [])
+            )
+            results.append({
+                "slot": i,
+                "name": name,
+                "able": able,
+                "already_knows": already,
+            })
+
+        formatted_lines = [f"{tm_label} teaches {move}:"]
+        for r in results:
+            status = "ABLE" if r["able"] else "UNABLE"
+            if r["already_knows"]:
+                status = "ALREADY KNOWS"
+            formatted_lines.append(f"  Slot {r['slot']}: {r['name']} — {status}")
+
+        return {
+            "success": True,
+            "tm": tm_label,
+            "move": move,
+            "party": results,
+            "formatted": "\n".join(formatted_lines),
+        }
+
+    @mcp.tool()
     def take_item(party_slot: int = 0) -> dict[str, Any]:
         """Take the held item from a party Pokemon in the overworld.
 

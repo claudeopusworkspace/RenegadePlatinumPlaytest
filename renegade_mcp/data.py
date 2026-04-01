@@ -28,6 +28,8 @@ _item_names: dict[int, str] | None = None
 _ability_names: dict[int, str] | None = None
 _item_prices: dict[int, int] | None = None
 _map_table: dict[int, dict] | None = None
+_tmhm_moves: list[int] | None = None
+_tm_compat: dict[int, list[int]] | None = None
 
 
 def species_names() -> dict[int, str]:
@@ -64,6 +66,52 @@ def item_prices() -> dict[int, int]:
     if _item_prices is None:
         _item_prices = _load_int_keyed_json("item_prices.json")
     return _item_prices
+
+
+# ── TM/HM constants ──
+ITEM_TM01 = 328  # First TM item ID; tm_index = item_id - ITEM_TM01
+ITEM_HM08 = 427  # Last HM item ID
+
+
+def tmhm_moves() -> list[int]:
+    """Load TM/HM index (0-99) → move ID mapping.
+
+    Index 0 = TM01, index 91 = TM92, index 92 = HM01, index 99 = HM08.
+    """
+    global _tmhm_moves
+    if _tmhm_moves is None:
+        path = DATA_DIR / "tmhm_moves.json"
+        with open(path) as f:
+            _tmhm_moves = json.load(f)
+    return _tmhm_moves
+
+
+def tm_compat() -> dict[int, list[int]]:
+    """Load species ID → list of learnable TM indices (0-99)."""
+    global _tm_compat
+    if _tm_compat is None:
+        path = DATA_DIR / "tm_compat.json"
+        with open(path) as f:
+            _tm_compat = {int(k): v for k, v in json.load(f).items()}
+    return _tm_compat
+
+
+def can_learn_tm(species_id: int, tm_index: int) -> bool:
+    """Check if a species can learn a TM/HM by index (0-99)."""
+    return tm_index in tm_compat().get(species_id, [])
+
+
+def tm_move_name(tm_index: int) -> str:
+    """Get the move name taught by a TM/HM index (0-99)."""
+    move_id = tmhm_moves()[tm_index]
+    return move_names().get(move_id, f"Move#{move_id}")
+
+
+def item_id_to_tm_index(item_id: int) -> int | None:
+    """Convert a bag item ID to a TM/HM index (0-99), or None if not a TM/HM."""
+    if ITEM_TM01 <= item_id <= ITEM_HM08:
+        return item_id - ITEM_TM01
+    return None
 
 
 def map_table() -> dict[int, dict]:
