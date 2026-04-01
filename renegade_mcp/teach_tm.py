@@ -4,8 +4,7 @@ Automates the full menu flow: pause menu → Bag → TMs & HMs pocket →
 select TM/HM → USE → "Booted up" dialogue → "Teach?" YES → select party
 member → move-forget flow (if 4 moves) → close menus.
 
-NOTE: The <4 moves case (auto-learn without forget prompt) is not yet
-handled. All current party members have 4 moves, so this is deferred.
+Handles both cases: 4 moves (forget prompt) and <4 moves (auto-learn).
 """
 
 from __future__ import annotations
@@ -263,9 +262,10 @@ def teach_tm(
         # "[Mon] learned [new move]!" → A
         _press(emu, ["a"], wait=MENU_WAIT)
 
-    # TODO: Handle <4 moves case (auto-learn without forget prompt).
-    # Expected flow: "[Mon] wants to learn..." → A → "[Mon] learned [move]!" → A
-    # Deferred until we have a test case for it.
+    else:
+        # <4 moves: game teaches automatically, no forget prompt.
+        # Flow: "[Mon] learned [move]!" → A → back to bag
+        _press(emu, ["a"], wait=MENU_WAIT)  # "[Mon] learned [move]!"
 
     # ── Step 10: Close menus (back in bag after teaching) ──
     _press(emu, ["b"], wait=MENU_WAIT)  # Close bag
