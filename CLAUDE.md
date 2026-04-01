@@ -25,7 +25,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `view_map` | ASCII map with terrain, player position, NPCs, and warp destinations (from ROM zone_event data). Warp coordinates can be passed directly to `navigate_to`. |
 | `map_name(map_id=-1)` | Location name lookup. Defaults to current map. |
 | `navigate(directions)` | Manual walk: "d2 l3 u1". Validates path before moving; auto-trims at door/stair/warp transitions. Returns `encounter` key if battle/dialogue detected. |
-| `navigate_to(x, y)` | BFS pathfind to target tile. Handles all 14 warp tile types: doors (0x69, 0x6E), stairs (0x5E, 0x5F), cave entrances (0x62-0x65), side entries (0x6C-0x6F), panels (0x67), escalators (0x6A-0x6B). Direction-aware for directional warps. Water tiles blocked. Returns `encounter` key if battle/dialogue detected. |
+| `navigate_to(x, y, path_choice)` | BFS pathfind to target tile. **Obstacle-aware**: runs dual BFS (clean vs obstacle path). When HM obstacles (Rock Smash rocks, Cut trees) shorten or enable a path, returns `obstacle_choice`/`obstacle_required` status without moving — call again with `path_choice="obstacle"` or `"clean"`. Strength boulders never auto-cleared. Handles all 14 warp tile types. Water/waterfall/rock climb terrain recognized but deferred. Returns `encounter` key if battle/dialogue detected. |
 | `interact_with(object_index, x, y)` | Navigate to a map object/NPC by index OR static tile by (x,y) and interact. Handles adjacent tiles, counter NPCs, facing, and dialogue. Detects trainer-spotted interruptions (facing seized by script) and falls back to polling for dialogue/battle. |
 | `seek_encounter(cave=false)` | Pace in grass until wild encounter. Returns at first action prompt with full battle state. `cave=true` for non-grass encounters. |
 | `read_dialogue(advance=true)` | Auto-advance through dialogue, collect full conversation. Stops at Yes/No prompts and multi-choice prompts. `advance=false` for passive read. |
@@ -46,6 +46,8 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `read_trainer_status` | Read money and badges from memory. No UI needed. |
 | `read_shop` | Read PokéMart inventory for current city. Badge-gated common items + city specialty items with ROM prices. Pure lookup, no UI. |
 | `buy_item(item_name, quantity)` | Buy from a standard PokéMart. Must be inside the mart (FS room). Finds correct cashier (common vs specialty), scrolls to item by ROM-calculated position, purchases, exits. Pre-checks money. |
+| `teach_tm(tm_name, party_slot, forget_move)` | Teach a TM/HM to a party Pokemon. Accepts TM label ("HM06", "TM76") or move name ("Rock Smash"). Pre-validates ROM compatibility (personal.narc bitmasks) and badge+move availability. Handles full menu flow including move-forget. Pass `forget_move` (0-3) when Pokemon knows 4 moves, or -1 to cancel. |
+| `tm_compatibility(tm_name)` | Check which party Pokemon can learn a given TM/HM. Pure ROM data lookup — no emulator interaction. Returns ABLE/UNABLE/ALREADY KNOWS per party slot. |
 | `auto_grind(move_index, cave, target_level, iterations, forget_move)` | Automated grinding loop: seek encounters + spam a move until a stop condition. Returns encounter log with species + checkpoint IDs. See Auto Grind Workflow below. |
 
 The original Python scripts in `scripts/` still work for debugging but are no longer the primary interface.
