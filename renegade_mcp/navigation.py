@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any
 from renegade_mcp.battle import format_battle, read_battle
 from renegade_mcp.dialogue import _find_script_manager, _read_script_state, read_dialogue
 from renegade_mcp.map_names import lookup_map_name
+from renegade_mcp.party import read_party
+from renegade_mcp.trainer import read_trainer_status
 from renegade_mcp.map_state import (
     CHUNK_SIZE,
     get_map_state,
@@ -46,7 +48,40 @@ LEDGE_DIRECTIONS = {
 }
 
 # Water tiles — impassable until Surf is available
-WATER_BEHAVIORS = {0x10, 0x13, 0x15}  # water, waterfall, sea
+WATER_BEHAVIORS = {0x10, 0x15}  # river, sea (surfable)
+WATERFALL_BEHAVIOR = 0x13
+ROCK_CLIMB_BEHAVIORS = {0x4A, 0x4B}  # N-S, E-W
+
+# All terrain-based obstacles (water + waterfall + rock climb)
+TERRAIN_OBSTACLES = WATER_BEHAVIORS | {WATERFALL_BEHAVIOR} | ROCK_CLIMB_BEHAVIORS
+
+# ── HM obstacle objects (identified by graphics_id in zone_event data) ──
+# These are map objects (like NPCs) that can be cleared with field moves.
+HM_OBSTACLES: dict[int, dict[str, str]] = {
+    85: {"type": "strength_boulder", "move": "Strength",   "badge": "Mine"},
+    86: {"type": "rock_smash",       "move": "Rock Smash", "badge": "Coal"},
+    87: {"type": "cut_tree",         "move": "Cut",        "badge": "Forest"},
+}
+
+# Obstacles that can be auto-cleared (interact → yes → gone)
+CLEARABLE_OBSTACLES = {86, 87}  # rock_smash, cut_tree
+# Obstacles that are never auto-handled (puzzle-dependent)
+PUZZLE_OBSTACLES = {85}  # strength_boulder
+
+# Badge name → bit index in the badge bitmask
+BADGE_BITS: dict[str, int] = {
+    "Coal": 0, "Forest": 1, "Cobble": 2, "Fen": 3,
+    "Relic": 4, "Mine": 5, "Icicle": 6, "Beacon": 7,
+}
+
+# Terrain obstacle → required move + badge
+TERRAIN_OBSTACLE_INFO: dict[int, dict[str, str]] = {
+    0x10: {"type": "water",       "move": "Surf",       "badge": "Fen"},
+    0x15: {"type": "water",       "move": "Surf",       "badge": "Fen"},
+    0x13: {"type": "waterfall",   "move": "Waterfall",  "badge": "Beacon"},
+    0x4A: {"type": "rock_climb",  "move": "Rock Climb", "badge": "Icicle"},
+    0x4B: {"type": "rock_climb",  "move": "Rock Climb", "badge": "Icicle"},
+}
 
 # Door/warp tile behaviors and how to activate them.
 # None = walk-into triggers warp automatically; string = press this direction after standing on tile.
@@ -79,6 +114,37 @@ WARP_PASSABLE = {0x69} | set(DIRECTIONAL_WARP.keys())
 
 DOOR_TRANSITION_POLLS = 30   # polls to wait for map transition (30 * 15 = 450 frames)
 DOOR_POLL_FRAMES = 15
+
+
+def _get_field_move_availability(emu: EmulatorClient) -> dict[str, bool]:
+    """Check which field moves are usable (party has move + badge).
+
+    Returns dict mapping move name → available (e.g. {"Rock Smash": True}).
+    """
+    party = read_party(emu)
+    trainer = read_trainer_status(emu)
+    badge_byte = trainer.get("badge_raw", 0)
+
+    # Collect all move names across party
+    party_moves: set[str] = set()
+    for mon in party:
+        for mn in mon.get("move_names", []):
+            if mn and mn != "-":
+                party_moves.add(mn)
+
+    # All field moves we care about
+    field_moves = {
+        "Rock Smash": "Coal", "Cut": "Forest", "Strength": "Mine",
+        "Surf": "Fen", "Waterfall": "Beacon", "Rock Climb": "Icicle",
+    }
+
+    result = {}
+    for move, badge in field_moves.items():
+        has_move = move in party_moves
+        has_badge = bool(badge_byte & (1 << BADGE_BITS[badge]))
+        result[move] = has_move and has_badge
+
+    return result
 
 
 def _read_position(emu: EmulatorClient) -> tuple[int, int, int]:
@@ -121,8 +187,14 @@ def parse_directions(args_str: str) -> list[str]:
 def _build_terrain_info(
     terrain: list, objects: list, width: int = 32, height: int = 32,
     obj_offset_x: int = 0, obj_offset_y: int = 0,
-) -> tuple[list, set]:
-    """Build terrain passability grid and NPC positions."""
+) -> tuple[list, set, dict]:
+    """Build terrain passability grid, NPC positions, and obstacle map.
+
+    Returns:
+        grid: 2D list of (passable, behavior) tuples
+        npc_set: set of (x, y) for truly impassable objects (NPCs + strength boulders)
+        obstacle_map: dict of (x, y) → obstacle info for clearable HM obstacles
+    """
     grid = [[(True, 0)] * width for _ in range(height)]
 
     for row in range(min(height, len(terrain))):
@@ -130,19 +202,40 @@ def _build_terrain_info(
             val = terrain[row][col]
             is_blocked = (val & 0x8000) != 0
             behavior = val & 0x00FF
-            passable = ((not is_blocked) or behavior in WARP_PASSABLE or behavior in LEDGE_DIRECTIONS) and behavior not in WATER_BEHAVIORS
+            passable = (
+                ((not is_blocked) or behavior in WARP_PASSABLE or behavior in LEDGE_DIRECTIONS)
+                and behavior not in TERRAIN_OBSTACLES
+            )
             grid[row][col] = (passable, behavior)
 
     npc_set = set()
+    obstacle_map: dict[tuple[int, int], dict] = {}
     for obj in objects:
         if obj["index"] == 0:
             continue
         lx = obj.get("local_x", obj["x"]) - obj_offset_x
         ly = obj.get("local_y", obj["y"]) - obj_offset_y
-        if 0 <= lx < width and 0 <= ly < height:
+        if not (0 <= lx < width and 0 <= ly < height):
+            continue
+
+        gfx_id = obj.get("graphics_id", 0)
+        if gfx_id in CLEARABLE_OBSTACLES:
+            info = HM_OBSTACLES[gfx_id]
+            obstacle_map[(lx, ly)] = {
+                "type": info["type"],
+                "move": info["move"],
+                "badge": info["badge"],
+                "gfx_id": gfx_id,
+                "global_x": obj["x"],
+                "global_y": obj["y"],
+            }
+        elif gfx_id in PUZZLE_OBSTACLES:
+            # Strength boulders go in npc_set — never auto-cleared
+            npc_set.add((lx, ly))
+        else:
             npc_set.add((lx, ly))
 
-    return grid, npc_set
+    return grid, npc_set, obstacle_map
 
 
 def _bfs_pathfind(
@@ -190,6 +283,88 @@ def _bfs_pathfind(
             queue.append((nx, ny, new_path))
 
     return None
+
+
+def _bfs_pathfind_obstacles(
+    terrain_info: list, npc_set: set, obstacle_map: dict,
+    start_x: int, start_y: int, goal_x: int, goal_y: int,
+    field_moves: dict[str, bool],
+    width: int = 32, height: int = 32,
+) -> tuple[list[str] | None, list[dict]]:
+    """BFS that treats clearable obstacles as passable when skills are available.
+
+    Returns (path, obstacles_crossed) where obstacles_crossed is a list of
+    obstacle info dicts for each obstacle the path passes through.
+    Returns (None, []) if no path found even with obstacles.
+    """
+    if not (0 <= start_x < width and 0 <= start_y < height):
+        return None, []
+    if not (0 <= goal_x < width and 0 <= goal_y < height):
+        return None, []
+    if (start_x, start_y) == (goal_x, goal_y):
+        return [], []
+
+    visited = {(start_x, start_y)}
+    # Each queue entry: (x, y, path, obstacles_on_path)
+    queue: deque[tuple[int, int, list[str], list[dict]]] = deque(
+        [(start_x, start_y, [], [])]
+    )
+
+    while queue:
+        x, y, path, obs_on_path = queue.popleft()
+
+        for dx, dy, direction in BFS_MOVES:
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < width and 0 <= ny < height):
+                continue
+            if (nx, ny) in visited:
+                continue
+
+            new_obs = list(obs_on_path)
+
+            # Check if this tile is a clearable object obstacle
+            if (nx, ny) in obstacle_map:
+                ob = obstacle_map[(nx, ny)]
+                if field_moves.get(ob["move"], False):
+                    new_obs.append(ob)
+                else:
+                    continue  # skill not available, treat as blocked
+            elif (nx, ny) in npc_set:
+                continue  # regular NPC or strength boulder
+            else:
+                # Normal terrain check
+                passable, behavior = terrain_info[ny][nx]
+                if not passable:
+                    # Check if it's a terrain obstacle we can handle
+                    if behavior in TERRAIN_OBSTACLE_INFO:
+                        tinfo = TERRAIN_OBSTACLE_INFO[behavior]
+                        if field_moves.get(tinfo["move"], False):
+                            new_obs.append({
+                                "type": tinfo["type"],
+                                "move": tinfo["move"],
+                                "badge": tinfo["badge"],
+                                "x": nx, "y": ny,
+                            })
+                        else:
+                            continue  # can't handle this terrain obstacle
+                    else:
+                        continue  # truly impassable
+
+                # Directional warp check
+                if passable and behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
+                    continue
+                # Ledge direction check
+                if passable and behavior in LEDGE_DIRECTIONS and LEDGE_DIRECTIONS[behavior] != direction:
+                    continue
+
+            new_path = path + [direction]
+            if (nx, ny) == (goal_x, goal_y):
+                return new_path, new_obs
+
+            visited.add((nx, ny))
+            queue.append((nx, ny, new_path, new_obs))
+
+    return None, []
 
 
 def _build_multi_chunk_terrain(
@@ -248,7 +423,10 @@ def _build_multi_chunk_terrain(
                     val = chunk_terrain[row][col]
                     is_blocked = (val & 0x8000) != 0
                     behavior = val & 0x00FF
-                    passable = ((not is_blocked) or behavior in WARP_PASSABLE or behavior in LEDGE_DIRECTIONS) and behavior not in WATER_BEHAVIORS
+                    passable = (
+                        ((not is_blocked) or behavior in WARP_PASSABLE or behavior in LEDGE_DIRECTIONS)
+                        and behavior not in TERRAIN_OBSTACLES
+                    )
                     combined[base_y + row][base_x + col] = (passable, behavior)
 
     return combined, grid_origin_x, grid_origin_y, grid_w, grid_h
@@ -751,7 +929,7 @@ def navigate_manual(emu: EmulatorClient, directions_str: str) -> dict[str, Any]:
     if state is not None:
         origin_x = state.get("origin_x", 0)
         origin_y = state.get("origin_y", 0)
-        terrain_info, _ = _build_terrain_info(state["terrain"], state["objects"])
+        terrain_info, _, _ = _build_terrain_info(state["terrain"], state["objects"])
         local_x = start_x - origin_x
         local_y = start_y - origin_y
         h = len(terrain_info)
@@ -806,8 +984,67 @@ def navigate_manual(emu: EmulatorClient, directions_str: str) -> dict[str, Any]:
     return result
 
 
-def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, Any]:
-    """Pathfind to target tile using BFS. Returns result dict."""
+def _classify_objects_for_grid(
+    objects: list, grid_ox: int, grid_oy: int, grid_w: int, grid_h: int,
+) -> tuple[set, dict]:
+    """Classify map objects into npc_set and obstacle_map for a given grid region."""
+    npc_set: set[tuple[int, int]] = set()
+    obstacle_map: dict[tuple[int, int], dict] = {}
+    for obj in objects:
+        if obj["index"] == 0:
+            continue
+        lx = obj["x"] - grid_ox
+        ly = obj["y"] - grid_oy
+        if not (0 <= lx < grid_w and 0 <= ly < grid_h):
+            continue
+
+        gfx_id = obj.get("graphics_id", 0)
+        if gfx_id in CLEARABLE_OBSTACLES:
+            info = HM_OBSTACLES[gfx_id]
+            obstacle_map[(lx, ly)] = {
+                "type": info["type"],
+                "move": info["move"],
+                "badge": info["badge"],
+                "gfx_id": gfx_id,
+                "global_x": obj["x"],
+                "global_y": obj["y"],
+            }
+        elif gfx_id in PUZZLE_OBSTACLES:
+            npc_set.add((lx, ly))
+        else:
+            npc_set.add((lx, ly))
+    return npc_set, obstacle_map
+
+
+def _dedupe_obstacles(obstacles: list[dict]) -> list[dict]:
+    """Remove duplicate obstacles (same type at same position)."""
+    seen: set[tuple[str, int, int]] = set()
+    result = []
+    for ob in obstacles:
+        key = (ob["type"], ob.get("global_x", ob.get("x", 0)), ob.get("global_y", ob.get("y", 0)))
+        if key not in seen:
+            seen.add(key)
+            result.append(ob)
+    return result
+
+
+def navigate_to(
+    emu: EmulatorClient, target_x: int, target_y: int,
+    path_choice: str | None = None,
+) -> dict[str, Any]:
+    """Pathfind to target tile using BFS. Obstacle-aware with dual pathfinding.
+
+    When obstacles (Rock Smash rocks, Cut trees, water, etc.) block or shorten
+    the path, returns an obstacle_choice/obstacle_required status instead of
+    moving, letting the caller decide. Call again with path_choice="obstacle"
+    or path_choice="clean" to execute.
+
+    Args:
+        target_x, target_y: Target tile coordinates.
+        path_choice: None (default — evaluate and ask if obstacles involved),
+                     "obstacle" (take the path through obstacles),
+                     "clean" (take the obstacle-free path).
+    """
     state = get_map_state(emu)
     if state is None:
         return {"error": "Could not read map state (chunk resolution failed)."}
@@ -821,66 +1058,139 @@ def navigate_to(emu: EmulatorClient, target_x: int, target_y: int) -> dict[str, 
 
     is_global = target_x > 31 or target_y > 31 or chunked
 
+    # ── Build terrain, NPC set, and obstacle map ──
     if is_global and chunked:
         mc_result = _build_multi_chunk_terrain(emu, map_id, px, py, target_x, target_y)
         if mc_result is None:
             return {"error": "Could not load multi-chunk terrain."}
 
-        combined_terrain, grid_ox, grid_oy, grid_w, grid_h = mc_result
-        npc_set = set()
-        for obj in state["objects"]:
-            if obj["index"] == 0:
-                continue
-            nx = obj["x"] - grid_ox
-            ny = obj["y"] - grid_oy
-            if 0 <= nx < grid_w and 0 <= ny < grid_h:
-                npc_set.add((nx, ny))
+        terrain_info, grid_ox, grid_oy, grid_w, grid_h = mc_result
+        npc_set, obstacle_map = _classify_objects_for_grid(
+            state["objects"], grid_ox, grid_oy, grid_w, grid_h,
+        )
 
         rel_px = px - grid_ox
         rel_py = py - grid_oy
         rel_tx = target_x - grid_ox
         rel_ty = target_y - grid_oy
-
-        path = _bfs_pathfind(combined_terrain, npc_set, rel_px, rel_py,
-                             rel_tx, rel_ty, width=grid_w, height=grid_h)
-
-        repath_ctx = {
-            "terrain_info": combined_terrain,
-            "goal_x": rel_tx,
-            "goal_y": rel_ty,
-            "grid_w": grid_w,
-            "grid_h": grid_h,
-            "grid_ox": grid_ox,
-            "grid_oy": grid_oy,
-        }
+        bfs_sx, bfs_sy = rel_px, rel_py
+        bfs_tx, bfs_ty = rel_tx, rel_ty
+        bfs_w, bfs_h = grid_w, grid_h
+        repath_ox, repath_oy = grid_ox, grid_oy
     else:
         if target_x > 31 or target_y > 31:
             target_x = target_x - origin_x
             target_y = target_y - origin_y
 
-        terrain_info, npc_set = _build_terrain_info(state["terrain"], state["objects"])
-        path = _bfs_pathfind(terrain_info, npc_set, local_px, local_py, target_x, target_y)
+        terrain_info, npc_set, obstacle_map = _build_terrain_info(
+            state["terrain"], state["objects"],
+        )
+        bfs_sx, bfs_sy = local_px, local_py
+        bfs_tx, bfs_ty = target_x, target_y
+        bfs_w, bfs_h = 32, 32
+        grid_ox, grid_oy = origin_x, origin_y
+        grid_w, grid_h = 32, 32
+        repath_ox, repath_oy = origin_x, origin_y
 
-        repath_ctx = {
-            "terrain_info": terrain_info,
-            "goal_x": target_x,
-            "goal_y": target_y,
-            "grid_w": 32,
-            "grid_h": 32,
-            "grid_ox": origin_x,
-            "grid_oy": origin_y,
+    repath_ctx = {
+        "terrain_info": terrain_info,
+        "goal_x": bfs_tx, "goal_y": bfs_ty,
+        "grid_w": bfs_w, "grid_h": bfs_h,
+        "grid_ox": repath_ox, "grid_oy": repath_oy,
+    }
+
+    # ── Dual BFS: clean path vs obstacle path ──
+    clean_path = _bfs_pathfind(
+        terrain_info, npc_set | set(obstacle_map.keys()),
+        bfs_sx, bfs_sy, bfs_tx, bfs_ty, width=bfs_w, height=bfs_h,
+    )
+
+    # Only run obstacle BFS if there are obstacles on the map or terrain obstacles
+    field_moves = _get_field_move_availability(emu)
+    obs_path, obs_crossed = _bfs_pathfind_obstacles(
+        terrain_info, npc_set, obstacle_map,
+        bfs_sx, bfs_sy, bfs_tx, bfs_ty,
+        field_moves, width=bfs_w, height=bfs_h,
+    )
+    obs_crossed = _dedupe_obstacles(obs_crossed)
+
+    # ── Decide which path to use ──
+    has_clean = clean_path is not None
+    has_obs = obs_path is not None and len(obs_crossed) > 0
+    obs_shorter = has_obs and (not has_clean or len(obs_path) < len(clean_path))
+
+    # Check if all required skills are available for the obstacle path
+    skills_available = True
+    if has_obs:
+        for ob in obs_crossed:
+            if not field_moves.get(ob["move"], False):
+                skills_available = False
+                break
+
+    # Determine which path to use
+    if path_choice == "obstacle":
+        if not has_obs:
+            return {"error": "No obstacle path available.", "start": _pos_with_map(px, py, map_id)}
+        if not skills_available:
+            missing = [ob["move"] for ob in obs_crossed if not field_moves.get(ob["move"], False)]
+            return {"error": f"Cannot take obstacle path — missing: {set(missing)}",
+                    "start": _pos_with_map(px, py, map_id)}
+        path = obs_path
+    elif path_choice == "clean":
+        if not has_clean:
+            return {"error": "No clean (obstacle-free) path available.",
+                    "start": _pos_with_map(px, py, map_id)}
+        path = clean_path
+    elif has_obs and obs_shorter and skills_available and path_choice is None:
+        # Obstacle path is shorter and skills available — ask the caller
+        start_pos = _pos_with_map(px, py, map_id)
+        status = "obstacle_choice" if has_clean else "obstacle_required"
+        obstacle_info = [{
+            "type": ob["type"], "move": ob["move"], "badge": ob["badge"],
+            "x": ob.get("global_x", ob.get("x")),
+            "y": ob.get("global_y", ob.get("y")),
+        } for ob in obs_crossed]
+        msg_parts = [f"Path requires {ob['move']} at ({ob.get('global_x', ob.get('x'))}, {ob.get('global_y', ob.get('y'))})" for ob in obs_crossed]
+        if has_clean:
+            msg = (
+                f"Shorter path ({len(obs_path)} steps) needs: {', '.join(msg_parts)}. "
+                f"Clean path available ({len(clean_path)} steps). "
+                f"Call again with path_choice='obstacle' or 'clean'."
+            )
+        else:
+            msg = (
+                f"Only path ({len(obs_path)} steps) needs: {', '.join(msg_parts)}. "
+                f"No obstacle-free path exists. "
+                f"Call again with path_choice='obstacle' to proceed."
+            )
+        return {
+            "status": status,
+            "clean_path_steps": len(clean_path) if has_clean else None,
+            "obstacle_path_steps": len(obs_path),
+            "obstacles": obstacle_info,
+            "skills_available": skills_available,
+            "start": start_pos,
+            "target": {"x": target_x, "y": target_y},
+            "message": msg,
         }
-
-    # Check if target tile is a door/warp
-    target_behavior = None
-    if is_global and chunked:
-        ti = combined_terrain
-        tx_local, ty_local = rel_tx, rel_ty
+    elif has_obs and obs_shorter and not skills_available and not has_clean:
+        # Only path requires obstacles but skills aren't available
+        missing = [ob["move"] for ob in obs_crossed if not field_moves.get(ob["move"], False)]
+        return {
+            "error": f"No path found. An obstacle path exists but requires: {set(missing)}",
+            "start": _pos_with_map(px, py, map_id),
+            "target": {"x": target_x, "y": target_y},
+        }
     else:
-        ti = terrain_info
-        tx_local, ty_local = (target_x, target_y) if not is_global else (rel_tx, rel_ty)
-    if 0 <= ty_local < len(ti) and 0 <= tx_local < len(ti[0]):
-        _, target_behavior = ti[ty_local][tx_local]
+        # Default: use clean path (or None)
+        path = clean_path
+
+    # ── Check if target tile is a door/warp ──
+    target_behavior = None
+    tx_l = bfs_tx if (is_global and chunked) else target_x
+    ty_l = bfs_ty if (is_global and chunked) else target_y
+    if 0 <= ty_l < len(terrain_info) and 0 <= tx_l < len(terrain_info[0]):
+        _, target_behavior = terrain_info[ty_l][tx_l]
 
     is_door = target_behavior in DOOR_ACTIVATION or target_behavior in DIRECTIONAL_WARP
 
@@ -1115,7 +1425,7 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
     else:
         origin_x = state.get("origin_x", 0)
         origin_y = state.get("origin_y", 0)
-        terrain_info, npc_set = _build_terrain_info(state["terrain"], state["objects"])
+        terrain_info, npc_set, _ = _build_terrain_info(state["terrain"], state["objects"])
         # Remove target from NPC set so adjacency checks work
         rel_tx = target_x - origin_x if target_x > 31 else target_x
         rel_ty = target_y - origin_y if target_y > 31 else target_y

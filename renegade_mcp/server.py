@@ -141,12 +141,17 @@ def create_server() -> FastMCP:
         return navigate_manual(emu, directions)
 
     @mcp.tool()
-    def navigate_to(x: int, y: int) -> dict[str, Any]:
+    def navigate_to(x: int, y: int, path_choice: str | None = None) -> dict[str, Any]:
         """Pathfind to a target tile using BFS, then walk there automatically.
 
         THIS IS THE DEFAULT NAVIGATION TOOL. Use this whenever you need to move
         to a specific tile — it reads the terrain, avoids walls and NPCs, and
         finds the shortest path. Use view_map to find target coordinates.
+
+        Obstacle-aware: when HM obstacles (Rock Smash rocks, Cut trees) or
+        water tiles block or shorten the path, returns status "obstacle_choice"
+        or "obstacle_required" with path info instead of moving. Call again
+        with path_choice to proceed. Strength boulders are never auto-cleared.
 
         Only fall back to navigate(directions) when you need precise directional
         control (e.g., activating warps, single-tile nudges, or specific sequences).
@@ -157,12 +162,15 @@ def create_server() -> FastMCP:
         Args:
             x: Target X coordinate (local or global). Use view_map to find these.
             y: Target Y coordinate (local or global).
+            path_choice: None (default — ask if obstacles involved),
+                         "obstacle" (take the path through obstacles, auto-clearing them),
+                         "clean" (take the obstacle-free path).
         """
         from renegade_mcp.navigation import navigate_to as _navigate_to
 
         emu = get_client()
-        emu.create_checkpoint(action=f"navigate_to({x}, {y})")
-        return _navigate_to(emu, x, y)
+        emu.create_checkpoint(action=f"navigate_to({x}, {y}, choice={path_choice})")
+        return _navigate_to(emu, x, y, path_choice=path_choice)
 
     @mcp.tool()
     def interact_with(object_index: int = -1, x: int = -1, y: int = -1) -> dict[str, Any]:
