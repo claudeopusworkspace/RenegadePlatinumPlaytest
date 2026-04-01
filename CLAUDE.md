@@ -212,26 +212,26 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 ## Game Progress
 
 - **Character**: CLAUDE | **Rival**: AAAAAAA
-- **Location**: Oreburgh Pokemon Center (blacked out after Roark loss). Save state: `post_roark_loss_1`.
-- **Turtwig** Lv17 — Naughty (+Atk/-SpD), Overgrow. Held: Muscle Band. Moves: Bite, Curse, Bullet Seed, Razor Leaf.
-- **Charmander** Lv13 — Hardy, Blaze. Held: Charcoal. Moves: Scratch, Metal Claw, Ember, Smokescreen.
-- **Eevee** Lv12 — Gentle (+SpD/-Def), Run Away. Moves: Tackle, Quick Attack, Bite, Covet.
-- **Piplup** Lv15 — Lax (+Def/-SpD), Vital Spirit. Held: Exp. Share. Moves: Pound, Growl, Bubble, Peck.
+- **Badges**: 1 (Coal Badge — Roark defeated)
+- **Location**: Oreburgh Gym (post-victory). Save state: `post_roark_victory`.
+- **Grotle** Lv21 — Naughty (+Atk/-SpD), Overgrow. Held: Muscle Band. Moves: Bulldoze, Curse, Bullet Seed, Razor Leaf.
+- **Machop** Lv17 — Brave (+Atk/-Spe), No Guard. Held: Exp. Share. Moves: Low Kick, Brick Break, Focus Energy, Karate Chop.
+- **Prinplup** Lv17 — Lax (+Def/-SpD), Vital Spirit. Moves: Metal Claw, Growl, Bubble, Peck.
 - **Luxio** Lv19 — Jolly (+Spe/-SpA), Guts. Held: Scope Lens. Moves: Spark, Bite, Howl, Quick Attack.
-- **Chimchar** Lv12 — Careful (+SpD/-SpA), Iron Fist. Moves: Scratch, Fury Swipes, Ember, Taunt.
-- **Box 1**: Bulbasaur Lv5 (Docile, Chlorophyll, Miracle Seed), Squirtle Lv5 (Gentle, Mystic Water).
-- **Key items**: Repel x~10, Poke Ball x29, Potion x9, Antidote x3, Silk Scarf, TM58 Endure, Bicycle, Poke Radar, Town Map, Vs. Recorder, Poketch, Oval Stone, Fire Stone, HM Rock Smash.
-- **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202), Reporter Kayla (Jubilife Pokemon Center), Rival AAAAAAA (Route 203), Youngster D (Route 203 double battle), Youngster Sebastian (Route 203), Lass Kaitlin (Route 203), Lass Madeline (Route 203), Camper Curtis (Oreburgh Gate), Picnicker Diana (Oreburgh Gate), Youngster Jonathon (Oreburgh Gym — Rhyhorn/Omanyte/Kabuto), Youngster Darius (Oreburgh Gym — Aron/Anorith/Lileep).
-- **Story progress**: Got Poketch from Poketch Company president. Won Bulbasaur from Jubilife TV quiz. Lost to Rival AAAAAAA on Route 203 (first attempt). Picked up Charmander + Squirtle from Reporter in Jubilife PC. Deposited Bulbasaur + Squirtle to Box 1. Grinded team on Route 202 using auto_grind tool. Beat Rival AAAAAAA on Route 203 rematch (Starly Lv10, Munchlax Lv10, Chimchar Lv11). Received Exp. Share from rival. Grinded Shinx to Lv15 on Route 202 → evolved into Luxio (first evolution, used to develop evolution handling). Cleared Route 203 trainers. Traversed Oreburgh Gate (got HM Rock Smash from Hiker). Arrived Oreburgh City — got Oval Stone from greeter NPC. Barry at Gym says Roark is at the mine. Healed at Oreburgh Pokemon Center. Entered Oreburgh Mine — got Muscle Band on 1F. Found Roark on B1F, correctly guessed Fire Stone, received it. Roark heading back to Gym. Gave Muscle Band to Turtwig, Exp. Share to Piplup. Cleared Oreburgh Gym trainers. Lost to Gym Leader Roark (defeated 3/6 Pokemon: Nosepass, Geodude, Cranidos).
-- **Roark scouting** (Renegade Platinum — 6 Pokemon!):
-  1. Nosepass Lv15 (Rock, **Sturdy**, Smooth Rock) — Stealth Rock, Sandstorm, Thunder Wave, Shock Wave. **Bullet Seed bypasses Sturdy.**
-  2. Geodude Lv15 (Rock/Ground, Rock Head, Expert Belt) — Bulldoze, Rock Tomb, **Fire Punch**, Thunder Punch. Fire Punch kills Grass types!
-  3. Cranidos Lv16 (Rock, Rock Head, Sitrus Berry) — Zen Headbutt, Rock Tomb, Scary Face, Thunder Punch. 49 Atk but 19 Def.
-  4. Onix Lv15 (Rock/Ground, Rock Head, Muscle Band) — Stealth Rock, Rock Tomb, Bulldoze, Sandstorm. 57 Def wall, sets hazards.
-  5. ??? — never saw
-  6. ??? — never saw
-  - Roark has at least 1 Super Potion.
-- **Next**: Grind team to Lv16-18+ before Roark rematch. Turtwig → Grotle at Lv18 for bulk. Reconsider party composition: 3 Fire types is redundant, Eevee (Gentle/Run Away) is dead weight. Look to catch new Pokemon while grinding — note wild encounters on each route. Keep Turtwig away from Geodude (Fire Punch). Lead Turtwig for Nosepass (Bullet Seed breaks Sturdy). Shroomish on Route 203 wants an Oran Berry (come back later).
+- **Charmander** Lv13 — Hardy, Blaze. Held: Charcoal. Moves: Scratch, Metal Claw, Ember, Smokescreen.
+- **Box 1**: Bulbasaur Lv5 (Docile, Chlorophyll, Miracle Seed), Squirtle Lv5 (Gentle, Mystic Water), Eevee Lv12 (Gentle, Run Away), Chimchar Lv12 (Careful, Iron Fist).
+- **Key items**: Repel x~10, Poke Ball x~28, Potion x9, Antidote x3, Silk Scarf, TM58 Endure, TM Stealth Rock, Bicycle, Poke Radar, Town Map, Vs. Recorder, Poketch, Oval Stone, Fire Stone, HM Rock Smash.
+- **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202), Reporter Kayla (Jubilife Pokemon Center), Rival AAAAAAA (Route 203), Youngster D (Route 203 double battle), Youngster Sebastian (Route 203), Lass Kaitlin (Route 203), Lass Madeline (Route 203), Camper Curtis (Oreburgh Gate), Picnicker Diana (Oreburgh Gate), Youngster Jonathon (Oreburgh Gym), Youngster Darius (Oreburgh Gym), **Gym Leader Roark** (6-0 sweep, no faints).
+- **Story progress**: Got Poketch from Poketch Company president. Won Bulbasaur from Jubilife TV quiz. Lost to Rival AAAAAAA on Route 203 (first attempt). Picked up Charmander + Squirtle from Reporter in Jubilife PC. Deposited Bulbasaur + Squirtle to Box 1. Grinded team on Route 202 using auto_grind tool. Beat Rival AAAAAAA on Route 203 rematch (Starly Lv10, Munchlax Lv10, Chimchar Lv11). Received Exp. Share from rival. Grinded Shinx to Lv15 on Route 202 → evolved into Luxio. Cleared Route 203 trainers. Traversed Oreburgh Gate (got HM Rock Smash from Hiker). Arrived Oreburgh City — got Oval Stone from greeter NPC. Entered Oreburgh Mine — got Muscle Band on 1F, Fire Stone from Roark on B1F. Cleared Oreburgh Gym trainers. Lost to Roark (attempt 1). Scouted Route 207 encounters: Machop, Phanpy, Ponyta, Rhyhorn, Larvitar. Evolved Turtwig → Grotle (Lv18) and Piplup → Prinplup (Lv16). Caught Machop (Brave/No Guard) on Route 207. Deposited Eevee + Chimchar. Grinded team on Route 207. **Beat Gym Leader Roark** (attempt 2, 6-0 sweep): Nosepass, Geodude, Cranidos, Onix, Larvitar, Bonsly. Received Coal Badge + TM Stealth Rock.
+- **Roark's full team** (Renegade Platinum — 6 Pokemon):
+  1. Nosepass Lv15 (Rock, Sturdy, Smooth Rock) — Stealth Rock, Sandstorm, Thunder Wave, Shock Wave.
+  2. Geodude Lv15 (Rock/Ground, Rock Head, Expert Belt) — Bulldoze, Rock Tomb, Fire Punch, Thunder Punch.
+  3. Cranidos Lv16 (Rock, Rock Head, Sitrus Berry) — Zen Headbutt, Rock Tomb, Scary Face, Thunder Punch.
+  4. Onix Lv15 (Rock/Ground, Rock Head, Muscle Band) — Stealth Rock, Rock Tomb, Bulldoze, Sandstorm.
+  5. Larvitar Lv15 (Rock/Ground, Guts, Flame Orb) — Rock Tomb, Bulldoze, Bite, Protect.
+  6. Bonsly Lv15 (Rock, Rock Head, Rindo Berry) — Stealth Rock, Brick Break, Rollout, Defense Curl.
+- **Route 207 encounters**: Machop (common), Phanpy, Ponyta, Rhyhorn, Larvitar.
+- **Next**: Proceed from Oreburgh Gym. Coal Badge unlocks Rock Smash outside of battle. Head toward next story objective. Shroomish on Route 203 wants an Oran Berry (come back later).
 
 See GAME_HISTORY.md for full chronological playthrough details.
 
