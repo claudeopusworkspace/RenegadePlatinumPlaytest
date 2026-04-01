@@ -15,6 +15,8 @@ All standard marts share identical layouts:
   - Cashier F at (3, 5) — common items
   - Cashier M at (2, 5) — specialty items
   - Exit warp at (3, 11)
+
+If called from a city/town overworld, auto-navigates to the mart.
 """
 
 from __future__ import annotations
@@ -98,6 +100,22 @@ def _city_name(city_code: str) -> str:
             if name and not name.startswith("["):
                 return name
     return city_code
+
+
+def _find_mart_warp(
+    emu: "EmulatorClient", map_id: int, city_code: str,
+) -> dict | None:
+    """Find a warp on the current map that leads to this city's PokéMart."""
+    from renegade_mcp.map_state import read_warps_from_rom
+
+    warps = read_warps_from_rom(emu, map_id)
+    table = map_table()
+    for w in warps:
+        dest_entry = table.get(w["dest_map"], {})
+        dest_code = dest_entry.get("code", "")
+        if dest_code.startswith(f"{city_code}FS"):
+            return w
+    return None
 
 
 def _format_item(name: str, price: int, tag: str = "") -> str:
@@ -273,8 +291,9 @@ def buy_item(
     quantity: int = 1,
     badge_count: int | None = None,
 ) -> dict[str, Any]:
-    """Buy an item from the PokéMart. Player must be inside a standard mart.
+    """Buy an item from the PokéMart.
 
+    Works from inside a mart or from a city/town overworld (auto-navigates).
     Finds the correct cashier (common vs specialty), navigates to them,
     opens the shop, scrolls to the item, selects quantity, confirms, and exits.
 
@@ -285,22 +304,67 @@ def buy_item(
         badge_count: Player's badge count for filtering. If None, defaults to 0.
     """
     from renegade_mcp.map_state import get_map_state, read_player_state
-    from renegade_mcp.navigation import interact_with
+    from renegade_mcp.navigation import interact_with, navigate_to
     from renegade_mcp.trainer import read_trainer_status
 
-    # ── Verify we're in a PokéMart ──
     map_id, _x, _y, _facing = read_player_state(emu)
     entry = map_table().get(map_id, {})
     code = entry.get("code", "")
-    if "FS" not in code:
-        city_code = _city_code_from_map(map_id)
-        loc = _city_name(city_code) if city_code else entry.get("name", f"Map {map_id}")
-        return _error(f"Not inside a PokéMart (current map: {loc}, code: {code}). "
-                       "Navigate into the mart building first.")
 
-    city_code = _city_code_from_map(map_id)
-    if city_code is None:
-        return _error(f"Cannot determine city from map code: {code}")
+    navigated_to_mart = False
+
+    if "FS" in code:
+        # ── Case 1: Already inside a PokéMart ──
+        city_code = _city_code_from_map(map_id)
+        if city_code is None:
+            return _error(f"Cannot determine city from map code: {code}")
+
+    else:
+        # ── Case 2: On a city/town overworld — navigate to mart ──
+        city_code = _city_code_from_map(map_id)
+        if city_code is not None and code == city_code:
+            mart_warp = _find_mart_warp(emu, map_id, city_code)
+            if mart_warp is None:
+                loc = _city_name(city_code)
+                return _error(f"No PokéMart warp found in {loc}.")
+
+            nav_result = navigate_to(emu, mart_warp["x"], mart_warp["y"])
+
+            if nav_result.get("encounter"):
+                return {
+                    "success": False,
+                    "error": "Navigation to PokéMart interrupted by encounter.",
+                    "encounter": nav_result["encounter"],
+                    "formatted": (
+                        "Error: Navigation to PokéMart interrupted by encounter. "
+                        "Deal with the encounter and try again."
+                    ),
+                }
+
+            if nav_result.get("stopped_early") and not nav_result.get("door_entered"):
+                return _error(
+                    "Could not reach the PokéMart — path was blocked. "
+                    f"Path: {nav_result.get('path_summary', 'unknown')}"
+                )
+
+            navigated_to_mart = True
+            # Re-read position now that we're inside
+            map_id, _x, _y, _facing = read_player_state(emu)
+            entry = map_table().get(map_id, {})
+            code = entry.get("code", "")
+
+            if "FS" not in code:
+                return _error(
+                    f"Navigated to mart warp but didn't enter "
+                    f"(current code: {code})."
+                )
+        else:
+            # ── Case 3: Not in a mart or city overworld ──
+            loc = _city_name(city_code) if city_code else entry.get("name", f"Map {map_id}")
+            return _error(
+                f"Not inside a PokéMart or city overworld ({loc}, code: {code}). "
+                "Navigate to a town with a PokéMart first."
+            )
 
     # ── Resolve badge threshold ──
     badges = badge_count if badge_count is not None else 0
@@ -395,7 +459,7 @@ def buy_item(
     new_money = new_status.get("money", 0)
     spent = money - new_money
 
-    return {
+    result = {
         "success": True,
         "item": display_name,
         "item_id": item_id,
@@ -411,6 +475,9 @@ def buy_item(
             f"Money: ¥{money:,} → ¥{new_money:,}"
         ),
     }
+    if navigated_to_mart:
+        result["navigated_to_mart"] = True
+    return result
 
 
 def _error(message: str) -> dict[str, Any]:

@@ -405,10 +405,10 @@ def create_server() -> FastMCP:
     def buy_item(item_name: str, quantity: int = 1) -> dict[str, Any]:
         """Buy an item from a standard PokéMart.
 
-        Player must be inside a PokéMart building (FS room code). Finds the
-        correct cashier (Cashier F for common items, Cashier M for specialty),
-        navigates to them, opens the shop, scrolls to the item, purchases the
-        specified quantity, and exits.
+        Works from inside a PokéMart or from a city/town overworld (auto-navigates
+        to the mart). Finds the correct cashier (Cashier F for common items,
+        Cashier M for specialty), navigates to them, opens the shop, scrolls to
+        the item, purchases the specified quantity, and exits.
 
         Item position is calculated from ROM data — common items appear first
         (badge-filtered, in PokeMartCommonItems[] order), then specialty items.
