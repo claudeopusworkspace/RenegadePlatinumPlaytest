@@ -49,6 +49,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `teach_tm(tm_name, party_slot, forget_move)` | Teach a TM/HM to a party Pokemon. Accepts TM label ("HM06", "TM76") or move name ("Rock Smash"). Pre-validates ROM compatibility (personal.narc bitmasks) and badge+move availability. Handles full menu flow including move-forget. Pass `forget_move` (0-3) when Pokemon knows 4 moves, or -1 to cancel. |
 | `tm_compatibility(tm_name)` | Check which party Pokemon can learn a given TM/HM. Pure ROM data lookup — no emulator interaction. Returns ABLE/UNABLE/ALREADY KNOWS per party slot. |
 | `auto_grind(move_index, cave, target_level, iterations, forget_move)` | Automated grinding loop: seek encounters + spam a move until a stop condition. Returns encounter log with species + checkpoint IDs. See Auto Grind Workflow below. |
+| `reload_tools` | Reload all `renegade_mcp` implementation modules in-place via `importlib.reload()`. Call after editing any `renegade_mcp/*.py` file (except `server.py`) to pick up code changes without restarting the MCP server. Changes to `server.py` (new/removed tools, signature changes) still require a manual `/mcp` restart from the user. |
 
 The original Python scripts in `scripts/` still work for debugging but are no longer the primary interface.
 
@@ -65,6 +66,12 @@ return _do_stuff(emu, ...)
 Read-only tools (pure memory reads like `read_party`, `read_battle`, `read_bag`) do **not** need checkpoints.
 
 Checkpoints share a unified ring buffer (300 slots) with the DeSmuME MCP's own checkpoints. One checkpoint per tool call is the right granularity — don't checkpoint inside helper functions.
+
+### Reloading After Code Changes
+
+After editing implementation files (`renegade_mcp/*.py` except `server.py`), call `reload_tools` to pick up changes in-place. No MCP restart needed — `importlib.reload()` refreshes all cached modules, and the lazy imports in tool wrappers pick up the new code on the next call.
+
+If `server.py` itself was changed (new tool added, tool removed, signature changed), ask the user to `/mcp` restart — `reload_tools` can't re-register tool wrappers.
 
 ## Navigation
 

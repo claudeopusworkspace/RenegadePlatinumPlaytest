@@ -759,4 +759,50 @@ def create_server() -> FastMCP:
             forget_move=forget_move,
         )
 
+    # ── Reload ──
+
+    @mcp.tool()
+    def reload_tools() -> dict[str, Any]:
+        """Reload all renegade_mcp implementation modules in-place.
+
+        Call this after editing any renegade_mcp/*.py file (except server.py)
+        to pick up code changes without restarting the MCP server.
+
+        How it works: importlib.reload() refreshes each module in sys.modules.
+        Since tool wrappers use lazy imports (from X import Y inside the function
+        body), the next tool call automatically picks up the reloaded code.
+
+        Limitation: Changes to server.py itself (new tools, changed signatures)
+        require a manual /mcp restart from the user.
+        """
+        import importlib
+        import sys as _sys
+
+        prefix = "renegade_mcp."
+        # Collect modules to reload (skip __main__ and server — they define the
+        # tool wrappers themselves and can't be meaningfully reloaded in-process).
+        to_reload = [
+            name
+            for name in sorted(_sys.modules)
+            if name.startswith(prefix)
+            and name not in ("renegade_mcp.server", "renegade_mcp.__main__")
+        ]
+
+        reloaded = []
+        errors = []
+        for name in to_reload:
+            try:
+                importlib.reload(_sys.modules[name])
+                reloaded.append(name.removeprefix(prefix))
+            except Exception as exc:
+                errors.append(f"{name}: {exc}")
+
+        result: dict[str, Any] = {
+            "reloaded": reloaded,
+            "count": len(reloaded),
+        }
+        if errors:
+            result["errors"] = errors
+        return result
+
     return mcp
