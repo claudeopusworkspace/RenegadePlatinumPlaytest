@@ -10,10 +10,11 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from desmume_mcp.client import EmulatorClient
 
-from renegade_mcp.battle import read_battle as _read_battle
-from renegade_mcp.navigation import seek_encounter as _seek_encounter
-from renegade_mcp.party import read_party as _read_party
-from renegade_mcp.turn import battle_turn as _battle_turn
+# Lazy imports — resolved at call time so reload_tools order doesn't matter.
+# from renegade_mcp.battle import read_battle
+# from renegade_mcp.navigation import seek_encounter
+# from renegade_mcp.party import read_party
+# from renegade_mcp.turn import battle_turn
 
 
 # States that mean "battle is over, back in overworld"
@@ -62,6 +63,11 @@ def auto_grind(
         Dict with stop_reason, battles fought, encounters list (species + checkpoint),
         log of each battle, and party state.
     """
+    from renegade_mcp.battle import read_battle as _read_battle
+    from renegade_mcp.navigation import seek_encounter as _seek_encounter
+    from renegade_mcp.party import read_party as _read_party
+    from renegade_mcp.turn import battle_turn as _battle_turn
+
     fighting = move_index >= 0
     battles: list[dict[str, Any]] = []
     encounters: list[dict[str, str]] = []
@@ -256,6 +262,8 @@ def _fight_battle(
     stop_reason is empty string if battle ended normally (BATTLE_ENDED).
     detected_level is parsed from 'grew to Lv. N' in the battle log, or None.
     """
+    from renegade_mcp.turn import battle_turn as _battle_turn
+
     battle_log: list[dict[str, Any]] = []
     turn = 0
 
@@ -336,6 +344,8 @@ def _run_battle(
     Returns (stop_reason, stop_detail, battle_log, detected_level).
     stop_reason is empty string if we escaped successfully (BATTLE_ENDED).
     """
+    from renegade_mcp.turn import battle_turn as _battle_turn
+
     battle_log: list[dict[str, Any]] = []
     turn = 0
 
