@@ -556,11 +556,13 @@ def create_server() -> FastMCP:
     def heal_party() -> dict[str, Any]:
         """Heal the entire party at a Pokemon Center.
 
-        Finds the Pokecenter Nurse on the current map by graphicsID, walks up,
-        talks to her, advances through the healing dialogue, and verifies all
-        party HP is restored. Must be inside a Pokemon Center.
+        Works from two starting positions:
+        - Inside a Pokemon Center: finds the nurse and heals directly.
+        - On a city/town overworld: auto-navigates to the Pokemon Center
+          via warp lookup + pathfinding, then heals.
 
-        Aborts gracefully if Nurse Joy isn't found, navigation is interrupted,
+        Returns encounter data if a wild battle interrupts navigation.
+        Aborts gracefully if Nurse Joy isn't found, navigation is blocked,
         or the dialogue doesn't match the expected greeting (possible event).
         """
         from renegade_mcp.heal_party import heal_party as _heal_party
