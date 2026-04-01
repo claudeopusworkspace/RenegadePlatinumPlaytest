@@ -42,8 +42,8 @@
 | `route203_post_rival` | Route 203 (map 344). Defeated Rival AAAAAAA. Got Exp. Share. Turtwig Lv15, rest Lv12. |
 | `pre_shinx_evolution_grind` | Route 202 north entrance. Shinx Lv12 in slot 0, full team healed. Pre-grind. |
 | `route202_post_shinx_evolution` | Route 202 grass. Shinx evolved into Luxio Lv15. Post-evolution test. |
-| `jubilife_pokecenter_post_evolution` | Jubilife Pokemon Center. Luxio Lv15, full team healed. Latest gameplay state. |
-| `jubilife_pokecenter_post_give_item` | Jubilife Pokemon Center. Gave Scope Lens to Luxio. Latest adventure state. |
+| `jubilife_pokecenter_post_evolution` | Jubilife Pokemon Center. Luxio Lv15, full team healed. |
+| `jubilife_pokecenter_post_give_item` | Jubilife Pokemon Center. Gave Scope Lens to Luxio. |
 | `route203_shopping_done` | Route 203 west entrance at (199, 757). Bought Potion x10, Antidote x3. |
 | `route203_first_double_battle` | Route 203 double battle vs Youngster D. Luxio/Charmander vs Kricketot/Shinx. At first action prompt. |
 | `route203_post_double_battle` | Route 203 after first double battle. Charmander Lv13. |
@@ -53,7 +53,15 @@
 | `oreburgh_healed` | Oreburgh Pokemon Center. Full team healed. Ready for mine/gym. |
 | `oreburgh_mine_entrance` | Oreburgh Mine 1F entrance. Team healed. |
 | `oreburgh_mine_floor1` | Oreburgh Mine 1F. Got Muscle Band pickup. |
-| `oreburgh_mine_roark_talked` | Oreburgh Mine B1F. After talking to Roark + getting Fire Stone. Roark returning to Gym. Luxio Lv18, Turtwig Lv16. **Current session end state.** |
+| `oreburgh_mine_roark_talked` | Oreburgh Mine B1F. After talking to Roark + getting Fire Stone. Roark returning to Gym. Luxio Lv18, Turtwig Lv16. |
+| `r207_grind_start` | Route 207 grass. Start of grinding session. Pre-evolution team. |
+| `r207_machop_caught` | Route 207. After catching Brave/No Guard Machop. |
+| `r207_grind_checkpoint` | Route 207. Mid-grind checkpoint. |
+| `r207_scouting_prinplup` | Route 207. Encounter scouting after Piplup→Prinplup evolution (Lv16). |
+| `r207_post_double_evo` | Route 207. After Turtwig→Grotle (Lv18) and Piplup→Prinplup (Lv16) evolutions. |
+| `pre_roark_rematch` | Oreburgh. Team grinded and prepped for second Roark attempt. |
+| `roark_rematch_door` | At Oreburgh Gym door, entering for Roark rematch. |
+| `post_roark_victory` | Oreburgh Gym. After defeating Roark 6-0. Coal Badge + TM Stealth Rock obtained. **Current gameplay state.** |
 
 ## Debug & Testing
 
@@ -93,7 +101,17 @@
 | `jubilife_pokecenter_post_give_item` | Jubilife Pokemon Center. Gave Scope Lens to Luxio. |
 | `pre_roark_gym` | Oreburgh Pokemon Center. Full party healed. Turtwig lead w/ Muscle Band, Piplup w/ Exp. Share. Pre-gym. |
 | `oreburgh_gym_trainers_cleared` | Inside Oreburgh Gym at (5,4). Both gym trainers defeated. Adjacent to Roark. |
-| `post_roark_loss_1` | Oreburgh Pokemon Center. After losing to Roark (3/6 defeated). Latest adventure state. |
+| `post_roark_loss_1` | Oreburgh Pokemon Center. After losing to Roark (3/6 defeated). |
+| `oreburgh_pc_post_whiteout` | Oreburgh Pokemon Center. After whiteout to Roark (variant of post_roark_loss_1). |
+| `bug_shinx_corrupt_data` | Old read_party encryption bug. Shinx slot data garbled. |
+| `debug_starly_one_hit_from_ko` | Wild Starly battle. One hit from KO. Battle-end edge case testing. |
+| `debug_piplup_evolution_r207` | Route 207. Piplup levels to 16 via Exp Share → evolves to Prinplup → Metal Claw move-learn post-evo. **Backlog bug repro.** |
+| `debug_post_battle_move_learn_ui` | Pre-Roark rematch. Win fight → Machop Exp Share level-up → move-learn UI after BATTLE_ENDED. **Backlog bug repro.** |
+| `piplup_evo_in_progress` | Mid-Piplup→Prinplup evolution animation. Evolution handling test. |
+| `jubilife_mart_inside` | Inside Jubilife PokéMart. Shop tool testing. |
+| `jubilife_mart_search` | Jubilife Mart area. Shop cashier search testing. |
+| `jubilife_pc_full_party` | Jubilife Pokemon Center. Full 6-Pokemon party. PC tool testing. |
+| `pre_pc_test` | Pre-PC interaction. PC tool test baseline. |
 
 ## Debug States (Roark Session)
 
