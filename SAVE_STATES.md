@@ -122,19 +122,32 @@
 
 ## Battle Test Suite
 
-Structured test cases for verifying `battle_turn` and `auto_grind` edge cases. Each entry specifies a save state, how to trigger the scenario, and what to verify.
+Automated integration tests live in `tests/` — see CLAUDE.md for run commands. The tests below are now covered by pytest and verified against the emulator (2026-04-01).
 
-### Evolution + Move Learn (Exp Share + Active)
+### Covered by Automated Tests
 
-| State | Test | Trigger | Expected |
-|-------|------|---------|----------|
-| `debug_piplup_evolution_r207` | Exp Share holder evolves + move-learn | `auto_grind(move_index=3, iterations=1)` | `stop_reason: "move_learn"`, `move_to_learn: "Metal Claw"`. Screenshot shows "Should a move be deleted?" YES/NO with Prinplup. |
-| `debug_piplup_evolution_r207` | Skip post-evo move-learn | After above: `auto_grind(move_index=3, forget_move=-1, iterations=3)` | `forget_move=-1` resolves the prompt. Party slot 3 = Prinplup Lv16, moves unchanged. Grinding continues. |
-| `debug_piplup_evolution_r207` | Active Pokemon evolves after Exp Share text | Continue grinding from above — Turtwig hits Lv18 | `stop_reason: "move_learn"`, `move_to_learn: "Bulldoze"`. Screenshot shows "Should a move be deleted?" with Grotle. Verifies post-BATTLE_ENDED evolution scan catches main battler evolving after Exp Share Exp text. |
+| Save State | Test File | What It Verifies |
+|------------|-----------|------------------|
+| `wild_starly_battle_start` | test_battle_end | Wild KO → BATTLE_ENDED |
+| `wild_zigzagoon_route202` | test_battle_end | Wild KO → BATTLE_ENDED |
+| `debug_starly_one_hit_from_ko` | test_battle_end | Low-HP KO, "fainted" in log |
+| `tristan_battle_start` | test_battle_end | Trainer 2-mon battle, switch prompts between KOs |
+| `debug_logan_growlithe_low_hp` | test_battle_end | Trainer KO → SWITCH_PROMPT |
+| `debug_pre_level_up_ko` | test_move_learn | KO → level-up → MOVE_LEARN (Turtwig Lv11 Curse) |
+| `debug_shinx_pre_levelup_ko_5hp` | test_move_learn | KO → level-up → auto-learn into open slot |
+| `debug_move_learn_forget_prompt` | test_move_learn | Skip move-learn (forget_move=-1) and forget+learn (forget_move=0) |
+| `debug_shinx_pre_evolution_ko` | test_evolution | Bite KOs → Lv15 → Charge learn → Luxio evolution chain |
+| `debug_shinx_move_learn_pre_evolution` | test_evolution | Skip Charge → Shinx evolves → "evolved into" in log |
+| `debug_piplup_evolution_r207` | test_evolution, test_auto_grind | Mid-battle Exp Share evo, auto_grind mid-battle resume |
+| `piplup_evo_in_progress` | test_evolution | "What?" evolution prompt handling |
+| `debug_wild_faint_use_next` | test_faint_switch | FAINT_SWITCH → send replacement or flee |
+| `tristan_switch_prompt` | test_faint_switch | SWITCH_PROMPT → accept or decline |
+| `debug_switch_test_baseline` | test_faint_switch | Voluntary mid-battle switch |
+| `route203_first_double_battle` | test_double_battle | WAIT_FOR_PARTNER_ACTION, both actions complete turn |
+| `r207_grind_start` | test_auto_grind | Iteration stop, encounter log, party data |
 
-### Mid-Battle Evolution + Move Learn (Active Pokemon)
+### Not Yet Automated
 
-| State | Test | Trigger | Expected |
-|-------|------|---------|----------|
-| `debug_shinx_pre_evolution_ko` | Level-up → move-learn → evolution chain | `battle_turn(move_index=1)` (Bite KOs Sentret) | Shinx Lv15 → Charge move-learn → Luxio evolution. Should return `MOVE_LEARN` for Charge. |
-| `debug_shinx_move_learn_pre_evolution` | Resolve move-learn, then evolution | `battle_turn(forget_move=-1)` | Skips Charge, Shinx evolves to Luxio. Should return `BATTLE_ENDED` with "evolved into" in log. |
+| Save State | Scenario | Blocker |
+|------------|----------|---------|
+| `debug_post_battle_move_learn_ui` | Post-battle Exp Share move-learn (overworld) | State is pre-battle; needs state at the actual overworld move-learn prompt |

@@ -257,6 +257,28 @@ See GAME_HISTORY.md for full chronological playthrough details.
 ### Reordering party (overworld)
 1. `reorder_party(0, 2)` — swap slot 0 and slot 2. Navigates pause menu automatically.
 
+## Battle Test Suite
+
+Integration tests for `battle_turn` and `auto_grind` live in `tests/`. They require a running emulator with the ROM loaded.
+
+```bash
+DesmumeMCP/.venv/bin/python -m pytest tests/ -v          # full suite (~17 min)
+DesmumeMCP/.venv/bin/python -m pytest tests/test_X.py -v  # single file
+```
+
+Tests load save states, call battle functions directly (bypassing MCP protocol), and assert on `final_state`, log contents, and party data. Each test resets via `load_state` so they're independent.
+
+| File | Coverage |
+|------|----------|
+| `test_battle_end.py` | Wild KO, trainer multi-Pokemon, switch prompt after KO |
+| `test_move_learn.py` | Level-up move-learn, auto-learn (open slot), skip, forget |
+| `test_evolution.py` | Mid-battle evo chain, Exp Share evo, "What?" animation |
+| `test_faint_switch.py` | Wild faint send/flee, trainer switch accept/decline, voluntary |
+| `test_double_battle.py` | Partner action prompt, both actions complete turn |
+| `test_auto_grind.py` | Iteration stop, encounter log, mid-battle resume |
+
+**Run tests after any change to `turn.py`, `auto_grind.py`, or `battle_tracker.py`.**
+
 ## Tips
 
 - Save state frequently — this is a difficulty hack, expect challenges.
