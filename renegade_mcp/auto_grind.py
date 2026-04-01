@@ -125,33 +125,51 @@ def auto_grind(
             )
 
     # ── Main grind loop ──
+    first_loop = True
     while True:
-        # Seek a wild encounter
-        mode = "cave" if cave else "grass"
-        emu.create_checkpoint(action=f"auto_grind:seek_encounter({mode})")
-        enc = _seek_encounter(emu, cave=cave)
-        enc_result = enc.get("result", "")
+        # Check if we're already in battle (mid-battle resume)
+        already_in_battle = False
+        if first_loop:
+            battlers = _read_battle(emu)
+            if battlers:
+                already_in_battle = True
 
-        if enc_result != "encounter":
-            stop_reason = "seek_failed"
-            stop_detail = (
-                f"seek_encounter returned '{enc_result}' instead of 'encounter'. "
-                f"Position: {enc.get('position', '?')}. "
-                "Possible cutscene trigger or blocked path."
-            )
-            break
+        if already_in_battle:
+            # Mid-battle resume — skip seek_encounter, go straight to fighting
+            enemy_species = "unknown"
+            for b in battlers:
+                if b.get("side") == "enemy":
+                    enemy_species = b.get("species", "unknown")
+                    break
+            enc_cp = emu.create_checkpoint(action=f"auto_grind:resume_battle({enemy_species})")
+            encounters.append({"species": enemy_species, "checkpoint_id": enc_cp.get("checkpoint_id", "")})
+        else:
+            # Seek a wild encounter
+            mode = "cave" if cave else "grass"
+            emu.create_checkpoint(action=f"auto_grind:seek_encounter({mode})")
+            enc = _seek_encounter(emu, cave=cave)
+            enc_result = enc.get("result", "")
 
-        # Log the encountered species + checkpoint for potential revert-to-catch
-        # Checkpoint here = in battle, before first battle_turn — revert lands on
-        # this exact encounter ready to throw a ball.
-        battlers = _read_battle(emu)
-        enemy_species = "unknown"
-        for b in battlers:
-            if b.get("side") == "enemy":
-                enemy_species = b.get("species", "unknown")
+            if enc_result != "encounter":
+                stop_reason = "seek_failed"
+                stop_detail = (
+                    f"seek_encounter returned '{enc_result}' instead of 'encounter'. "
+                    f"Position: {enc.get('position', '?')}. "
+                    "Possible cutscene trigger or blocked path."
+                )
                 break
-        enc_cp = emu.create_checkpoint(action=f"auto_grind:encounter({enemy_species})")
-        encounters.append({"species": enemy_species, "checkpoint_id": enc_cp.get("checkpoint_id", "")})
+
+            # Log the encountered species + checkpoint for potential revert-to-catch
+            battlers = _read_battle(emu)
+            enemy_species = "unknown"
+            for b in battlers:
+                if b.get("side") == "enemy":
+                    enemy_species = b.get("species", "unknown")
+                    break
+            enc_cp = emu.create_checkpoint(action=f"auto_grind:encounter({enemy_species})")
+            encounters.append({"species": enemy_species, "checkpoint_id": enc_cp.get("checkpoint_id", "")})
+
+        first_loop = False
 
         # We have a battle — fight it
         # The encounter data already has the first action prompt ready

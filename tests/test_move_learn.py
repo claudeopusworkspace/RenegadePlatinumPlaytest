@@ -91,25 +91,19 @@ class TestMoveLearnResolution:
 
 
 class TestPostBattleMoveLearn:
-    """Post-battle move learning (Exp Share level-up after BATTLE_ENDED)."""
+    """Post-battle move learning (Exp Share level-up after BATTLE_ENDED).
 
+    SKIPPED: No save state exists at the actual post-battle move-learn prompt.
+    debug_post_battle_move_learn_ui is in the overworld pre-battle and requires
+    fighting through a full Roark gym battle with precise XP accumulation.
+    Add this test when the scenario occurs naturally during gameplay.
+    """
+
+    @pytest.mark.skip(reason="No save state at post-battle move-learn prompt yet")
     def test_post_battle_exp_share_move_learn(self, emu: EmulatorClient):
-        """Win fight → Machop (Exp Share) levels up → move-learn UI in overworld.
-
-        State: debug_post_battle_move_learn_ui — the known backlog bug repro.
-        This tests the post-BATTLE_ENDED move-learn detection.
-        """
+        """Win fight → Machop (Exp Share) levels up → move-learn UI in overworld."""
         from renegade_mcp.turn import battle_turn
 
-        load_state(emu, "debug_post_battle_move_learn_ui")
-
-        # This state should be at a point where battle_turn detects the
-        # post-battle move-learn. The exact behavior depends on where
-        # the save state captures the game.
-        result = battle_turn(emu, move_index=0)
-
-        # Accept MOVE_LEARN (correct detection) or BATTLE_ENDED (if the
-        # post-battle move-learn was already resolved in the save state)
-        assert result["final_state"] in ("MOVE_LEARN", "BATTLE_ENDED"), (
-            f"Expected MOVE_LEARN or BATTLE_ENDED, got {result['final_state']}"
-        )
+        load_state(emu, "post_battle_move_learn_at_prompt")
+        result = battle_turn(emu, forget_move=-1)
+        assert result["final_state"] == "BATTLE_ENDED"

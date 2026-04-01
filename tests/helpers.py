@@ -23,11 +23,24 @@ def do_load_state(emu, name: str) -> None:
     emu.advance_frames(60)
 
 
+def _log_to_str(log) -> str:
+    """Normalize battle log to a single string for searching."""
+    if isinstance(log, str):
+        return log
+    if isinstance(log, list):
+        parts = []
+        for entry in log:
+            if isinstance(entry, dict):
+                parts.append(entry.get("text", ""))
+            else:
+                parts.append(str(entry))
+        return "\n".join(parts)
+    return str(log)
+
+
 def assert_log_contains(result: dict[str, Any], *phrases: str) -> None:
     """Assert that the battle log contains all given phrases (case-insensitive)."""
-    log = result.get("log", "")
-    if isinstance(log, list):
-        log = "\n".join(log)
+    log = _log_to_str(result.get("log", ""))
     log_lower = log.lower()
     for phrase in phrases:
         assert phrase.lower() in log_lower, (
@@ -37,9 +50,7 @@ def assert_log_contains(result: dict[str, Any], *phrases: str) -> None:
 
 def assert_log_not_contains(result: dict[str, Any], *phrases: str) -> None:
     """Assert that the battle log does NOT contain any of the given phrases."""
-    log = result.get("log", "")
-    if isinstance(log, list):
-        log = "\n".join(log)
+    log = _log_to_str(result.get("log", ""))
     log_lower = log.lower()
     for phrase in phrases:
         assert phrase.lower() not in log_lower, (

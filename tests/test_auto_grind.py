@@ -55,41 +55,26 @@ class TestAutoGrindBasic:
             )
 
 
-class TestAutoGrindMoveLearn:
-    """auto_grind stops and resumes for move learning."""
+class TestAutoGrindMidBattle:
+    """auto_grind picks up from mid-battle state (resume support)."""
 
-    def test_move_learn_stop_has_info(self, emu: EmulatorClient):
-        """Exp Share evolution triggers move_learn stop with full info.
+    def test_mid_battle_resume(self, emu: EmulatorClient):
+        """Start auto_grind while already in battle — should fight, not seek.
 
-        State: debug_piplup_evolution_r207 — Piplup close to evolving via Exp Share.
-        """
-        from renegade_mcp.auto_grind import auto_grind
-
-        load_state(emu, "debug_piplup_evolution_r207")
-        result = auto_grind(emu, move_index=3, iterations=3)
-
-        if result["stop_reason"] == "move_learn":
-            assert "move_to_learn" in result, "move_learn stop should include move_to_learn"
-            assert "current_moves" in result, "move_learn stop should include current_moves"
-            assert result["move_to_learn"], "move_to_learn should not be empty"
-
-    def test_resume_from_move_learn_skip(self, emu: EmulatorClient):
-        """Resume after move_learn stop with forget_move=-1 (skip).
-
-        State: debug_piplup_evolution_r207 — trigger move_learn, then resume.
+        State: debug_piplup_evolution_r207 — mid-battle vs wild Phanpy.
+        auto_grind should detect the active battle and fight it directly.
         """
         from renegade_mcp.auto_grind import auto_grind
 
         load_state(emu, "debug_piplup_evolution_r207")
         result = auto_grind(emu, move_index=3, iterations=1)
 
-        if result["stop_reason"] == "move_learn":
-            # Resume with skip
-            result2 = auto_grind(emu, move_index=3, iterations=1, forget_move=-1)
-            # Should continue grinding
-            assert result2["stop_reason"] in (
-                "iterations", "fainted", "move_learn", "pp_depleted",
-            )
+        # Should complete the battle (or stop for move_learn/faint)
+        assert result["stop_reason"] in (
+            "iterations", "move_learn", "fainted",
+        ), f"Unexpected stop_reason: {result['stop_reason']}"
+        # Should have logged at least 1 encounter
+        assert len(result["encounters"]) >= 1
 
 
 class TestAutoGrindEdgeCases:

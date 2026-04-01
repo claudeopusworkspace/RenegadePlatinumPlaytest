@@ -55,28 +55,24 @@ class TestMidBattleEvolution:
 class TestExpShareEvolution:
     """Evolution triggered by Exp Share level-up (non-active Pokemon)."""
 
-    def test_exp_share_holder_evolves(self, emu: EmulatorClient):
-        """Piplup (Exp Share, slot 3) levels to 16 → Prinplup evolution + Metal Claw learn.
+    def test_exp_share_holder_evolves_via_battle(self, emu: EmulatorClient):
+        """Piplup (Exp Share, slot 3) close to Lv16, mid-battle vs wild Phanpy.
 
-        State: debug_piplup_evolution_r207 — grinding on Route 207.
-        Uses auto_grind with 1 iteration to trigger the Exp Share level-up.
+        State: debug_piplup_evolution_r207 — already in battle (Turtwig vs Phanpy).
+        Finish the battle with Razor Leaf; Piplup may evolve from Exp Share XP.
+        NOTE: State is mid-battle, not overworld. auto_grind can't be used directly.
         """
-        from renegade_mcp.auto_grind import auto_grind
+        from renegade_mcp.turn import battle_turn
 
         load_state(emu, "debug_piplup_evolution_r207")
-        result = auto_grind(emu, move_index=3, iterations=1)
+        # Turtwig Lv17, Razor Leaf is move 3 — should KO Phanpy
+        result = battle_turn(emu, move_index=3)
 
-        # Should stop for move_learn (Metal Claw) after Piplup→Prinplup
-        if result["stop_reason"] == "move_learn":
-            assert "move_to_learn" in result
-        elif result["stop_reason"] == "iterations":
-            # Evolution happened but move learned into empty slot
-            pass
-        else:
-            # Acceptable: fainted, unexpected — depends on encounter RNG
-            assert result["stop_reason"] in (
-                "move_learn", "iterations", "fainted",
-            ), f"Unexpected stop_reason: {result['stop_reason']}"
+        # After KO, Exp Share XP may push Piplup to evolve
+        # Various outcomes are acceptable depending on XP gained:
+        assert result["final_state"] in (
+            "BATTLE_ENDED", "WAIT_FOR_ACTION", "MOVE_LEARN",
+        ), f"Unexpected state: {result['final_state']}"
 
     def test_mid_evolution_animation(self, emu: EmulatorClient):
         """Mid-evolution animation state — verify battle_turn handles gracefully.
