@@ -105,7 +105,6 @@
 | `oreburgh_pc_post_whiteout` | Oreburgh Pokemon Center. After whiteout to Roark (variant of post_roark_loss_1). |
 | `bug_shinx_corrupt_data` | Old read_party encryption bug. Shinx slot data garbled. |
 | `debug_starly_one_hit_from_ko` | Wild Starly battle. One hit from KO. Battle-end edge case testing. |
-| `debug_piplup_evolution_r207` | Route 207. Piplup levels to 16 via Exp Share → evolves to Prinplup → Metal Claw move-learn post-evo. **Backlog bug repro.** |
 | `debug_post_battle_move_learn_ui` | Pre-Roark rematch. Win fight → Machop Exp Share level-up → move-learn UI after BATTLE_ENDED. **Backlog bug repro.** |
 | `piplup_evo_in_progress` | Mid-Piplup→Prinplup evolution animation. Evolution handling test. |
 | `jubilife_mart_inside` | Inside Jubilife PokéMart. Shop tool testing. |
@@ -120,3 +119,22 @@
 | `debug_piplup_levelup_in_battle` | Gym trainer battle. Piplup (Exp. Share) leveled to 13 during battle. battle_turn TIMEOUT. |
 | `debug_bullet_seed_timeout` | Roark battle. Before Bullet Seed 5-hit vs Nosepass. battle_turn TIMEOUT on long animation. |
 | `roark_nosepass_down_5hit` | Roark battle. After legendary 5-hit Bullet Seed KO on Nosepass. Mid-battle progress. |
+
+## Battle Test Suite
+
+Structured test cases for verifying `battle_turn` and `auto_grind` edge cases. Each entry specifies a save state, how to trigger the scenario, and what to verify.
+
+### Evolution + Move Learn (Exp Share + Active)
+
+| State | Test | Trigger | Expected |
+|-------|------|---------|----------|
+| `debug_piplup_evolution_r207` | Exp Share holder evolves + move-learn | `auto_grind(move_index=3, iterations=1)` | `stop_reason: "move_learn"`, `move_to_learn: "Metal Claw"`. Screenshot shows "Should a move be deleted?" YES/NO with Prinplup. |
+| `debug_piplup_evolution_r207` | Skip post-evo move-learn | After above: `auto_grind(move_index=3, forget_move=-1, iterations=3)` | `forget_move=-1` resolves the prompt. Party slot 3 = Prinplup Lv16, moves unchanged. Grinding continues. |
+| `debug_piplup_evolution_r207` | Active Pokemon evolves after Exp Share text | Continue grinding from above — Turtwig hits Lv18 | `stop_reason: "move_learn"`, `move_to_learn: "Bulldoze"`. Screenshot shows "Should a move be deleted?" with Grotle. Verifies post-BATTLE_ENDED evolution scan catches main battler evolving after Exp Share Exp text. |
+
+### Mid-Battle Evolution + Move Learn (Active Pokemon)
+
+| State | Test | Trigger | Expected |
+|-------|------|---------|----------|
+| `debug_shinx_pre_evolution_ko` | Level-up → move-learn → evolution chain | `battle_turn(move_index=1)` (Bite KOs Sentret) | Shinx Lv15 → Charge move-learn → Luxio evolution. Should return `MOVE_LEARN` for Charge. |
+| `debug_shinx_move_learn_pre_evolution` | Resolve move-learn, then evolution | `battle_turn(forget_move=-1)` | Skips Charge, Shinx evolves to Luxio. Should return `BATTLE_ENDED` with "evolved into" in log. |
