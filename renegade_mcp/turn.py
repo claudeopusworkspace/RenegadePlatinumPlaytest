@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 # ── Battle action screen (bottom screen) ──
 FIGHT_XY = (128, 90)
+RUN_XY = (128, 170)      # Bottom-center of action screen (blue button)
 POKEMON_XY = (210, 170)  # Bottom-right of action screen (green button)
 
 # Double battle target selection screen (bottom screen, after move selection)
@@ -400,6 +401,11 @@ def _fight_flow(emu: EmulatorClient, move_index: int) -> None:
     emu.tap_touch_screen(mx, my, frames=8)
 
 
+def _run_flow(emu: EmulatorClient) -> None:
+    """Tap RUN on the action screen."""
+    emu.tap_touch_screen(RUN_XY[0], RUN_XY[1], frames=8)
+
+
 def _switch_flow(emu: EmulatorClient, switch_to: int) -> None:
     """Tap POKEMON, tap party slot, tap SHIFT to confirm (normal voluntary switch)."""
     emu.tap_touch_screen(POKEMON_XY[0], POKEMON_XY[1], frames=8)
@@ -572,15 +578,17 @@ def _poll_after_action(emu: EmulatorClient, prompt_log: list[dict]) -> dict[str,
 
 def battle_turn(
     emu: EmulatorClient, move_index: int = -1, switch_to: int = -1,
-    forget_move: int = -2, target: int = -1,
+    forget_move: int = -2, target: int = -1, run: bool = False,
 ) -> dict[str, Any]:
-    """Execute a battle action: move, switch, flee, keep battling, or handle move learning.
+    """Execute a battle action: move, switch, run, flee, keep battling, or handle move learning.
 
     The tool detects the current game state and validates parameters:
 
     Normal turn (ACTION — "What will X do?"):
         move_index (0-3): Use FIGHT and select a move.
         switch_to (1-5): Use POKEMON to switch voluntarily.
+        run=True: Attempt to flee (wild battles only). Returns BATTLE_ENDED on
+            success, WAIT_FOR_ACTION on failure (enemy gets a free turn).
         target (doubles only): 0=left enemy, 1=right enemy, 2=self/ally. -1=auto (first enemy).
 
     Faint in wild battle (FAINT_SWITCH — "Use next Pokemon?"):
@@ -629,10 +637,13 @@ def battle_turn(
     if pt == "ACTION":
         if has_forget:
             return {"error": "Not at a move learning prompt. Use move_index or switch_to."}
-        if has_move and has_switch:
+        if run:
+            if has_move or has_switch:
+                return {"error": "Specify run=True alone — cannot combine with move_index or switch_to."}
+        elif has_move and has_switch:
             return {"error": "Specify move_index OR switch_to, not both."}
-        if not has_move and not has_switch:
-            return {"error": "Must specify move_index (0-3) or switch_to (1-5)."}
+        elif not has_move and not has_switch:
+            return {"error": "Must specify move_index (0-3), switch_to (1-5), or run=True."}
         if has_move and move_index > 3:
             return {"error": f"move_index must be 0-3, got {move_index}"}
         if has_switch and switch_to == 0:
@@ -666,7 +677,9 @@ def battle_turn(
             return {"error": f"forget_move must be -1 (skip) or 0-3, got {forget_move}"}
 
     # 3. Execute the appropriate flow
-    if pt == "ACTION":
+    if pt == "ACTION" and run:
+        result = _execute_run(emu, prompt)
+    elif pt == "ACTION":
         result = _execute_action(emu, prompt, move_index, switch_to, has_move, target)
     elif pt == "FAINT_SWITCH":
         result = _execute_faint_switch(emu, prompt, switch_to, has_switch)
@@ -696,6 +709,18 @@ def battle_turn(
 
 
 # ── State-specific execution ──
+
+def _execute_run(emu: EmulatorClient, prompt: dict) -> dict[str, Any]:
+    """Attempt to flee: tap RUN, poll for result.
+
+    Success → "Got away safely!" → BATTLE_ENDED.
+    Failure → "Can't escape!" → enemy turn → WAIT_FOR_ACTION (or faint states).
+    """
+    _tracker.init(emu)
+    emu.advance_frames(ACTION_SETTLE)
+    _run_flow(emu)
+    return _poll_after_action(emu, prompt["log"])
+
 
 def _execute_action(
     emu: EmulatorClient, prompt: dict, move_index: int, switch_to: int,

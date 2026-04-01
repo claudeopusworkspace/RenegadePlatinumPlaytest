@@ -29,7 +29,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `interact_with(object_index, x, y)` | Navigate to a map object/NPC by index OR static tile by (x,y) and interact. Handles adjacent tiles, counter NPCs, facing, and dialogue. Detects trainer-spotted interruptions (facing seized by script) and falls back to polling for dialogue/battle. |
 | `seek_encounter(cave=false)` | Pace in grass until wild encounter. Returns at first action prompt with full battle state. `cave=true` for non-grass encounters. |
 | `read_dialogue(advance=true)` | Auto-advance through dialogue, collect full conversation. Stops at Yes/No prompts and multi-choice prompts. `advance=false` for passive read. |
-| `battle_turn(move_index, switch_to)` | Full automated turn: FIGHT + move OR POKEMON + switch. Returns battle log + state + read_battle data. |
+| `battle_turn(move_index, switch_to, run)` | Full automated turn: FIGHT + move, POKEMON + switch, or RUN to flee. Returns battle log + state + read_battle data. |
 | `throw_ball` | Throw a Poké Ball in wild battle: BAG + ball select + USE + catch result |
 | `reorder_party(from_slot, to_slot)` | Swap two party Pokemon via pause menu (overworld only) |
 | `decode_rom_message(file_index)` | Decode ROM message archive (species, moves, items, etc.) |
@@ -48,7 +48,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `buy_item(item_name, quantity)` | Buy from a standard PokéMart. Must be inside the mart (FS room). Finds correct cashier (common vs specialty), scrolls to item by ROM-calculated position, purchases, exits. Pre-checks money. |
 | `teach_tm(tm_name, party_slot, forget_move)` | Teach a TM/HM to a party Pokemon. Accepts TM label ("HM06", "TM76") or move name ("Rock Smash"). Pre-validates ROM compatibility (personal.narc bitmasks) and badge+move availability. Handles full menu flow including move-forget. Pass `forget_move` (0-3) when Pokemon knows 4 moves, or -1 to cancel. |
 | `tm_compatibility(tm_name)` | Check which party Pokemon can learn a given TM/HM. Pure ROM data lookup — no emulator interaction. Returns ABLE/UNABLE/ALREADY KNOWS per party slot. |
-| `auto_grind(move_index, cave, target_level, iterations, forget_move)` | Automated grinding loop: seek encounters + spam a move until a stop condition. Returns encounter log with species + checkpoint IDs. See Auto Grind Workflow below. |
+| `auto_grind(move_index, cave, target_level, iterations, forget_move, target_species)` | Automated encounter loop: seek encounters + fight (spam a move) or run. Stops on target level, iterations, or target species. Returns encounter log with species + checkpoint IDs. See Auto Grind Workflow below. |
 | `reload_tools` | Reload all `renegade_mcp` implementation modules in-place via `importlib.reload()`. Call after editing any `renegade_mcp/*.py` file (except `server.py`) to pick up code changes without restarting the MCP server. Changes to `server.py` (new/removed tools, signature changes) still require a manual `/mcp` restart from the user. |
 
 The original Python scripts in `scripts/` still work for debugging but are no longer the primary interface.
@@ -106,6 +106,7 @@ Key ROM file indices: 0392=items, 0412=species, 0610=abilities, 0647=moves, 0433
 1. **`read_battle`** — check enemy species, types, ability, stats, moves. Plan tactics. Returns all 4 battlers in double battles.
 2. **`battle_turn(move_index=N)`** — use a move (0-3). Waits for action prompt automatically, then executes. Returns battle log + final state + updated battle state.
    - Or **`battle_turn(switch_to=N)`** — switch to party slot N (0-5) instead of attacking.
+   - Or **`battle_turn(run=True)`** — attempt to flee a wild battle. Returns `BATTLE_ENDED` on success, `WAIT_FOR_ACTION` on failure (enemy gets a free turn).
    - In **double battles**, add `target=` to specify the target: `0`=left enemy, `1`=right enemy, `2`=self/ally. Default `-1` auto-targets first enemy.
    - Works on the very first turn of battle — no need to call twice.
 3. Handle the returned state:
@@ -123,7 +124,11 @@ Note: `battle_turn` includes `read_battle` data in every response — no separat
 
 ## Auto Grind Workflow
 
-`auto_grind` automates wild encounter grinding. Stand in a grass/cave area with the training target in party slot 0.
+`auto_grind` automates wild encounter loops. Stand in a grass/cave area.
+
+When `move_index` is provided, fights each encounter by spamming that move (grind mode).
+When `move_index` is omitted, runs from each encounter (seek mode).
+When `target_species` is set, stops at the action prompt when that species appears.
 
 ### Basic call
 ```
@@ -132,12 +137,15 @@ auto_grind(move_index=2, target_level=15)   # stop at Lv15
 auto_grind(move_index=1, cave=true)         # cave encounters
 auto_grind(move_index=0, iterations=5)      # stop after 5 encounters (scouting)
 auto_grind(move_index=0, iterations=10, target_level=20)  # whichever comes first
+auto_grind(target_species="Machop")         # run from everything until Machop appears
+auto_grind(move_index=0, target_species="Larvitar")  # grind, but stop if Larvitar appears
 ```
 
 ### Stop conditions (returned as `stop_reason`)
 | Reason | Meaning | What to do |
 |--------|---------|------------|
 | `target_level` | Slot 0 reached the target level. | Done! |
+| `target_species` | Found the target species. At action prompt. | Fight, catch, or flee. Battle state included in response. |
 | `iterations` | Completed the requested number of encounters. | Review encounter log. |
 | `fainted` | Slot 0 fainted. | Heal, then grind again or switch lead. |
 | `pp_depleted` | Spam move has 0 PP mid-battle. | Handle manually: flee, use another move, or use an Ether. |

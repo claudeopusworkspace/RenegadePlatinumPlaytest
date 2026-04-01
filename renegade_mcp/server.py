@@ -250,15 +250,17 @@ def create_server() -> FastMCP:
     # ── Battle Turn ──
 
     @mcp.tool()
-    def battle_turn(move_index: int = -1, switch_to: int = -1, forget_move: int = -2, target: int = -1) -> dict[str, Any]:
-        """Execute a full battle turn: use a move OR switch Pokemon.
+    def battle_turn(move_index: int = -1, switch_to: int = -1, forget_move: int = -2, target: int = -1, run: bool = False) -> dict[str, Any]:
+        """Execute a full battle turn: use a move, switch Pokemon, or run.
 
         Combines battle_init + action + battle_poll into one call.
-        Specify exactly one action: move_index to fight, or switch_to to swap.
+        Specify exactly one action: move_index to fight, switch_to to swap, or run to flee.
 
         Actions:
         - move_index (0-3): Tap FIGHT, select the move (top-left, top-right, bottom-left, bottom-right).
         - switch_to (1-5): Tap POKEMON, navigate to party slot, confirm switch. Slot 0 is the active battler.
+        - run (True): Attempt to flee a wild battle. Returns BATTLE_ENDED on success,
+          WAIT_FOR_ACTION on failure (enemy gets a free turn). Rejects trainer battles.
         - forget_move (0-3): At MOVE_LEARN prompt, forget this move slot and learn the new move.
         - forget_move=-1: At MOVE_LEARN prompt, skip learning the new move.
         - target (doubles only): Target for the move. 0=left enemy, 1=right enemy, 2=self/ally.
@@ -276,7 +278,9 @@ def create_server() -> FastMCP:
         from renegade_mcp.turn import battle_turn as _battle_turn
 
         emu = get_client()
-        if move_index >= 0:
+        if run:
+            desc = "battle_turn(run=True)"
+        elif move_index >= 0:
             desc = f"battle_turn(move={move_index}, target={target})"
         elif switch_to >= 0:
             desc = f"battle_turn(switch_to={switch_to})"
@@ -285,7 +289,7 @@ def create_server() -> FastMCP:
         else:
             desc = "battle_turn"
         emu.create_checkpoint(action=desc)
-        return _battle_turn(emu, move_index=move_index, switch_to=switch_to, forget_move=forget_move, target=target)
+        return _battle_turn(emu, move_index=move_index, switch_to=switch_to, forget_move=forget_move, target=target, run=run)
 
     # ── Catch ──
 
@@ -705,22 +709,28 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     def auto_grind(
-        move_index: int,
+        move_index: int = -1,
         cave: bool = False,
         target_level: int = 0,
         iterations: int = 0,
         forget_move: int = -2,
+        target_species: str = "",
     ) -> dict[str, Any]:
         """Grind wild encounters automatically: seek → battle → repeat.
 
         Place the Pokemon to train in party slot 0 and stand in a grass/cave area.
-        The tool loops seek_encounter + battle_turn (spamming the given move) until
-        a stop condition is hit.
+        The tool loops seek_encounter + battle_turn until a stop condition is hit.
+
+        When move_index is provided, fights each encounter by spamming that move.
+        When move_index is omitted, runs from each encounter instead.
+        When target_species is set, stops at the action prompt when that species
+        appears — ready to fight or catch.
 
         Stop conditions (returned as stop_reason):
         - fainted: Slot 0 Pokemon fainted. Heal before continuing.
         - pp_depleted: The spam move has 0 PP. Battle is still active — handle manually.
         - target_level: Slot 0 reached the target level.
+        - target_species: Found the target species. At action prompt.
         - iterations: Completed the requested number of encounters.
         - seek_failed: Unexpected interruption while seeking encounters (cutscene, blocked path).
         - move_learn: Pokemon wants to learn a new move but has no room. Call again with
@@ -731,12 +741,13 @@ def create_server() -> FastMCP:
         `checkpoint_id` (hash to revert to for catching that Pokemon).
 
         Args:
-            move_index: Move slot (0-3) to spam every turn.
+            move_index: Move slot (0-3) to spam every turn. -1 (default) = run from encounters.
             cave: True for cave/indoor encounters (no grass tiles).
             target_level: Stop when slot 0 reaches this level. 0 = no limit.
             iterations: Stop after this many encounters. 0 = no limit.
             forget_move: Resume from a move_learn stop. 0-3 = forget that move slot,
                         -1 = skip learning. -2 (default) = not resuming.
+            target_species: Stop when this species is encountered. Case-insensitive.
         """
         from renegade_mcp.auto_grind import auto_grind as _auto_grind
 
@@ -748,6 +759,8 @@ def create_server() -> FastMCP:
             desc += f", iters={iterations}"
         if forget_move >= -1:
             desc += f", forget={forget_move}"
+        if target_species:
+            desc += f", species={target_species}"
         desc += ")"
         emu.create_checkpoint(action=desc)
         return _auto_grind(
@@ -757,6 +770,7 @@ def create_server() -> FastMCP:
             target_level=target_level,
             iterations=iterations,
             forget_move=forget_move,
+            target_species=target_species,
         )
 
     # ── Reload ──

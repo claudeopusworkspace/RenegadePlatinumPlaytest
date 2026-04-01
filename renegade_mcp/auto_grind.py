@@ -31,29 +31,38 @@ _ERROR = {"TIMEOUT", "NO_TEXT", "NO_ACTION_PROMPT", "LEVEL_UP"}
 
 def auto_grind(
     emu: EmulatorClient,
-    move_index: int,
+    move_index: int = -1,
     cave: bool = False,
     target_level: int = 0,
     iterations: int = 0,
     forget_move: int = -2,
+    target_species: str = "",
 ) -> dict[str, Any]:
     """Grind wild encounters automatically.
 
-    Loops: seek_encounter → battle (spam move_index) → repeat.
+    Loops: seek_encounter → battle/run → repeat.
+
+    When move_index is provided, fights each encounter by spamming that move.
+    When move_index is omitted, runs from each encounter instead.
+    When target_species is set, stops at the action prompt when that species
+    appears — ready to fight or catch.
 
     Args:
         emu: Emulator client.
-        move_index: Move slot (0-3) to use every turn.
+        move_index: Move slot (0-3) to use every turn. -1 = run from encounters.
         cave: Pass to seek_encounter for cave/indoor encounters.
         target_level: Stop when slot-0 Pokemon reaches this level. 0 = no limit.
         iterations: Stop after this many wild encounters. 0 = no limit.
         forget_move: If resuming from a MOVE_LEARN stop, pass the choice here
                      (0-3 = forget that slot, -1 = skip learning). -2 = not resuming.
+        target_species: Stop when this species appears. Case-insensitive.
+                        Empty = no species filter.
 
     Returns:
         Dict with stop_reason, battles fought, encounters list (species + checkpoint),
         log of each battle, and party state.
     """
+    fighting = move_index >= 0
     battles: list[dict[str, Any]] = []
     encounters: list[dict[str, str]] = []
     stop_reason = ""
@@ -78,9 +87,12 @@ def auto_grind(
             # Fall through to the main grind loop
         elif state == "WAIT_FOR_ACTION":
             # Move learn resolved mid-battle — continue this battle
-            stop_reason, stop_detail, battle_log, detected_level = _fight_battle(
-                emu, move_index, result, resuming=True,
-            )
+            if fighting:
+                stop_reason, stop_detail, battle_log, detected_level = _fight_battle(
+                    emu, move_index, result, resuming=True,
+                )
+            else:
+                stop_reason, stop_detail, battle_log, detected_level = _run_battle(emu)
             battles.append({"turns": battle_log})
             if stop_reason:
                 party = _read_party(emu)
@@ -171,9 +183,19 @@ def auto_grind(
 
         first_loop = False
 
-        # We have a battle — fight it
-        # The encounter data already has the first action prompt ready
-        stop_reason, stop_detail, battle_log, detected_level = _fight_battle(emu, move_index)
+        # Check target_species before fighting/running
+        if target_species and enemy_species.lower() == target_species.lower():
+            stop_reason = "target_species"
+            stop_detail = (
+                f"Found {enemy_species}! At action prompt — ready to fight or catch."
+            )
+            break
+
+        # We have a battle — fight or run
+        if fighting:
+            stop_reason, stop_detail, battle_log, detected_level = _fight_battle(emu, move_index)
+        else:
+            stop_reason, stop_detail, battle_log, detected_level = _run_battle(emu)
         battles.append({"turns": battle_log})
 
         if stop_reason:
@@ -199,7 +221,7 @@ def auto_grind(
             stop_reason = "target_level"
             stop_detail = f"Slot 0 reached Lv{slot0['level']} (target: {target_level})."
             break
-        if slot0 and not slot0.get("partial") and slot0["pp"][move_index] <= 0:
+        if fighting and slot0 and not slot0.get("partial") and slot0["pp"][move_index] <= 0:
             stop_reason = "pp_depleted"
             stop_detail = (
                 f"Move slot {move_index} ({slot0['move_names'][move_index]}) "
@@ -210,7 +232,16 @@ def auto_grind(
 
     # Gather final party state
     party = _read_party(emu)
-    return _finish(stop_reason, stop_detail, battles, party, encounters=encounters)
+    result = _finish(stop_reason, stop_detail, battles, party, encounters=encounters)
+
+    # If stopped for target_species, include battle state for the caller
+    if stop_reason == "target_species":
+        from renegade_mcp.battle import format_battle
+        battlers = _read_battle(emu)
+        result["battle_state"] = battlers
+        result["formatted"] += "\n\n" + format_battle(battlers)
+
+    return result
 
 
 def _fight_battle(
@@ -294,6 +325,49 @@ def _fight_battle(
             f"Unexpected battle state: {state}. Check game manually.",
             battle_log,
             _extract_level_from_log(battle_log),
+        )
+
+
+def _run_battle(
+    emu: EmulatorClient,
+) -> tuple[str, str, list[dict[str, Any]], int | None]:
+    """Attempt to run from a wild battle. Retries on failure.
+
+    Returns (stop_reason, stop_detail, battle_log, detected_level).
+    stop_reason is empty string if we escaped successfully (BATTLE_ENDED).
+    """
+    battle_log: list[dict[str, Any]] = []
+    turn = 0
+
+    while True:
+        emu.create_checkpoint(action=f"auto_grind:run(turn={turn})")
+        result = _battle_turn(emu, run=True)
+        state = result.get("final_state", "")
+        battle_log.append({"turn": turn, "state": state, "log": result.get("formatted", "")})
+        turn += 1
+
+        if state in _BATTLE_OVER:
+            return "", "", battle_log, None
+
+        if state == "WAIT_FOR_ACTION":
+            # Failed to escape — enemy got a free turn. Try running again.
+            continue
+
+        if state in _FAINT:
+            return (
+                "fainted",
+                f"Slot 0 Pokemon fainted while trying to run. State: {state}. "
+                "Return to a Pokemon Center or use revives before continuing.",
+                battle_log,
+                None,
+            )
+
+        # Anything else is unexpected
+        return (
+            "unexpected",
+            f"Unexpected battle state while running: {state}. Check game manually.",
+            battle_log,
+            None,
         )
 
 
