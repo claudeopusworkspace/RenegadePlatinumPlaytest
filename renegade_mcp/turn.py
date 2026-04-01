@@ -146,9 +146,33 @@ def _classify_prompt(text: str) -> str:
         return "FAINT_SWITCH"
     if "Will you switch" in t:
         return "SWITCH_PROMPT"
-    if "give up on" in t or "forget another move" in t:
+    if "give up on" in t or "forget another move" in t or "Should a move be deleted" in t:
         return "MOVE_LEARN"
     return "ACTION"
+
+
+def _handle_evolution_what(emu: EmulatorClient, result: dict[str, Any]) -> dict[str, Any] | None:
+    """Detect if WAIT_FOR_ACTION is actually the evolution 'What?' prompt.
+
+    In Gen 4, evolution shows 'What?' with the WAIT_FOR_ACTION control code
+    before the 'is evolving!' text.  If detected, press B to advance past
+    'What?' and hand off to _wait_for_evolution.
+
+    Returns updated result if evolution was handled, None otherwise.
+    """
+    log = result.get("log", [])
+    if not _log_has(log, "grew to"):
+        return None
+    for entry in reversed(log):
+        if entry.get("stop") == "WAIT_FOR_ACTION":
+            text = entry.get("text", "").replace("\n", " ")
+            if text.strip().startswith("What?"):
+                emu.press_buttons(["b"], frames=8)
+                emu.advance_frames(60)
+                if _is_evolution_text_on_screen(emu):
+                    return _wait_for_evolution(emu, result)
+            break
+    return None
 
 
 def _scan_move_name_from_memory(emu: EmulatorClient) -> str | None:
@@ -227,19 +251,25 @@ def _wait_for_evolution(emu: EmulatorClient, result: dict[str, Any]) -> dict[str
             clean = text.replace("\n", " ")
             if "evolved into" in clean:
                 result["log"].append({"text": text, "stop": "AUTO_ADVANCE"})
-                # Advance through post-evolution text (congratulations, etc.)
-                _advance_text(emu, presses=5, wait=180)
+                # Press B through post-evolution text.  Check for the
+                # move-learn prompt by TEXT CONTENT (not control codes)
+                # because post-evolution text uses AUTO_ADVANCE markers
+                # even for prompts that need player input.
+                # Scan BEFORE pressing B each cycle to avoid accidentally
+                # navigating through the YES/NO prompt.
+                _advance_text(emu, presses=2, wait=180)
                 emu.advance_frames(300)
-                # Re-poll for any further prompts (post-evolution move learn)
-                _tracker.init(emu)
-                poll = _tracker.poll(emu, auto_press=True)
-                if poll.get("log"):
-                    result["log"].extend(poll.get("log", []))
-                final = _classify_final_state(emu, poll)
-                if final in ("TIMEOUT", "NO_TEXT"):
-                    result["final_state"] = "BATTLE_ENDED" if _is_battle_over(emu) else final
-                else:
-                    result["final_state"] = final
+                for _ in range(RECOVERY_PRESSES):
+                    raw2 = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
+                    if raw2:
+                        markers2 = _scan_markers(bytes(raw2), SCAN_START)
+                        for t2 in markers2.values():
+                            if "Should a move be deleted" in t2.replace("\n", " "):
+                                result["final_state"] = "MOVE_LEARN"
+                                return result
+                    emu.press_buttons(["b"], frames=8)
+                    emu.advance_frames(180)
+                result["final_state"] = "BATTLE_ENDED" if _is_battle_over(emu) else "TIMEOUT"
                 return result
 
             if "stopped evolving" in clean:
@@ -323,6 +353,16 @@ def _wait_for_action_prompt(emu: EmulatorClient) -> dict[str, Any]:
                 if cand_text != prev_text:
                     log.append({"text": cand_text, "stop": "WAIT_FOR_ACTION"})
                 return {"ready": True, "log": log, "prompt_type": cand_type}
+
+            # No WAIT_FOR_ACTION marker — check text content for prompts
+            # that use different control codes (post-evolution move-learn
+            # uses AUTO_ADVANCE despite being a player-input prompt).
+            for _, text, vals, _ in results:
+                clean = text.replace("\n", " ")
+                if "Should a move be deleted" in clean:
+                    if text != prev_text:
+                        log.append({"text": text, "stop": _classify_stop(vals)})
+                    return {"ready": True, "log": log, "prompt_type": "MOVE_LEARN"}
 
             # No action prompt yet — log the best result and advance
             if results:
@@ -455,6 +495,48 @@ def _learn_move_flow(emu: EmulatorClient, forget_index: int) -> bool:
         emu.press_buttons(["b"], frames=8)
         emu.advance_frames(180)
     return _is_evolution_text_on_screen(emu)
+
+
+def _skip_move_learn_overworld(emu: EmulatorClient) -> None:
+    """Skip learning in post-evolution UI (top-screen YES/NO with D-pad).
+
+    Flow: 'Should a move be deleted?' → NO → 'Stop trying to teach [Move]?' → YES
+          → '[Pokemon] did not learn [Move].' → dismiss.
+    """
+    # "Should a move be deleted?" → select NO
+    emu.press_buttons(["down"], frames=8)
+    emu.advance_frames(DPAD_WAIT)
+    emu.press_buttons(["a"], frames=8)
+    emu.advance_frames(PROMPT_SETTLE)
+    # "Stop trying to teach [Move]?" → select YES
+    emu.press_buttons(["up"], frames=8)
+    emu.advance_frames(DPAD_WAIT)
+    emu.press_buttons(["a"], frames=8)
+    emu.advance_frames(PROMPT_SETTLE)
+    # "[Pokemon] did not learn [Move]." → dismiss
+    emu.press_buttons(["b"], frames=8)
+    emu.advance_frames(PROMPT_SETTLE)
+
+
+def _learn_move_overworld(emu: EmulatorClient, forget_index: int) -> None:
+    """Learn a move in post-evolution UI (top-screen YES/NO + move list).
+
+    Flow: 'Should a move be deleted?' → YES → move list (D-pad) → select move
+          → confirmation text.
+    """
+    # "Should a move be deleted?" → select YES (cursor defaults to YES)
+    emu.press_buttons(["up"], frames=8)
+    emu.advance_frames(DPAD_WAIT)
+    emu.press_buttons(["a"], frames=8)
+    emu.advance_frames(PROMPT_SETTLE)
+    # Navigate to the move to forget (list starts at move 0)
+    for _ in range(forget_index):
+        emu.press_buttons(["down"], frames=8)
+        emu.advance_frames(DPAD_WAIT)
+    emu.press_buttons(["a"], frames=8)
+    emu.advance_frames(PROMPT_SETTLE)
+    # Advance through confirmation text ("1, 2, and... Poof!" / learned)
+    _advance_text(emu, presses=5, wait=180)
 
 
 def _poll_after_action(emu: EmulatorClient, prompt_log: list[dict]) -> dict[str, Any]:
@@ -654,8 +736,33 @@ def _execute_action(
         if not has_narration:
             result["final_state"] = "WAIT_FOR_PARTNER_ACTION"
 
+    # Evolution "What?" detection: appears as WAIT_FOR_ACTION after level-up
+    if result["final_state"] == "WAIT_FOR_ACTION":
+        evo = _handle_evolution_what(emu, result)
+        if evo is not None:
+            result = evo
+
     if result["final_state"] == "TIMEOUT" and _log_has(result.get("log", []), "grew to"):
         result = _recover_from_level_up(emu, result)
+
+    # After level-up recovery returns BATTLE_ENDED, evolution "What?" may
+    # appear a moment later (after Exp Share text finishes).  Quick-scan
+    # for it before returning.
+    if (result["final_state"] == "BATTLE_ENDED"
+            and _log_has(result.get("log", []), "grew to")):
+        emu.advance_frames(120)
+        if _is_evolution_text_on_screen(emu):
+            result = _wait_for_evolution(emu, result)
+        else:
+            raw_scan = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
+            if raw_scan:
+                for t_scan in _scan_markers(bytes(raw_scan), SCAN_START).values():
+                    if t_scan.strip().startswith("What?"):
+                        emu.press_buttons(["b"], frames=8)
+                        emu.advance_frames(60)
+                        if _is_evolution_text_on_screen(emu):
+                            result = _wait_for_evolution(emu, result)
+                        break
 
     return result
 
@@ -711,6 +818,21 @@ def _execute_move_learn(
         # No decision yet — return MOVE_LEARN state for the caller to decide
         return {"log": prompt["log"], "final_state": "MOVE_LEARN"}
 
+    # Detect post-evolution overworld UI (top-screen YES/NO) vs mid-battle
+    # (bottom-screen touch buttons).  The overworld prompt says
+    # "Should a move be deleted?" instead of "forget another move".
+    is_overworld = any(
+        "Should a move be deleted" in e.get("text", "").replace("\n", " ")
+        for e in prompt.get("log", [])
+    )
+
+    if is_overworld:
+        if forget_move == -1:
+            _skip_move_learn_overworld(emu)
+        else:
+            _learn_move_overworld(emu, forget_move)
+        return _poll_after_action(emu, prompt["log"])
+
     if forget_move == -1:
         evolving = _skip_move_learn_flow(emu)
     else:
@@ -745,6 +867,10 @@ def _recover_from_level_up(emu: EmulatorClient, result: dict[str, Any]) -> dict[
 
         if poll["final_state"] == "WAIT_FOR_ACTION":
             result["log"].extend(poll.get("log", []))
+            # Check for evolution "What?" before classifying
+            evo = _handle_evolution_what(emu, result)
+            if evo is not None:
+                return evo
             result["final_state"] = _classify_final_state(emu, poll)
             return result
 
