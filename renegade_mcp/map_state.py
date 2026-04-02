@@ -507,6 +507,7 @@ def analyze_elevation(bdhc: dict, terrain: list[list[int]]) -> dict | None:
         row_max = int((max(z1, z2) + 256) / 16)
 
         ramp_info = {
+            "ramp_index": len(ramps),
             "col_range": (col_min, col_max),
             "row_range": (row_min, row_max),
             "from_level": from_level,

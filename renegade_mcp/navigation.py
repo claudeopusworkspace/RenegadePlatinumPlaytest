@@ -7,6 +7,7 @@ verifying position after each step.
 from __future__ import annotations
 
 import re
+import time
 from collections import deque
 from typing import TYPE_CHECKING, Any
 
@@ -17,10 +18,14 @@ from renegade_mcp.party import read_party
 from renegade_mcp.trainer import read_trainer_status
 from renegade_mcp.map_state import (
     CHUNK_SIZE,
+    analyze_elevation,
+    get_land_data_id,
     get_map_state,
     get_matrix_for_map,
     load_terrain_from_rom,
+    parse_bdhc,
     read_objects,
+    read_player_height,
     read_player_state,
 )
 from renegade_mcp.turn import _wait_for_action_prompt
@@ -111,6 +116,17 @@ DIRECTIONAL_WARP: dict[int, str] = {
 
 # All warp behaviors that should be passable despite collision flags
 WARP_PASSABLE = {0x69} | set(DIRECTIONAL_WARP.keys())
+
+# Directional blocks: behavior on SOURCE tile → direction that is blocked.
+# These are platform-edge tiles that prevent stepping off elevated surfaces.
+DIRECTIONAL_BLOCKS: dict[int, str] = {
+    0x30: "right",  # block_E — can't step east off platform
+    0x31: "left",   # block_W — can't step west off platform
+}
+
+# ── 3D pathfinding constants ──
+_3D_MAX_DEPTH = 5       # max ramp transitions in a single path search
+_3D_TIMEOUT = 300       # wall-clock seconds before aborting 3D search
 
 DOOR_TRANSITION_POLLS = 30   # polls to wait for map transition (30 * 15 = 450 frames)
 DOOR_POLL_FRAMES = 15
@@ -236,6 +252,48 @@ def _build_terrain_info(
             npc_set.add((lx, ly))
 
     return grid, npc_set, obstacle_map
+
+
+# ── 3D elevation helpers ──
+
+def _height_to_level(height: float, elevation: dict) -> int | None:
+    """Convert player height (fx32 float) to a level index.
+
+    Exact match first; if none (player mid-ramp), finds the ramp whose
+    height range contains the value and returns its from_level.
+    """
+    h = round(height)
+    level = elevation["height_to_level"].get(h)
+    if level is not None:
+        return level
+
+    # Player might be mid-ramp — check ramp height ranges
+    levels_info = elevation["levels"]
+    height_by_level: dict[int, int] = {lv["level"]: lv["height"] for lv in levels_info}
+    for ramp in elevation["ramps"]:
+        from_h = height_by_level.get(ramp["from_level"])
+        to_h = height_by_level.get(ramp["to_level"])
+        if from_h is not None and to_h is not None:
+            lo, hi = min(from_h, to_h), max(from_h, to_h)
+            if lo <= h <= hi:
+                return ramp["from_level"]
+
+    return None
+
+
+def _get_tile_level(x: int, y: int, elevation: dict) -> list[int]:
+    """Get which elevation levels a tile belongs to.
+
+    Ramp tiles return both connected levels. Tiles with no elevation data
+    return [] (treated as any-level by the BFS).
+    """
+    key = (x, y)
+    if key in elevation["ramp_tiles"]:
+        ri = elevation["ramp_tiles"][key]
+        return [ri["from_level"], ri["to_level"]]
+    if key in elevation["level_map"]:
+        return elevation["level_map"][key]
+    return []
 
 
 def _bfs_pathfind(
@@ -365,6 +423,179 @@ def _bfs_pathfind_obstacles(
             queue.append((nx, ny, new_path, new_obs))
 
     return None, []
+
+
+# ── Level-constrained BFS (3D pathfinding) ──
+
+def _bfs_pathfind_level(
+    terrain_info: list, npc_set: set, elevation: dict,
+    start_x: int, start_y: int, goal_x: int, goal_y: int,
+    current_level: int, width: int = 32, height: int = 32,
+) -> tuple[list[str] | None, dict[int, tuple[list[str], tuple[int, int], int]]]:
+    """BFS pathfind restricted to a single elevation level.
+
+    Returns (path_to_goal, reachable_ramps) where:
+    - path_to_goal: direction list or None if goal unreachable on this level
+    - reachable_ramps: {ramp_index: (path_to_ramp, (rx, ry), other_level)}
+      for each ramp reachable from start on current_level
+    """
+    if not (0 <= start_x < width and 0 <= start_y < height):
+        return None, {}
+    if not (0 <= goal_x < width and 0 <= goal_y < height):
+        return None, {}
+    if (start_x, start_y) == (goal_x, goal_y):
+        return [], {}
+
+    level_map = elevation["level_map"]
+    ramp_tiles = elevation["ramp_tiles"]
+
+    def _tile_on_level(tx: int, ty: int, level: int) -> bool:
+        key = (tx, ty)
+        if key in ramp_tiles:
+            ri = ramp_tiles[key]
+            return level in (ri["from_level"], ri["to_level"])
+        if key in level_map:
+            return level in level_map[key]
+        # No elevation data → accessible on any level
+        return True
+
+    visited = {(start_x, start_y)}
+    queue: deque[tuple[int, int, list[str]]] = deque([(start_x, start_y, [])])
+    reachable_ramps: dict[int, tuple[list[str], tuple[int, int], int]] = {}
+
+    while queue:
+        x, y, path = queue.popleft()
+
+        for dx, dy, direction in BFS_MOVES:
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < width and 0 <= ny < height):
+                continue
+            if (nx, ny) in visited or (nx, ny) in npc_set:
+                continue
+
+            passable, behavior = terrain_info[ny][nx]
+            if not passable:
+                continue
+
+            # Directional warp check
+            if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
+                continue
+            # Ledge direction check
+            if behavior in LEDGE_DIRECTIONS and LEDGE_DIRECTIONS[behavior] != direction:
+                continue
+            # Directional block on SOURCE tile (0x30 blocks east, 0x31 blocks west)
+            _, src_behavior = terrain_info[y][x]
+            if src_behavior in DIRECTIONAL_BLOCKS and DIRECTIONAL_BLOCKS[src_behavior] == direction:
+                continue
+
+            # Level constraint
+            if not _tile_on_level(nx, ny, current_level):
+                continue
+
+            new_path = path + [direction]
+            visited.add((nx, ny))
+
+            # Record ramp transitions to other levels
+            ramp_key = (nx, ny)
+            if ramp_key in ramp_tiles:
+                ri = ramp_tiles[ramp_key]
+                ramp_idx = ri["ramp_index"]
+                if ramp_idx not in reachable_ramps:
+                    if ri["from_level"] == current_level:
+                        other = ri["to_level"]
+                    elif ri["to_level"] == current_level:
+                        other = ri["from_level"]
+                    else:
+                        other = None
+                    if other is not None and other != current_level:
+                        reachable_ramps[ramp_idx] = (new_path, (nx, ny), other)
+
+            if (nx, ny) == (goal_x, goal_y):
+                return new_path, reachable_ramps
+
+            queue.append((nx, ny, new_path))
+
+    return None, reachable_ramps
+
+
+_DIR_DELTAS = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
+
+
+def _bfs_pathfind_3d(
+    terrain_info: list, npc_set: set, elevation: dict,
+    start_x: int, start_y: int, goal_x: int, goal_y: int,
+    start_level: int, width: int = 32, height: int = 32,
+) -> list[str] | None:
+    """Hierarchical 3D BFS: pathfind across elevation levels via ramp transitions.
+
+    Tries direct BFS on the start level. If the goal is unreachable, brute-forces
+    through reachable ramps: BFS to ramp → transition level → recurse.
+    Depth-capped at _3D_MAX_DEPTH, wall-clock timeout at _3D_TIMEOUT seconds.
+    """
+    goal_levels = _get_tile_level(goal_x, goal_y, elevation)
+    deadline = time.monotonic() + _3D_TIMEOUT
+
+    def _search(
+        sx: int, sy: int, level: int, depth: int, visited_ramps: frozenset[int],
+    ) -> list[str] | None:
+        if depth > _3D_MAX_DEPTH:
+            return None
+        if time.monotonic() > deadline:
+            return None
+
+        direct_path, reachable_ramps = _bfs_pathfind_level(
+            terrain_info, npc_set, elevation,
+            sx, sy, goal_x, goal_y,
+            level, width=width, height=height,
+        )
+
+        if direct_path is not None:
+            return direct_path
+
+        if not reachable_ramps:
+            return None
+
+        # Sort ramps: toward target level first, then Manhattan to goal, then path length
+        def _ramp_priority(item: tuple) -> tuple:
+            ramp_idx, (path_to_ramp, _, other_level) = item
+            toward_goal = 0 if (goal_levels and other_level in goal_levels) else 1
+            # Use ramp midpoint for distance heuristic
+            ri = None
+            for r in elevation["ramps"]:
+                if r["ramp_index"] == ramp_idx:
+                    ri = r
+                    break
+            if ri:
+                mid_c = (ri["col_range"][0] + ri["col_range"][1]) / 2
+                mid_r = (ri["row_range"][0] + ri["row_range"][1]) / 2
+                dist = abs(mid_c - goal_x) + abs(mid_r - goal_y)
+            else:
+                dist = 999.0
+            return (toward_goal, dist, len(path_to_ramp))
+
+        candidates = [
+            (idx, data) for idx, data in reachable_ramps.items()
+            if idx not in visited_ramps
+        ]
+        candidates.sort(key=_ramp_priority)
+
+        best_path: list[str] | None = None
+
+        for ramp_idx, (path_to_ramp, (rx, ry), other_level) in candidates:
+            if time.monotonic() > deadline:
+                break
+
+            new_visited = visited_ramps | {ramp_idx}
+            continuation = _search(rx, ry, other_level, depth + 1, new_visited)
+
+            if continuation is not None:
+                full_path = path_to_ramp + continuation
+                if best_path is None or len(full_path) < len(best_path):
+                    best_path = full_path
+
+        return best_path
+
+    return _search(start_x, start_y, start_level, 0, frozenset())
 
 
 def _build_multi_chunk_terrain(
@@ -1124,91 +1355,130 @@ def navigate_to(
         "grid_ox": repath_ox, "grid_oy": repath_oy,
     }
 
-    # ── Dual BFS: clean path vs obstacle path ──
-    clean_path = _bfs_pathfind(
-        terrain_info, npc_set | set(obstacle_map.keys()),
-        bfs_sx, bfs_sy, bfs_tx, bfs_ty, width=bfs_w, height=bfs_h,
-    )
+    # ── 3D elevation detection (single-chunk maps only) ──
+    elevation = None
+    player_level = None
+    is_3d = False
 
-    # Only run obstacle BFS if there are obstacles on the map or terrain obstacles
-    field_moves = _get_field_move_availability(emu)
-    obs_path, obs_crossed = _bfs_pathfind_obstacles(
-        terrain_info, npc_set, obstacle_map,
-        bfs_sx, bfs_sy, bfs_tx, bfs_ty,
-        field_moves, width=bfs_w, height=bfs_h,
-    )
-    obs_crossed = _dedupe_obstacles(obs_crossed)
+    if not (is_global and chunked):
+        land_id = get_land_data_id(emu, map_id, px, py)
+        if land_id is not None:
+            bdhc = parse_bdhc(land_id)
+            if bdhc is not None:
+                elevation = analyze_elevation(bdhc, state["terrain"])
+                if elevation is not None:
+                    player_level = _height_to_level(read_player_height(emu), elevation)
+                    if player_level is not None:
+                        is_3d = True
 
-    # ── Decide which path to use ──
-    has_clean = clean_path is not None
-    has_obs = obs_path is not None and len(obs_crossed) > 0
-    obs_shorter = has_obs and (not has_clean or len(obs_path) < len(clean_path))
+    if is_3d:
+        # ── 3D pathfinding (replaces dual BFS for elevated maps) ──
+        combined_npc_set = npc_set | set(obstacle_map.keys())
+        path_3d = _bfs_pathfind_3d(
+            terrain_info, combined_npc_set, elevation,
+            bfs_sx, bfs_sy, bfs_tx, bfs_ty,
+            player_level, width=bfs_w, height=bfs_h,
+        )
 
-    # Check if all required skills are available for the obstacle path
-    skills_available = True
-    if has_obs:
-        for ob in obs_crossed:
-            if not field_moves.get(ob["move"], False):
-                skills_available = False
-                break
+        if path_3d is None:
+            return {
+                "error": (
+                    "No 3D path found. Target may be on an unreachable elevation "
+                    "level or blocked by walls on all connected levels."
+                ),
+                "start": _pos_with_map(px, py, map_id),
+                "target": {"x": target_x, "y": target_y},
+                "player_level": player_level,
+                "elevation_levels": len(elevation["levels"]),
+            }
 
-    # Determine which path to use
-    if path_choice == "obstacle":
-        if not has_obs:
-            return {"error": "No obstacle path available.", "start": _pos_with_map(px, py, map_id)}
-        if not skills_available:
-            missing = [ob["move"] for ob in obs_crossed if not field_moves.get(ob["move"], False)]
-            return {"error": f"Cannot take obstacle path — missing: {set(missing)}",
-                    "start": _pos_with_map(px, py, map_id)}
-        path = obs_path
-    elif path_choice == "clean":
-        if not has_clean:
-            return {"error": "No clean (obstacle-free) path available.",
-                    "start": _pos_with_map(px, py, map_id)}
-        path = clean_path
-    elif has_obs and obs_shorter and skills_available and path_choice is None:
-        # Obstacle path is shorter and skills available — ask the caller
-        start_pos = _pos_with_map(px, py, map_id)
-        status = "obstacle_choice" if has_clean else "obstacle_required"
-        obstacle_info = [{
-            "type": ob["type"], "move": ob["move"], "badge": ob["badge"],
-            "x": ob.get("global_x", ob.get("x")),
-            "y": ob.get("global_y", ob.get("y")),
-        } for ob in obs_crossed]
-        msg_parts = [f"Path requires {ob['move']} at ({ob.get('global_x', ob.get('x'))}, {ob.get('global_y', ob.get('y'))})" for ob in obs_crossed]
-        if has_clean:
-            msg = (
-                f"Shorter path ({len(obs_path)} steps) needs: {', '.join(msg_parts)}. "
-                f"Clean path available ({len(clean_path)} steps). "
-                f"Call again with path_choice='obstacle' or 'clean'."
-            )
-        else:
-            msg = (
-                f"Only path ({len(obs_path)} steps) needs: {', '.join(msg_parts)}. "
-                f"No obstacle-free path exists. "
-                f"Call again with path_choice='obstacle' to proceed."
-            )
-        return {
-            "status": status,
-            "clean_path_steps": len(clean_path) if has_clean else None,
-            "obstacle_path_steps": len(obs_path),
-            "obstacles": obstacle_info,
-            "skills_available": skills_available,
-            "start": start_pos,
-            "target": {"x": target_x, "y": target_y},
-            "message": msg,
-        }
-    elif has_obs and obs_shorter and not skills_available and not has_clean:
-        # Only path requires obstacles but skills aren't available
-        missing = [ob["move"] for ob in obs_crossed if not field_moves.get(ob["move"], False)]
-        return {
-            "error": f"No path found. An obstacle path exists but requires: {set(missing)}",
-            "start": _pos_with_map(px, py, map_id),
-            "target": {"x": target_x, "y": target_y},
-        }
+        path = path_3d
     else:
-        # Default: use clean path (or None)
-        path = clean_path
+        # ── Dual BFS: clean path vs obstacle path ──
+        clean_path = _bfs_pathfind(
+            terrain_info, npc_set | set(obstacle_map.keys()),
+            bfs_sx, bfs_sy, bfs_tx, bfs_ty, width=bfs_w, height=bfs_h,
+        )
+
+        # Only run obstacle BFS if there are obstacles on the map or terrain obstacles
+        field_moves = _get_field_move_availability(emu)
+        obs_path, obs_crossed = _bfs_pathfind_obstacles(
+            terrain_info, npc_set, obstacle_map,
+            bfs_sx, bfs_sy, bfs_tx, bfs_ty,
+            field_moves, width=bfs_w, height=bfs_h,
+        )
+        obs_crossed = _dedupe_obstacles(obs_crossed)
+
+        # ── Decide which path to use ──
+        has_clean = clean_path is not None
+        has_obs = obs_path is not None and len(obs_crossed) > 0
+        obs_shorter = has_obs and (not has_clean or len(obs_path) < len(clean_path))
+
+        # Check if all required skills are available for the obstacle path
+        skills_available = True
+        if has_obs:
+            for ob in obs_crossed:
+                if not field_moves.get(ob["move"], False):
+                    skills_available = False
+                    break
+
+        # Determine which path to use
+        if path_choice == "obstacle":
+            if not has_obs:
+                return {"error": "No obstacle path available.", "start": _pos_with_map(px, py, map_id)}
+            if not skills_available:
+                missing = [ob["move"] for ob in obs_crossed if not field_moves.get(ob["move"], False)]
+                return {"error": f"Cannot take obstacle path — missing: {set(missing)}",
+                        "start": _pos_with_map(px, py, map_id)}
+            path = obs_path
+        elif path_choice == "clean":
+            if not has_clean:
+                return {"error": "No clean (obstacle-free) path available.",
+                        "start": _pos_with_map(px, py, map_id)}
+            path = clean_path
+        elif has_obs and obs_shorter and skills_available and path_choice is None:
+            # Obstacle path is shorter and skills available — ask the caller
+            start_pos = _pos_with_map(px, py, map_id)
+            status = "obstacle_choice" if has_clean else "obstacle_required"
+            obstacle_info = [{
+                "type": ob["type"], "move": ob["move"], "badge": ob["badge"],
+                "x": ob.get("global_x", ob.get("x")),
+                "y": ob.get("global_y", ob.get("y")),
+            } for ob in obs_crossed]
+            msg_parts = [f"Path requires {ob['move']} at ({ob.get('global_x', ob.get('x'))}, {ob.get('global_y', ob.get('y'))})" for ob in obs_crossed]
+            if has_clean:
+                msg = (
+                    f"Shorter path ({len(obs_path)} steps) needs: {', '.join(msg_parts)}. "
+                    f"Clean path available ({len(clean_path)} steps). "
+                    f"Call again with path_choice='obstacle' or 'clean'."
+                )
+            else:
+                msg = (
+                    f"Only path ({len(obs_path)} steps) needs: {', '.join(msg_parts)}. "
+                    f"No obstacle-free path exists. "
+                    f"Call again with path_choice='obstacle' to proceed."
+                )
+            return {
+                "status": status,
+                "clean_path_steps": len(clean_path) if has_clean else None,
+                "obstacle_path_steps": len(obs_path),
+                "obstacles": obstacle_info,
+                "skills_available": skills_available,
+                "start": start_pos,
+                "target": {"x": target_x, "y": target_y},
+                "message": msg,
+            }
+        elif has_obs and obs_shorter and not skills_available and not has_clean:
+            # Only path requires obstacles but skills aren't available
+            missing = [ob["move"] for ob in obs_crossed if not field_moves.get(ob["move"], False)]
+            return {
+                "error": f"No path found. An obstacle path exists but requires: {set(missing)}",
+                "start": _pos_with_map(px, py, map_id),
+                "target": {"x": target_x, "y": target_y},
+            }
+        else:
+            # Default: use clean path (or None)
+            path = clean_path
 
     # ── Check if target tile is a door/warp ──
     target_behavior = None
