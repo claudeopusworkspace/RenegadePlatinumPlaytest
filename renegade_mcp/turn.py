@@ -767,8 +767,10 @@ def _execute_action(
         if evo is not None:
             result = evo
 
-    if result["final_state"] == "TIMEOUT" and _log_has(result.get("log", []), "grew to"):
-        result = _recover_from_level_up(emu, result)
+    if result["final_state"] == "TIMEOUT" and not _is_battle_over(emu):
+        log = result.get("log", [])
+        if _log_has(log, "grew to") or _log_has(log, "fainted"):
+            result = _recover_from_level_up(emu, result)
 
     # After level-up recovery returns BATTLE_ENDED, evolution "What?" may
     # appear a moment later (after Exp Share text finishes).  Quick-scan

@@ -266,7 +266,12 @@ class BattleTracker:
                 # markers means the battle scene has ended.  Text markers
                 # are ephemeral (only present during active dialogue), so
                 # ~5 seconds of silence is a reliable end-of-battle signal.
-                if seen_auto and consecutive_none >= NO_TEXT_EXIT_THRESHOLD:
+                # Exception: after "fainted" text, EXP + switch prompt text
+                # is still coming — multi-hit move animations (e.g. 5-hit
+                # Bullet Seed) can cause long gaps between faint and EXP.
+                faint_seen = any("fainted" in e.get("text", "") for e in log)
+                threshold = NO_TEXT_EXIT_THRESHOLD * 3 if faint_seen else NO_TEXT_EXIT_THRESHOLD
+                if seen_auto and consecutive_none >= threshold:
                     return {
                         "log": log,
                         "final_state": "TIMEOUT",
