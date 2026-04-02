@@ -2,6 +2,28 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: use_medicine Tool + Party Status Reading (2026-04-02)
+
+### New Tool: `use_medicine`
+- Bulk party healing using Medicine pocket items. Plan-then-execute workflow: dry-run (default) returns an itemized plan, `confirm=True` executes via repeated `use_item` calls.
+- **HP healing algorithm**: At each step, checks if any single item covers the remaining deficit (uses cheapest sufficient one). If not, uses the cheapest item available and repeats. This avoids the "Potion + Super Potion" waste case — if a Super Potion alone covers 30 HP deficit, it skips the Potion.
+- **Status cure priority**: Prefers specific cures over general ones (Antidote before Full Heal, Parlyz Heal before Full Heal, etc.).
+- **Full Restore optimization**: When a Pokemon needs both status cure AND HP healing, uses Full Restore to handle both in one item instead of separate cure + potion.
+- **Revival support**: Plans Revive/Max Revive/Revival Herb for fainted Pokemon, with post-Revive HP top-up via potions.
+- **Optional params**: `exclude_items` list (e.g., save Max Revives), `priority` slot order for triage when items are scarce.
+- **Warnings**: Reports when items are insufficient for full party heal.
+- PP restoration deliberately excluded — Ethers/Elixirs are too rare to auto-spend.
+
+### Party Status Conditions
+- Added status condition reading to `read_party`. Party extension offset 0x00 is a u32 status bitfield (same format as battle status). Was previously ignored.
+- New `decode_status_conditions()` function in `party.py` — returns list like `["Poison", "Paralysis"]`.
+- `read_party` now includes `status` (raw int) and `status_conditions` (decoded list) per Pokemon.
+- `format_party` shows status conditions inline with a warning marker.
+
+### Testing
+- Verified planning algorithm with mock data: Woj's Potion+Super Potion edge case, multi-item stacking, Full Restore optimization, exclude_items, priority ordering, insufficient items with warnings.
+- Live test on `route204_north_progress` save state: 4 Potions used across Grotle (3) and Charmander (1), all succeeded, party healed to full.
+
 ## Dev Session: move_info + Multi-Hit TIMEOUT Fix (2026-04-02)
 
 ### New Tool: `move_info`

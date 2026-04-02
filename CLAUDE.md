@@ -265,8 +265,8 @@ See GAME_HISTORY.md for full chronological playthrough details.
 2. `read_bag` — all items across all pockets
 
 ### Using items (overworld)
-1. `use_item("Potion", 0)` — uses a Medicine item on the specified party slot (0-indexed)
-2. Handles full menu flow automatically: pause menu → Bag → Medicine → item → USE → party → dismiss
+1. `use_item("Potion", 0)` — uses a single Medicine item on the specified party slot (0-indexed)
+2. `use_medicine()` — **preferred for bulk healing**. Dry-run returns a plan, `confirm=True` executes. Handles HP, status, and revival optimally.
 
 ### Reordering party (overworld)
 1. `reorder_party(0, 2)` — swap slot 0 and slot 2. Navigates pause menu automatically.
