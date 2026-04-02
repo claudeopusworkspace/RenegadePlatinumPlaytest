@@ -664,12 +664,16 @@ def get_map_state(emu: EmulatorClient) -> dict[str, Any] | None:
 def render_map(
     terrain: list, objects: list, player_local_x: int, player_local_y: int,
     facing: int, elevation: dict | None = None, player_level: int | None = None,
+    filter_level: int | None = None,
 ) -> str:
     """Render an ASCII map combining terrain and dynamic objects.
 
     When elevation data is provided (from analyze_elevation), passable tiles
     show their height level number instead of '.' or '_', ramp tiles show
     descent direction, and bridge tiles show both levels.
+
+    When filter_level is set, only tiles at that level are shown normally;
+    tiles at other levels are dimmed to '~'.
     """
     obj_at = {}
     for obj in objects:
@@ -732,7 +736,21 @@ def render_map(
             behavior = val & 0x00FF
             key = (col, row)
 
-            if key in obj_at:
+            # Level filter: dim tiles not at the requested level
+            tile_levels = level_map.get(key, [])
+            is_filtered_out = (
+                filter_level is not None
+                and elevation
+                and not is_blocked
+                and key not in obj_at
+                and tile_levels
+                and filter_level not in tile_levels
+                and key not in ramp_tiles
+            )
+
+            if is_filtered_out:
+                cell = "  ~"
+            elif key in obj_at:
                 cell = f"  {obj_at[key]}"
             elif is_blocked and behavior == 0:
                 cell = "  #"
@@ -741,11 +759,20 @@ def render_map(
                 behaviors_seen[behavior] = "blocked"
             elif elevation and key in ramp_tiles:
                 # Ramp tile — show descent direction
-                d = ramp_tiles[key]["direction"]
-                cell = "  \\" if d in ("south", "east") else "  /"
+                ri = ramp_tiles[key]
+                d = ri["direction"]
+                # Dim ramps that don't connect to filtered level
+                if filter_level is not None and filter_level not in (ri["from_level"], ri["to_level"]):
+                    cell = "  ~"
+                else:
+                    cell = "  \\" if d in ("south", "east") else "  /"
             elif elevation and key in level_map and len(level_map[key]) > 1:
                 # Bridge — show upper level with bridge marker
                 cell = f" {level_map[key][-1]}*"
+            elif elevation and behavior == 0x30:
+                cell = "  ]"  # blocks eastward movement
+            elif elevation and behavior == 0x31:
+                cell = "  ["  # blocks westward movement
             elif elevation and key in level_map and (val == 0 or behavior in (0x00, 0x08)):
                 # Plain ground/cave/void tile with elevation → show level number
                 cell = f"  {level_map[key][0]}"
@@ -770,6 +797,9 @@ def render_map(
     if elevation:
         lines.append("  0-9  = elevation level (passable)  #  = wall")
         lines.append("  / \\  = ramp (descent direction)    n* = bridge (level n, passable below)")
+        lines.append("  ] [  = directional block (can't move east/west respectively)")
+        if filter_level is not None:
+            lines.append(f"  ~    = other level (filtered to L{filter_level})")
     else:
         lines.append("  .    = void  #  = wall  _  = walkable ground")
     lines.append("  xx   = tile behavior (hex)")
@@ -801,8 +831,12 @@ def render_map(
     return "\n".join(lines)
 
 
-def view_map(emu: EmulatorClient) -> dict[str, Any]:
-    """Get full map view with ASCII rendering and metadata."""
+def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
+    """Get full map view with ASCII rendering and metadata.
+
+    Args:
+        level: Filter to show only this elevation level (-1 = show all).
+    """
     state = get_map_state(emu)
     if state is None:
         return {"error": "Could not resolve map chunk", "map": "", "player": {}, "objects": []}
@@ -821,10 +855,13 @@ def view_map(emu: EmulatorClient) -> dict[str, Any]:
                 player_h = round(read_player_height(emu))
                 player_level = elevation["height_to_level"].get(player_h)
 
+    filter_level = level if level >= 0 else None
+
     map_str = render_map(
         state["terrain"], state["objects"],
         state["local_px"], state["local_py"], state["facing"],
         elevation=elevation, player_level=player_level,
+        filter_level=filter_level,
     )
 
     # Build header

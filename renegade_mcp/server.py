@@ -85,16 +85,22 @@ def create_server() -> FastMCP:
     # ── Map ──
 
     @mcp.tool()
-    def view_map() -> dict[str, Any]:
+    def view_map(level: int = -1) -> dict[str, Any]:
         """Show ASCII map of current area with terrain, player position, and NPCs.
 
         Handles indoor maps (from RAM) and overworld multi-chunk maps (from ROM).
         Player shown as ^v<> (facing), NPCs as A-Z. Includes terrain behaviors.
+
+        On 3D maps, shows elevation levels (0-9), ramps (/ \\), bridges (n*),
+        and directional blocks (] [). Pass level=N to isolate a single level.
+
+        Args:
+            level: Show only this elevation level (-1 = show all levels).
         """
         from renegade_mcp.map_state import view_map as _view_map
 
         emu = get_client()
-        return _view_map(emu)
+        return _view_map(emu, level=level)
 
     @mcp.tool()
     def map_name(map_id: int = -1) -> dict[str, Any]:
