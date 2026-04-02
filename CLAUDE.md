@@ -35,6 +35,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `decode_rom_message(file_index)` | Decode ROM message archive (species, moves, items, etc.) |
 | `search_rom_messages(query)` | Search all 724 message files for text |
 | `use_item(item_name, party_slot)` | Use a Medicine item on a party Pokemon from overworld. Reads bag cursor state to handle remembered positions. |
+| `use_field_item(item_name)` | Use a no-target field item (Repel, Escape Rope, Honey, etc.) from the Items pocket. Pre-validates `fieldUseFunc` from ROM data — rejects hold-only items (Silk Scarf, etc.). Handles BAG_MESSAGE items (Repel/Flutes), Escape Rope (warp animation), and Honey. |
 | `take_item(party_slot)` | Remove held item from a party Pokemon via pause menu (overworld only) |
 | `give_item(item_name, party_slot)` | Give a held item to a party Pokemon via pause menu (overworld only). Pokemon must not already hold an item. Reads bag cursor state to handle remembered positions. |
 | `heal_party` | Heal at Pokemon Center. Works from inside a PC (direct) or city overworld (auto-navigates to PC via warp lookup). Returns encounter data if interrupted during navigation. |
