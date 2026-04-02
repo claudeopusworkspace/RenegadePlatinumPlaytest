@@ -50,6 +50,35 @@ BLOCK_ORDERS = [
     [3, 0, 1, 2], [3, 0, 2, 1], [3, 1, 0, 2], [3, 1, 2, 0], [3, 2, 0, 1], [3, 2, 1, 0],
 ]
 
+# ── Status condition bitfield (party extension offset 0x00) ──
+STATUS_SLEEP_MASK = 0x07
+STATUS_POISON = 0x08
+STATUS_BURN = 0x10
+STATUS_FREEZE = 0x20
+STATUS_PARALYSIS = 0x40
+STATUS_TOXIC = 0x80
+
+
+def decode_status_conditions(status_val: int) -> list[str]:
+    """Decode Gen 4 status condition bitfield into a list of condition names."""
+    if status_val == 0:
+        return []
+    conditions = []
+    if status_val & STATUS_SLEEP_MASK:
+        conditions.append("Sleep")
+    if status_val & STATUS_POISON:
+        conditions.append("Poison")
+    if status_val & STATUS_BURN:
+        conditions.append("Burn")
+    if status_val & STATUS_FREEZE:
+        conditions.append("Freeze")
+    if status_val & STATUS_PARALYSIS:
+        conditions.append("Paralysis")
+    if status_val & STATUS_TOXIC:
+        conditions.append("Toxic")
+    return conditions
+
+
 NATURES = [
     "Hardy", "Lonely", "Brave", "Adamant", "Naughty",
     "Bold", "Docile", "Relaxed", "Impish", "Lax",
@@ -205,15 +234,15 @@ def _ext_sane(data: bytes) -> bool:
 
 def _resolve_party_extension(
     ext_raw: bytes, pid: int, flag_says_decrypted: bool
-) -> tuple[int, int, int]:
-    """Resolve the actual encryption state of the party extension and extract level/HP.
+) -> tuple[int, int, int, int]:
+    """Resolve the actual encryption state of the party extension and extract status/level/HP.
 
     The extension has no checksum, so we try the flag-indicated state first,
     then fall back to the opposite if values look insane. This handles save
     states captured mid-GetValue where blocks and extension can be in
     different encryption states.
 
-    Returns (level, cur_hp, max_hp).
+    Returns (status, level, cur_hp, max_hp).
     """
     if flag_says_decrypted:
         primary, secondary = ext_raw, _prng_decrypt(ext_raw, pid)
@@ -228,7 +257,8 @@ def _resolve_party_extension(
         # Neither looks right — return primary and hope for the best
         src = primary
 
-    return src[4], struct.unpack_from("<H", src, 6)[0], struct.unpack_from("<H", src, 8)[0]
+    status = struct.unpack_from("<I", src, 0)[0]
+    return status, src[4], struct.unpack_from("<H", src, 6)[0], struct.unpack_from("<H", src, 8)[0]
 
 
 def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
@@ -286,6 +316,7 @@ def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
     # If blocks were mid-decrypt (Step B), extension already finished Step A → plaintext.
     # If blocks were mid-encrypt (Step D), extension already finished Step C → encrypted.
     # Otherwise, use the flag + heuristic approach.
+    ext_status = 0
     ext_level = 0
     ext_cur_hp = 0
     ext_max_hp = 0
@@ -293,16 +324,16 @@ def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
         ext_raw = raw[136:236]
         if method == "mid_decrypt":
             # Extension is plaintext — try that first (True = plaintext priority)
-            ext_level, ext_cur_hp, ext_max_hp = _resolve_party_extension(
+            ext_status, ext_level, ext_cur_hp, ext_max_hp = _resolve_party_extension(
                 ext_raw, pid, True
             )
         elif method == "mid_encrypt":
             # Extension is encrypted — try that first (False = encrypted priority)
-            ext_level, ext_cur_hp, ext_max_hp = _resolve_party_extension(
+            ext_status, ext_level, ext_cur_hp, ext_max_hp = _resolve_party_extension(
                 ext_raw, pid, False
             )
         else:
-            ext_level, ext_cur_hp, ext_max_hp = _resolve_party_extension(
+            ext_status, ext_level, ext_cur_hp, ext_max_hp = _resolve_party_extension(
                 ext_raw, pid, party_decrypted
             )
 
@@ -349,6 +380,7 @@ def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
         "nature_idx": nature_idx,
         "ivs": ivs,
         "evs": evs,
+        "ext_status": ext_status,
         "ext_level": ext_level,
         "ext_cur_hp": ext_cur_hp,
         "ext_max_hp": ext_max_hp,
@@ -439,6 +471,8 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
         max_hp = decoded.get("ext_max_hp", 0) or -1
 
         partial = decoded.get("partial", False)
+        status_raw = decoded.get("ext_status", 0)
+        status_conds = decode_status_conditions(status_raw)
 
         pokemon: dict[str, Any] = {
             "slot": i,
@@ -447,6 +481,8 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
             "level": level,
             "hp": cur_hp,
             "max_hp": max_hp,
+            "status": status_raw,
+            "status_conditions": status_conds,
             "moves": decoded["moves"],
             "move_names": [
                 mv_names.get(m, f"#{m}") if m > 0 else "-" for m in decoded["moves"]
@@ -505,8 +541,10 @@ def format_party(party: list[dict[str, Any]]) -> str:
             hp_str = "HP ?/?"
 
         ability_str = f"  [{p['ability']}]" if p.get("ability") and p.get("ability") != "-" else ""
+        status_conds = p.get("status_conditions", [])
+        status_str = f"  ⚠ {', '.join(status_conds)}" if status_conds else ""
         partial_tag = " [stale data]" if p.get("partial") else ""
-        lines.append(f"  {p['slot']}. {p['name']} {level_str}{nature_str}{ability_str}  {hp_str}{partial_tag}")
+        lines.append(f"  {p['slot']}. {p['name']} {level_str}{nature_str}{ability_str}  {hp_str}{status_str}{partial_tag}")
 
         if p.get("partial"):
             lines.append("     (moves/IVs/EVs unavailable — encrypted data stale)")

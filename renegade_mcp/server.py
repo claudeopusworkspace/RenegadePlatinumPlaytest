@@ -687,6 +687,37 @@ def create_server() -> FastMCP:
         return _use_field_item(emu, item_name)
 
     @mcp.tool()
+    def use_medicine(
+        confirm: bool = False,
+        exclude_items: list[str] | None = None,
+        priority: list[int] | None = None,
+    ) -> dict[str, Any]:
+        """Plan and execute bulk party healing using Medicine pocket items.
+
+        Reads party HP/status + bag, computes an optimal healing plan.
+        First call (confirm=False): returns the plan without using any items.
+        Second call (confirm=True): executes the plan via repeated item uses.
+
+        Strategy: heals status conditions with the most specific cure available
+        (e.g. Antidote before Full Heal), heals HP using lowest-tier potions
+        first but avoids wasting multiple items when one higher-tier item
+        suffices. Uses Full Restore when a Pokemon needs both status cure and
+        HP healing. Revives fainted Pokemon before healing.
+
+        Args:
+            confirm: If True, execute the plan. If False (default), just return it.
+            exclude_items: Item names to exclude from the plan (e.g. ["Max Revive"]).
+            priority: Party slot indices in healing priority order (e.g. [2, 0, 1]).
+                      Defaults to natural party order.
+        """
+        from renegade_mcp.use_medicine import use_medicine as _use_medicine
+
+        emu = get_client()
+        if confirm:
+            emu.create_checkpoint(action="use_medicine(confirm=True)")
+        return _use_medicine(emu, confirm, exclude_items, priority)
+
+    @mcp.tool()
     def teach_tm(
         tm_name: str, party_slot: int = 0, forget_move: int | None = None
     ) -> dict[str, Any]:
