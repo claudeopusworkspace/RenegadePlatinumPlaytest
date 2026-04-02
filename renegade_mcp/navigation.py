@@ -11,7 +11,7 @@ from collections import deque
 from typing import TYPE_CHECKING, Any
 
 from renegade_mcp.battle import format_battle, read_battle
-from renegade_mcp.dialogue import _find_script_manager, _read_script_state, read_dialogue
+from renegade_mcp.dialogue import _find_script_manager, _read_script_state, advance_dialogue, read_dialogue
 from renegade_mcp.map_names import lookup_map_name
 from renegade_mcp.party import read_party
 from renegade_mcp.trainer import read_trainer_status
@@ -552,9 +552,31 @@ def _post_nav_check(emu: EmulatorClient) -> dict[str, Any] | None:
         # Check for overworld dialogue
         dialogue = read_dialogue(emu, region="overworld")
         if dialogue["region"] != "none":
+            # Auto-advance through dialogue (trainer taunts, cutscenes, etc.)
+            adv_result = advance_dialogue(emu)
+
+            # After dialogue, check if it transitioned into a battle
+            battlers = read_battle(emu)
+            if battlers:
+                prompt_result = _wait_for_action_prompt(emu)
+                battle_state = read_battle(emu)
+                result: dict[str, Any] = {
+                    "encounter": "battle",
+                    "dialogue": adv_result,
+                    "battle_log": prompt_result["log"],
+                    "battle_state": battle_state,
+                    "battle_state_formatted": format_battle(battle_state),
+                    "prompt_ready": prompt_result["ready"],
+                }
+                if prompt_result.get("prompt_type"):
+                    result["prompt_type"] = prompt_result["prompt_type"]
+                if prompt_result.get("state"):
+                    result["final_state"] = prompt_result["state"]
+                return result
+
             return {
                 "encounter": "dialogue",
-                "dialogue": dialogue,
+                "dialogue": adv_result,
             }
 
         emu.advance_frames(POST_NAV_POLL_FRAMES)
@@ -572,13 +594,16 @@ def _handle_door_transition(
 
     For walk-into doors (0x69, 0x6E), the warp may have already triggered.
     For step-on doors (0x65, 0x5F, 0x5E), presses the activation direction.
+    For directional warps (0x62, 0x63, etc.), walks in the required direction.
     Waits for map transition to complete and returns new position info.
 
     Returns dict with new map info, or None if no transition occurred.
     """
     activation = DOOR_ACTIVATION.get(behavior)
+    if activation is None:
+        activation = DIRECTIONAL_WARP.get(behavior)
 
-    # For doors that need a direction press, do it now
+    # For doors/warps that need a direction press, do it now
     if activation is not None:
         emu.advance_frames(HOLD_FRAMES, buttons=[activation])
         emu.advance_frames(WAIT_FRAMES)
