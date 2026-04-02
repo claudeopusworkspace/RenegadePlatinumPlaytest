@@ -50,6 +50,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `teach_tm(tm_name, party_slot, forget_move)` | Teach a TM/HM to a party Pokemon. Accepts TM label ("HM06", "TM76") or move name ("Rock Smash"). Pre-validates ROM compatibility (personal.narc bitmasks) and badge+move availability. Handles both <4 moves (auto-learn) and 4 moves (forget prompt) flows. Pass `forget_move` (0-3) when Pokemon knows 4 moves, or -1 to cancel. |
 | `tm_compatibility(tm_name)` | Check which party Pokemon can learn a given TM/HM. Pure ROM data lookup — no emulator interaction. Returns ABLE/UNABLE/ALREADY KNOWS per party slot. |
 | `type_matchup(attacking_type, defending_types, move_name)` | Type effectiveness check (like Pokemon Showdown's calc). Pass `attacking_type="Fire"` + `defending_types="Grass/Steel"`, or `move_name="Spark"` + `defending_types="Water/Flying"`. Returns multiplier + label. Gen 4 chart + Fairy type. |
+| `move_info(move_name)` | Move stats lookup: type, power, accuracy, PP, class (Physical/Special/Status), priority. Pure ROM data, no emulator needed. Also: `read_party` and `read_battle` now show move details inline (e.g. `Bullet Seed [Grass · Physical · 25 pwr · 100% acc]`). |
 | `auto_grind(move_index, cave, target_level, iterations, forget_move, target_species)` | Automated encounter loop: seek encounters + fight (spam a move) or run. Stops on target level, iterations, or target species. Returns encounter log with species + checkpoint IDs. See Auto Grind Workflow below. |
 | `reload_tools` | Reload all `renegade_mcp` implementation modules in-place via `importlib.reload()`. Call after editing any `renegade_mcp/*.py` file (except `server.py`) to pick up code changes without restarting the MCP server. Changes to `server.py` (new/removed tools, signature changes) still require a manual `/mcp` restart from the user. |
 
@@ -287,6 +288,7 @@ Tests load save states, call battle functions directly (bypassing MCP protocol),
 | `test_evolution.py` | Mid-battle evo chain, Exp Share evo, "What?" animation |
 | `test_faint_switch.py` | Wild faint send/flee, trainer switch accept/decline, voluntary |
 | `test_double_battle.py` | Partner action prompt, both actions complete turn |
+| `test_multi_hit.py` | 5-hit Bullet Seed KO → SWITCH_PROMPT (not TIMEOUT), log completeness |
 | `test_auto_grind.py` | Iteration stop, encounter log, mid-battle resume |
 
 **Run tests after any change to `turn.py`, `auto_grind.py`, or `battle_tracker.py`.**

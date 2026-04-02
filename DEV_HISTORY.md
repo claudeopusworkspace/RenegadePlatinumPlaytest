@@ -2,6 +2,19 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: move_info + Multi-Hit TIMEOUT Fix (2026-04-02)
+
+### New Tool: `move_info`
+- Standalone move stats lookup (type, power, accuracy, PP, class, priority) from ROM data (`move_data.json`). Pure data, no emulator needed.
+- Enriched `read_party` and `read_battle` move displays — moves now show inline detail tags: `Bullet Seed [Grass · Physical · 25 pwr · 100% acc] (PP 29)` instead of bare `Bullet Seed (PP 29)`.
+- Data was already extracted last session (`data/move_data.json`, 471 moves from `pl_waza_tbl.narc`); this session wired it into the formatters and added the MCP tool.
+
+### Bug Fix: Multi-Hit Move TIMEOUT on Faint
+- **Symptom**: `battle_turn(move_index=2)` (Bullet Seed, 5-hit) vs Roark's Nosepass returned TIMEOUT instead of SWITCH_PROMPT.
+- **Diagnosis**: Wrote a text-region timeline scanner. Found that "Turtwig used Bullet Seed!" text persists for 1200+ frames (~20 sec) while all 5 hit animations play, consuming ~80 of the 150-poll budget. After "Nosepass fainted!", a ~300-frame animation gap (faint sprite + EXP bar filling) triggers `NO_TEXT_EXIT_THRESHOLD` (20 polls × 15 frames = 300 frames). All text goes through the same address (`0x02301BF4`), so the narrow scan region wasn't the issue.
+- **Fix**: (1) In `battle_tracker.py`, triple the consecutive-none threshold when "fainted" is in the log — we know EXP + switch text is still coming. (2) In `turn.py`'s `_execute_action`, broaden TIMEOUT recovery to trigger on "fainted" in log (not just "grew to"), reusing `_recover_from_level_up`.
+- **Test**: New `test_multi_hit.py` (2 tests) verifying SWITCH_PROMPT result and log completeness. Full suite: 27 passed, 1 skipped (21 min).
+
 ## Dev Session: Bug Fixes (2026-03-31)
 
 No adventure progress — focused on fixing the two remaining backlog bugs:
