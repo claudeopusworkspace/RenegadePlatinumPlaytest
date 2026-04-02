@@ -113,3 +113,47 @@ Rather than rebuilding BFS with a full (x, y, z) state space, we brute-force ove
 ### Backlog Status
 - **Resolved this session**: 3D elevation BFS (single-chunk), ledge/cliff directionality (retested — works as expected)
 - **Remaining open**: Multi-chunk 3D maps (deferred — no gameplay blockers), tag battle edge-case testing (low priority)
+
+---
+
+## Session 10 — Type Matchup Tool & Battle Effectiveness Guardrail (2026-04-02)
+
+### Goal
+Add type effectiveness checking as both a standalone tool and an automatic guardrail in `battle_turn` to prevent using immune/NVE moves by accident.
+
+### Design Decisions
+- **No ROM spoilers rule**: Woj vetoed `pokemon_info` (base stats, learnsets), `wild_encounters` (route tables), and trainer previews. Tools should emulate what a human player can see in the UI, not datamine ROM for foreknowledge. `type_matchup` and `move_info` are approved since players can always look these up.
+- **Fairy type**: Renegade Platinum uses type ID 9 for Fairy (was "???" in vanilla Gen 4). Added Gen 6 standard Fairy matchups. Fixed `TYPE_NAMES` in `battle.py` to show "Fairy" instead of "???".
+- **Status move exemption**: The effectiveness guardrail skips Status moves (e.g., Curse is Ghost-type but doesn't deal type-based damage when used by non-Ghosts).
+
+### Changes
+
+1. **`renegade_mcp/type_chart.py`** (new, ~180 lines)
+   - Hardcoded Gen 4 + Fairy type effectiveness chart from pret/pokeplatinum decomp (`sTypeMatchupMultipliers` in `battle_lib.c`)
+   - `effectiveness(atk_type, def_type1, def_type2)` → multiplier (0.0, 0.25, 0.5, 1.0, 2.0, 4.0)
+   - `describe(multiplier)` → human-readable label
+   - `format_matchup()` → full formatted string
+   - 18 types including Fairy, all 12 test cases passing
+
+2. **`scripts/extract_move_data.py`** (new) + **`data/move_data.json`** (generated)
+   - Extracts move type/power/accuracy/PP/class/priority from ROM's `pl_waza_tbl.narc`
+   - Scans ROM FAT for NARC archives with ~470 entries of 16 bytes each
+   - Identifies Renegade Platinum version by checking modified move values (Flamethrower 90 pow)
+   - 471 moves extracted. Struct from pret/pokeplatinum `include/move_table.h`
+
+3. **`renegade_mcp/data.py`** — added `move_data()` and `move_type(move_id)` loaders
+
+4. **`renegade_mcp/battle.py`** — fixed `TYPE_NAMES[9]`: "???" → "Fairy"
+
+5. **`renegade_mcp/server.py`** — two additions:
+   - **`type_matchup` tool**: accepts `attacking_type` or `move_name` + `defending_types` (slash-separated). Looks up move type from `move_data.json`, computes multiplier, returns label + formatted string. Like Pokemon Showdown's damage calc.
+   - **`battle_turn` guardrail**: new `force` parameter (default False). Before executing a move, `_check_move_effectiveness()` reads battle state, looks up move type, checks vs target types. Returns `EFFECTIVENESS_WARNING` with explanation if immune (0x) or NVE (≤0.5x). Status moves exempted. Pass `force=True` to proceed anyway.
+
+### Testing
+- Type chart: 12 test cases covering SE, NVE, immune, double SE (4x), doubly resisted (0.25x), immunity through dual types, Fairy matchups — all pass
+- Move data: verified team moves (Bulldoze=Ground, Spark=Electric, Brick Break=Fighting, etc.) and known Renegade Platinum changes (Flamethrower 90 pow)
+- Server.py: syntax validation pass, dry-run of type_matchup tool logic path
+
+### Backlog Status
+- **Resolved this session**: type_matchup tool, battle_turn effectiveness guardrail, Fairy type display
+- **Remaining open**: heal_team, move_info (enrich existing displays), multi-chunk 3D BFS, tag battle testing

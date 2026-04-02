@@ -29,7 +29,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `interact_with(object_index, x, y)` | Navigate to a map object/NPC by index OR static tile by (x,y) and interact. Handles adjacent tiles, counter NPCs, facing, and dialogue. Detects trainer-spotted interruptions (facing seized by script) and falls back to polling for dialogue/battle. |
 | `seek_encounter(cave=false)` | Pace in grass until wild encounter. Returns at first action prompt with full battle state. `cave=true` for non-grass encounters. |
 | `read_dialogue(advance=true)` | Auto-advance through dialogue, collect full conversation. Stops at Yes/No prompts and multi-choice prompts. `advance=false` for passive read. |
-| `battle_turn(move_index, switch_to, run)` | Full automated turn: FIGHT + move, POKEMON + switch, or RUN to flee. Returns battle log + state + read_battle data. |
+| `battle_turn(move_index, switch_to, run, force)` | Full automated turn: FIGHT + move, POKEMON + switch, or RUN to flee. **Type effectiveness guardrail**: checks move type vs target types before executing. Returns `EFFECTIVENESS_WARNING` if move is immune or NVE — call again with `force=True` to proceed. Returns battle log + state + read_battle data. |
 | `throw_ball` | Throw a Poké Ball in wild battle: BAG + ball select + USE + catch result |
 | `reorder_party(from_slot, to_slot)` | Swap two party Pokemon via pause menu (overworld only) |
 | `decode_rom_message(file_index)` | Decode ROM message archive (species, moves, items, etc.) |
@@ -49,6 +49,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `buy_item(item_name, quantity)` | Buy from a standard PokéMart. Works from inside the mart (FS room) or city overworld (auto-navigates to mart via warp lookup). Finds correct cashier (common vs specialty), scrolls to item by ROM-calculated position, purchases, exits. Pre-checks money. Returns encounter data if interrupted during navigation. |
 | `teach_tm(tm_name, party_slot, forget_move)` | Teach a TM/HM to a party Pokemon. Accepts TM label ("HM06", "TM76") or move name ("Rock Smash"). Pre-validates ROM compatibility (personal.narc bitmasks) and badge+move availability. Handles both <4 moves (auto-learn) and 4 moves (forget prompt) flows. Pass `forget_move` (0-3) when Pokemon knows 4 moves, or -1 to cancel. |
 | `tm_compatibility(tm_name)` | Check which party Pokemon can learn a given TM/HM. Pure ROM data lookup — no emulator interaction. Returns ABLE/UNABLE/ALREADY KNOWS per party slot. |
+| `type_matchup(attacking_type, defending_types, move_name)` | Type effectiveness check (like Pokemon Showdown's calc). Pass `attacking_type="Fire"` + `defending_types="Grass/Steel"`, or `move_name="Spark"` + `defending_types="Water/Flying"`. Returns multiplier + label. Gen 4 chart + Fairy type. |
 | `auto_grind(move_index, cave, target_level, iterations, forget_move, target_species)` | Automated encounter loop: seek encounters + fight (spam a move) or run. Stops on target level, iterations, or target species. Returns encounter log with species + checkpoint IDs. See Auto Grind Workflow below. |
 | `reload_tools` | Reload all `renegade_mcp` implementation modules in-place via `importlib.reload()`. Call after editing any `renegade_mcp/*.py` file (except `server.py`) to pick up code changes without restarting the MCP server. Changes to `server.py` (new/removed tools, signature changes) still require a manual `/mcp` restart from the user. |
 
@@ -104,13 +105,14 @@ Key ROM file indices: 0392=items, 0412=species, 0610=abilities, 0647=moves, 0433
 ## Battle Workflow
 
 ### Automated (preferred)
-1. **`read_battle`** — check enemy species, types, ability, stats, moves. Plan tactics. Returns all 4 battlers in double battles.
-2. **`battle_turn(move_index=N)`** — use a move (0-3). Waits for action prompt automatically, then executes. Returns battle log + final state + updated battle state.
+1. **`read_battle`** — check enemy species, types, ability, stats, moves. Plan tactics. Returns all 4 battlers in double battles. Use **`type_matchup`** to check effectiveness before committing.
+2. **`battle_turn(move_index=N)`** — use a move (0-3). **Checks type effectiveness first** — returns `EFFECTIVENESS_WARNING` if the move is immune or not very effective against the target. Call with `force=True` to proceed anyway (e.g., status moves, chip damage, or when no better option). Returns battle log + final state + updated battle state.
    - Or **`battle_turn(switch_to=N)`** — switch to party slot N (0-5) instead of attacking.
    - Or **`battle_turn(run=True)`** — attempt to flee a wild battle. Returns `BATTLE_ENDED` on success, `WAIT_FOR_ACTION` on failure (enemy gets a free turn).
    - In **double battles**, add `target=` to specify the target: `0`=left enemy, `1`=right enemy, `2`=self/ally. Default `-1` auto-targets first enemy.
    - Works on the very first turn of battle — no need to call twice.
 3. Handle the returned state:
+   - `EFFECTIVENESS_WARNING` — move is immune or not very effective. Review the warning, then either pick a different move/switch, or call `battle_turn(move_index=N, force=True)` to use it anyway. No game state has changed yet.
    - `WAIT_FOR_ACTION` — next turn, call `battle_turn` again. Battle state is included in the response.
    - `WAIT_FOR_PARTNER_ACTION` — double battle: first Pokemon's action submitted, call `battle_turn` again for second Pokemon.
    - `SWITCH_PROMPT` — trainer sending next Pokemon. Call `battle_turn(switch_to=N)` to swap, or `battle_turn()` to keep battling.

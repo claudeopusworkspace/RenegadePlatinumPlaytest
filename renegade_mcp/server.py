@@ -255,12 +255,83 @@ def create_server() -> FastMCP:
 
     # ── Battle Turn ──
 
+    def _check_move_effectiveness(emu, move_index: int, target: int) -> dict[str, Any] | None:
+        """Pre-check move type vs target types. Returns warning dict or None if OK."""
+        from renegade_mcp.battle import read_battle as _read_battle
+        from renegade_mcp.data import move_data as _move_data, move_type as _move_type
+        from renegade_mcp.type_chart import describe, effectiveness
+
+        battlers = _read_battle(emu)
+        if not battlers:
+            return None  # Not in battle — let battle_turn handle it
+
+        # Find the player's active Pokemon and its moves
+        player = next((b for b in battlers if b["slot"] == 0), None)
+        if player is None or move_index >= len(player["moves"]):
+            return None
+
+        move = player["moves"][move_index]
+        move_id = move["id"]
+
+        # Look up move type and class from ROM data
+        mv_type = _move_type(move_id)
+        if mv_type is None:
+            return None  # No data — skip check
+
+        # Skip check for Status moves — they don't use the type chart for damage
+        # (e.g., Curse is Ghost-type but boosts stats for non-Ghost users)
+        mv_entry = _move_data().get(move_id, {})
+        if mv_entry.get("class") == "Status":
+            return None
+
+        # Find the target enemy
+        enemies = [b for b in battlers if b["side"] == "enemy"]
+        if not enemies:
+            return None
+        if target >= 0 and target < len(enemies):
+            defender = enemies[target]
+        else:
+            defender = enemies[0]
+
+        def_type1 = defender["type1"]
+        def_type2 = defender["type2"] if defender["type2"] != defender["type1"] else None
+
+        mult = effectiveness(mv_type, def_type1, def_type2)
+        if mult > 0.5:
+            return None  # Neutral or super effective — no warning
+
+        # Build warning
+        label = describe(mult)
+        def_str = f"{def_type1}/{def_type2}" if def_type2 else def_type1
+        mv_class = mv_entry.get("class", "")
+
+        warning_msg = (
+            f"⚠ {move['name']} ({mv_type}, {mv_class}) → {defender['species']} ({def_str}): {label}\n"
+            f"Call battle_turn(move_index={move_index}, force=True) to use it anyway."
+        )
+        return {
+            "final_state": "EFFECTIVENESS_WARNING",
+            "warning": warning_msg,
+            "move": move["name"],
+            "move_type": mv_type,
+            "defender": defender["species"],
+            "defender_types": def_str,
+            "multiplier": mult,
+            "effectiveness": label,
+            "formatted": warning_msg,
+        }
+
     @mcp.tool()
-    def battle_turn(move_index: int = -1, switch_to: int = -1, forget_move: int = -2, target: int = -1, run: bool = False) -> dict[str, Any]:
+    def battle_turn(move_index: int = -1, switch_to: int = -1, forget_move: int = -2, target: int = -1, run: bool = False, force: bool = False) -> dict[str, Any]:
         """Execute a full battle turn: use a move, switch Pokemon, or run.
 
         Combines battle_init + action + battle_poll into one call.
         Specify exactly one action: move_index to fight, switch_to to swap, or run to flee.
+
+        **Type effectiveness check**: When using a move, the tool checks the move's
+        type against the target's types. If the move would be IMMUNE (0x) or NOT VERY
+        EFFECTIVE (0.5x or less), it returns a warning instead of executing. Pass
+        force=True to proceed anyway (e.g., for status moves, chip damage, or STAB).
 
         Actions:
         - move_index (0-3): Tap FIGHT, select the move (top-left, top-right, bottom-left, bottom-right).
@@ -271,12 +342,14 @@ def create_server() -> FastMCP:
         - forget_move=-1: At MOVE_LEARN prompt, skip learning the new move.
         - target (doubles only): Target for the move. 0=left enemy, 1=right enemy, 2=self/ally.
           -1 (default) auto-targets the first enemy. Only used when move_index is set.
+        - force (bool): Skip the type effectiveness warning and execute anyway.
 
         States returned:
         - WAIT_FOR_ACTION: next turn ready, select another move
         - WAIT_FOR_PARTNER_ACTION: double battle — first Pokemon acted, select action for second
         - SWITCH_PROMPT: trainer sending next Pokemon, switch or keep battling
         - MOVE_LEARN: move learning prompt — includes move_to_learn and current_moves
+        - EFFECTIVENESS_WARNING: move is immune or not very effective — call again with force=True to proceed
         - BATTLE_ENDED: battle over, back in overworld
         - TIMEOUT: poll limit reached, check game state manually
         - NO_TEXT: action may not have registered
@@ -284,6 +357,13 @@ def create_server() -> FastMCP:
         from renegade_mcp.turn import battle_turn as _battle_turn
 
         emu = get_client()
+
+        # Type effectiveness guardrail — check before committing to the action
+        if move_index >= 0 and not force:
+            warning = _check_move_effectiveness(emu, move_index, target)
+            if warning is not None:
+                return warning
+
         if run:
             desc = "battle_turn(run=True)"
         elif move_index >= 0:
@@ -366,6 +446,90 @@ def create_server() -> FastMCP:
             "match_count": len(matches),
             "matches": matches,
         }
+
+    # ── Type Matchup ──
+
+    @mcp.tool()
+    def type_matchup(
+        attacking_type: str = "",
+        defending_types: str = "",
+        move_name: str = "",
+    ) -> dict[str, Any]:
+        """Check type effectiveness — works like Pokemon Showdown's damage calc.
+
+        Two modes:
+        1. Type vs types: type_matchup(attacking_type="Fire", defending_types="Grass/Steel")
+        2. Move vs types: type_matchup(move_name="Spark", defending_types="Water/Flying")
+           Looks up the move's type from ROM data automatically.
+
+        defending_types is slash-separated (e.g. "Water", "Fire/Flying", "Normal/Fairy").
+        Uses Gen 4 type chart + Fairy type (Renegade Platinum).
+
+        Args:
+            attacking_type: The attacking type name (e.g. "Fire"). Ignored if move_name is set.
+            defending_types: Slash-separated defending types (e.g. "Water/Flying").
+            move_name: Move name to look up type for (e.g. "Spark", "Earthquake").
+        """
+        from renegade_mcp.data import move_data, move_names
+        from renegade_mcp.type_chart import (
+            VALID_TYPES,
+            _normalize_type,
+            describe,
+            effectiveness,
+            format_matchup,
+        )
+
+        # Resolve attacking type
+        atk_type = None
+        move_info = None
+        if move_name:
+            mv_names = move_names()
+            name_lower = move_name.strip().lower()
+            mv_id = None
+            for mid, mname in mv_names.items():
+                if mname.lower() == name_lower:
+                    mv_id = mid
+                    break
+            if mv_id is None:
+                return {"error": f"Unknown move: '{move_name}'"}
+            mv_data = move_data()
+            entry = mv_data.get(mv_id)
+            if entry is None:
+                return {"error": f"No data for move '{move_name}' (run scripts/extract_move_data.py)"}
+            atk_type = entry["type"]
+            move_info = entry
+        elif attacking_type:
+            atk_type = _normalize_type(attacking_type)
+            if atk_type is None:
+                return {"error": f"Unknown type: '{attacking_type}'. Valid: {', '.join(sorted(VALID_TYPES))}"}
+        else:
+            return {"error": "Provide attacking_type or move_name."}
+
+        # Parse defending types
+        if not defending_types:
+            return {"error": "Provide defending_types (e.g. 'Water', 'Fire/Flying')."}
+        parts = [p.strip() for p in defending_types.split("/")]
+        def_type1 = _normalize_type(parts[0])
+        def_type2 = _normalize_type(parts[1]) if len(parts) > 1 else None
+        if def_type1 is None:
+            return {"error": f"Unknown defending type: '{parts[0]}'"}
+        if len(parts) > 1 and def_type2 is None:
+            return {"error": f"Unknown defending type: '{parts[1]}'"}
+
+        mult = effectiveness(atk_type, def_type1, def_type2)
+        label = describe(mult)
+        matchup_str = format_matchup(atk_type, def_type1, def_type2)
+
+        result: dict[str, Any] = {
+            "attacking_type": atk_type,
+            "defending_types": f"{def_type1}/{def_type2}" if def_type2 else def_type1,
+            "multiplier": mult,
+            "label": label,
+            "formatted": matchup_str,
+        }
+        if move_info:
+            result["move"] = move_info
+        return result
 
     # ── Trainer Status ──
 

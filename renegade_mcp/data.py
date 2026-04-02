@@ -31,6 +31,7 @@ _map_table: dict[int, dict] | None = None
 _tmhm_moves: list[int] | None = None
 _tm_compat: dict[int, list[int]] | None = None
 _item_field_use: dict[str, int] | None = None
+_move_data: dict[int, dict] | None = None
 
 
 def species_names() -> dict[int, str]:
@@ -67,6 +68,29 @@ def item_prices() -> dict[int, int]:
     if _item_prices is None:
         _item_prices = _load_int_keyed_json("item_prices.json")
     return _item_prices
+
+
+def move_data() -> dict[int, dict]:
+    """Load move ID → {name, type, power, accuracy, pp, class, priority} table.
+
+    Extracted from ROM's pl_waza_tbl.narc by scripts/extract_move_data.py.
+    Returns empty dict if data file hasn't been generated yet.
+    """
+    global _move_data
+    if _move_data is None:
+        path = DATA_DIR / "move_data.json"
+        if not path.exists():
+            _move_data = {}
+            return _move_data
+        with open(path) as f:
+            _move_data = {int(k): v for k, v in json.load(f).items()}
+    return _move_data
+
+
+def move_type(move_id: int) -> str | None:
+    """Look up a move's type by ID. Returns None if data unavailable."""
+    entry = move_data().get(move_id)
+    return entry["type"] if entry else None
 
 
 def item_field_use() -> dict[str, int]:
