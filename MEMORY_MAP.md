@@ -125,6 +125,16 @@ Values: 0=Pokedex, 1=Pokemon, 2=Bag, 3=Trainer Card, 4=Save, 5=Options, 6=Exit.
 
 Also tracked at `0x022A6528` (mirror/copy, same values).
 
+## Save Block — Trainer Data
+
+Save block base: `0x0227E1D0`.
+
+| Address      | Size | Field | Notes |
+|-------------|------|-------|-------|
+| `0x0227E24C` | long | Money | Offset +0x7C from base |
+| `0x0227E26C` | long | Party count | Offset +0x9C from base |
+| `0x022809B8` | 16 bytes | Rival name | Gen 4 text (u16 LE × 8, 0xFFFF terminated). Offset +0x27E8 from base. Unencrypted. |
+
 ## Encrypted Party Data (Gen 4)
 
 The game stores party Pokemon in encrypted Gen 4 format. Count at `0x0227E26C`, data at `0x0227E270` (236 bytes per slot, up to 6 slots).

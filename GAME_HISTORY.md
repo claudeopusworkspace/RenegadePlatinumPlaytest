@@ -5,7 +5,7 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 ## Chapter 1: Twinleaf Town to Route 202
 
 ### Twinleaf Town (Maps 414-415)
-- Character name: CLAUDE. Rival name: AAAAAAA (mashed through naming screen).
+- Character name: CLAUDE. Rival name: WOJ (originally AAAAAAA from mashing through naming screen — fixed via memory edit in mini-session).
 - Started in bedroom (map 415). Barry rushed in about Pokemon at the lake.
 - Chose Turtwig as starter. Barry chose Chimchar (type advantage over us).
 - Other starters NOT received at this point — may come later in the hack.
@@ -70,7 +70,7 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - Navigated east through Jubilife City toward Route 203.
 
 ### Route 203 — Rival Battle (LOSS)
-- Crossed into Route 203 (map 344) and immediately encountered Rival AAAAAAA (Barry).
+- Crossed into Route 203 (map 344) and immediately encountered Rival WOJ (Barry).
 - **Barry's team**: Starly Lv10 (Reckless, Wing Attack), Munchlax Lv10 (Thick Fat, 50 HP, Rock Tomb, Amnesia), Chimchar Lv11 (Iron Fist, Oran Berry, Fury Swipes, Ember).
 - **Starly**: Wing Attack SE vs Grass Turtwig (18 damage/hit). Barry used a Potion at low HP. Turtwig brought it to low HP, then Eevee switched in — Starly KO'd Eevee with Quick Attack. Chimchar finished Starly.
 - **Munchlax**: The wall. 50 HP with Thick Fat. Chimchar used Taunt to prevent Amnesia, then fainted. Shinx came in and used Leer x2 (stacking -2 Defense on Munchlax), then fainted. Piplup pounded Munchlax from 50 to 23 HP, then fainted. **Turtwig at 3 HP with Overgrow active** — Razor Leaf crit with Overgrow + STAB + -2 Def = massive overkill. Munchlax obliterated.
@@ -100,7 +100,7 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 ### Route 203 — Rival Rematch (VICTORY)
 - Healed at Jubilife Pokemon Center, saved state `jubilife_healed_pre_rival`.
 - Navigated east through Jubilife City to Route 203.
-- Rival AAAAAAA intercepted us on Route 203 (map 344).
+- Rival WOJ intercepted us on Route 203 (map 344).
 - **Barry's team**: Starly Lv10, Munchlax Lv10, Chimchar Lv11.
 
 **Starly Lv10** (Normal/Flying, Reckless): Charmander led with Ember. Starly used Growl turn 1, Wing Attack turn 2 (13 damage). Barry used a Potion when Starly got low. Charmander took 3 turns of Ember to KO. Charmander ended at 7/35 HP.
@@ -209,7 +209,7 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 
 ### Oreburgh City → Route 203
 - Loaded `post_roark_victory` save state. Healed at Oreburgh Pokemon Center.
-- Exited gym, headed west. Rival AAAAAAA intercepted us at city exit — told us Route 207 needs a Bicycle, next gym is Eterna City.
+- Exited gym, headed west. Rival WOJ intercepted us at city exit — told us Route 207 needs a Bicycle, next gym is Eterna City.
 - Traversed Oreburgh Gate. Wild Zubat Lv8 encounter (fled). Used Repel for remaining route.
 - Route 203: Navigated through tall grass and ledge areas. Picked up **Soothe Bell** (hidden item at (222, 745)).
 

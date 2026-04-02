@@ -8,7 +8,7 @@
 | `post_barry_bedroom` | In bedroom, AFTER Barry leaves. Position (4,7) on map 415. |
 | `living_room` | Downstairs in the living room, BEFORE Mom's dialogue. Position (10,3) on map 414. |
 | `post_mom_living_room` | Downstairs, AFTER Mom gives Running Shoes. Free to move. |
-| `first_battle_start` | Rival battle vs AAAAAAA's Chimchar Lv5. At "What will Turtwig do?" menu. |
+| `first_battle_start` | Rival battle vs WOJ's Chimchar Lv5. At "What will Turtwig do?" menu. |
 | `post_rival_battle_twinleaf` | After rival battle, outside in Twinleaf Town (map 411). Turtwig Lv6. |
 | `post_lake_verity_cutscene` | After Lake Verity cutscene (Cyrus + Barry). Verity Lakefront. |
 | `post_wipe_home_healed` | After whiteout, back in living room. Turtwig Lv7 26/26 HP. |
@@ -39,7 +39,7 @@
 | `jubilife_post_barry_wipe` | Jubilife Pokemon Center. After losing to Barry on Route 203. |
 | `jubilife_healed_grind2` | Jubilife Pokemon Center. Team grinded on Route 202. Shinx/Piplup/Chimchar Lv12, Charmander Lv11, Eevee Lv10, Turtwig Lv14. |
 | `jubilife_healed_pre_rival` | Jubilife Pokemon Center. Full team Lv12+ healed. Pre-rival rematch. |
-| `route203_post_rival` | Route 203 (map 344). Defeated Rival AAAAAAA. Got Exp. Share. Turtwig Lv15, rest Lv12. |
+| `route203_post_rival` | Route 203 (map 344). Defeated Rival WOJ. Got Exp. Share. Turtwig Lv15, rest Lv12. |
 | `pre_shinx_evolution_grind` | Route 202 north entrance. Shinx Lv12 in slot 0, full team healed. Pre-grind. |
 | `route202_post_shinx_evolution` | Route 202 grass. Shinx evolved into Luxio Lv15. Post-evolution test. |
 | `jubilife_pokecenter_post_evolution` | Jubilife Pokemon Center. Luxio Lv15, full team healed. |
