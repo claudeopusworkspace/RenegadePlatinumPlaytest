@@ -78,3 +78,38 @@ Pure tool development session. Tackled the four most impactful QoL items from th
 ### Backlog Status
 - **Resolved this session**: 4 items (stale battle RAM, side warps, trainer dialogue, field items)
 - **Remaining open**: 3D elevation BFS, ledge directionality (both deferred — no gameplay blockers yet), tag battle edge-case testing (worked first try, low priority)
+
+---
+
+## Session 9 — Elevation-Aware 3D BFS (2026-04-02)
+
+### Goal
+Implement multi-level pathfinding for `navigate_to` so it can traverse maps with elevation (gyms, caves with raised platforms and ramps).
+
+### Approach: Hierarchical BFS
+Rather than rebuilding BFS with a full (x, y, z) state space, we brute-force over level transitions using the existing 2D BFS as a building block:
+1. Try BFS restricted to current elevation level
+2. If target unreachable: find all reachable ramp transitions on this level
+3. For each ramp (sorted: toward target level first, then by proximity), "take" the transition and recurse on the new level
+4. Depth-capped at 5 transitions, 5-minute wall-clock timeout
+
+### Changes
+- **`map_state.py`**: Added `ramp_index` field to ramp_info dicts in `analyze_elevation` for stable identity tracking.
+- **`navigation.py`** (~270 new lines):
+  - `_height_to_level` / `_get_tile_level`: elevation lookup helpers
+  - `_bfs_pathfind_level`: single-level BFS with elevation constraint, directional block enforcement (0x30/0x31), and ramp transition collection
+  - `_bfs_pathfind_3d`: hierarchical wrapper — recursive search across level transitions
+  - `navigate_to`: detects 3D maps (single-chunk with BDHC elevation data), routes to 3D pathfinder; flat/chunked maps use existing 2D BFS unchanged
+  - `DIRECTIONAL_BLOCKS` constant for platform-edge tile behaviors
+
+### Testing (Oreburgh Gym — 4 elevation levels)
+- L3→L0 straight down through 3 ramps: 20 steps ✓
+- L3→L0 with lateral movement: 21 steps ✓
+- L0→L2 ascending through 2 ramps: 20 steps ✓
+- L2→L3 single ramp ascent: 9 steps ✓
+- Route 204 (flat/chunked): 2D BFS unchanged ✓
+- Route 203 cliff debug: ledges + slopes handled correctly, 43-step bypass around barriers ✓
+
+### Backlog Status
+- **Resolved this session**: 3D elevation BFS (single-chunk), ledge/cliff directionality (retested — works as expected)
+- **Remaining open**: Multi-chunk 3D maps (deferred — no gameplay blockers), tag battle edge-case testing (low priority)
