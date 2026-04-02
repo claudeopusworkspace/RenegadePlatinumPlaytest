@@ -61,7 +61,11 @@
 | `r207_post_double_evo` | Route 207. After Turtwig→Grotle (Lv18) and Piplup→Prinplup (Lv16) evolutions. |
 | `pre_roark_rematch` | Oreburgh. Team grinded and prepped for second Roark attempt. |
 | `roark_rematch_door` | At Oreburgh Gym door, entering for Roark rematch. |
-| `post_roark_victory` | Oreburgh Gym. After defeating Roark 6-0. Coal Badge + TM Stealth Rock obtained. **Current gameplay state.** |
+| `post_roark_victory` | Oreburgh Gym. After defeating Roark 6-0. Coal Badge + TM Stealth Rock obtained. |
+| `post_galactic_jubilife` | Jubilife City. After defeating Team Galactic grunts (tag battle with Dawn). Got Fashion Case. |
+| `route204_entrance` | Route 204 south (R204A) at (174, 731). Just entered from Jubilife. |
+| `route204_north` | Route 204 north (R204B) at (180, 699). Exited Ravaged Path cave. |
+| `route204_north_progress` | Route 204 north. Defeated Lass Sarah + Aroma Lady Taylor. **Current gameplay state.** |
 
 ## Debug & Testing
 
@@ -119,6 +123,15 @@
 | `debug_piplup_levelup_in_battle` | Gym trainer battle. Piplup (Exp. Share) leveled to 13 during battle. battle_turn TIMEOUT. |
 | `debug_bullet_seed_timeout` | Roark battle. Before Bullet Seed 5-hit vs Nosepass. battle_turn TIMEOUT on long animation. |
 | `roark_nosepass_down_5hit` | Roark battle. After legendary 5-hit Bullet Seed KO on Nosepass. Mid-battle progress. |
+
+## Debug States (Session 2026-04-01b)
+
+| Name | Description |
+|------|-------------|
+| `oreburgh_gate_warp_debug` | Oreburgh Gate (map 258) at tile (4, 22). `navigate_to` reached warp but didn't trigger transition. Repro: `navigate("l1")` triggers it. |
+| `route203_cliff_debug` | Route 203 at (229, 749). Ledge tile (`3b` ledge_E) pathfinding bug. Navigate can't route around directional ledges. |
+| `jubilife_galactic_tag_battle` | Jubilife City. Tag battle start: Grotle+Clefairy vs Stunky+Glameow. First NPC-ally double battle. |
+| `jubilife_north_slow_navigate_debug` | Jubilife City at (174, 736). `navigate("u5")` abnormally slow — stale tag-battle RAM causing false encounter detection. |
 
 ## Battle Test Suite
 

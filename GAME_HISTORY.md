@@ -204,3 +204,42 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - **What didn't**: Team too underleveled (Lv12-13 Pokemon get OHKO'd), no answer for Onix's 57 Def wall, 3 Fire types is terrible composition, Eevee has no role.
 - **Party concerns**: Charmander redundant with Chimchar. Eevee (Gentle/Run Away) is dead weight. Need better type diversity — no Flying, Fighting, Ice, Psychic, or Ground coverage.
 - **Rematch plan**: Grind to Lv16-18+. Turtwig → Grotle at Lv18 for bulk. Keep Turtwig away from Geodude's Fire Punch. Scout wild encounters while grinding for potential team additions. Consider dropping Charmander and/or Eevee for better coverage.
+
+## Session: Post-Roark to Route 204 (2026-04-01)
+
+### Oreburgh City → Route 203
+- Loaded `post_roark_victory` save state. Healed at Oreburgh Pokemon Center.
+- Exited gym, headed west. Rival AAAAAAA intercepted us at city exit — told us Route 207 needs a Bicycle, next gym is Eterna City.
+- Traversed Oreburgh Gate. Wild Zubat Lv8 encounter (fled). Used Repel for remaining route.
+- Route 203: Navigated through tall grass and ledge areas. Picked up **Soothe Bell** (hidden item at (222, 745)).
+
+### Jubilife City — Looker & Team Galactic
+- Entered Jubilife City from east. **Looker** (International Police) introduced himself, mentioned Pal Pad.
+- Reached north Jubilife — **Team Galactic confrontation** triggered. Two Galactic Grunts threatening Prof Rowan and Dawn for research data. Rowan lectured them with his legendary 5-point list.
+- **Tag Battle** (first NPC-ally double battle): CLAUDE (Grotle Lv21) + Dawn (Clefairy Lv13) vs Grunt 1 (Stunky Lv13 + Silcoon Lv13) + Grunt 2 (Glameow Lv13 + Cascoon Lv13).
+  - Turn 1: Bulldoze OHKO'd Stunky (SE), damaged Glameow. Also hit Clefairy (friendly fire — Bulldoze hits all adjacent in doubles).
+  - Turn 2: Bulldoze KO'd Glameow, Clefairy fainted to friendly fire. Dawn sent in Piplup Lv14.
+  - Turn 3: Razor Leaf + Bubble Beam KO'd Silcoon.
+  - Turn 4: Bulldoze + Bubble Beam KO'd Cascoon. Clean sweep.
+  - **Tool note**: `battle_turn` handled tag battle perfectly — no `WAIT_FOR_PARTNER_ACTION`, Dawn's AI acted independently.
+- Post-battle: Grunts retreated. Rowan encouraged collecting all Gym Badges. Dawn explained Rowan's evolution research. **Jubilife TV reporter** gave us **Fashion Case** (Key Item).
+
+### Route 204 South (R204A)
+- Headed north from Jubilife. Entered Route 204.
+- **Lass Sarah** (3 Pokemon): Shinx Lv8 (OHKO Bulldoze SE), Nidoran♀ Lv8 (OHKO Bulldoze SE), Pidgey Lv8 (Ground-immune — Razor Leaf NVE, took 2 hits, Gust SE on Grotle). Won $128.
+- Navigated through tall grass, encountered wild Starly Lv6 (fled).
+- Entered **Ravaged Path** cave (map 254, labeled "Amity Square" in ROM). No Rock Smash needed — main path was clear.
+
+### Route 204 North (R204B)
+- Exited Ravaged Path to Route 204 north half.
+- **Aroma Lady Taylor** (3 Pokemon): Cherubi Lv13 (Grass — Bulldoze NVE, 3HKO), Hoppip Lv13 (Grass/Flying — Bulldoze immune, Air Cutter SE on Grotle, tanky fight), Shroomish Lv13 (Grass/Technician — **switched to Charmander**, Ember 2HKO with Charcoal+STAB+SE). Won $416. Machop leveled to 18.
+- **Lesson learned**: Use free switches at SWITCH_PROMPT! Was tunnel-visioning on Grotle for every fight. Charmander + Charcoal made Shroomish trivial — should have switched to Luxio/Charmander for Hoppip too.
+- Saved at `route204_north_progress`.
+
+### Session Summary
+- **Badges**: 1 (Coal Badge)
+- **Money**: ~$5,500
+- **Team**: Grotle Lv21, Machop Lv18, Prinplup Lv17, Luxio Lv19, Charmander Lv13
+- **Items obtained**: Soothe Bell, Fashion Case
+- **New trainers defeated**: 2 Team Galactic Grunts (tag battle), Lass Sarah (Route 204), Aroma Lady Taylor (Route 204)
+- **Next**: Continue Route 204 north → Floaroma Town. More trainers ahead. Need to heal before pushing further.
