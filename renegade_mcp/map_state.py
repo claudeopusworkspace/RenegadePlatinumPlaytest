@@ -24,6 +24,8 @@ TERRAIN_SIZE = 2048  # 32*32*2
 PLAYER_POS_BASE = 0x0227F450
 # Player facing: MapObject[0].facingDir (0x022A1A38 + 0x28)
 PLAYER_FACING_ADDR = 0x022A1A60
+# Player height: MapObject[0].pos.y (fx32, 0x022A1A38 + 0x74)
+PLAYER_POS_Y_FX32 = 0x022A1AAC
 
 # Zone header table in ARM9 (Platinum US / Renegade Platinum).
 # Each entry is 24 bytes; first u16 is the matrix_id for that zone.
@@ -60,6 +62,7 @@ BEHAVIORS = {
     0x00: "ground", 0x02: "tall_grass", 0x03: "very_tall_grass",
     0x08: "cave_floor", 0x10: "water", 0x13: "waterfall", 0x15: "sea",
     0x20: "ice", 0x21: "sand",
+    0x30: "stairs_down", 0x31: "stairs_up",
     0x38: "ledge_S", 0x39: "ledge_N", 0x3A: "ledge_W", 0x3B: "ledge_E",
     0x5E: "stairs_E", 0x5F: "stairs_W",
     0x62: "warp_E", 0x63: "warp_W", 0x64: "warp_N", 0x65: "warp_S",
@@ -321,6 +324,213 @@ def resolve_terrain_from_rom(emu: "EmulatorClient", map_id: int, px: int, py: in
     return grid, origin_x, origin_y
 
 
+# ── BDHC elevation system ──
+
+def parse_bdhc(land_data_id: int) -> dict | None:
+    """Parse BDHC (elevation plate) data from a land_data ROM file.
+
+    Returns dict with points, normals, constants, plates — or None if no
+    meaningful BDHC data exists.
+    """
+    path = LAND_DATA_DIR / f"{land_data_id:04d}.bin"
+    if not path.exists():
+        return None
+
+    data = path.read_bytes()
+    if len(data) < 0x10:
+        return None
+
+    map_props_size = struct.unpack_from("<I", data, 0x04)[0]
+    map_model_size = struct.unpack_from("<I", data, 0x08)[0]
+    bdhc_size = struct.unpack_from("<I", data, 0x0C)[0]
+
+    if bdhc_size == 0:
+        return None
+
+    off = 0x0810 + map_props_size + map_model_size
+    if off + 0x10 > len(data) or data[off:off + 4] != b"BDHC":
+        return None
+
+    points_count = struct.unpack_from("<H", data, off + 0x04)[0]
+    normals_count = struct.unpack_from("<H", data, off + 0x06)[0]
+    constants_count = struct.unpack_from("<H", data, off + 0x08)[0]
+    plates_count = struct.unpack_from("<H", data, off + 0x0A)[0]
+
+    p = off + 0x10
+    points = []
+    for _ in range(points_count):
+        x = struct.unpack_from("<i", data, p)[0] / 4096.0
+        z = struct.unpack_from("<i", data, p + 4)[0] / 4096.0
+        points.append((x, z))
+        p += 8
+
+    normals = []
+    for _ in range(normals_count):
+        nx = struct.unpack_from("<i", data, p)[0] / 4096.0
+        ny = struct.unpack_from("<i", data, p + 4)[0] / 4096.0
+        nz = struct.unpack_from("<i", data, p + 8)[0] / 4096.0
+        normals.append((nx, ny, nz))
+        p += 12
+
+    constants = []
+    for _ in range(constants_count):
+        d = struct.unpack_from("<i", data, p)[0] / 4096.0
+        constants.append(d)
+        p += 4
+
+    plates = []
+    for _ in range(plates_count):
+        p1 = struct.unpack_from("<H", data, p)[0]
+        p2 = struct.unpack_from("<H", data, p + 2)[0]
+        ni = struct.unpack_from("<H", data, p + 4)[0]
+        ci = struct.unpack_from("<H", data, p + 6)[0]
+        plates.append({"p1": p1, "p2": p2, "normal": ni, "constant": ci})
+        p += 8
+
+    return {"points": points, "normals": normals, "constants": constants, "plates": plates}
+
+
+def get_land_data_id(emu: "EmulatorClient", map_id: int, px: int, py: int) -> int | None:
+    """Resolve the land_data file ID for a map position via zone header chain."""
+    addr = ZONE_HEADER_BASE + map_id * ZONE_HEADER_STRIDE
+    matrix_id = emu.read_memory(addr, size="short")
+
+    matrix_path = MATRIX_DIR / f"{matrix_id:04d}.bin"
+    if not matrix_path.exists():
+        return None
+
+    w, h, _, terrain_ids = parse_matrix(matrix_path)
+    chunk_x = px // CHUNK_SIZE
+    chunk_y = py // CHUNK_SIZE
+
+    if not (0 <= chunk_x < w and 0 <= chunk_y < h):
+        return None
+
+    land_id = terrain_ids[chunk_y][chunk_x]
+    return None if land_id == 0xFFFF else land_id
+
+
+def read_player_height(emu: "EmulatorClient") -> float:
+    """Read the player's current Y height from MapObject[0].pos.y (fx32)."""
+    raw = emu.read_memory(PLAYER_POS_Y_FX32, size="long")
+    if raw >= 0x80000000:
+        raw -= 0x100000000
+    return raw / 4096.0
+
+
+def _tile_to_bdhc(col: int, row: int) -> tuple[float, float]:
+    """Convert tile center to BDHC coordinate space (origin = map center)."""
+    return (col + 0.5) * 16 - 256, (row + 0.5) * 16 - 256
+
+
+def analyze_elevation(bdhc: dict, terrain: list[list[int]]) -> dict | None:
+    """Analyze BDHC data to build per-tile elevation levels.
+
+    Returns None for flat maps (single height). Otherwise returns dict with
+    level_map, ramp_tiles, ramps, and levels for rendering.
+    """
+    plates = bdhc["plates"]
+    pts = bdhc["points"]
+    norms = bdhc["normals"]
+    consts = bdhc["constants"]
+
+    # Step 1: Collect discrete heights from flat plates only
+    flat_heights: set[int] = set()
+    for plate in plates:
+        nx, ny, nz = norms[plate["normal"]]
+        if abs(nx) < 0.01 and abs(nz) < 0.01 and abs(ny) > 0.01:
+            d = consts[plate["constant"]]
+            flat_heights.add(round(-d / ny))
+
+    if len(flat_heights) <= 1:
+        return None
+
+    sorted_heights = sorted(flat_heights)
+    h2l = {h: i for i, h in enumerate(sorted_heights)}
+
+    # Step 2: Map tiles to levels from flat plates
+    level_map: dict[tuple[int, int], list[int]] = {}
+
+    for row in range(32):
+        for col in range(32):
+            if terrain[row][col] & 0x8000:
+                continue
+            x, z = _tile_to_bdhc(col, row)
+            levels: set[int] = set()
+            for plate in plates:
+                x1, z1 = pts[plate["p1"]]
+                x2, z2 = pts[plate["p2"]]
+                if not (min(x1, x2) <= x <= max(x1, x2) and min(z1, z2) <= z <= max(z1, z2)):
+                    continue
+                nx, ny, nz = norms[plate["normal"]]
+                if abs(nx) < 0.01 and abs(nz) < 0.01 and abs(ny) > 0.01:
+                    d = consts[plate["constant"]]
+                    h = round(-d / ny)
+                    if h in h2l:
+                        levels.add(h2l[h])
+            if levels:
+                level_map[(col, row)] = sorted(levels)
+
+    # Step 3: Identify ramp plates and mark tiles
+    ramp_tiles: dict[tuple[int, int], dict] = {}
+    ramps: list[dict] = []
+
+    for plate in plates:
+        nx, ny, nz = norms[plate["normal"]]
+        if abs(nx) < 0.01 and abs(nz) < 0.01:
+            continue
+        if abs(ny) < 0.01:
+            continue
+
+        x1, z1 = pts[plate["p1"]]
+        x2, z2 = pts[plate["p2"]]
+        d = consts[plate["constant"]]
+
+        # Heights at plate corners to find connected levels
+        corners = [
+            (min(x1, x2), min(z1, z2)), (min(x1, x2), max(z1, z2)),
+            (max(x1, x2), min(z1, z2)), (max(x1, x2), max(z1, z2)),
+        ]
+        corner_heights = [round(-(nx * cx + nz * cz + d) / ny) for cx, cz in corners]
+        h_max, h_min = max(corner_heights), min(corner_heights)
+
+        from_level = h2l.get(h_max)
+        to_level = h2l.get(h_min)
+        if from_level is None or to_level is None:
+            continue
+
+        direction = ("south" if nz > 0 else "north") if abs(nz) >= abs(nx) else ("east" if nx > 0 else "west")
+
+        col_min = int((min(x1, x2) + 256) / 16)
+        col_max = int((max(x1, x2) + 256) / 16)
+        row_min = int((min(z1, z2) + 256) / 16)
+        row_max = int((max(z1, z2) + 256) / 16)
+
+        ramp_info = {
+            "col_range": (col_min, col_max),
+            "row_range": (row_min, row_max),
+            "from_level": from_level,
+            "to_level": to_level,
+            "direction": direction,
+        }
+        ramps.append(ramp_info)
+
+        for r in range(row_min, row_max):
+            for c in range(col_min, col_max):
+                if not (terrain[r][c] & 0x8000):
+                    ramp_tiles[(c, r)] = ramp_info
+
+    levels_info = [{"level": h2l[h], "height": h} for h in sorted_heights]
+
+    return {
+        "level_map": level_map,
+        "ramp_tiles": ramp_tiles,
+        "ramps": ramps,
+        "levels": levels_info,
+        "height_to_level": h2l,
+    }
+
+
 # ── Dynamic objects ──
 
 def read_objects(emu: EmulatorClient) -> list[dict[str, Any]]:
@@ -451,8 +661,16 @@ def get_map_state(emu: EmulatorClient) -> dict[str, Any] | None:
 
 # ── ASCII map rendering ──
 
-def render_map(terrain: list, objects: list, player_local_x: int, player_local_y: int, facing: int) -> str:
-    """Render an ASCII map combining terrain and dynamic objects."""
+def render_map(
+    terrain: list, objects: list, player_local_x: int, player_local_y: int,
+    facing: int, elevation: dict | None = None, player_level: int | None = None,
+) -> str:
+    """Render an ASCII map combining terrain and dynamic objects.
+
+    When elevation data is provided (from analyze_elevation), passable tiles
+    show their height level number instead of '.' or '_', ramp tiles show
+    descent direction, and bridge tiles show both levels.
+    """
     obj_at = {}
     for obj in objects:
         lx, ly = obj["local_x"], obj["local_y"]
@@ -467,6 +685,10 @@ def render_map(terrain: list, objects: list, player_local_x: int, player_local_y
                     obj_at[(lx, ly)] = chr(ord("a") + idx - 27)
                 else:
                     obj_at[(lx, ly)] = "?"
+
+    # Unpack elevation data
+    level_map = elevation["level_map"] if elevation else {}
+    ramp_tiles = elevation["ramp_tiles"] if elevation else {}
 
     # Find map bounds
     min_row, max_row = 31, 0
@@ -508,16 +730,27 @@ def render_map(terrain: list, objects: list, player_local_x: int, player_local_y
             val = terrain[row][col]
             is_blocked = (val & 0x8000) != 0
             behavior = val & 0x00FF
+            key = (col, row)
 
-            if (col, row) in obj_at:
-                cell = f"  {obj_at[(col, row)]}"
-            elif val == 0:
-                cell = "  ."
+            if key in obj_at:
+                cell = f"  {obj_at[key]}"
             elif is_blocked and behavior == 0:
                 cell = "  #"
             elif is_blocked and behavior != 0:
                 cell = f" {behavior:02x}"
                 behaviors_seen[behavior] = "blocked"
+            elif elevation and key in ramp_tiles:
+                # Ramp tile — show descent direction
+                d = ramp_tiles[key]["direction"]
+                cell = "  \\" if d in ("south", "east") else "  /"
+            elif elevation and key in level_map and len(level_map[key]) > 1:
+                # Bridge — show upper level with bridge marker
+                cell = f" {level_map[key][-1]}*"
+            elif elevation and key in level_map and (val == 0 or behavior in (0x00, 0x08)):
+                # Plain ground/cave/void tile with elevation → show level number
+                cell = f"  {level_map[key][0]}"
+            elif val == 0:
+                cell = "  ."
             elif behavior == 0x00:
                 cell = "  _"
             elif behavior == 0x08:
@@ -529,11 +762,16 @@ def render_map(terrain: list, objects: list, player_local_x: int, player_local_y
             line += cell
         lines.append(line)
 
+    # Legend
     lines.append("")
     lines.append("Legend:")
     lines.append("  ^v<> = player (facing direction)")
     lines.append("  A-Z, a-z = NPC/dynamic object")
-    lines.append("  .    = void  #  = wall  _  = walkable ground")
+    if elevation:
+        lines.append("  0-9  = elevation level (passable)  #  = wall")
+        lines.append("  / \\  = ramp (descent direction)    n* = bridge (level n, passable below)")
+    else:
+        lines.append("  .    = void  #  = wall  _  = walkable ground")
     lines.append("  xx   = tile behavior (hex)")
 
     if behaviors_seen:
@@ -542,6 +780,23 @@ def render_map(terrain: list, objects: list, player_local_x: int, player_local_y
         for beh, passability in sorted(behaviors_seen.items()):
             name = BEHAVIORS.get(beh, "unknown")
             lines.append(f"  {beh:02x} = {passability} ({name})")
+
+    # Elevation summary
+    if elevation:
+        lines.append("")
+        lines.append(f"Elevation: {len(elevation['levels'])} levels")
+        for lv in elevation["levels"]:
+            marker = " <- YOU" if player_level is not None and lv["level"] == player_level else ""
+            lines.append(f"  L{lv['level']} = h{lv['height']}{marker}")
+        if elevation["ramps"]:
+            ramp_strs = []
+            for r in elevation["ramps"]:
+                cr = r["col_range"]
+                rr = r["row_range"]
+                cols = f"{cr[0]}" if cr[1] - cr[0] == 1 else f"{cr[0]}-{cr[1] - 1}"
+                rows = f"{rr[0]}" if rr[1] - rr[0] == 1 else f"{rr[0]}-{rr[1] - 1}"
+                ramp_strs.append(f"({cols},{rows})L{r['from_level']}->L{r['to_level']}")
+            lines.append("  Ramps: " + "  ".join(ramp_strs))
 
     return "\n".join(lines)
 
@@ -553,24 +808,41 @@ def view_map(emu: EmulatorClient) -> dict[str, Any]:
         return {"error": "Could not resolve map chunk", "map": "", "player": {}, "objects": []}
 
     facing_name = FACING_NAMES.get(state["facing"], "?")
+
+    # Load elevation data from BDHC
+    elevation = None
+    player_level = None
+    land_id = get_land_data_id(emu, state["map_id"], state["px"], state["py"])
+    if land_id is not None:
+        bdhc = parse_bdhc(land_id)
+        if bdhc is not None:
+            elevation = analyze_elevation(bdhc, state["terrain"])
+            if elevation is not None:
+                player_h = round(read_player_height(emu))
+                player_level = elevation["height_to_level"].get(player_h)
+
     map_str = render_map(
         state["terrain"], state["objects"],
         state["local_px"], state["local_py"], state["facing"],
+        elevation=elevation, player_level=player_level,
     )
 
     # Build header
+    elev_str = ""
+    if elevation and player_level is not None:
+        elev_str = f" — Level {player_level} (h={round(read_player_height(emu))})"
     if state["chunked"]:
         chunk_cx = state["px"] // CHUNK_SIZE
         chunk_cy = state["py"] // CHUNK_SIZE
         header = (
             f"Map {state['map_id']} — Player at ({state['px']}, {state['py']}) "
-            f"facing {facing_name}\n"
+            f"facing {facing_name}{elev_str}\n"
             f"Chunk ({chunk_cx}, {chunk_cy}) — "
             f"origin ({state['origin_x']}, {state['origin_y']}) — "
             f"local ({state['local_px']}, {state['local_py']})"
         )
     else:
-        header = f"Map {state['map_id']} — Player at ({state['px']}, {state['py']}) facing {facing_name}"
+        header = f"Map {state['map_id']} — Player at ({state['px']}, {state['py']}) facing {facing_name}{elev_str}"
 
     # Object list
     obj_info = []
@@ -621,7 +893,7 @@ def view_map(emu: EmulatorClient) -> dict[str, Any]:
                 "dest_map_id": w["dest_map"],
             })
 
-    return {
+    result = {
         "map": header + "\n\n" + map_str,
         "map_id": state["map_id"],
         "player": {
@@ -634,3 +906,10 @@ def view_map(emu: EmulatorClient) -> dict[str, Any]:
         "objects": obj_info,
         "warps": warp_info,
     }
+    if elevation is not None:
+        result["elevation"] = {
+            "levels": elevation["levels"],
+            "player_level": player_level,
+            "ramps": elevation["ramps"],
+        }
+    return result
