@@ -30,6 +30,7 @@ _item_prices: dict[int, int] | None = None
 _map_table: dict[int, dict] | None = None
 _tmhm_moves: list[int] | None = None
 _tm_compat: dict[int, list[int]] | None = None
+_item_field_use: dict[str, int] | None = None
 
 
 def species_names() -> dict[int, str]:
@@ -66,6 +67,24 @@ def item_prices() -> dict[int, int]:
     if _item_prices is None:
         _item_prices = _load_int_keyed_json("item_prices.json")
     return _item_prices
+
+
+def item_field_use() -> dict[str, int]:
+    """Load item name → fieldUseFunc mapping (from pl_item_data.csv).
+
+    Only includes items with fieldUseFunc > 0. Key field use func values:
+        1 = healing (party target), 6 = TM/HM, 8 = berry,
+        14 = honey, 19 = bag message (Repel etc.), 20 = evo stone,
+        21 = escape rope.
+    """
+    global _item_field_use
+    if _item_field_use is None:
+        path = DATA_DIR / "item_field_use.json"
+        if not path.exists():
+            return {}
+        with open(path) as f:
+            _item_field_use = json.load(f)
+    return _item_field_use
 
 
 # ── TM/HM constants ──

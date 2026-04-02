@@ -454,6 +454,24 @@ def create_server() -> FastMCP:
         return _use_item(emu, item_name, party_slot)
 
     @mcp.tool()
+    def use_field_item(item_name: str) -> dict[str, Any]:
+        """Use a field item (Repel, Escape Rope, Honey, etc.) from the Items pocket.
+
+        For items that activate directly without targeting a party Pokemon.
+        Opens pause menu → Bag → Items pocket → select item → USE → dismiss.
+        Pre-validates that the item is field-usable (rejects hold-only items
+        like Silk Scarf). For Medicine items, use use_item() instead.
+
+        Args:
+            item_name: Item name (e.g. "Repel", "Escape Rope"). Case-insensitive.
+        """
+        from renegade_mcp.use_item import use_field_item as _use_field_item
+
+        emu = get_client()
+        emu.create_checkpoint(action=f"use_field_item({item_name})")
+        return _use_field_item(emu, item_name)
+
+    @mcp.tool()
     def teach_tm(
         tm_name: str, party_slot: int = 0, forget_move: int | None = None
     ) -> dict[str, Any]:
