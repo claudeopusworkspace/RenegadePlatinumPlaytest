@@ -25,3 +25,29 @@ No adventure progress — focused on fixing the two remaining backlog bugs:
 - Removed `advance_frames` parameter naming note (convention, not a bug).
 - Removed fixed `battle_turn` level-up bug (just fixed above).
 - Remaining: auto_grind cancellation (MCP limitation), unconfirmed shop cursor bug.
+
+## Dev Session: Elevation-Aware Mapping (2026-04-01)
+
+### Elevation System Discovery
+- Pokemon Platinum maps use **BDHC (Building Density Height Collision)** data embedded in ROM `land_data` files
+- Each map has "plates" — rectangular surfaces at specific heights, including flat platforms and tilted ramps
+- Oreburgh Gym has **4 elevation levels**: ground (h=0), mid walkways (h=32), side walkways (h=48), Roark's platform (h=64)
+- Row 17 of the gym has a **bridge** — level 1 walkway over level 0 ground
+- Player height readable from MapObject[0].pos.y (fx32 at 0x022A1AAC)
+
+### Tile Behavior Discovery (0x30/0x31)
+- `0x30` and `0x31` are **directional movement blockers** at elevation edges
+- `0x30` blocks eastward movement, `0x31` blocks westward movement
+- Used as a lightweight alternative to wall tiles at platform edges
+- The visual "slopes" flanking the center stairs are actually wall tiles (#); 0x30/0x31 are the invisible edge barriers
+
+### view_map Enhancements
+1. **Elevation-aware rendering**: passable tiles show height level numbers (0-9), flat maps unchanged
+2. **Ramp indicators**: `\` and `/` show descent direction on BDHC ramp plates
+3. **Bridge notation**: `n*` marks tiles with multiple overlapping elevation levels
+4. **Directional blockers**: `]` (can't move east) and `[` (can't move west) replace confusing hex codes
+5. **Level filter**: `view_map(level=N)` isolates a single elevation, dimming others to `~`
+6. **Elevation summary**: lists all levels, ramp connections, and player's current height
+
+### Known Limitation
+- `navigate_to` BFS is still 2D — doesn't account for elevation. Added to backlog. Oreburgh Gym is the simplest test case for 3D BFS work. Can plan routes manually using elevation display + `navigate` for now.
