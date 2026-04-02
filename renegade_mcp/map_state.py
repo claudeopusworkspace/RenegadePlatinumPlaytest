@@ -62,7 +62,7 @@ BEHAVIORS = {
     0x00: "ground", 0x02: "tall_grass", 0x03: "very_tall_grass",
     0x08: "cave_floor", 0x10: "water", 0x13: "waterfall", 0x15: "sea",
     0x20: "ice", 0x21: "sand",
-    0x30: "stairs_down", 0x31: "stairs_up",
+    0x30: "block_E", 0x31: "block_W",
     0x38: "ledge_S", 0x39: "ledge_N", 0x3A: "ledge_W", 0x3B: "ledge_E",
     0x5E: "stairs_E", 0x5F: "stairs_W",
     0x62: "warp_E", 0x63: "warp_W", 0x64: "warp_N", 0x65: "warp_S",
