@@ -9,7 +9,7 @@ from __future__ import annotations
 import struct
 from typing import TYPE_CHECKING, Any
 
-from renegade_mcp.data import ability_names, item_names, move_names, species_names
+from renegade_mcp.data import ability_names, item_names, move_data, move_names, species_names
 from renegade_mcp.text_encoding import decode_gen4_text
 
 if TYPE_CHECKING:
@@ -98,6 +98,7 @@ def read_battle(emu: EmulatorClient) -> list[dict[str, Any]]:
 
     sp_names = species_names()
     mv_names = move_names()
+    mv_data = move_data()
     it_names = item_names()
     ab_names = ability_names()
 
@@ -154,7 +155,15 @@ def read_battle(emu: EmulatorClient) -> list[dict[str, Any]]:
             "max_hp": max_hp,
             "stats": {"atk": atk, "def": df, "spa": spa, "spd": spd, "spe": spe},
             "moves": [
-                {"id": m, "name": mv_names.get(m, f"#{m}") if m > 0 else None, "pp": pp[i]}
+                {
+                    "id": m,
+                    "name": mv_names.get(m, f"#{m}") if m > 0 else None,
+                    "pp": pp[i],
+                    "type": mv_data[m]["type"] if m in mv_data else None,
+                    "power": mv_data[m]["power"] if m in mv_data else None,
+                    "accuracy": mv_data[m]["accuracy"] if m in mv_data else None,
+                    "class": mv_data[m]["class"] if m in mv_data else None,
+                }
                 for i, m in enumerate(moves)
                 if m > 0
             ],
@@ -171,6 +180,21 @@ def read_battle(emu: EmulatorClient) -> list[dict[str, Any]]:
         battlers.append(battler)
 
     return battlers
+
+
+def _format_move_detail(m: dict) -> str:
+    """Format move type/class/power/accuracy as a bracketed tag."""
+    mtype = m.get("type")
+    if not mtype:
+        return ""
+    parts = [mtype, m.get("class", "???")]
+    power = m.get("power")
+    if power:
+        parts.append(f"{power} pwr")
+    acc = m.get("accuracy")
+    if acc:
+        parts.append(f"{acc}% acc")
+    return f" [{' · '.join(parts)}]"
 
 
 def format_battle(battlers: list[dict[str, Any]]) -> str:
@@ -215,6 +239,7 @@ def format_battle(battlers: list[dict[str, Any]]) -> str:
             lines.append(f"    Stages: {', '.join(stage_parts)}")
 
         for m in b["moves"]:
-            lines.append(f"    - {m['name']} (PP {m['pp']})")
+            detail = _format_move_detail(m)
+            lines.append(f"    - {m['name']}{detail} (PP {m['pp']})")
 
     return "\n".join(lines)

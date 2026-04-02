@@ -531,6 +531,57 @@ def create_server() -> FastMCP:
             result["move"] = move_info
         return result
 
+    # ── Move Info ──
+
+    @mcp.tool()
+    def move_info(move_name: str) -> dict[str, Any]:
+        """Look up a move's full stats: type, power, accuracy, PP, class, priority.
+
+        Pure ROM data lookup — no emulator interaction needed.
+        This is the same information visible on the move summary screen in-game.
+
+        Args:
+            move_name: The move name (e.g. "Earthquake", "Bullet Seed", "Swords Dance").
+        """
+        from renegade_mcp.data import move_data, move_names
+
+        mv_names = move_names()
+        name_lower = move_name.strip().lower()
+        mv_id = None
+        for mid, mname in mv_names.items():
+            if mname.lower() == name_lower:
+                mv_id = mid
+                break
+        if mv_id is None:
+            return {"error": f"Unknown move: '{move_name}'"}
+
+        mv_data = move_data()
+        entry = mv_data.get(mv_id)
+        if entry is None:
+            return {"error": f"No data for move '{move_name}' (run scripts/extract_move_data.py)"}
+
+        # Build formatted summary
+        parts = [entry["type"], entry["class"]]
+        if entry.get("power"):
+            parts.append(f"{entry['power']} pwr")
+        if entry.get("accuracy"):
+            parts.append(f"{entry['accuracy']}% acc")
+        parts.append(f"{entry['pp']} PP")
+        if entry.get("priority", 0) != 0:
+            parts.append(f"priority {entry['priority']:+d}")
+
+        return {
+            "move_id": mv_id,
+            "name": entry["name"],
+            "type": entry["type"],
+            "class": entry["class"],
+            "power": entry.get("power"),
+            "accuracy": entry.get("accuracy"),
+            "pp": entry["pp"],
+            "priority": entry.get("priority", 0),
+            "formatted": f"{entry['name']} [{' · '.join(parts)}]",
+        }
+
     # ── Trainer Status ──
 
     @mcp.tool()

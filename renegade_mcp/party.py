@@ -27,7 +27,7 @@ from __future__ import annotations
 import struct
 from typing import TYPE_CHECKING, Any
 
-from renegade_mcp.data import ability_names, move_names, species_names
+from renegade_mcp.data import ability_names, move_data, move_names, species_names
 
 if TYPE_CHECKING:
     from desmume_mcp.client import EmulatorClient
@@ -380,6 +380,7 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
     """
     sp_names = species_names()
     mv_names = move_names()
+    mv_data = move_data()
     ab_names = ability_names()
 
     enc_count_raw = emu.read_memory_range(ENCRYPTED_PARTY_COUNT, size="long", count=1)
@@ -450,6 +451,9 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
             "move_names": [
                 mv_names.get(m, f"#{m}") if m > 0 else "-" for m in decoded["moves"]
             ],
+            "move_info": [
+                mv_data.get(m, {}) if m > 0 else {} for m in decoded["moves"]
+            ],
             "pp": decoded["pp"],
             "nature": decoded["nature"],
             "ability_id": decoded.get("ability_idx", 0),
@@ -466,6 +470,20 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
         party.append(pokemon)
 
     return party
+
+
+def _format_move_detail(info: dict) -> str:
+    """Format move type/class/power/accuracy as a bracketed tag."""
+    if not info:
+        return ""
+    parts = [info.get("type", "???"), info.get("class", "???")]
+    power = info.get("power")
+    if power:
+        parts.append(f"{power} pwr")
+    acc = info.get("accuracy")
+    if acc:
+        parts.append(f"{acc}% acc")
+    return f" [{' · '.join(parts)}]"
 
 
 def format_party(party: list[dict[str, Any]]) -> str:
@@ -493,10 +511,12 @@ def format_party(party: list[dict[str, Any]]) -> str:
         if p.get("partial"):
             lines.append("     (moves/IVs/EVs unavailable — encrypted data stale)")
         elif p.get("move_names"):
-            for mname, pp in zip(p["move_names"], p["pp"]):
+            infos = p.get("move_info", [{}] * 4)
+            for mname, pp, info in zip(p["move_names"], p["pp"], infos):
                 if mname == "-":
                     continue
-                lines.append(f"     - {mname} (PP {pp})")
+                detail = _format_move_detail(info)
+                lines.append(f"     - {mname}{detail} (PP {pp})")
         else:
             lines.append("     (moves unavailable)")
 
