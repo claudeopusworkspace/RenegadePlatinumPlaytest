@@ -89,6 +89,10 @@ FORGET_MOVE_XY = [
 BATTLE_BASE = 0x022C5774
 BATTLE_SLOT_SIZE = 0xC0
 
+# Battle party order: maps UI position → persistent party slot (6 bytes per battler)
+# BattleContext.partyOrder[0] — player's order array
+PARTY_ORDER_ADDR = 0x022C5B60
+
 # Post-timeout recovery: press B to advance through stat screens / text
 RECOVERY_PRESSES = 8
 RECOVERY_WAIT = 300  # frames between B presses (~5 seconds per press)
@@ -923,14 +927,30 @@ def _recover_from_level_up(emu: EmulatorClient, result: dict[str, Any]) -> dict[
 def _enrich_switch_result(result: dict[str, Any], emu: EmulatorClient) -> None:
     """Add current party order to switch state results for informed slot selection.
 
+    Reads BattleContext.partyOrder[0] to map UI positions to persistent party
+    slots.  The ``switch_to`` parameter in ``battle_turn`` taps the bottom-screen
+    grid by UI position, so the party list here is ordered to match — slot N in
+    the returned list is what ``switch_to=N`` will select.
+
     Only includes slot index, species, and level — NOT HP, since party HP data
     is stale during battle (doesn't reflect in-battle damage).
     """
     party = read_party(emu)
-    result["party"] = [
-        {"slot": p["slot"], "name": p["name"], "level": p["level"]}
-        for p in party
-    ]
+    party_by_slot = {p["slot"]: p for p in party}
+
+    # Read the 6-byte UI→party mapping from BattleContext.partyOrder[0]
+    ui_order = emu.read_memory_range(PARTY_ORDER_ADDR, size="byte", count=6)
+
+    ordered: list[dict[str, Any]] = []
+    for ui_pos, party_slot in enumerate(ui_order):
+        p = party_by_slot.get(party_slot)
+        if p:
+            ordered.append({
+                "slot": ui_pos,
+                "name": p["name"],
+                "level": p["level"],
+            })
+    result["party"] = ordered
 
 
 def _enrich_move_learn_result(result: dict[str, Any], emu: EmulatorClient) -> None:
