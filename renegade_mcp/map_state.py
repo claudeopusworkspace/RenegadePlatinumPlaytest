@@ -293,6 +293,46 @@ def read_warps_from_rom(emu: "EmulatorClient", map_id: int) -> list[dict[str, in
     return warps
 
 
+# Sign graphics IDs that auto-trigger dialogue when the player steps onto the
+# tile directly south while facing north.
+SIGN_GFX_IDS = {91, 93, 94, 95, 96}  # Map Signpost, Signboard, Arrow, Gym, Trainer Tips
+
+
+def read_sign_tiles_from_rom(emu: "EmulatorClient", map_id: int) -> list[tuple[int, int]]:
+    """Read sign activation tiles from ROM zone_event data.
+
+    Signs auto-trigger when the player walks onto the tile directly south
+    of the sign while facing north. Returns list of (x, y) activation tiles
+    (i.e. sign_y + 1 for each sign).
+    """
+    addr = ZONE_HEADER_BASE + map_id * ZONE_HEADER_STRIDE + _EVENTS_ARCHIVE_OFFSET
+    events_id = emu.read_memory(addr, size="short")
+
+    event_path = ZONE_EVENT_DIR / f"{events_id:04d}.bin"
+    if not event_path.exists():
+        return []
+
+    data = event_path.read_bytes()
+    off = 0
+
+    # Skip BG events
+    num_bg = struct.unpack_from("<I", data, off)[0]; off += 4
+    off += num_bg * _BG_EVENT_SIZE
+
+    # Read Object events, extract sign positions
+    num_obj = struct.unpack_from("<I", data, off)[0]; off += 4
+    tiles = []
+    for _ in range(num_obj):
+        gfx_id = struct.unpack_from("<H", data, off + 0x02)[0]
+        if gfx_id in SIGN_GFX_IDS:
+            sign_x = struct.unpack_from("<H", data, off + 0x18)[0]
+            sign_y = struct.unpack_from("<H", data, off + 0x1A)[0]
+            tiles.append((sign_x, sign_y + 1))  # activation tile is one south
+        off += _OBJ_EVENT_SIZE
+
+    return tiles
+
+
 def resolve_terrain_from_rom(emu: "EmulatorClient", map_id: int, px: int, py: int) -> tuple:
     """Resolve terrain from ROM via zone header → matrix → land_data.
 

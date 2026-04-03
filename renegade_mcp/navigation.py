@@ -27,6 +27,7 @@ from renegade_mcp.map_state import (
     read_objects,
     read_player_height,
     read_player_state,
+    read_sign_tiles_from_rom,
 )
 from renegade_mcp.turn import _wait_for_action_prompt
 
@@ -726,7 +727,7 @@ def _try_repath(
     ox, oy = ctx["grid_ox"], ctx["grid_oy"]
     w, h = ctx["grid_w"], ctx["grid_h"]
 
-    npc_set = set()
+    npc_set = set(ctx.get("sign_tiles", set()))
     for nx, ny in current_npcs.values():
         rx, ry = nx - ox, ny - oy
         if 0 <= rx < w and 0 <= ry < h:
@@ -1514,6 +1515,12 @@ def _navigate_to_impl(
             state["objects"], grid_ox, grid_oy, grid_w, grid_h,
         )
 
+        # Block sign activation tiles (tile south of sign, auto-triggers dialogue)
+        for sx, sy in read_sign_tiles_from_rom(emu, map_id):
+            lx, ly = sx - grid_ox, sy - grid_oy
+            if 0 <= lx < grid_w and 0 <= ly < grid_h:
+                npc_set.add((lx, ly))
+
         rel_px = px - grid_ox
         rel_py = py - grid_oy
         rel_tx = target_x - grid_ox
@@ -1530,6 +1537,13 @@ def _navigate_to_impl(
         terrain_info, npc_set, obstacle_map = _build_terrain_info(
             state["terrain"], state["objects"],
         )
+
+        # Block sign activation tiles (tile south of sign, auto-triggers dialogue)
+        for sx, sy in read_sign_tiles_from_rom(emu, map_id):
+            lx, ly = sx - origin_x, sy - origin_y
+            if 0 <= lx < 32 and 0 <= ly < 32:
+                npc_set.add((lx, ly))
+
         bfs_sx, bfs_sy = local_px, local_py
         bfs_tx, bfs_ty = target_x, target_y
         bfs_w, bfs_h = 32, 32
@@ -1537,11 +1551,19 @@ def _navigate_to_impl(
         grid_w, grid_h = 32, 32
         repath_ox, repath_oy = origin_x, origin_y
 
+    # Pre-compute sign activation tiles (grid-relative) for repath
+    sign_block_set: set[tuple[int, int]] = set()
+    for sx, sy in read_sign_tiles_from_rom(emu, map_id):
+        lx, ly = sx - repath_ox, sy - repath_oy
+        if 0 <= lx < bfs_w and 0 <= ly < bfs_h:
+            sign_block_set.add((lx, ly))
+
     repath_ctx = {
         "terrain_info": terrain_info,
         "goal_x": bfs_tx, "goal_y": bfs_ty,
         "grid_w": bfs_w, "grid_h": bfs_h,
         "grid_ox": repath_ox, "grid_oy": repath_oy,
+        "sign_tiles": sign_block_set,
     }
 
     # ── 3D elevation detection (single-chunk maps only) ──
@@ -1877,6 +1899,12 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
             if 0 <= nx < grid_w and 0 <= ny < grid_h:
                 npc_set.add((nx, ny))
 
+        # Block sign activation tiles
+        for sx, sy in read_sign_tiles_from_rom(emu, map_id):
+            lx, ly = sx - grid_ox, sy - grid_oy
+            if 0 <= lx < grid_w and 0 <= ly < grid_h:
+                npc_set.add((lx, ly))
+
         rel_px = px - grid_ox
         rel_py = py - grid_oy
         rel_tx = target_x - grid_ox
@@ -1886,6 +1914,13 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
         origin_x = state.get("origin_x", 0)
         origin_y = state.get("origin_y", 0)
         terrain_info, npc_set, _ = _build_terrain_info(state["terrain"], state["objects"])
+
+        # Block sign activation tiles
+        for sx, sy in read_sign_tiles_from_rom(emu, map_id):
+            lx, ly = sx - origin_x, sy - origin_y
+            if 0 <= lx < 32 and 0 <= ly < 32:
+                npc_set.add((lx, ly))
+
         # Remove target from NPC set so adjacency checks work
         rel_tx = target_x - origin_x if target_x > 31 else target_x
         rel_ty = target_y - origin_y if target_y > 31 else target_y
