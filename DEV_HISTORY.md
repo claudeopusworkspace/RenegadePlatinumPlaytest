@@ -192,3 +192,51 @@ Add type effectiveness checking as both a standalone tool and an automatic guard
 ### Backlog Status
 - **Resolved this session**: type_matchup tool, battle_turn effectiveness guardrail, Fairy type display
 - **Remaining open**: heal_team, move_info (enrich existing displays), multi-chunk 3D BFS, tag battle testing
+
+---
+
+## Session 13 — Bug Fix Sweep (2026-04-02)
+
+Pure dev session — no gameplay. Resolved all 4 open bugs from Session 12 plus added a QoL feature.
+
+### Bug Fixes
+
+1. **Switch prompt party order mismatch** (`3a21842`)
+   - **Root cause**: `_enrich_switch_result` used `read_party` (persistent memory order) to label party slots, but `switch_to` taps the battle UI grid which reorders after in-battle switches.
+   - **Fix**: Read `BattleContext.partyOrder[0]` (6 bytes at `0x022C5B60`) — a UI position → party slot mapping maintained by the battle engine. Reorder the enriched party list to match UI positions.
+   - **Discovery**: Found via pret/pokeplatinum decomp (`battle_context.h:301`). Verified against `debug_faint_forced_switch_to_4` save state — [2,1,4,3,0,5] correctly maps Prinplup→Machop→Charmander→Luxio→Grotle matching the bottom screen.
+
+2. **interact_with incomplete NPC dialogue** (`c8fdb47`)
+   - **Root cause**: Detected dialogue but returned raw first-page text without advancing.
+   - **Fix**: Chain into `advance_dialogue()` after detecting overworld dialogue (both auto-trigger and post-A-press paths). Also check for battle transitions post-dialogue.
+   - Tested with multi-page NPC dialogue in Floaroma Pokemon Center.
+
+3. **MOVE_LEARN shows wrong Pokemon's moves** (`c7ee0f1`)
+   - **Root cause**: `_enrich_move_learn_result` read battle slot 0's moves (active battler) instead of the Pokemon actually learning. Misleading when Exp Share or switched-out Pokemon level up.
+   - **Fix**: Pointer chain through `BattleContext.taskData` (`0x022C2BAC`) → heap-allocated `BattleScriptTaskData`:
+     - `tmpData[4]` (offset +0x40) = move ID being learned
+     - `tmpData[6]` (offset +0x48) = lower-bound party slot search index
+     - Combined with `levelUpMons` bitmask (`0x022C5B3D`) to find exact slot: lowest set bit >= lower bound.
+   - Also replaced expensive text memory scan with direct move ID → name lookup from ROM data.
+   - **Caveat**: All BattleContext fields retain stale values outside battle. Validated via move ID range (1-467), slot range (0-5), and levelUpMons != 0. Stale data is harmless in practice since enrichment only runs during MOVE_LEARN state.
+
+### New Feature
+
+4. **Trainer defeated status on view_map** (`1b1299a`)
+   - `view_map` now shows `[defeated]` tag on trainer NPCs, plus `trainer_id` and `defeated` fields.
+   - **Mechanism**: VarsFlags bitfield in save RAM. Flag = `1360 + trainerID`. FLAGS_ARRAY base at `0x0227F1BC` (verified by testing 3 candidate offsets from decomp + PKHeX layout).
+   - Trainer ID extracted from NPC script field: `script - 3000 + 1` (single) or `- 5000 + 1` (double).
+   - **Scope**: Works for regular route/cave trainers. Gym leaders, rivals, and Team Galactic use separate story flags (not tracked — obvious from context anyway).
+   - Verified 12+ trainers across Routes 202-205, Oreburgh Gate, and Oreburgh Gym.
+
+### Key Decomp Addresses Discovered
+| Address | Field | Used By |
+|---------|-------|---------|
+| `0x022C5B60` | `BattleContext.partyOrder[0]` (u8[6]) | `_enrich_switch_result` |
+| `0x022C5B3D` | `BattleContext.levelUpMons` (u8 bitmask) | `_get_move_learn_info` |
+| `0x022C2BAC` | `BattleContext.taskData` (pointer) | `_get_move_learn_info` |
+| `0x0227F1BC` | `VarsFlags.flags` base | `is_trainer_defeated` |
+
+### Backlog Status
+- **Resolved this session**: party order mismatch, interact_with dialogue, MOVE_LEARN wrong Pokemon, trainer defeated indicator
+- **Remaining open**: tag battle untested (edge case), multi-chunk 3D BFS (deferred)
