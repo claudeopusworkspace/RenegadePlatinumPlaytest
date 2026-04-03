@@ -710,7 +710,20 @@ def battle_turn(
     if result["final_state"] in ("SWITCH_PROMPT", "FAINT_SWITCH", "FAINT_FORCED"):
         _enrich_switch_result(result, emu)
 
-    # 5. Append trimmed battle state
+    # 5. Auto-advance post-battle overworld dialogue (trainer defeat text, story triggers)
+    if result["final_state"] in ("BATTLE_ENDED", "TIMEOUT"):
+        from renegade_mcp.battle import read_battle as _rb
+        if not _rb(emu):
+            # We're in the overworld — check for pending dialogue
+            emu.advance_frames(180)  # wait for overworld to settle
+            from renegade_mcp.dialogue import advance_dialogue
+            adv = advance_dialogue(emu)
+            if adv["status"] != "no_dialogue" and adv.get("conversation"):
+                result["post_battle_dialogue"] = adv["conversation"]
+                if result["final_state"] == "TIMEOUT":
+                    result["final_state"] = "BATTLE_ENDED"
+
+    # 6. Append trimmed battle state
     result["battle_state"] = battle_summary(read_battle(emu))
     return result
 
