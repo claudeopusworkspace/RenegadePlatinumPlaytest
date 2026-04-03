@@ -532,6 +532,124 @@ def analyze_elevation(bdhc: dict, terrain: list[list[int]]) -> dict | None:
     }
 
 
+# ── Viewport helpers ──
+
+def _compute_viewport_bounds(
+    px: int, py: int,
+    matrix_w: int, matrix_h: int,
+    terrain_ids: list[list[int]],
+    terrain: list[list[int]],
+    origin_x: int, origin_y: int,
+    objects: list[dict],
+    chunked: bool,
+    viewport_size: int = 32,
+) -> tuple[int, int, int, int]:
+    """Compute viewport rectangle in global tile coordinates.
+
+    Indoor/small maps: returns tight content bounds (preserves compact rendering).
+    Overworld/multi-chunk maps: returns viewport_size x viewport_size centered on
+    player, clamped to world edges.
+
+    Returns (vp_x, vp_y, vp_w, vp_h).
+    """
+    if not chunked:
+        # Indoor / single-chunk: find content bounds (existing crop logic)
+        min_row, max_row = 31, 0
+        min_col, max_col = 31, 0
+        for row in range(32):
+            for col in range(32):
+                if terrain[row][col] != 0:
+                    min_row = min(min_row, row)
+                    max_row = max(max_row, row)
+                    min_col = min(min_col, col)
+                    max_col = max(max_col, col)
+
+        for obj in objects:
+            lx = obj["x"] - origin_x
+            ly = obj["y"] - origin_y
+            if 0 <= lx < 32 and 0 <= ly < 32:
+                min_row = min(min_row, ly)
+                max_row = max(max_row, ly)
+                min_col = min(min_col, lx)
+                max_col = max(max_col, lx)
+
+        # 1-tile padding
+        min_row = max(0, min_row - 1)
+        max_row = min(31, max_row + 1)
+        min_col = max(0, min_col - 1)
+        max_col = min(31, max_col + 1)
+
+        return (
+            origin_x + min_col,
+            origin_y + min_row,
+            max_col - min_col + 1,
+            max_row - min_row + 1,
+        )
+
+    # Overworld / multi-chunk: center on player, clamp to world bounds
+    world_w = matrix_w * CHUNK_SIZE
+    world_h = matrix_h * CHUNK_SIZE
+
+    vp_w = min(viewport_size, world_w)
+    vp_h = min(viewport_size, world_h)
+
+    vp_x = px - vp_w // 2
+    vp_y = py - vp_h // 2
+
+    # Clamp to world edges
+    vp_x = max(0, min(vp_x, world_w - vp_w))
+    vp_y = max(0, min(vp_y, world_h - vp_h))
+
+    return (vp_x, vp_y, vp_w, vp_h)
+
+
+def _load_viewport_terrain(
+    terrain_ids: list[list[int]],
+    matrix_w: int, matrix_h: int,
+    vp_x: int, vp_y: int, vp_w: int, vp_h: int,
+) -> list[list[int]]:
+    """Load and composite raw tile values for the viewport from ROM chunks.
+
+    Returns a vp_h x vp_w grid of u16 tile values (same format as
+    load_terrain_from_rom). Tiles from missing/void chunks are 0.
+    """
+    grid = [[0] * vp_w for _ in range(vp_h)]
+
+    # Determine which chunks overlap the viewport
+    cx_min = vp_x // CHUNK_SIZE
+    cx_max = (vp_x + vp_w - 1) // CHUNK_SIZE
+    cy_min = vp_y // CHUNK_SIZE
+    cy_max = (vp_y + vp_h - 1) // CHUNK_SIZE
+
+    for cy in range(cy_min, cy_max + 1):
+        for cx in range(cx_min, cx_max + 1):
+            if not (0 <= cx < matrix_w and 0 <= cy < matrix_h):
+                continue
+            land_id = terrain_ids[cy][cx]
+            if land_id == 0xFFFF:
+                continue
+
+            chunk_terrain = load_terrain_from_rom(land_id)
+            if chunk_terrain is None:
+                continue
+
+            # Copy the overlapping sub-rectangle from this chunk into the grid
+            chunk_global_x = cx * CHUNK_SIZE
+            chunk_global_y = cy * CHUNK_SIZE
+
+            # Overlap region in global coords
+            ox_start = max(vp_x, chunk_global_x)
+            oy_start = max(vp_y, chunk_global_y)
+            ox_end = min(vp_x + vp_w, chunk_global_x + CHUNK_SIZE)
+            oy_end = min(vp_y + vp_h, chunk_global_y + CHUNK_SIZE)
+
+            for gy in range(oy_start, oy_end):
+                for gx in range(ox_start, ox_end):
+                    grid[gy - vp_y][gx - vp_x] = chunk_terrain[gy - chunk_global_y][gx - chunk_global_x]
+
+    return grid
+
+
 # ── Dynamic objects ──
 
 def read_objects(emu: EmulatorClient) -> list[dict[str, Any]]:
@@ -672,6 +790,10 @@ def render_map(
     Symbols: ^v<> player, A-Za-z NPCs, # wall, _ walkable, . void,
     ≈ water, " grass, 0-9 elevation, /\\ ramps, ][ directional blocks.
     Hex behaviors mapped to single chars with a key when present.
+
+    The terrain grid IS the viewport — render it all, no cropping needed.
+    Objects' local_x/local_y are viewport-relative. Elevation keys are
+    also viewport-relative when provided.
     """
     # 1-char behavior symbols for common hex behaviors
     _BEHAVIOR_CHAR: dict[int, str] = {
@@ -688,10 +810,13 @@ def render_map(
         0x80: ':', 0xA9: 'T',  # counter, tree
     }
 
+    grid_h = len(terrain)
+    grid_w = len(terrain[0]) if grid_h > 0 else 0
+
     obj_at = {}
     for obj in objects:
         lx, ly = obj["local_x"], obj["local_y"]
-        if 0 <= lx < 32 and 0 <= ly < 32:
+        if 0 <= lx < grid_w and 0 <= ly < grid_h:
             if obj["index"] == 0:
                 obj_at[(lx, ly)] = FACING_ARROWS.get(facing, "P")
             else:
@@ -706,36 +831,12 @@ def render_map(
     level_map = elevation["level_map"] if elevation else {}
     ramp_tiles = elevation["ramp_tiles"] if elevation else {}
 
-    # Find map bounds (crop empty border)
-    min_row, max_row = 31, 0
-    min_col, max_col = 31, 0
-    for row in range(32):
-        for col in range(32):
-            if terrain[row][col] != 0:
-                min_row = min(min_row, row)
-                max_row = max(max_row, row)
-                min_col = min(min_col, col)
-                max_col = max(max_col, col)
-
-    for obj in objects:
-        lx, ly = obj["local_x"], obj["local_y"]
-        if 0 <= lx < 32 and 0 <= ly < 32:
-            min_row = min(min_row, ly)
-            max_row = max(max_row, ly)
-            min_col = min(min_col, lx)
-            max_col = max(max_col, lx)
-
-    min_row = max(0, min_row - 1)
-    max_row = min(31, max_row + 1)
-    min_col = max(0, min_col - 1)
-    max_col = min(31, max_col + 1)
-
     lines = []
     behaviors_seen: dict[int, str] = {}
 
-    for row in range(min_row, max_row + 1):
+    for row in range(grid_h):
         line_chars = []
-        for col in range(min_col, max_col + 1):
+        for col in range(grid_w):
             val = terrain[row][col]
             is_blocked = (val & 0x8000) != 0
             behavior = val & 0x00FF
@@ -810,45 +911,124 @@ def render_map(
 
 
 def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
-    """Get full map view with ASCII rendering and metadata.
+    """Get player-centered ASCII map with terrain, NPCs, and warps.
+
+    Indoor/small maps: compact content-fitted rendering (no void padding).
+    Overworld maps: 32x32 viewport centered on the player, loading adjacent
+    chunks as needed. Edges clamp to world bounds.
 
     Args:
-        level: Filter to show only this elevation level (-1 = show all).
+        level: Show only this elevation level (-1 = show all levels).
     """
-    state = get_map_state(emu)
-    if state is None:
-        return {"error": "Could not resolve map chunk", "map": "", "player": {}, "objects": []}
+    map_id, px, py, facing = read_player_state(emu)
+    objects = read_objects(emu)
+    facing_name = FACING_NAMES.get(facing, "?")
 
-    facing_name = FACING_NAMES.get(state["facing"], "?")
+    # Get matrix metadata for viewport computation
+    matrix_info = get_matrix_for_map(emu, map_id)
 
-    # Load elevation data from BDHC
+    if matrix_info is None:
+        # Fallback: single-chunk from ROM or RAM (legacy path)
+        state = get_map_state(emu)
+        if state is None:
+            return {"error": "Could not resolve map chunk", "map": "", "player": {}, "objects": []}
+        # Use old single-chunk path with content crop
+        terrain = state["terrain"]
+        origin_x, origin_y = state["origin_x"], state["origin_y"]
+        chunked = False
+        matrix_w, matrix_h, terrain_ids = 1, 1, [[0]]
+    else:
+        _matrix_id, matrix_w, matrix_h, _header_ids, terrain_ids = matrix_info
+        chunked = matrix_w > 1 or matrix_h > 1
+
+        # Load the player's chunk for indoor content-bounds detection
+        chunk_terrain, origin_x, origin_y = resolve_terrain_from_rom(emu, map_id, px, py)
+        if chunk_terrain is None:
+            return {"error": "Could not resolve terrain", "map": "", "player": {}, "objects": []}
+        terrain = chunk_terrain
+
+    # Compute viewport bounds
+    vp_x, vp_y, vp_w, vp_h = _compute_viewport_bounds(
+        px, py, matrix_w, matrix_h, terrain_ids,
+        terrain, origin_x, origin_y, objects, chunked,
+    )
+
+    # Load viewport terrain
+    if chunked:
+        vp_terrain = _load_viewport_terrain(terrain_ids, matrix_w, matrix_h, vp_x, vp_y, vp_w, vp_h)
+    else:
+        # Indoor: extract the viewport sub-rectangle from the single chunk
+        local_vp_x = vp_x - origin_x
+        local_vp_y = vp_y - origin_y
+        vp_terrain = []
+        for row in range(vp_h):
+            src_row = local_vp_y + row
+            vp_terrain.append(terrain[src_row][local_vp_x:local_vp_x + vp_w])
+
+    # Compute viewport-relative positions
+    for obj in objects:
+        obj["local_x"] = obj["x"] - vp_x
+        obj["local_y"] = obj["y"] - vp_y
+        # Record terrain behavior underneath this object
+        lx, ly = obj["local_x"], obj["local_y"]
+        if 0 <= ly < vp_h and 0 <= lx < vp_w:
+            behavior = vp_terrain[ly][lx] & 0x00FF
+            if behavior != 0:
+                obj["standing_on"] = f"0x{behavior:02X}"
+
+    player_grid_x = px - vp_x
+    player_grid_y = py - vp_y
+
+    # Filter objects to viewport
+    visible_objects = [
+        o for o in objects
+        if 0 <= o["local_x"] < vp_w and 0 <= o["local_y"] < vp_h
+    ]
+
+    # Elevation (only meaningful for single-chunk indoor maps)
     elevation = None
-    player_level = None
-    land_id = get_land_data_id(emu, state["map_id"], state["px"], state["py"])
-    if land_id is not None:
-        bdhc = parse_bdhc(land_id)
-        if bdhc is not None:
-            elevation = analyze_elevation(bdhc, state["terrain"])
-            if elevation is not None:
-                player_h = round(read_player_height(emu))
-                player_level = elevation["height_to_level"].get(player_h)
+    player_elev = None
+    if not chunked:
+        land_id = get_land_data_id(emu, map_id, px, py)
+        if land_id is not None:
+            bdhc = parse_bdhc(land_id)
+            if bdhc is not None:
+                # analyze_elevation uses the full 32x32 chunk terrain
+                elevation = analyze_elevation(bdhc, terrain)
+                if elevation is not None:
+                    player_h = round(read_player_height(emu))
+                    player_elev = elevation["height_to_level"].get(player_h)
+
+                    # Translate elevation keys from chunk-local to viewport-local
+                    offset_x = vp_x - origin_x
+                    offset_y = vp_y - origin_y
+                    elevation["level_map"] = {
+                        (c - offset_x, r - offset_y): lvls
+                        for (c, r), lvls in elevation["level_map"].items()
+                        if 0 <= c - offset_x < vp_w and 0 <= r - offset_y < vp_h
+                    }
+                    elevation["ramp_tiles"] = {
+                        (c - offset_x, r - offset_y): info
+                        for (c, r), info in elevation["ramp_tiles"].items()
+                        if 0 <= c - offset_x < vp_w and 0 <= r - offset_y < vp_h
+                    }
 
     filter_level = level if level >= 0 else None
 
     map_str = render_map(
-        state["terrain"], state["objects"],
-        state["local_px"], state["local_py"], state["facing"],
-        elevation=elevation, player_level=player_level,
+        vp_terrain, visible_objects,
+        player_grid_x, player_grid_y, facing,
+        elevation=elevation, player_level=player_elev,
         filter_level=filter_level,
     )
 
-    # Build header (compact single line)
-    elev_str = f" L{player_level}" if elevation and player_level is not None else ""
-    header = f"Map {state['map_id']} ({state['px']},{state['py']}) {facing_name}{elev_str}"
+    # Build header with viewport origin
+    elev_str = f" L{player_elev}" if elevation and player_elev is not None else ""
+    header = f"Map {map_id} ({px},{py}) {facing_name}{elev_str}  origin:({vp_x},{vp_y}) {vp_w}x{vp_h}"
 
     # Object list (compact: index, name, position, trainer status)
     obj_info = []
-    for obj in state["objects"]:
+    for obj in visible_objects:
         idx = obj["index"]
         if idx == 0:
             continue  # Player is already in the player field
@@ -868,35 +1048,29 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
                 entry["defeated"] = is_trainer_defeated(emu, tid)
         obj_info.append(entry)
 
-    # Warp destinations within displayed grid
-    origin_x = state["origin_x"]
-    origin_y = state["origin_y"]
-    terrain = state["terrain"]
-    grid_h = len(terrain)
-    grid_w = len(terrain[0]) if grid_h > 0 else 0
-
-    all_warps = read_warps_from_rom(emu, state["map_id"])
+    # Warp destinations within viewport
+    all_warps = read_warps_from_rom(emu, map_id)
     warp_info = []
     for w in all_warps:
-        lx = w["x"] - origin_x
-        ly = w["y"] - origin_y
-        if 0 <= lx < grid_w and 0 <= ly < grid_h:
+        if vp_x <= w["x"] < vp_x + vp_w and vp_y <= w["y"] < vp_y + vp_h:
             dest = lookup_map_name(w["dest_map"])
             warp_info.append({
                 "x": w["x"], "y": w["y"],
                 "dest": dest["name"],
             })
 
-    result = {
+    result: dict[str, Any] = {
         "map": header + "\n\n" + map_str,
-        "map_id": state["map_id"],
+        "map_id": map_id,
         "player": {
-            "x": state["px"], "y": state["py"],
+            "x": px, "y": py,
             "facing": facing_name,
+            "grid_x": player_grid_x,
+            "grid_y": player_grid_y,
         },
         "objects": obj_info,
         "warps": warp_info,
     }
-    if elevation is not None and player_level is not None:
-        result["player"]["elevation"] = player_level
+    if elevation is not None and player_elev is not None:
+        result["player"]["elevation"] = player_elev
     return result
