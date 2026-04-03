@@ -138,10 +138,11 @@ def _heal_at_nurse(emu: EmulatorClient) -> dict[str, Any]:
             )
 
     # ── Dialogue is confirmed. Advance through healing flow. ──
-    _press(emu, ["a"])                    # text finishes, Yes/No prompt
+    # interact_with + advance_dialogue stops at the Yes/No prompt,
+    # so the first A press selects YES (no extra press needed to reach it).
     _press(emu, ["a"])                    # select YES
     _press(emu, ["a"], wait=HEAL_ANIM_WAIT)  # healing animation
-    for _ in range(4):                    # clear remaining dialogue lines
+    for _ in range(3):                    # clear remaining dialogue lines
         _press(emu, ["a"])
     emu.advance_frames(SETTLE_WAIT)
 
