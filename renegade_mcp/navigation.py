@@ -133,6 +133,22 @@ DOOR_TRANSITION_POLLS = 30   # polls to wait for map transition (30 * 15 = 450 f
 DOOR_POLL_FRAMES = 15
 
 
+def _tile_behavior_hint(behavior: int) -> str:
+    """Return a human-readable hint for common impassable tile behaviors."""
+    hints: dict[int, str] = {
+        0x10: "water (needs Surf)",
+        0x15: "water (needs Surf)",
+        0x13: "waterfall (needs Waterfall)",
+        0x4A: "rock climb wall (needs Rock Climb)",
+        0x4B: "rock climb wall (needs Rock Climb)",
+        0x69: "door/warp (may be locked)",
+        0x65: "warp entrance",
+    }
+    if behavior in hints:
+        return hints[behavior]
+    return f"behavior 0x{behavior:02X}"
+
+
 def _get_field_move_availability(emu: EmulatorClient) -> dict[str, bool]:
     """Check which field moves are usable (party has move + badge).
 
@@ -1715,8 +1731,37 @@ def _navigate_to_impl(
     start_pos = _pos_with_map(px, py, map_id)
 
     if path is None:
+        # Diagnose why BFS couldn't find a path
+        reasons: list[str] = []
+        combined_blocked = npc_set | set(obstacle_map.keys())
+        target_in_bounds = 0 <= bfs_tx < bfs_w and 0 <= bfs_ty < bfs_h
+        start_in_bounds = 0 <= bfs_sx < bfs_w and 0 <= bfs_sy < bfs_h
+
+        if not target_in_bounds:
+            reasons.append("target is outside the loaded map area")
+        else:
+            t_passable, t_behavior = terrain_info[bfs_ty][bfs_tx]
+            if not t_passable:
+                reasons.append(f"target tile is impassable ({_tile_behavior_hint(t_behavior)})")
+            if (bfs_tx, bfs_ty) in obstacle_map:
+                ob = obstacle_map[(bfs_tx, bfs_ty)]
+                reasons.append(f"{ob['type']} obstacle on target (needs {ob['move']})")
+            elif (bfs_tx, bfs_ty) in sign_block_set:
+                reasons.append("target is a sign activation zone (blocked to avoid auto-dialogue)")
+            elif (bfs_tx, bfs_ty) in npc_set:
+                reasons.append("an NPC is standing on the target tile")
+
+        if not start_in_bounds:
+            reasons.append("player position is outside the loaded map area")
+
+        if not reasons:
+            reasons.append(
+                "target tile is reachable terrain but all paths are blocked "
+                "by walls, water, NPCs, or obstacles"
+            )
+
         return {
-            "error": "No path found. Target may be unreachable or blocked.",
+            "error": "No path found: " + "; ".join(reasons) + ".",
             "start": start_pos,
             "target": {"x": target_x, "y": target_y},
         }
@@ -1735,7 +1780,13 @@ def _navigate_to_impl(
                 result["final"] = door_result["new_position"]
             else:
                 result["final"] = start_pos
-                result["note"] = "Door activation did not trigger a map transition."
+                result["warp_failed"] = True
+                result["note"] = (
+                    "Already on door tile but activation did not trigger a map "
+                    "transition. Possible causes: locked door (key item required), "
+                    "story flag not yet set, or a script relocated the warp. "
+                    "Check the scene manually (screenshot + read_dialogue)."
+                )
             return result
 
         emu.advance_frames(SETTLE_FRAMES)
