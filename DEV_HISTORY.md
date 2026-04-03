@@ -442,3 +442,63 @@ Filed claudeopusworkspace/DesmumeMCP#1 — configurable bridge socket path via `
 - **Resolved this session**: All 5 double battle bugs
 - **Remaining open**: navigate_to failure explanations (QoL), locked/key doors (behind us), tag battle untested (low priority), multi-chunk 3D BFS (deferred)
 - **Next session**: Resume adventure — Route 205 north → Eterna Forest → Eterna City
+
+---
+
+## Dev Session 19: Locked Door Investigation + Navigation Error Diagnostics (2026-04-03)
+
+Terminal-only session (no GUI). Investigated game engine mechanics and improved navigation error reporting.
+
+### Locked Door Mechanism Investigation
+
+**Question**: How does Pokemon Platinum handle "locked" doors (e.g., Valley Windworks)?
+
+**Finding**: The engine has no built-in locked door concept. It's done through **warp event relocation** in init scripts:
+
+1. Two events overlap on the door tile (243, 654): a **warp** (walk-in entry) and a **BG event** (A-press script showing "locked" text)
+2. On every map load, `ValleyWindworksOutside_OnTransition` checks `FLAG_UNLOCKED_VALLEY_WINDWORKS_DOOR`
+3. **Locked state**: warp gets `SetWarpEventPos` to (243, 650) — 4 tiles away from the door, unreachable. BG event stays at the door for "It's locked from inside!" text
+4. **Unlocked state**: BG event gets `SetBgEventPos` to (243, 650). Warp stays at the door, enabling entry
+5. The unlock script checks `FLAG_OBTAINED_FLOAROMA_MEADOW_WORKS_KEY`, sets `FLAG_UNLOCKED_VALLEY_WINDWORKS_DOOR`, and swaps the events in real-time
+
+Side effect: relocating the warp makes the tile physically impassable — the 0x69 door behavior has collision bit set, and without a warp at that position, the game doesn't override collision. So the player bounces off.
+
+Source: decomp scripts in `ref/pokeplatinum/res/field/scripts/scripts_valley_windworks_outside.s` and zone event JSON in `ref/pokeplatinum/res/field/events/`.
+
+### Warp Failure Detection (`navigation.py`)
+
+**Problem**: Navigation tools silently failed or gave generic messages when doors/warps didn't work.
+
+**Fix**: Added `warp_failed: true` + diagnostic notes across 5 code paths:
+
+| Code path | Trigger | Before | After |
+|-----------|---------|--------|-------|
+| `navigate_to` — door target, `stopped_early` | BFS targets door but player can't reach (locked, NPC blocked) | Generic `stopped_early` | `warp_failed` + "could not be entered" with cause list |
+| `navigate_to` — door target, reached, no transition | Player on door, `_handle_door_transition` polls 450 frames, no map change | `"note": "Door activation did not trigger..."` | `warp_failed` + detailed cause list |
+| `navigate_to` — already on door, no transition | Path length 0, door activation fails | Bare note | `warp_failed` + cause list |
+| `navigate_to` — adjacent door, no transition | Walk-in attempt on adjacent door fails | Silent fallthrough | `warp_failed` + tile coordinates + cause list |
+| `navigate_manual` — transition-trimmed, same map | Validator detected warp tile, trimmed path, but `final_map == start_map` | No check at all | `warp_failed` + cause list |
+
+Tested against `debug_windworks_door_no_walkin` save state — correctly reports failure. Normal doors (Pokemon Center 0x65 exit, Flower Shop 0x69 walk-in) confirmed unaffected.
+
+### BFS Pathfind Failure Diagnostics (`navigation.py`)
+
+**Problem**: `navigate_to` returned `"No path found. Target may be unreachable or blocked."` with no explanation.
+
+**Fix**: Added `_tile_behavior_hint()` helper and inline diagnostics at the BFS failure point. Now checks 6 conditions and reports specific cause(s):
+
+| Condition | Example message |
+|-----------|-----------------|
+| Target impassable | `target tile is impassable (water (needs Surf))` |
+| NPC on target | `an NPC is standing on the target tile` |
+| HM obstacle on target | `cut_tree obstacle on target (needs Cut)` |
+| Sign activation zone | `target is a sign activation zone (blocked to avoid auto-dialogue)` |
+| Out of bounds | `target is outside the loaded map area` |
+| Passable but disconnected | `reachable terrain but all paths are blocked by walls, water, NPCs, or obstacles` |
+
+All 6 cases verified with live emulator tests.
+
+### Backlog Status
+- **Resolved this session**: Locked door warp failure detection, navigate_to failure explanations
+- **Remaining open**: Tag battle untested (low priority, needs GUI), multi-chunk 3D BFS (deferred)
+- **Next session**: Resume adventure — Route 205 north → Eterna Forest → Eterna City
