@@ -415,9 +415,13 @@ def _move_learn_detail(result: dict[str, Any]) -> str:
     """Build a human-readable stop detail for MOVE_LEARN."""
     move_to_learn = result.get("move_to_learn", "unknown")
     current = result.get("current_moves", [])
-    current_str = ", ".join(
-        f"[{m['slot']}] {m['name']} (PP {m['pp']})" for m in current
-    ) if current else "unknown"
+    def _fmt_move(m: dict) -> str:
+        s = f"[{m['slot']}] {m['name']}"
+        if "pp" in m:
+            s += f" (PP {m['pp']})"
+        return s
+
+    current_str = ", ".join(_fmt_move(m) for m in current) if current else "unknown"
     return (
         f"Pokemon wants to learn {move_to_learn}. "
         f"Current moves: {current_str}. "

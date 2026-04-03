@@ -90,8 +90,8 @@ class TestAutoGrindEdgeCases:
         load_state(emu, "r207_grind_start")
         result = auto_grind(emu, move_index=0, iterations=1)
 
-        assert "party" in result, "Result should include party data"
-        assert len(result["party"]) > 0, "Party should not be empty"
+        assert "slot0" in result, "Result should include slot0 summary"
+        assert result["slot0"]["name"], "slot0 should have a Pokemon name"
 
     def test_encounter_log_has_species(self, emu: EmulatorClient):
         """Each encounter entry has species name from Route 207 pool.

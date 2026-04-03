@@ -124,7 +124,7 @@ def create_server() -> FastMCP:
     # ── Navigation ──
 
     @mcp.tool()
-    def navigate(directions: str) -> dict[str, Any]:
+    def navigate(directions: str, flee_encounters: bool = False) -> dict[str, Any]:
         """Walk a manual path in the overworld using explicit directions.
 
         USE THIS ONLY when you need precise directional control — e.g., walking
@@ -139,15 +139,17 @@ def create_server() -> FastMCP:
         Args:
             directions: Space-separated directions: up/down/left/right (or u/d/l/r)
                        with optional repeat counts (e.g. "l20 u5 r3").
+            flee_encounters: If True, auto-flee wild battles encountered during the walk.
+                Trainer battles still halt for the caller.
         """
         from renegade_mcp.navigation import navigate_manual
 
         emu = get_client()
         emu.create_checkpoint(action=f"navigate: {directions}")
-        return navigate_manual(emu, directions)
+        return navigate_manual(emu, directions, flee_encounters=flee_encounters)
 
     @mcp.tool()
-    def navigate_to(x: int, y: int, path_choice: str | None = None) -> dict[str, Any]:
+    def navigate_to(x: int, y: int, path_choice: str | None = None, flee_encounters: bool = False) -> dict[str, Any]:
         """Pathfind to a target tile using BFS, then walk there automatically.
 
         THIS IS THE DEFAULT NAVIGATION TOOL. Use this whenever you need to move
@@ -171,15 +173,17 @@ def create_server() -> FastMCP:
             path_choice: None (default — ask if obstacles involved),
                          "obstacle" (take the path through obstacles, auto-clearing them),
                          "clean" (take the obstacle-free path).
+            flee_encounters: If True, auto-flee wild battles and resume navigation.
+                Trainer battles (detected by pre-battle dialogue) still halt for the caller.
         """
         from renegade_mcp.navigation import navigate_to as _navigate_to
 
         emu = get_client()
-        emu.create_checkpoint(action=f"navigate_to({x}, {y}, choice={path_choice})")
-        return _navigate_to(emu, x, y, path_choice=path_choice)
+        emu.create_checkpoint(action=f"navigate_to({x}, {y}, choice={path_choice}, flee={flee_encounters})")
+        return _navigate_to(emu, x, y, path_choice=path_choice, flee_encounters=flee_encounters)
 
     @mcp.tool()
-    def interact_with(object_index: int = -1, x: int = -1, y: int = -1) -> dict[str, Any]:
+    def interact_with(object_index: int = -1, x: int = -1, y: int = -1, flee_encounters: bool = False) -> dict[str, Any]:
         """Navigate to a map object/NPC or static tile and interact with it.
 
         Two modes:
@@ -193,13 +197,15 @@ def create_server() -> FastMCP:
             object_index: The object's index from the view_map objects list. Default -1 (unused).
             x: Target tile X coordinate (global). Use with y for static tiles.
             y: Target tile Y coordinate (global). Use with x for static tiles.
+            flee_encounters: If True, auto-flee wild battles encountered while walking to the target.
+                Trainer battles still halt for the caller.
         """
         from renegade_mcp.navigation import interact_with as _interact_with
 
         emu = get_client()
         target = f"object {object_index}" if object_index >= 0 else f"({x}, {y})"
         emu.create_checkpoint(action=f"interact_with {target}")
-        return _interact_with(emu, object_index=object_index, x=x, y=y)
+        return _interact_with(emu, object_index=object_index, x=x, y=y, flee_encounters=flee_encounters)
 
     @mcp.tool()
     def seek_encounter(cave: bool = False) -> dict[str, Any]:

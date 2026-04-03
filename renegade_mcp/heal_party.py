@@ -212,7 +212,7 @@ def heal_party(emu: EmulatorClient) -> dict[str, Any]:
                 f"No Pokemon Center warp found in {entry.get('name', city_code)}."
             )
 
-        nav_result = navigate_to(emu, pc_warp["x"], pc_warp["y"])
+        nav_result = navigate_to(emu, pc_warp["x"], pc_warp["y"], flee_encounters=True)
 
         # Wild encounter or NPC event during navigation
         if nav_result.get("encounter"):

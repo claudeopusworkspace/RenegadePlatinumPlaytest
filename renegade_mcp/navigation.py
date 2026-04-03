@@ -740,6 +740,85 @@ def _try_repath(
     )
 
 
+# ── Auto-flee for wild encounters during navigation ──
+
+MAX_FLEE_ENCOUNTERS = 10  # safety cap to prevent infinite loops
+POST_BATTLE_SETTLE = 300  # frames to wait after battle ends before resuming nav
+
+_BATTLE_OVER = {"BATTLE_ENDED"}
+_FAINT_STATES = {"FAINT_SWITCH", "FAINT_FORCED"}
+
+
+def _flee_wild_battle(emu: EmulatorClient) -> dict[str, Any]:
+    """Flee a wild battle, retrying on failure. Returns success/failure info.
+
+    Mirrors auto_grind._run_battle pattern but simplified for navigation use.
+    """
+    from renegade_mcp.turn import battle_turn as _battle_turn
+
+    max_attempts = 10
+    for attempt in range(max_attempts):
+        result = _battle_turn(emu, run=True)
+        state = result.get("final_state", "")
+
+        if state in _BATTLE_OVER:
+            return {"success": True, "attempts": attempt + 1}
+
+        if state == "WAIT_FOR_ACTION":
+            # Escape failed, enemy got a free turn — retry
+            continue
+
+        if state in _FAINT_STATES:
+            return {"success": False, "reason": "fainted", "state": state}
+
+        return {"success": False, "reason": f"unexpected state: {state}"}
+
+    return {"success": False, "reason": "max flee attempts reached"}
+
+
+def _try_flee_encounter(
+    emu: EmulatorClient, encounter: dict[str, Any] | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """If encounter is a wild battle, flee it and return to overworld.
+
+    Returns (encounter_or_none, flee_entry_or_none).
+    - Wild battle fled successfully: (None, flee_log_entry) — encounter cleared.
+    - Wild battle flee failed: (original encounter, flee_log_entry with failure).
+    - Trainer battle or dialogue: (original encounter, None) — unchanged.
+    - No encounter: (None, None).
+    """
+    if encounter is None:
+        return None, None
+
+    if encounter.get("encounter") != "battle":
+        # Dialogue/cutscene — pass through unchanged
+        return encounter, None
+
+    if encounter.get("dialogue"):
+        # Trainer battle — can't flee, pass through
+        return encounter, None
+
+    # Wild battle — extract species and flee
+    species = "unknown"
+    for b in (encounter.get("battle_state") or []):
+        if b.get("side") == "enemy":
+            species = b.get("species", "unknown")
+            break
+
+    flee_result = _flee_wild_battle(emu)
+    flee_entry: dict[str, Any] = {"type": "wild", "species": species}
+
+    if flee_result["success"]:
+        flee_entry["fled"] = True
+        flee_entry["attempts"] = flee_result["attempts"]
+        emu.advance_frames(POST_BATTLE_SETTLE)
+        return None, flee_entry
+    else:
+        flee_entry["fled"] = False
+        flee_entry["reason"] = flee_result["reason"]
+        return encounter, flee_entry
+
+
 # ── Post-navigation encounter/dialogue detection ──
 
 POST_NAV_POLL_FRAMES = 15
@@ -1160,7 +1239,7 @@ def _validate_path(
     return True, -1, "", (0, 0)
 
 
-def navigate_manual(emu: EmulatorClient, directions_str: str) -> dict[str, Any]:
+def navigate_manual(emu: EmulatorClient, directions_str: str, flee_encounters: bool = False) -> dict[str, Any]:
     """Walk a manual path. Returns result dict with steps taken and final position."""
     directions = parse_directions(directions_str)
 
@@ -1207,15 +1286,44 @@ def navigate_manual(emu: EmulatorClient, directions_str: str) -> dict[str, Any]:
         if step_idx >= 0 and step_dir == "transition":
             directions = directions[:step_idx + 1]
 
-    stopped_early, steps_taken, _, nav_info = _execute_path(emu, directions, track_npcs=True)
+    total_path = _summarize_path(directions)
+    total_steps = 0
+    flee_log: list[dict[str, Any]] = []
+    remaining = directions
 
-    # Post-navigation: poll for encounter or dialogue (also serves as settle)
-    encounter = _post_nav_check(emu)
+    for _ in range(MAX_FLEE_ENCOUNTERS if flee_encounters else 1):
+        stopped_early, steps_taken, _, nav_info = _execute_path(emu, remaining, track_npcs=True)
+        total_steps += steps_taken
+
+        # Post-navigation: poll for encounter or dialogue (also serves as settle)
+        encounter = _post_nav_check(emu)
+
+        if not flee_encounters or encounter is None:
+            break
+
+        encounter, flee_entry = _try_flee_encounter(emu, encounter)
+        if flee_entry:
+            flee_log.append(flee_entry)
+        if encounter is not None:
+            # Trainer battle, dialogue, or flee failed — stop
+            break
+        if not flee_entry or not flee_entry.get("fled"):
+            break
+
+        # Fled successfully — resume remaining directions from current position
+        remaining = remaining[steps_taken:]
+        if not remaining:
+            stopped_early = False
+            break
+    else:
+        # Hit MAX_FLEE_ENCOUNTERS cap — treat as stopped early
+        stopped_early = True
+
     final_map, final_x, final_y = _read_position(emu)
 
     result: dict[str, Any] = {
-        "path": _summarize_path(directions),
-        "steps": steps_taken,
+        "path": total_path,
+        "steps": total_steps,
         "start": _pos_with_map(start_x, start_y, start_map),
         "final": _pos_with_map(final_x, final_y, final_map),
     }
@@ -1225,6 +1333,22 @@ def navigate_manual(emu: EmulatorClient, directions_str: str) -> dict[str, Any]:
         result.update(nav_info)
     if encounter is not None:
         result["encounter"] = encounter
+    if flee_log:
+        result["flee_log"] = flee_log
+        fled_count = sum(1 for e in flee_log if e.get("fled"))
+        if fled_count:
+            result["encounters_fled"] = fled_count
+        failed = next((e for e in flee_log if not e.get("fled") and e.get("reason")), None)
+        if failed:
+            reason = failed["reason"]
+            species = failed.get("species", "unknown")
+            if "fainted" in reason:
+                result["flee_failed"] = (
+                    f"Pokemon fainted while fleeing wild {species}. "
+                    f"Heal party before continuing."
+                )
+            else:
+                result["flee_failed"] = f"Flee failed against wild {species}: {reason}"
 
     return result
 
@@ -1276,6 +1400,7 @@ def _dedupe_obstacles(obstacles: list[dict]) -> list[dict]:
 def navigate_to(
     emu: EmulatorClient, target_x: int, target_y: int,
     path_choice: str | None = None,
+    flee_encounters: bool = False,
 ) -> dict[str, Any]:
     """Pathfind to target tile using BFS. Obstacle-aware with dual pathfinding.
 
@@ -1284,12 +1409,87 @@ def navigate_to(
     moving, letting the caller decide. Call again with path_choice="obstacle"
     or path_choice="clean" to execute.
 
+    When flee_encounters=True, automatically flees wild encounters and resumes
+    navigation. Trainer battles (detected by pre-battle dialogue) are still
+    returned to the caller since they can't be fled.
+
     Args:
         target_x, target_y: Target tile coordinates.
         path_choice: None (default — evaluate and ask if obstacles involved),
                      "obstacle" (take the path through obstacles),
                      "clean" (take the obstacle-free path).
+        flee_encounters: If True, auto-flee wild battles and resume navigation.
     """
+    if not flee_encounters:
+        return _navigate_to_impl(emu, target_x, target_y, path_choice=path_choice)
+
+    flee_log: list[dict[str, Any]] = []
+    for _ in range(MAX_FLEE_ENCOUNTERS):
+        result = _navigate_to_impl(emu, target_x, target_y, path_choice=path_choice)
+
+        # Only path_choice matters on the first call — after that we're repathing
+        path_choice = None
+
+        enc = result.get("encounter")
+        if enc is None:
+            # No encounter — navigation completed (or hit a non-encounter stop)
+            break
+
+        if enc.get("encounter") != "battle":
+            # Dialogue/cutscene — could be a signpost, but could also be a
+            # scripted event that repositions the player or blocks the path.
+            # Halt and let the caller see what happened.
+            break
+
+        if enc.get("dialogue"):
+            # Trainer battle: pre-battle dialogue present → can't flee.
+            # Battle state is ready for the caller to handle.
+            break
+
+        # Extract species from battle state for the log
+        species = "unknown"
+        for b in (enc.get("battle_state") or []):
+            if b.get("side") == "enemy":
+                species = b.get("species", "unknown")
+                break
+
+        # Wild battle — flee it
+        flee_result = _flee_wild_battle(emu)
+        if not flee_result["success"]:
+            reason = flee_result["reason"]
+            flee_log.append({"type": "wild", "species": species, "fled": False, "reason": reason})
+            result["flee_log"] = flee_log
+            if "fainted" in reason:
+                result["flee_failed"] = (
+                    f"Pokemon fainted while fleeing wild {species}. "
+                    f"Heal party before continuing."
+                )
+            else:
+                result["flee_failed"] = f"Flee failed against wild {species}: {reason}"
+            break
+
+        flee_log.append({
+            "type": "wild",
+            "species": species,
+            "fled": True,
+            "attempts": flee_result["attempts"],
+        })
+        # Wait for overworld to fully load before re-navigating
+        emu.advance_frames(POST_BATTLE_SETTLE)
+        # Loop will re-call _navigate_to_impl from current position
+
+    if flee_log:
+        result["flee_log"] = flee_log
+        result["encounters_fled"] = sum(1 for e in flee_log if e.get("fled"))
+
+    return result
+
+
+def _navigate_to_impl(
+    emu: EmulatorClient, target_x: int, target_y: int,
+    path_choice: str | None = None,
+) -> dict[str, Any]:
+    """Core navigate_to logic. See navigate_to() for the public API."""
     state = get_map_state(emu)
     if state is None:
         return {"error": "Could not read map state (chunk resolution failed)."}
@@ -1622,7 +1822,7 @@ def _target_info(has_object: bool, object_index: int, name: str, x: int, y: int)
     return info
 
 
-def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: int = -1) -> dict[str, Any]:
+def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: int = -1, flee_encounters: bool = False) -> dict[str, Any]:
     """Navigate to an object/NPC or static tile and interact with it.
 
     Object mode (object_index): looks up by index, pathfinds to adjacent tile.
@@ -1768,8 +1968,25 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
         if stopped_early:
             encounter = _post_nav_check(emu)
             if encounter:
-                nav_result["encounter"] = encounter
-                nav_result["interrupted"] = True
+                if flee_encounters:
+                    encounter, flee_entry = _try_flee_encounter(emu, encounter)
+                    if flee_entry:
+                        nav_result["flee_log"] = [flee_entry]
+                        if flee_entry.get("fled"):
+                            nav_result["encounters_fled"] = 1
+                        elif flee_entry.get("reason"):
+                            reason = flee_entry["reason"]
+                            species = flee_entry.get("species", "unknown")
+                            if "fainted" in reason:
+                                nav_result["flee_failed"] = (
+                                    f"Pokemon fainted while fleeing wild {species}. "
+                                    f"Heal party before continuing."
+                                )
+                            else:
+                                nav_result["flee_failed"] = f"Flee failed against wild {species}: {reason}"
+                if encounter:
+                    nav_result["encounter"] = encounter
+                    nav_result["interrupted"] = True
                 return nav_result
             nav_result["stopped_early"] = True
             nav_result.update(nav_info)

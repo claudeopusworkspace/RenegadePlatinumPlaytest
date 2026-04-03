@@ -328,7 +328,7 @@ def buy_item(
                 loc = _city_name(city_code)
                 return _error(f"No PokéMart warp found in {loc}.")
 
-            nav_result = navigate_to(emu, mart_warp["x"], mart_warp["y"])
+            nav_result = navigate_to(emu, mart_warp["x"], mart_warp["y"], flee_encounters=True)
 
             if nav_result.get("encounter"):
                 return {
