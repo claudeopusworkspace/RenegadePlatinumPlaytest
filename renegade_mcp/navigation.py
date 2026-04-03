@@ -1842,7 +1842,14 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
     emu.advance_frames(INTERACT_DIALOGUE_WAIT)
     dialogue = read_dialogue(emu, region="overworld")
     if dialogue["region"] != "none":
-        nav_result["dialogue"] = dialogue
+        adv_result = advance_dialogue(emu)
+        nav_result["dialogue"] = adv_result
+        # Check if dialogue led into a battle (trainer taunts, etc.)
+        battlers = read_battle(emu)
+        if battlers:
+            encounter = _post_nav_check(emu)
+            if encounter:
+                nav_result["encounter"] = encounter
         return nav_result
 
     # ── Press A to interact ──
@@ -1851,8 +1858,15 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
 
     dialogue = read_dialogue(emu, region="overworld")
     if dialogue["region"] != "none":
-        nav_result["dialogue"] = dialogue
+        adv_result = advance_dialogue(emu)
+        nav_result["dialogue"] = adv_result
         nav_result["pressed_a"] = True
+        # Check if dialogue led into a battle
+        battlers = read_battle(emu)
+        if battlers:
+            encounter = _post_nav_check(emu)
+            if encounter:
+                nav_result["encounter"] = encounter
         return nav_result
 
     # ── Fallback: check for script activation (trainer spotted during walk
