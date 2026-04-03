@@ -236,17 +236,17 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 
 - **Character**: CLAUDE | **Rival**: WOJ
 - **Badges**: 1 (Coal Badge — Roark defeated)
-- **Location**: Valley Windworks (cleared). Save state: `valley_windworks_cleared`.
-- **Grotle** Lv23 — Naughty (+Atk/-SpD), Overgrow. Held: Muscle Band. Moves: Bulldoze, Curse, Bullet Seed, Razor Leaf.
+- **Location**: Route 205 upper bridge path, north of Floaroma. Save state: `route205_north_healed`.
+- **Prinplup** Lv18 — Lax (+Def/-SpD), Vital Spirit. Moves: Metal Claw, Growl, Bubble Beam, Peck.
 - **Machop** Lv20 — Brave (+Atk/-Spe), No Guard. No held item. Moves: Low Kick, Brick Break, Focus Energy, Knock Off.
-- **Prinplup** Lv17 — Lax (+Def/-SpD), Vital Spirit. Moves: Metal Claw, Growl, Bubble, Peck.
-- **Luxio** Lv19 — Jolly (+Spe/-SpA), Guts. Held: Scope Lens. Moves: Spark, Bite, Howl, Quick Attack.
-- **Charmeleon** Lv18 — Hardy, Blaze. Held: Exp. Share. Moves: Bite, Metal Claw, Ember, Dragon Breath.
+- **Grotle** Lv23 — Naughty (+Atk/-SpD), Overgrow. Held: Muscle Band. Moves: Bulldoze, Curse, Bullet Seed, Razor Leaf.
+- **Luxio** Lv20 — Jolly (+Spe/-SpA), Guts. Held: Scope Lens. Moves: Spark, Bite, Howl, Quick Attack.
+- **Charmeleon** Lv20 — Hardy, Blaze. Held: Exp. Share. Moves: Bite, Metal Claw, Ember, Dragon Breath.
 - **Box 1**: Bulbasaur Lv5 (Docile, Chlorophyll, Miracle Seed), Squirtle Lv5 (Gentle, Mystic Water), Eevee Lv12 (Gentle, Run Away), Chimchar Lv12 (Careful, Iron Fist).
-- **Key items**: Poke Ball x~28, Antidote x3, Honey, Charcoal, Silk Scarf, Magnet, Soothe Bell, TM58 Endure, TM Stealth Rock, TM Aerial Ace, TM34 Shock Wave, Fashion Case, Bicycle, Poke Radar, Town Map, Vs. Recorder, Poketch, Oval Stone, Fire Stone, HM Rock Smash.
-- **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202), Reporter Kayla (Jubilife Pokemon Center), Rival WOJ (Route 203), Youngster D (Route 203 double battle), Youngster Sebastian (Route 203), Lass Kaitlin (Route 203), Lass Madeline (Route 203), Camper Curtis (Oreburgh Gate), Picnicker Diana (Oreburgh Gate), Youngster Jonathon (Oreburgh Gym), Youngster Darius (Oreburgh Gym), **Gym Leader Roark** (6-0 sweep), 2x Team Galactic Grunts (Jubilife tag battle with Dawn), Lass Sarah (Route 204), Aroma Lady Taylor (Route 204), Bug Catcher Brandon (Route 204), Twins Liv & Liz (Route 204), Camper Jacob (Route 205), Galactic Grunt (Windworks exterior), 2x Galactic Grunts (Floaroma Meadow double battle), 2x Galactic Grunts (Windworks interior), **Commander Mars**.
-- **Story progress**: Beat Roark → Coal Badge. Cleared Route 204 north. Arrived Floaroma Town. Cleared Valley Windworks storyline: beat exterior grunt → got Works Key from Floaroma Meadow grunts → unlocked Windworks → defeated Commander Mars (Zubat/Bronzor/Yanma/Purugly). Team Galactic left Windworks. Scientist reunited with daughter.
-- **Next**: Heal at Floaroma, head north on Route 205 (grunts should be cleared after Windworks events). Through Eterna Forest to Eterna City for Gym #2. Prinplup (Lv17) still underleveled — switch-train opportunities needed. Several undefeated trainers on Route 205 north. Shroomish on Route 203 wants an Oran Berry (come back later).
+- **Key items**: Poke Ball x28, Potion x9, Antidote x3, Honey x10, Repel x8, Charcoal, Silk Scarf, Magnet, Soothe Bell, TM58 Endure, TM Stealth Rock, TM Aerial Ace, TM34 Shock Wave, Fashion Case, Bicycle, Poke Radar, Town Map, Vs. Recorder, Poketch, Oval Stone, Fire Stone, HM Rock Smash.
+- **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202), Reporter Kayla (Jubilife Pokemon Center), Rival WOJ (Route 203), Youngster D (Route 203 double battle), Youngster Sebastian (Route 203), Lass Kaitlin (Route 203), Lass Madeline (Route 203), Camper Curtis (Oreburgh Gate), Picnicker Diana (Oreburgh Gate), Youngster Jonathon (Oreburgh Gym), Youngster Darius (Oreburgh Gym), **Gym Leader Roark** (6-0 sweep), 2x Team Galactic Grunts (Jubilife tag battle with Dawn), Lass Sarah (Route 204), Aroma Lady Taylor (Route 204), Bug Catcher Brandon (Route 204), Twins Liv & Liz (Route 204), Camper Jacob (Route 205), Galactic Grunt (Windworks exterior), 2x Galactic Grunts (Floaroma Meadow double battle), 2x Galactic Grunts (Windworks interior), **Commander Mars**, Hiker Daniel (Route 205), Aroma Lady Elizabeth (Route 205), Camper Zackary (Route 205), Hiker Nicholas (Route 205).
+- **Story progress**: Beat Roark → Coal Badge. Cleared Route 204 north. Arrived Floaroma Town. Cleared Valley Windworks storyline. Looker: Team Galactic hideout is in Eterna City. Heading north on Route 205 toward Eterna Forest.
+- **Next**: Continue north on Route 205 upper path (on bridge area). Picnicker and possibly more trainers ahead. Reach Eterna Forest entrance, through to Eterna City for Gym #2. Route 205 has upper/lower paths — stay on upper path first, explore lower after. Shroomish on Route 203 wants an Oran Berry (come back later).
 
 See GAME_HISTORY.md for full chronological playthrough details.
 

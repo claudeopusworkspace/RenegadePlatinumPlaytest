@@ -73,7 +73,10 @@
 | `pre_commander_mars` | Inside Valley Windworks. Both grunts defeated. Pre-Mars fight. |
 | `pre_mars_healed` | Inside Valley Windworks. Healed with potions. About to fight Mars. |
 | `post_commander_mars_victory` | Inside Valley Windworks. Just defeated Commander Mars. Post-battle. |
-| `valley_windworks_cleared` | Valley Windworks. Post-Mars cutscene complete. Scientist reunited with daughter. **Current gameplay state.** |
+| `valley_windworks_cleared` | Valley Windworks. Post-Mars cutscene complete. Scientist reunited with daughter. |
+| `floaroma_healed` | Floaroma Pokemon Center. Party healed, pre-Route 205. |
+| `route205_upper_path` | Route 205 bridge (upper path) after 4 trainer battles. Pre-heal. |
+| `route205_north_healed` | Route 205 bridge (upper path), party healed with Potions. **Current gameplay state.** |
 
 ## Debug & Testing
 
@@ -172,6 +175,16 @@ Automated integration tests live in `tests/` — see CLAUDE.md for run commands.
 | Save State | Scenario | Blocker |
 |------------|----------|---------|
 | `debug_post_battle_move_learn_ui` | Post-battle Exp Share move-learn (overworld) | State is pre-battle; needs state at the actual overworld move-learn prompt |
+
+## Debug States (Session 2026-04-03 — Route 205 Playthrough)
+
+| Name | Description |
+|------|-------------|
+| `debug_badge_detection` | Floaroma Town after healing. `read_shop` and `read_trainer_status` show 0 badges despite having Coal Badge. |
+| `debug_trainer_detection_npc` | Route 205 near (209, 652). Youngster NPC flagged as potential trainer but is just an NPC giving Honey tips. |
+| `debug_interact_trainer_approach` | Route 205 at (207, 636). `interact_with(object_index=1)` on Hiker — misses trainer approach animation dialogue. |
+| `debug_circling_npc_interact` | Route 205 at (209, 626). `interact_with(object_index=19)` on fast-circling Camper — can't pin down moving NPC. |
+| `debug_bridge_elevation_pathfind` | Route 205 bridge at (209, 626). `navigate_to(216, 621)` walks off upper bridge to lower level. |
 
 ## Debug States (Session 2026-04-02b — Double Battle & Windworks)
 

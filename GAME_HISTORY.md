@@ -317,3 +317,40 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - **Evolutions**: Charmander → Charmeleon (Lv16)
 - **Bugs filed**: 5 double battle bugs (switch TIMEOUT, wrong moveset check, premature BATTLE_ENDED, empty slot targeting, Exp Share evolution), signpost navigation interrupt, heal_party double-trigger, locked door interaction. 5 QoL improvements proposed (player-centered map, cross-chunk feedback, auto-flee, auto post-battle dialogue, checkpoint-to-save).
 - **Next**: Heal at Floaroma, head north on Route 205, through Eterna Forest to Eterna City for Gym #2. Prinplup (17) still underleveled. Northern grunts on Route 205 should now be cleared after Windworks events.
+
+## Chapter 6: Route 205 North
+
+### Session 20: Floaroma to Route 205 Bridge
+
+#### Valley Windworks → Floaroma Town
+- Loaded save at Valley Windworks interior (post-Mars).
+- Exited Windworks. **Looker** intercepted outside — Team Galactic hideout is in Eterna City.
+- Walked back west through Route 205 South to Floaroma Town.
+- Healed at Floaroma Pokemon Center. Saved state: `floaroma_healed`.
+- Bought "15 Potions" at PokéMart — **buy_item bug** purchased 99 Poké Balls instead (double-A into quantity screen). Fixed inventory via memory edit: 28 Poké Balls, 15 Potions, corrected money.
+- Put Prinplup (Lv17) in lead for switch-training.
+
+#### Route 205 Trainers (4 defeated)
+1. **Hiker Daniel** — Diglett Lv15 / Shieldon Lv15 / Numel Lv15. Prinplup swept all three with Bubble/Bubble Beam (SE). Prinplup Lv17→18, learned **Bubble Beam** (replaced Bubble). Charmeleon Lv18→19 via Exp. Share. Won ¥480.
+2. **Aroma Lady Elizabeth** — Chikorita Lv16 / Bulbasaur Lv16. Prinplup used Peck (SE vs Grass) for Chikorita. Switched to Charmeleon for Bulbasaur — Ember SE + burn. Won ¥512.
+3. **Camper Zackary** — Aipom Lv15 / Taillow Lv15 / Slakoth Lv15. Switched Machop in for Aipom (Brick Break SE). Luxio for Taillow (Spark SE), Luxio Lv19→20. Machop back for Slakoth (Brick Break SE). Won ¥240.
+4. **Hiker Nicholas** — Shellos Lv16 / Onix Lv16. Grotle's Razor Leaf SE'd both (crit on both!). Charmeleon Lv19→20 via Exp. Share. Won ¥512.
+
+#### Bugs Found This Session
+- **Badge count not reading from memory** — `read_trainer_status` and `read_shop` show 0 badges. Cascades into `buy_item` position miscalculation. Debug: `debug_badge_detection`.
+- **view_map trainer detection unreliable** — `defeated: false` can't distinguish real undefeated trainers from non-trainer NPCs. Pokeball items flagged as trainers. Debug: `debug_trainer_detection_npc`.
+- **interact_with misses trainer approach animation** — NPC exclamation mark + walk-over animation delays dialogue; tool bails before it appears. Debug: `debug_interact_trainer_approach`. Workaround: 300 frames wait + read_dialogue.
+- **interact_with fails on circling NPCs** — Fast-moving Camper on Route 205 walks continuous loop; tool can't pin down and interact. Debug: `debug_circling_npc_interact`.
+- **buy_item double-A purchases wrong item** — Extra A press enters quantity screen on wrong item, down wraps quantity to 99. Bought 99 Poké Balls instead of 15 Potions.
+- **navigate_to walks off bridge** — Multi-chunk 3D BFS doesn't understand elevation; paths directly off upper bridge to lower level. Debug: `debug_bridge_elevation_pathfind`.
+- **QoL: battle_turn move_index during SWITCH_PROMPT** — Should auto-decline switch and use the move, not error.
+
+### Session 20 Summary
+- **Badges**: 1 (Coal Badge)
+- **Money**: ¥9,056
+- **Team**: Prinplup Lv18, Machop Lv20, Grotle Lv23, Luxio Lv20, Charmeleon Lv20
+- **Location**: Route 205 upper bridge path, north of Floaroma. Save state: `route205_north_healed`.
+- **New trainers defeated**: Hiker Daniel, Aroma Lady Elizabeth, Camper Zackary, Hiker Nicholas
+- **Evolutions**: None
+- **Moves learned**: Prinplup — Bubble Beam (replaced Bubble). Luxio — skipped Double Kick.
+- **Next**: Continue north on Route 205 upper path. Picnicker and possibly more trainers ahead. Reach Eterna Forest entrance, then through to Eterna City for Gym #2.
