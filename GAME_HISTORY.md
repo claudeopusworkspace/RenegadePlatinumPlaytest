@@ -276,3 +276,44 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - **New trainers defeated**: Bug Catcher Brandon (R204), Twins Liv & Liz (R204), Camper Jacob (R205)
 - **Bugs filed**: battle_turn party order mismatch after switches, interact_with doesn't clear multi-page dialogue, MOVE_LEARN shows wrong Pokemon's moves for Exp Share level-ups, trainer battle status indicator (backlog)
 - **Next**: Find Valley Windworks entrance (explore Route 205 east path). Deal with Team Galactic storyline.
+
+## Chapter 5: Valley Windworks & Commander Mars
+
+### Valley Windworks Exterior (Map 200)
+- Found Valley Windworks by heading east from Floaroma Town into Route 205, then south at the chunk boundary (tree blocking direct east transition — had to go down 2 tiles first).
+- **Galactic Grunt** (outside Windworks door, 3 Pokemon): Poochyena Lv14 (Dark — Bulldoze OHKO), Gulpin Lv14 (Poison — Bulldoze SE OHKO), Houndour Lv14 (Dark/Fire — free-switched to Prinplup, Bubble SE 2HKO, crit Bite hurt). Won $560.
+- Grunt locked himself inside, told us the other Works Key is with "cohorts in the flower patch" (Floaroma Meadow).
+- Picked up **TM34 Shock Wave** (never-miss Electric, hidden item) and **Magnet** (boosts Electric 20%).
+- Charmander leveled to 15 from Exp Share XP.
+
+### Floaroma Meadow (Map 256, via Ravaged Path)
+- Entered northwest from Floaroma Town through Ravaged Path (warps at 162-163, 641).
+- Two Galactic Grunts harassing Pokefan M (honey farmer) — **double battle** triggered.
+- **2x Galactic Grunts** (double battle): Zubat Lv15 (Poison/Flying) + Croagunk Lv15 (Poison/Fighting, Dry Skin). Switched Grotle for Luxio (Spark SE vs Zubat). Numerous double battle tool bugs encountered (see session notes). Croagunk KO'd by Spark, then Ledyba Lv15 (Bug/Flying, Technician) and Spinarak Lv15 (Bug/Poison, Swarm) sent out. All KO'd by Spark + Knock Off. Won.
+- **Charmander evolved into Charmeleon** (Lv16) from Exp Share XP. Learned **Dragon Breath** (Dragon, 60 pwr, 30% paralysis), replacing Smokescreen.
+- Pokefan gave us the **Works Key** and **Honey** as thanks.
+
+### Valley Windworks Interior (Map 201)
+- Used Works Key on locked door. Grunt panicked and ran to alert Commander.
+- **Galactic Grunt 1** (3 Pokemon): Grimer Lv15 (Poison — Bulldoze SE OHKO), Koffing Lv15 (Poison, **Levitate** — Ground immune! Smokescreen spam. Switched to Luxio, Spark 3HKO through accuracy drops + Pain Split), Houndour? Grotle leveled to 23.
+- **Galactic Grunt 2** (2 Pokemon): Kakuna Lv14 (Bug/Poison — Bulldoze SE crit OHKO), Pineco Lv14 (Bug, Sturdy — incredibly tanky! Protect spam, NVE Bulldoze 4-5 hits to KO. Bug Bite SE vs Grotle hurt). Charmeleon leveled to 17 from Exp Share.
+
+### Commander Mars Boss Battle
+- **Commander Mars** (4 Pokemon) — hardest fight yet!
+  - **Zubat Lv18** (Poison/Flying, Inner Focus): Switched to Luxio, Spark SE OHKO.
+  - **Bronzor Lv18** (Steel/Psychic, Levitate, Sitrus Berry): Free-switched to Charmeleon. Ember SE but Confuse Ray landed. Powered through confusion — 4 Embers to KO through Sitrus Berry. Hypnosis missed. Charmeleon leveled to 18.
+  - **Purugly Lv19** (Normal, Thick Fat, Sitrus Berry) — Mars's ace. Fake Out + Hypnosis + Facade combo. Switched to Grotle for Curse setup. **Three consecutive Hypnosis misses** allowed +2 Atk/+2 Def. Bulldoze chunked through Sitrus Berry.
+  - Mars switched to **Yanma Lv18** (Bug/Flying, Speed Boost): Ground immune! Silver Wind SE vs Grotle + all-stats boost. Switched to Luxio — Spark SE hit but Silver Wind + another all-stats boost left Luxio at 4 HP. Quick Attack didn't KO (should have used Spark — paralysis from Spark would have been better). Luxio fainted.
+  - Back to **Purugly Lv19** (43/68): Prinplup in (Vital Spirit prevents Hypnosis!), tanked 2 Facades, Metal Claw got Attack boost. Prinplup fainted at 1 HP → 0. Charmeleon in at 39 HP — Facade KO'd immediately. Machop in — No Guard made Hypnosis 100% accuracy, fell asleep for 4 turns. Tanked one Facade at 28 HP, switched to Charmeleon... already fainted. Grotle (sleeping, 49 HP) sent in — **Sleep(1), woke up same turn!** Bulldoze hit, Purugly at 14 HP. One more Bulldoze for the KO!
+- **Won $1,520**. Grotle Lv23 last mon standing at 13/73 HP. Closest fight of the playthrough.
+- Post-battle: Mars and Charon bicker and leave. Scientist reunited with daughter. Valley Windworks cleared.
+
+### Session 15 Summary
+- **Badges**: 1 (Coal Badge)
+- **Money**: ~$10,000
+- **Team**: Grotle Lv23, Machop Lv20, Prinplup Lv17, Luxio Lv19, Charmeleon Lv18
+- **Items obtained**: TM34 Shock Wave, Magnet, Works Key (used), Honey
+- **New trainers defeated**: Galactic Grunt (Windworks exterior), 2x Galactic Grunts (Floaroma Meadow double battle), 2x Galactic Grunts (Windworks interior), **Commander Mars**
+- **Evolutions**: Charmander → Charmeleon (Lv16)
+- **Bugs filed**: 5 double battle bugs (switch TIMEOUT, wrong moveset check, premature BATTLE_ENDED, empty slot targeting, Exp Share evolution), signpost navigation interrupt, heal_party double-trigger, locked door interaction. 5 QoL improvements proposed (player-centered map, cross-chunk feedback, auto-flee, auto post-battle dialogue, checkpoint-to-save).
+- **Next**: Heal at Floaroma, head north on Route 205, through Eterna Forest to Eterna City for Gym #2. Prinplup (17) still underleveled. Northern grunts on Route 205 should now be cleared after Windworks events.

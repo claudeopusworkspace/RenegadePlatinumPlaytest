@@ -65,7 +65,15 @@
 | `post_galactic_jubilife` | Jubilife City. After defeating Team Galactic grunts (tag battle with Dawn). Got Fashion Case. |
 | `route204_entrance` | Route 204 south (R204A) at (174, 731). Just entered from Jubilife. |
 | `route204_north` | Route 204 north (R204B) at (180, 699). Exited Ravaged Path cave. |
-| `route204_north_progress` | Route 204 north. Defeated Lass Sarah + Aroma Lady Taylor. **Current gameplay state.** |
+| `route204_north_progress` | Route 204 north. Defeated Lass Sarah + Aroma Lady Taylor. |
+| `valley_windworks_grunt_defeated` | Valley Windworks exterior. After defeating outside grunt. He locked the door. |
+| `floaroma_meadow_works_key_obtained` | Floaroma Meadow (Ravaged Path). After defeating 2 Galactic Grunts, got Works Key + Honey. Charmeleon evolved. |
+| `floaroma_healed_pre_windworks` | Floaroma Pokemon Center. Healed, Works Key in inventory. Pre-Windworks interior. |
+| `valley_windworks_interior` | Inside Valley Windworks. Just entered. Pre-grunt fights. |
+| `pre_commander_mars` | Inside Valley Windworks. Both grunts defeated. Pre-Mars fight. |
+| `pre_mars_healed` | Inside Valley Windworks. Healed with potions. About to fight Mars. |
+| `post_commander_mars_victory` | Inside Valley Windworks. Just defeated Commander Mars. Post-battle. |
+| `valley_windworks_cleared` | Valley Windworks. Post-Mars cutscene complete. Scientist reunited with daughter. **Current gameplay state.** |
 
 ## Debug & Testing
 
@@ -164,3 +172,15 @@ Automated integration tests live in `tests/` — see CLAUDE.md for run commands.
 | Save State | Scenario | Blocker |
 |------------|----------|---------|
 | `debug_post_battle_move_learn_ui` | Post-battle Exp Share move-learn (overworld) | State is pre-battle; needs state at the actual overworld move-learn prompt |
+
+## Debug States (Session 2026-04-02b — Double Battle & Windworks)
+
+| Name | Description |
+|------|-------------|
+| `debug_signpost_navigate_interrupt` | Floaroma Town at (191, 660). `navigate_to(163, 641)` interrupted by signboard at (189, 655) triggering on walk-through (no A press). |
+| `debug_double_battle_switch_timeout` | Floaroma Meadow double battle vs 2 Galactic Grunts. At first action prompt. `battle_turn(switch_to=3)` returns TIMEOUT instead of WAIT_FOR_PARTNER_ACTION. |
+| `debug_double_battle_partner_wrong_moveset` | Same double battle, at Machop's partner action prompt. Type effectiveness check reads Grotle's moveset (slot 0) instead of Machop's (slot 2). |
+| `debug_double_battle_end_timeout` | Same double battle, Machop's partner action. `battle_turn(move=3, target=1)` KOs both enemies → multi-exp cascade → reports BATTLE_ENDED but battle continues (Spinarak sent out). |
+| `debug_double_battle_exp_share_evolution` | Same double battle. Last enemy KO → Exp Share levels Charmander → evolution triggers → tool reports TIMEOUT. |
+| `debug_heal_party_yes_no_stuck` | Floaroma Pokemon Center overworld. `heal_party` succeeds but accidentally triggers second heal, stuck on Yes/No prompt. |
+| `debug_windworks_door_no_walkin` | Valley Windworks exterior at (243, 655). Locked door at (243, 654) — `navigate_to` stops with `steps: 0`, requires A press + Works Key interaction. |
