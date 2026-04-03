@@ -244,3 +244,35 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - **New trainers defeated**: 2 Team Galactic Grunts (tag battle), Lass Sarah (Route 204), Aroma Lady Taylor (Route 204)
 - **Next**: Continue Route 204 north → Floaroma Town. More trainers ahead. Need to heal before pushing further.
 - **Dev session (2026-04-01)**: Elevation-aware mapping added — see DEV_HISTORY.md. No game progress.
+
+## Chapter 5: Route 204 North → Floaroma Town → Route 205
+
+### Route 204 North (continued)
+- Healed team with `use_medicine` (4 Potions: 3 on Grotle, 1 on Charmander).
+- **Bug Catcher Brandon** (2 Pokemon): Wurmple Lv14 (switched to Charmander — Ember SE vs Bug, 2HKO), Kricketune Lv14 (Technician — free-switched to Prinplup for Peck SE, but Technician Bug Bite hit hard — Prinplup fainted at 9 HP in a speed tie. Grotle finished with Bulldoze crit). Grotle leveled to 22. Won $224.
+- **Bug found**: `battle_turn(switch_to=N)` uses battle UI slot order which diverges from raw party order after in-battle switches. Called switch_to=4 expecting Charmander but got Grotle. Documented with debug save state.
+- **Twins Liv & Liz** (double battle): Minun Lv15 + Plusle Lv15. Both used Helping Hand on each other (wasted turns!). Grotle's Bulldoze hit BOTH as a spread move — SE vs Electric, OHKO'd Plusle, Machop's Brick Break finished Minun. Clean 1-turn sweep. Machop leveled to 19. Won $480.
+
+### Floaroma Town (T03)
+- Arrived in Floaroma Town. Healed at Pokemon Center. Saved at `floaroma_town_arrival`.
+- Explored town. Two Galactic Grunts blocking northwest exit (to Floaroma Meadow/Ravaged Path).
+- Swordsman NPC gave **TM Aerial Ace** (never-miss Flying move).
+- **Shop specialties**: Heal Ball (¥300), Net Ball (¥1,000), Bloom Mail (¥20).
+
+### Route 205 (R205A)
+- Headed east to Route 205 from Floaroma.
+- Met little girl near entrance — her papa is held captive at Valley Windworks by Team Galactic.
+- **Camper Jacob** (3 Pokemon): Ponyta Lv15 (Flame Body — Bulldoze SE, OHKO), Buizel Lv15 (free-switched to Luxio — Spark SE, OHKO), Mareep Lv15 (free-switched to Machop — Brick Break OHKO). Machop leveled to 20, learned **Knock Off** (Dark 65 pwr, replacing Karate Chop). Won $240.
+- Moved **Exp. Share** from Machop to Charmander (Lv13, most underleveled).
+- Charmander leveled to 14 via Exp Share, learned **Bite** (Dark 60 pwr, replacing Scratch).
+- Two Galactic Grunts block north passage toward Eterna Forest.
+- Explored Route 205 extensively looking for Valley Windworks entrance — building visible on map (vents, water) but no accessible door/warp found. May need story trigger or different approach (straight east instead of north).
+
+### Session 12 Summary
+- **Badges**: 1 (Coal Badge)
+- **Money**: ~$7,600
+- **Team**: Grotle Lv22, Machop Lv20, Prinplup Lv17, Luxio Lv19, Charmander Lv14
+- **Items obtained**: TM Aerial Ace
+- **New trainers defeated**: Bug Catcher Brandon (R204), Twins Liv & Liz (R204), Camper Jacob (R205)
+- **Bugs filed**: battle_turn party order mismatch after switches, interact_with doesn't clear multi-page dialogue, MOVE_LEARN shows wrong Pokemon's moves for Exp Share level-ups, trainer battle status indicator (backlog)
+- **Next**: Find Valley Windworks entrance (explore Route 205 east path). Deal with Team Galactic storyline.
