@@ -85,9 +85,10 @@ FORGET_MOVE_XY = [
     (190, 125),  # Move 3 — bottom-right
 ]
 
-# Battle struct address for garbage detection
+# Battle struct addresses
 BATTLE_BASE = 0x022C5774
 BATTLE_SLOT_SIZE = 0xC0
+BATTLE_END_FLAG_ADDR = 0x022C5B53  # BattleContext.battleEndFlag — 0 during battle, non-zero when over
 
 # Battle party order: maps UI position → persistent party slot (6 bytes per battler)
 # BattleContext.partyOrder[0] — player's order array
@@ -122,14 +123,31 @@ TEXT_ADVANCE_WAIT = 120  # frames between B presses during text advancement
 # ── Helpers ──
 
 def _is_battle_over(emu: EmulatorClient) -> bool:
-    """Check if battle struct contains garbage data (= back in overworld)."""
+    """Check if the battle has ended.
+
+    Two-tier check:
+    1. BattleContext.battleEndFlag — set by the engine when the battle
+       result is determined. This is the authoritative signal, but it
+       may not be set yet during level-up/evolution processing.
+    2. Battle struct garbage detection — if the battle struct contains
+       garbage data, we've transitioned to the overworld. Catches the
+       case where the flag hasn't been set but the struct is invalid.
+
+    Together these cover both "battle just ended" (flag) and "overworld
+    loaded" (garbage) reliably, without false positives during doubles
+    exp cascades where the struct is still valid and flag is still 0.
+    """
+    flag = emu.read_memory(BATTLE_END_FLAG_ADDR, size="byte")
+    if flag != 0:
+        return True
+
+    # Fallback: garbage-data check on battle slot 0
     raw = emu.read_memory_range(BATTLE_BASE, size="byte", count=BATTLE_SLOT_SIZE)
     data = bytes(raw)
-
     species = struct.unpack_from("<H", data, 0x00)[0]
     level = data[0x34]
-    cur_hp = struct.unpack_from("<H", data, 0x4C)[0]
     max_hp = struct.unpack_from("<H", data, 0x50)[0]
+    cur_hp = struct.unpack_from("<H", data, 0x4C)[0]
 
     if species == 0 or species > 493:
         return True
@@ -304,6 +322,49 @@ def _is_double_battle(emu: EmulatorClient) -> bool:
     battlers = read_battle(emu)
     player_active = sum(1 for b in battlers if b.get("side") == "player" and b.get("hp", 0) > 0)
     return player_active >= 2
+
+
+def _alive_enemy_count(emu: EmulatorClient) -> int:
+    """Count alive enemies in a double battle."""
+    battlers = read_battle(emu)
+    return sum(1 for b in battlers if b.get("side") == "enemy" and b.get("hp", 0) > 0)
+
+
+def _target_flow_with_retry(emu: EmulatorClient, target: int) -> None:
+    """Tap a target on the doubles target selection screen, with retry.
+
+    In doubles, enemy positions on the target screen are static — a fainted
+    enemy leaves a greyed-out slot that can't be tapped.  The mapping between
+    battle struct slots and screen positions varies across battles, so we
+    can't reliably predict which position (0=left, 1=right) an enemy is at.
+
+    Strategy: tap the requested target.  If only one enemy is alive, check
+    if the tap worked (new text appeared) — if not, retry on the other position.
+    """
+    idx = target if 0 <= target <= 1 else 0
+
+    emu.advance_frames(count=TAP_WAIT)
+    tx, ty = TARGET_XY[idx]
+    emu.tap_touch_screen(tx, ty, frames=8)
+
+    # If both enemies are alive, any target is valid — no retry needed
+    n_alive = _alive_enemy_count(emu)
+    if n_alive >= 2 or target == 2:
+        return
+
+    # Only one alive: check if the tap registered by looking for new text
+    emu.advance_frames(TAP_WAIT)
+    raw = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
+    if raw:
+        data = bytes(raw)
+        markers = _scan_markers(data, SCAN_START)
+        # If the action prompt ("What will X do?") is still the dominant text,
+        # the target tap didn't work — retry on the other position.
+        still_at_prompt = any("What will" in t and "do?" in t for t in markers.values())
+        if still_at_prompt:
+            other = 1 - idx
+            tx2, ty2 = TARGET_XY[other]
+            emu.tap_touch_screen(tx2, ty2, frames=8)
 
 
 def _target_flow(emu: EmulatorClient, target: int) -> None:
@@ -755,7 +816,7 @@ def _execute_action(
     if has_move:
         _fight_flow(emu, move_index)
         if is_double:
-            _target_flow(emu, target)
+            _target_flow_with_retry(emu, target)
     else:
         _switch_flow(emu, switch_to)
 
@@ -764,39 +825,48 @@ def _execute_action(
     result["final_state"] = _classify_final_state(emu, result)
     result["log"] = prompt["log"] + result.get("log", [])
 
-    # The fainted+EXP heuristic can misfire in doubles (one enemy KO'd but battle
-    # continues) or multi-Pokemon trainer battles. If BATTLE_ENDED was declared
-    # but the battle struct is still valid, wait for the actual action prompt.
-    if result["final_state"] == "BATTLE_ENDED" and not _is_battle_over(emu):
-        prompt2 = _wait_for_action_prompt(emu)
-        if prompt2["ready"]:
-            result["log"].extend(prompt2["log"])
-            result["final_state"] = prompt2["prompt_type"]
-
     # In doubles, after first action the partner's prompt appears immediately
-    # (no battle narration in between). Detect this and return a distinct state.
-    if is_double and result["final_state"] == "WAIT_FOR_ACTION":
+    # (no battle narration in between).  The poll often returns TIMEOUT or
+    # NO_TEXT because no battle narration occurs — only the partner's prompt
+    # text appears.  Detect this and try to find the partner's action prompt.
+    if is_double and result["final_state"] in ("WAIT_FOR_ACTION", "TIMEOUT", "NO_TEXT"):
         poll_entries = [e for e in result.get("log", []) if e not in prompt["log"]]
         has_narration = any("used" in e.get("text", "") for e in poll_entries)
-        if not has_narration:
+
+        if result["final_state"] in ("TIMEOUT", "NO_TEXT") and not _is_battle_over(emu):
+            # Poll missed the partner prompt — do a fresh scan
+            prompt2 = _wait_for_action_prompt(emu)
+            if prompt2["ready"]:
+                result["log"].extend(prompt2["log"])
+                result["final_state"] = prompt2["prompt_type"]
+                # Re-check for narration to classify correctly
+                poll_entries = [e for e in result.get("log", []) if e not in prompt["log"]]
+                has_narration = any("used" in e.get("text", "") for e in poll_entries)
+
+        # "ACTION" is _classify_prompt's name for a normal action prompt;
+        # "WAIT_FOR_ACTION" is the tracker's raw name. Both mean the same thing.
+        if result["final_state"] in ("WAIT_FOR_ACTION", "ACTION") and not has_narration:
             result["final_state"] = "WAIT_FOR_PARTNER_ACTION"
 
     # Evolution "What?" detection: appears as WAIT_FOR_ACTION after level-up
-    if result["final_state"] == "WAIT_FOR_ACTION":
+    if result["final_state"] in ("WAIT_FOR_ACTION", "ACTION"):
         evo = _handle_evolution_what(emu, result)
         if evo is not None:
             result = evo
 
-    if result["final_state"] == "TIMEOUT" and not _is_battle_over(emu):
-        log = result.get("log", [])
-        if _log_has(log, "grew to") or _log_has(log, "fainted"):
+    # NO_TEXT / TIMEOUT recovery for non-doubles (doubles handled above)
+    if result["final_state"] in ("NO_TEXT", "TIMEOUT") and not _is_battle_over(emu):
+        if result["final_state"] == "NO_TEXT":
+            # Fresh scan for any prompt the tracker missed
+            prompt2 = _wait_for_action_prompt(emu)
+            if prompt2["ready"]:
+                result["log"].extend(prompt2["log"])
+                result["final_state"] = prompt2["prompt_type"]
+        if result["final_state"] == "TIMEOUT":
             result = _recover_from_level_up(emu, result)
 
-    # After level-up recovery returns BATTLE_ENDED, evolution "What?" may
-    # appear a moment later (after Exp Share text finishes).  Quick-scan
-    # for it before returning.
-    if (result["final_state"] == "BATTLE_ENDED"
-            and _log_has(result.get("log", []), "grew to")):
+    # After level-up recovery or BATTLE_ENDED, check for evolution
+    if result["final_state"] == "BATTLE_ENDED":
         emu.advance_frames(120)
         if _is_evolution_text_on_screen(emu):
             result = _wait_for_evolution(emu, result)
@@ -929,11 +999,8 @@ def _recover_from_level_up(emu: EmulatorClient, result: dict[str, Any]) -> dict[
             return result
 
     # Exhausted all recovery presses without finding an action prompt.
-    # If the log shows a completed KO (fainted + EXP), the battle ended
-    # after the level-up.  The battle struct never goes to garbage, so
-    # this log-based check is the reliable fallback.
-    all_log = result.get("log", [])
-    if _log_has(all_log, "fainted") and _log_has(all_log, "Exp. Points"):
+    # Check battleEndFlag — it's the authoritative signal.
+    if _is_battle_over(emu):
         result["final_state"] = "BATTLE_ENDED"
     else:
         result["final_state"] = "LEVEL_UP"
@@ -1068,17 +1135,6 @@ def _classify_final_state(emu: EmulatorClient, result: dict[str, Any]) -> str:
         # Trainer faint: no text prompt, player HP = 0, battle still active
         if _log_has(result.get("log", []), "fainted") and _get_player_hp(emu) == 0:
             return "FAINT_FORCED"
-        # Log-based battle end: if we saw "fainted" + "Exp. Points" and
-        # then text disappeared, the battle is over.  The battle struct
-        # retains valid-looking data after battle (never goes to garbage),
-        # so this text-pattern check is the primary end-of-battle signal.
-        # EXCEPTION: "grew to" means a level-up stat screen caused the
-        # text gap — don't declare battle over yet; _recover_from_level_up
-        # needs to press B through the stat screen first.
-        log = result.get("log", [])
-        if (_log_has(log, "fainted") and _log_has(log, "Exp. Points")
-                and not _log_has(log, "grew to")):
-            return "BATTLE_ENDED"
 
     return raw_state
 

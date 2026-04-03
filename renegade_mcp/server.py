@@ -261,6 +261,34 @@ def create_server() -> FastMCP:
 
     # ── Battle Turn ──
 
+    def _find_acting_player(emu, battlers: list[dict]) -> dict | None:
+        """Identify which player Pokemon is currently acting in battle.
+
+        Scans memory for the "What will X do?" prompt and matches X against
+        player battler nicknames.  In doubles, this distinguishes the primary
+        battler (slot 0) from the partner (slot 2).  Falls back to slot 0.
+        """
+        from renegade_mcp.battle_tracker import SCAN_START, SCAN_SIZE, _scan_for_new_text
+
+        raw = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
+        if raw:
+            data = bytes(raw)
+            results = _scan_for_new_text(data, SCAN_START, {})
+            for _, text, _, _ in results:
+                clean = text.replace("\n", " ")
+                if "What will" in clean and "do?" in clean:
+                    # Extract the Pokemon name between "What will " and " do?"
+                    start = clean.index("What will") + len("What will ")
+                    end = clean.index(" do?", start)
+                    name = clean[start:end].strip()
+                    for b in battlers:
+                        if b.get("side") == "player" and b.get("nickname", "") == name:
+                            return b
+                    break
+
+        # Fallback: slot 0
+        return next((b for b in battlers if b["slot"] == 0), None)
+
     def _check_move_effectiveness(emu, move_index: int, target: int) -> dict[str, Any] | None:
         """Pre-check move type vs target types. Returns warning dict or None if OK."""
         from renegade_mcp.battle import read_battle as _read_battle
@@ -271,8 +299,10 @@ def create_server() -> FastMCP:
         if not battlers:
             return None  # Not in battle — let battle_turn handle it
 
-        # Find the player's active Pokemon and its moves
-        player = next((b for b in battlers if b["slot"] == 0), None)
+        # Determine which player Pokemon is currently acting by reading the
+        # "What will X do?" prompt text and matching X against battler names.
+        # Falls back to slot 0 if the prompt can't be parsed.
+        player = _find_acting_player(emu, battlers)
         if player is None or move_index >= len(player["moves"]):
             return None
 
@@ -290,14 +320,17 @@ def create_server() -> FastMCP:
         if mv_entry.get("class") == "Status":
             return None
 
-        # Find the target enemy
+        # Find the target enemy (prefer alive enemies, redirect fainted targets)
         enemies = [b for b in battlers if b["side"] == "enemy"]
         if not enemies:
             return None
-        if target >= 0 and target < len(enemies):
+        alive_enemies = [e for e in enemies if e.get("hp", 0) > 0]
+        if not alive_enemies:
+            return None  # All enemies fainted — skip check
+        if target >= 0 and target < len(enemies) and enemies[target].get("hp", 0) > 0:
             defender = enemies[target]
         else:
-            defender = enemies[0]
+            defender = alive_enemies[0]
 
         def_type1 = defender["type1"]
         def_type2 = defender["type2"] if defender["type2"] != defender["type1"] else None
