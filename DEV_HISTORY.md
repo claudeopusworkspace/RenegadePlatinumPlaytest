@@ -320,3 +320,67 @@ Output trimming (session 14) dropped `pp` from the party-based `current_moves` d
 - **Resolved this session**: auto-flee navigation, heal_party double-heal, auto_grind KeyError
 - **Investigated**: signpost auto-trigger (root cause found, fix deferred)
 - **Remaining open**: 5 double battle bugs, signpost navigation, locked doors, tag battle untested, multi-chunk 3D BFS
+
+## Dev Session 17: Player-Centered Viewport, Signpost Fix, Post-Battle Dialogue (2026-04-03)
+
+Three QoL improvements focused on navigation and battle flow ahead of resuming the adventure.
+
+### 1. Player-Centered Viewport for view_map (`8aaa345`)
+
+**Problem**: `view_map` rendered the entire 32x32 chunk the player was on, cropped to content bounds. At chunk edges, zero visibility into adjacent chunks — the player's "camera" was locked to the chunk grid, not centered on the player.
+
+**Solution**: 32x32 viewport centered on the player, loading adjacent chunks as needed.
+
+**New functions in `map_state.py`**:
+- `_compute_viewport_bounds()` — two modes:
+  - **Indoor/small maps**: content-fitted crop (preserves compact rendering — Pokemon Center stays 18x15, gym stays 32x32)
+  - **Overworld/multi-chunk maps**: 32x32 centered on player, clamped to world bounds (matrix_w × 32, matrix_h × 32)
+- `_load_viewport_terrain()` — composites raw u16 tile values from up to 4 ROM chunks (2x2 worst case for 32x32 viewport). Similar pattern to `navigation.py:_build_multi_chunk_terrain` but returns raw tiles instead of passability tuples.
+
+**Modified functions**:
+- `render_map()` — removed content-bounds crop loop; terrain grid IS the viewport, render it all. Object bounds checks use dynamic grid dimensions instead of hardcoded 32.
+- `view_map()` — complete rewrite of orchestration: matrix lookup → viewport bounds → load terrain → viewport-relative positions → filter objects/warps → elevation key translation → render → header with origin/size.
+
+**Coordinate communication**: Header includes `origin:(x,y) WxH` — the global coordinate of the top-left grid corner. Any grid position → global coords is `origin + grid_pos`. Player dict includes `grid_x`/`grid_y` for position within the grid.
+
+**Elevation handling**: BDHC elevation keys (chunk-local) translated to viewport-local coordinates for indoor maps. Elevation only active on single-chunk maps (overworld elevation deferred).
+
+**Testing**: Valley Windworks (indoor, 25x19), Oreburgh Gym (elevation, 32x32), Route 205 (overworld, multi-chunk), Route 201 (overworld), Floaroma Town (overworld, buildings + water across chunks). All verified.
+
+### 2. Signpost Navigation Avoidance (`878dd54`)
+
+**Problem**: Signs auto-trigger dialogue when the player steps onto the tile directly south while facing north. This interrupted `navigate_to` mid-path. Signs often don't appear in `read_objects` RAM scan because they're loaded at high RAM slot indices past the consecutive-empty-slot break.
+
+**Investigation**: Parsed Floaroma Town's zone_event file (0405.bin) — 3 signs found as regular object events with gfx IDs 91 (Map Signpost), 93 (Signboard). The problematic sign at (189,655) has walkable terrain underneath (0x0000) — collision is from the object, not terrain. The activation tile (189,656) is also plain ground with no special behavior.
+
+**Solution**: ROM-based sign detection + BFS tile blocking.
+- `read_sign_tiles_from_rom(emu, map_id)` in `map_state.py` — parses zone_event object events, filters by sign gfx IDs {91, 93, 94, 95, 96}, returns activation tiles (sign_y + 1).
+- Sign activation tiles added to `npc_set` in all BFS code paths:
+  - `_navigate_to_impl`: both single-chunk and multi-chunk branches
+  - `interact_with`: both branches
+  - `_try_repath`: via `sign_tiles` set in repath context dict
+- BFS routes 1 tile to the side — minimal path cost, eliminates auto-trigger entirely.
+
+**Verification**: Original repro `navigate_to(163,641)` from (191,660) in Floaroma Town — 47 steps, path detours left at (188,657) to avoid (189,656), no signpost trigger. Also tested with `flee_encounters=True`.
+
+### 3. Auto Post-Battle Dialogue (`94b2348`)
+
+**Problem**: After trainer battles, post-battle overworld dialogue (defeat text, story triggers) required manual `read_dialogue` calls. This friction adds up on routes with multiple trainers.
+
+**Solution**: `battle_turn` now auto-advances post-battle dialogue on both `BATTLE_ENDED` and `TIMEOUT` states.
+- On `BATTLE_ENDED`: wait 180 frames for overworld to settle, call `advance_dialogue`, include text as `post_battle_dialogue` list in result.
+- On `TIMEOUT`: check `read_battle` first — if still in battle, leave as TIMEOUT. If in overworld (no battlers), advance dialogue and upgrade state to `BATTLE_ENDED`.
+- When no dialogue present: `advance_dialogue` returns `no_dialogue` quickly, no `post_battle_dialogue` key added, minimal overhead.
+- `auto_grind` inherits this via its `battle_turn` calls.
+
+**Testing**: Youngster Tristan fight (Hoothoot + Starly) — trainer defeat text ("Too strong! Too strong!") captured in battle log (in-battle text sequence), no separate overworld dialogue. Wild battle (Starly) — no dialogue, no extra key. Both confirm correct behavior.
+
+### Backlog Cleanup
+- **Checkpoint-to-save-state tool**: Removed from this project's backlog — it's a DeSmuME MCP feature, tracked in that project.
+- **Cross-chunk navigation feedback**: Reworded to "navigate_to failure explanations" — the cross-chunk BFS already works; the remaining issue is purely about error messaging when BFS can't find a path.
+
+### Backlog Status
+- **Resolved this session**: player-centered viewport, signpost navigation, auto post-battle dialogue
+- **Remaining open**: 5 double battle bugs, navigate_to failure explanations (deferred QoL), locked/key doors (behind us), tag battle untested (low priority), multi-chunk 3D BFS (deferred)
+- **Next session**: Double battle bug sweep
+- **Session after next**: Resume adventure — Route 205 north → Eterna Forest → Eterna City
