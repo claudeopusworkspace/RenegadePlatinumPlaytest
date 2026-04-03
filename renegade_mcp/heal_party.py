@@ -230,7 +230,7 @@ def heal_party(emu: EmulatorClient) -> dict[str, Any]:
         if nav_result.get("stopped_early") and not nav_result.get("door_entered"):
             return _error(
                 "Could not reach the Pokemon Center — path was blocked. "
-                f"Path: {nav_result.get('path_summary', 'unknown')}"
+                f"Path: {nav_result.get('path', 'unknown')}"
             )
 
         # Should now be inside the Pokemon Center

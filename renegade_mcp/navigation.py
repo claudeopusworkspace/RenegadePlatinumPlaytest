@@ -172,10 +172,9 @@ def _read_position(emu: EmulatorClient) -> tuple[int, int, int]:
 
 
 def _pos_with_map(x: int, y: int, map_id: int) -> dict[str, Any]:
-    """Build a position dict with resolved map name info instead of a raw ID."""
-    result = {"x": x, "y": y}
-    result.update(lookup_map_name(map_id))
-    return result
+    """Build a compact position dict with map name."""
+    info = lookup_map_name(map_id)
+    return {"x": x, "y": y, "map": info["name"], "map_id": map_id}
 
 
 def _normalize_direction(d: str) -> str:
@@ -1025,22 +1024,24 @@ def _execute_path(
     directions: list[str],
     track_npcs: bool = False,
     repath_ctx: dict | None = None,
-) -> tuple[bool, int, int, list[dict]]:
+) -> tuple[bool, int, int, dict]:
     """Execute directions, verifying each step.
 
-    When track_npcs is True, reads NPC positions after each step and logs changes.
-    When repath_ctx is provided (implies track_npcs), attempts BFS repath when
-    NPCs block or move into the planned path.
+    When repath_ctx is provided, tracks NPC positions and attempts BFS repath
+    when NPCs block or move into the planned path.
 
-    Returns (stopped_early, steps_taken, repaths_used, log).
+    Returns (stopped_early, steps_taken, repaths_used, nav_info).
+    nav_info contains compact summary data (map_change, blocked_at, npc_moves).
     """
     if repath_ctx is not None:
         track_npcs = True
 
-    log: list[dict] = []
     steps_taken = 0
     repaths_used = 0
+    npc_move_count = 0
+    map_changed = False
     prev_npcs = _read_npc_positions(emu) if track_npcs else {}
+    nav_info: dict = {}
 
     i = 0
     while i < len(directions):
@@ -1056,58 +1057,50 @@ def _execute_path(
         if not blocked:
             steps_taken += 1
 
-        entry: dict = {
-            "step": steps_taken,
-            "direction": direction,
-            "from": {"x": old_x, "y": old_y},
-            "to": {"x": new_x, "y": new_y},
-        }
-
-        # Track NPC movement
+        # Track NPC movement (needed for repathing)
+        has_npc_changes = False
         if track_npcs:
             curr_npcs = _read_npc_positions(emu)
             changes = _detect_npc_changes(prev_npcs, curr_npcs)
             if changes:
-                entry["npc_changes"] = changes
+                has_npc_changes = True
+                npc_move_count += 1
             prev_npcs = curr_npcs
 
         if blocked:
-            entry["blocked"] = True
             # Attempt repath around obstacle
             if repath_ctx is not None and repaths_used < MAX_REPATHS:
                 new_path = _try_repath(repath_ctx, prev_npcs, new_x, new_y)
                 if new_path is not None and len(new_path) > 0:
                     repaths_used += 1
-                    entry["repathed"] = True
-                    entry["new_path"] = _summarize_path(new_path)
-                    log.append(entry)
                     directions = directions[:i] + new_path
                     continue  # Retry from same index with new path
-            log.append(entry)
-            return True, steps_taken, repaths_used, log
+            nav_info["blocked_at"] = {"x": old_x, "y": old_y, "step": steps_taken}
+            return True, steps_taken, repaths_used, nav_info
 
         if new_map != old_map:
-            entry["map_change"] = True
+            map_changed = True
 
         # Proactive repath when NPCs moved and steps remain
-        if (repath_ctx is not None and entry.get("npc_changes")
+        if (repath_ctx is not None and has_npc_changes
                 and repaths_used < MAX_REPATHS and i + 1 < len(directions)):
             new_path = _try_repath(repath_ctx, prev_npcs, new_x, new_y)
             if new_path is None:
-                entry["repath_failed"] = True
-                log.append(entry)
-                return True, steps_taken, repaths_used, log
+                nav_info["repath_failed"] = True
+                return True, steps_taken, repaths_used, nav_info
             remaining = directions[i + 1:]
             if new_path != remaining:
                 repaths_used += 1
-                entry["repathed"] = True
-                entry["new_path"] = _summarize_path(new_path)
                 directions = directions[:i + 1] + new_path
 
-        log.append(entry)
         i += 1
 
-    return False, steps_taken, repaths_used, log
+    if map_changed:
+        nav_info["map_changed"] = True
+    if npc_move_count > 0:
+        nav_info["npc_moves"] = npc_move_count
+
+    return False, steps_taken, repaths_used, nav_info
 
 
 # ── Public API ──
@@ -1214,28 +1207,24 @@ def navigate_manual(emu: EmulatorClient, directions_str: str) -> dict[str, Any]:
         if step_idx >= 0 and step_dir == "transition":
             directions = directions[:step_idx + 1]
 
-    stopped_early, steps_taken, _, log = _execute_path(emu, directions, track_npcs=True)
+    stopped_early, steps_taken, _, nav_info = _execute_path(emu, directions, track_npcs=True)
 
     # Post-navigation: poll for encounter or dialogue (also serves as settle)
     encounter = _post_nav_check(emu)
     final_map, final_x, final_y = _read_position(emu)
 
     result: dict[str, Any] = {
-        "summary": _summarize_path(directions),
-        "total_directions": len(directions),
-        "steps_taken": steps_taken,
-        "stopped_early": stopped_early,
+        "path": _summarize_path(directions),
+        "steps": steps_taken,
         "start": _pos_with_map(start_x, start_y, start_map),
         "final": _pos_with_map(final_x, final_y, final_map),
-        "log": log,
     }
 
+    if stopped_early:
+        result["stopped_early"] = True
+        result.update(nav_info)
     if encounter is not None:
         result["encounter"] = encounter
-
-    npc_steps = sum(1 for e in log if "npc_changes" in e)
-    if npc_steps > 0:
-        result["steps_with_npc_movement"] = npc_steps
 
     return result
 
@@ -1503,10 +1492,8 @@ def navigate_to(
             # Already standing on the door tile — activate it
             door_result = _handle_door_transition(emu, target_behavior, map_id)
             result: dict[str, Any] = {
-                "path_summary": "Already at door",
-                "total_directions": 0,
-                "steps_taken": 0,
-                "stopped_early": False,
+                "path": "at door",
+                "steps": 0,
                 "start": start_pos,
             }
             if door_result:
@@ -1519,17 +1506,17 @@ def navigate_to(
 
         emu.advance_frames(SETTLE_FRAMES)
         return {
-            "path_summary": "Already at target!",
-            "total_directions": 0,
-            "steps_taken": 0,
-            "stopped_early": False,
+            "path": "at target",
+            "steps": 0,
             "start": start_pos,
             "final": start_pos,
         }
 
-    stopped_early, steps_taken, repaths_used, log = _execute_path(
+    stopped_early, steps_taken, repaths_used, nav_info = _execute_path(
         emu, path, repath_ctx=repath_ctx,
     )
+
+    path_str = _summarize_path(path)
 
     # For door targets, check if the warp already triggered during path execution
     if is_door and not stopped_early:
@@ -1538,31 +1525,20 @@ def navigate_to(
             # Warp already happened (walk-into door like 0x69)
             emu.advance_frames(SETTLE_FRAMES)
             final_map, final_x, final_y = _read_position(emu)
-            result = {
-                "path_summary": _summarize_path(path),
-                "total_directions": len(path),
-                "steps_taken": steps_taken,
-                "stopped_early": False,
+            return {
+                "path": path_str,
+                "steps": steps_taken,
                 "start": start_pos,
-                "target": {"x": target_x, "y": target_y},
                 "final": _pos_with_map(final_x, final_y, final_map),
                 "door_entered": True,
-                "door_behavior": f"0x{target_behavior:02X}",
-                "new_map": final_map,
-                "log": log,
             }
-            return result
 
         # Warp didn't trigger yet — activate the door
         door_result = _handle_door_transition(emu, target_behavior, map_id)
         result = {
-            "path_summary": _summarize_path(path),
-            "total_directions": len(path),
-            "steps_taken": steps_taken,
-            "stopped_early": False,
+            "path": path_str,
+            "steps": steps_taken,
             "start": start_pos,
-            "target": {"x": target_x, "y": target_y},
-            "log": log,
         }
         if door_result:
             result.update(door_result)
@@ -1585,24 +1561,17 @@ def navigate_to(
             if not (0 <= adj_lx < gw and 0 <= adj_ly < gh):
                 continue
             _, adj_behavior = ti[adj_ly][adj_lx]
-            # Walk-into doors (any direction)
             is_walkin_door = adj_behavior in DOOR_ACTIVATION and DOOR_ACTIVATION[adj_behavior] is None
-            # Directional warps (only from correct direction)
             is_dir_warp = adj_behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[adj_behavior] == direction
             if is_walkin_door or is_dir_warp:
-                # Walk into the warp tile to trigger transition
                 emu.advance_frames(HOLD_FRAMES, buttons=[direction])
                 emu.advance_frames(WAIT_FRAMES)
                 door_result = _handle_door_transition(emu, adj_behavior, cur_map)
                 if door_result:
                     result = {
-                        "path_summary": _summarize_path(path),
-                        "total_directions": len(path),
-                        "steps_taken": steps_taken,
-                        "stopped_early": False,
+                        "path": path_str,
+                        "steps": steps_taken,
                         "start": start_pos,
-                        "target": {"x": target_x, "y": target_y},
-                        "log": log,
                     }
                     result.update(door_result)
                     result["final"] = door_result["new_position"]
@@ -1614,23 +1583,19 @@ def navigate_to(
     final_map, final_x, final_y = _read_position(emu)
 
     result = {
-        "path_summary": _summarize_path(path),
-        "total_directions": len(path),
-        "steps_taken": steps_taken,
-        "stopped_early": stopped_early,
+        "path": path_str,
+        "steps": steps_taken,
         "start": start_pos,
-        "target": {"x": target_x, "y": target_y},
         "final": _pos_with_map(final_x, final_y, final_map),
-        "log": log,
     }
 
+    if stopped_early:
+        result["stopped_early"] = True
+        result.update(nav_info)
     if encounter is not None:
         result["encounter"] = encounter
     if repaths_used > 0:
         result["repaths"] = repaths_used
-    npc_steps = sum(1 for e in log if "npc_changes" in e)
-    if npc_steps > 0:
-        result["steps_with_npc_movement"] = npc_steps
 
     return result
 
@@ -1795,11 +1760,11 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
             "grid_ox": grid_ox,
             "grid_oy": grid_oy,
         }
-        stopped_early, steps_taken, repaths_used, log = _execute_path(
+        stopped_early, steps_taken, repaths_used, nav_info = _execute_path(
             emu, best_path, repath_ctx=repath_ctx,
         )
-        nav_result["path_summary"] = _summarize_path(best_path)
-        nav_result["steps_taken"] = steps_taken
+        nav_result["path"] = _summarize_path(best_path)
+        nav_result["steps"] = steps_taken
         if stopped_early:
             encounter = _post_nav_check(emu)
             if encounter:
@@ -1807,10 +1772,11 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
                 nav_result["interrupted"] = True
                 return nav_result
             nav_result["stopped_early"] = True
+            nav_result.update(nav_info)
             return nav_result
     else:
-        nav_result["path_summary"] = "Already adjacent"
-        nav_result["steps_taken"] = 0
+        nav_result["path"] = "adjacent"
+        nav_result["steps"] = 0
 
     # ── Face the target ──
     _, _, _, cur_facing = read_player_state(emu)
