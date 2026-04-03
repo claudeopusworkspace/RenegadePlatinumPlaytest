@@ -474,25 +474,34 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
         status_raw = decoded.get("ext_status", 0)
         status_conds = decode_status_conditions(status_raw)
 
+        move_ids = decoded["moves"]
+        pp_vals = decoded["pp"]
+        move_names_list = [
+            mv_names.get(m, f"#{m}") if m > 0 else "-" for m in move_ids
+        ]
+        # Combined moves list: name, pp, and inline detail (type/power/acc/class)
+        moves_combined = []
+        for m_id, m_name, m_pp in zip(move_ids, move_names_list, pp_vals):
+            entry: dict[str, Any] = {"name": m_name, "pp": m_pp}
+            if m_id > 0 and m_id in mv_data:
+                info = mv_data[m_id]
+                entry["type"] = info.get("type")
+                entry["power"] = info.get("power")
+                entry["accuracy"] = info.get("accuracy")
+                entry["class"] = info.get("class")
+            moves_combined.append(entry)
+
         pokemon: dict[str, Any] = {
             "slot": i,
-            "species_id": species,
             "name": name,
             "level": level,
             "hp": cur_hp,
             "max_hp": max_hp,
-            "status": status_raw,
             "status_conditions": status_conds,
-            "moves": decoded["moves"],
-            "move_names": [
-                mv_names.get(m, f"#{m}") if m > 0 else "-" for m in decoded["moves"]
-            ],
-            "move_info": [
-                mv_data.get(m, {}) if m > 0 else {} for m in decoded["moves"]
-            ],
-            "pp": decoded["pp"],
+            "moves": moves_combined,
+            "move_names": move_names_list,
+            "pp": pp_vals,
             "nature": decoded["nature"],
-            "ability_id": decoded.get("ability_idx", 0),
             "ability": ab_names.get(decoded.get("ability_idx", 0), f"#{decoded.get('ability_idx', 0)}"),
             "item_id": decoded.get("item_id", 0),
             "friendship": decoded.get("friendship", 0),
@@ -548,13 +557,12 @@ def format_party(party: list[dict[str, Any]]) -> str:
 
         if p.get("partial"):
             lines.append("     (moves/IVs/EVs unavailable — encrypted data stale)")
-        elif p.get("move_names"):
-            infos = p.get("move_info", [{}] * 4)
-            for mname, pp, info in zip(p["move_names"], p["pp"], infos):
-                if mname == "-":
+        elif p.get("moves"):
+            for m in p["moves"]:
+                if m.get("name", "-") == "-":
                     continue
-                detail = _format_move_detail(info)
-                lines.append(f"     - {mname}{detail} (PP {pp})")
+                detail = _format_move_detail(m)
+                lines.append(f"     - {m['name']}{detail} (PP {m['pp']})")
         else:
             lines.append("     (moves unavailable)")
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from renegade_mcp.battle_tracker import _tracker
-from renegade_mcp.turn import _is_battle_over, _reformat
+from renegade_mcp.turn import _is_battle_over
 
 if TYPE_CHECKING:
     from desmume_mcp.client import EmulatorClient
@@ -34,7 +34,6 @@ def throw_ball(emu: EmulatorClient) -> dict[str, Any]:
     Returns dict with:
         log: Battle narration entries.
         final_state: CAUGHT, NOT_CAUGHT, BATTLE_ENDED, TIMEOUT.
-        formatted: Human-readable log.
     """
     # 1. Snapshot text baseline
     _tracker.init(emu)
@@ -69,7 +68,6 @@ def throw_ball(emu: EmulatorClient) -> dict[str, Any]:
             result["final_state"] = "BATTLE_ENDED"
     # else: keep raw state (TIMEOUT etc.)
 
-    result["formatted"] = _reformat(result)
     return result
 
 

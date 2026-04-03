@@ -667,15 +667,27 @@ def render_map(
     facing: int, elevation: dict | None = None, player_level: int | None = None,
     filter_level: int | None = None,
 ) -> str:
-    """Render an ASCII map combining terrain and dynamic objects.
+    """Render a compact 1-char-per-tile ASCII map.
 
-    When elevation data is provided (from analyze_elevation), passable tiles
-    show their height level number instead of '.' or '_', ramp tiles show
-    descent direction, and bridge tiles show both levels.
-
-    When filter_level is set, only tiles at that level are shown normally;
-    tiles at other levels are dimmed to '~'.
+    Symbols: ^v<> player, A-Za-z NPCs, # wall, _ walkable, . void,
+    ≈ water, " grass, 0-9 elevation, /\\ ramps, ][ directional blocks.
+    Hex behaviors mapped to single chars with a key when present.
     """
+    # 1-char behavior symbols for common hex behaviors
+    _BEHAVIOR_CHAR: dict[int, str] = {
+        0x02: '"', 0x03: '"',  # grass
+        0x10: '≈', 0x13: '≈', 0x15: '≈',  # water
+        0x20: '=', 0x21: ',',  # ice, sand
+        0x30: ']', 0x31: '[',  # directional blocks
+        0x38: 'v', 0x39: '^', 0x3A: '<', 0x3B: '>',  # ledges (reuse arrows)
+        0x5E: '/', 0x5F: '\\',  # stairs
+        0x69: 'D', 0x6E: 'D',  # doors
+        0x62: '+', 0x63: '+', 0x64: '+', 0x65: '+', 0x67: '+',  # warps
+        0x6A: '%', 0x6B: '%',  # escalators
+        0x6C: '|', 0x6D: '|', 0x6F: '-',  # sides
+        0x80: ':', 0xA9: 'T',  # counter, tree
+    }
+
     obj_at = {}
     for obj in objects:
         lx, ly = obj["local_x"], obj["local_y"]
@@ -691,11 +703,10 @@ def render_map(
                 else:
                     obj_at[(lx, ly)] = "?"
 
-    # Unpack elevation data
     level_map = elevation["level_map"] if elevation else {}
     ramp_tiles = elevation["ramp_tiles"] if elevation else {}
 
-    # Find map bounds
+    # Find map bounds (crop empty border)
     min_row, max_row = 31, 0
     min_col, max_col = 31, 0
     for row in range(32):
@@ -720,24 +731,16 @@ def render_map(
     max_col = min(31, max_col + 1)
 
     lines = []
-
-    header = "     "
-    for col in range(min_col, max_col + 1):
-        header += f"{col:>3}"
-    lines.append(header)
-    lines.append("    " + "-" * ((max_col - min_col + 1) * 3 + 1))
-
-    behaviors_seen = {}
+    behaviors_seen: dict[int, str] = {}
 
     for row in range(min_row, max_row + 1):
-        line = f"{row:>3} |"
+        line_chars = []
         for col in range(min_col, max_col + 1):
             val = terrain[row][col]
             is_blocked = (val & 0x8000) != 0
             behavior = val & 0x00FF
             key = (col, row)
 
-            # Level filter: dim tiles not at the requested level
             tile_levels = level_map.get(key, [])
             is_filtered_out = (
                 filter_level is not None
@@ -750,84 +753,58 @@ def render_map(
             )
 
             if is_filtered_out:
-                cell = "  ~"
+                ch = '~'
             elif key in obj_at:
-                cell = f"  {obj_at[key]}"
+                ch = obj_at[key]
             elif is_blocked and behavior == 0:
-                cell = "  #"
-            elif is_blocked and behavior != 0:
-                cell = f" {behavior:02x}"
+                ch = '#'
+            elif is_blocked and behavior in _BEHAVIOR_CHAR:
+                ch = _BEHAVIOR_CHAR[behavior]
+                behaviors_seen[behavior] = "blocked"
+            elif is_blocked:
+                ch = '#'
                 behaviors_seen[behavior] = "blocked"
             elif elevation and key in ramp_tiles:
-                # Ramp tile — show descent direction
                 ri = ramp_tiles[key]
-                d = ri["direction"]
-                # Dim ramps that don't connect to filtered level
                 if filter_level is not None and filter_level not in (ri["from_level"], ri["to_level"]):
-                    cell = "  ~"
+                    ch = '~'
                 else:
-                    cell = "  \\" if d in ("south", "east") else "  /"
+                    ch = '\\' if ri["direction"] in ("south", "east") else '/'
             elif elevation and key in level_map and len(level_map[key]) > 1:
-                # Bridge — show upper level with bridge marker
-                cell = f" {level_map[key][-1]}*"
-            elif elevation and behavior == 0x30:
-                cell = "  ]"  # blocks eastward movement
-            elif elevation and behavior == 0x31:
-                cell = "  ["  # blocks westward movement
+                ch = str(level_map[key][-1])  # bridge — show upper level
+            elif elevation and behavior in (0x30, 0x31):
+                ch = _BEHAVIOR_CHAR[behavior]
             elif elevation and key in level_map and (val == 0 or behavior in (0x00, 0x08)):
-                # Plain ground/cave/void tile with elevation → show level number
-                cell = f"  {level_map[key][0]}"
+                ch = str(level_map[key][0])
             elif val == 0:
-                cell = "  ."
+                ch = '.'
             elif behavior == 0x00:
-                cell = "  _"
+                ch = '_'
             elif behavior == 0x08:
-                cell = "   "
+                ch = ' '
+            elif behavior in _BEHAVIOR_CHAR:
+                ch = _BEHAVIOR_CHAR[behavior]
+                behaviors_seen[behavior] = "passable"
             else:
-                cell = f" {behavior:02x}"
+                ch = '?'
                 behaviors_seen[behavior] = "passable"
 
-            line += cell
-        lines.append(line)
+            line_chars.append(ch)
+        lines.append("".join(line_chars))
 
-    # Legend
-    lines.append("")
-    lines.append("Legend:")
-    lines.append("  ^v<> = player (facing direction)")
-    lines.append("  A-Z, a-z = NPC/dynamic object")
-    if elevation:
-        lines.append("  0-9  = elevation level (passable)  #  = wall")
-        lines.append("  / \\  = ramp (descent direction)    n* = bridge (level n, passable below)")
-        lines.append("  ] [  = directional block (can't move east/west respectively)")
-        if filter_level is not None:
-            lines.append(f"  ~    = other level (filtered to L{filter_level})")
-    else:
-        lines.append("  .    = void  #  = wall  _  = walkable ground")
-    lines.append("  xx   = tile behavior (hex)")
-
+    # Compact key — only show behaviors actually seen on this map
     if behaviors_seen:
-        lines.append("")
-        lines.append("Behaviors:")
-        for beh, passability in sorted(behaviors_seen.items()):
-            name = BEHAVIORS.get(beh, "unknown")
-            lines.append(f"  {beh:02x} = {passability} ({name})")
+        key_parts = []
+        for beh in sorted(behaviors_seen):
+            name = BEHAVIORS.get(beh, f"0x{beh:02x}")
+            ch = _BEHAVIOR_CHAR.get(beh, "?")
+            key_parts.append(f"{ch}={name}")
+        lines.append("Key: " + " ".join(key_parts))
 
-    # Elevation summary
+    # Elevation summary (compact single line)
     if elevation:
-        lines.append("")
-        lines.append(f"Elevation: {len(elevation['levels'])} levels")
-        for lv in elevation["levels"]:
-            marker = " <- YOU" if player_level is not None and lv["level"] == player_level else ""
-            lines.append(f"  L{lv['level']} = h{lv['height']}{marker}")
-        if elevation["ramps"]:
-            ramp_strs = []
-            for r in elevation["ramps"]:
-                cr = r["col_range"]
-                rr = r["row_range"]
-                cols = f"{cr[0]}" if cr[1] - cr[0] == 1 else f"{cr[0]}-{cr[1] - 1}"
-                rows = f"{rr[0]}" if rr[1] - rr[0] == 1 else f"{rr[0]}-{rr[1] - 1}"
-                ramp_strs.append(f"({cols},{rows})L{r['from_level']}->L{r['to_level']}")
-            lines.append("  Ramps: " + "  ".join(ramp_strs))
+        parts = [f"L{lv['level']}{'*' if player_level is not None and lv['level'] == player_level else ''}" for lv in elevation["levels"]]
+        lines.append(f"Elevation: {' '.join(parts)}")
 
     return "\n".join(lines)
 
@@ -865,58 +842,30 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
         filter_level=filter_level,
     )
 
-    # Build header
-    elev_str = ""
-    if elevation and player_level is not None:
-        elev_str = f" — Level {player_level} (h={round(read_player_height(emu))})"
-    if state["chunked"]:
-        chunk_cx = state["px"] // CHUNK_SIZE
-        chunk_cy = state["py"] // CHUNK_SIZE
-        header = (
-            f"Map {state['map_id']} — Player at ({state['px']}, {state['py']}) "
-            f"facing {facing_name}{elev_str}\n"
-            f"Chunk ({chunk_cx}, {chunk_cy}) — "
-            f"origin ({state['origin_x']}, {state['origin_y']}) — "
-            f"local ({state['local_px']}, {state['local_py']})"
-        )
-    else:
-        header = f"Map {state['map_id']} — Player at ({state['px']}, {state['py']}) facing {facing_name}{elev_str}"
+    # Build header (compact single line)
+    elev_str = f" L{player_level}" if elevation and player_level is not None else ""
+    header = f"Map {state['map_id']} ({state['px']},{state['py']}) {facing_name}{elev_str}"
 
-    # Object list
+    # Object list (compact: index, name, position, trainer status)
     obj_info = []
     for obj in state["objects"]:
         idx = obj["index"]
-        if 1 <= idx <= 26:
-            letter = chr(ord("A") + idx - 1)
-        elif 27 <= idx <= 52:
-            letter = chr(ord("a") + idx - 27)
-        else:
-            letter = f"#{idx}"
-        name = obj.get("name", "")
         if idx == 0:
-            label = "PLAYER"
-        elif name:
-            label = f"{name} ({letter})"
-        else:
-            label = f"NPC {letter}"
+            continue  # Player is already in the player field
+        name = obj.get("name", "")
         entry: dict[str, Any] = {
             "index": idx,
-            "label": label,
             "x": obj["x"], "y": obj["y"],
-            "local_x": obj["local_x"], "local_y": obj["local_y"],
         }
-        if "movement_type" in obj:
-            entry["movement"] = obj["movement_type"]
+        if name:
+            entry["name"] = name
         if obj.get("trainer_type", 0) > 0:
             entry["trainer"] = True
-            # Check defeat flag via script field → trainer ID
             from renegade_mcp.trainer import trainer_id_from_script, is_trainer_defeated
             tid = trainer_id_from_script(obj.get("script", 0))
             if tid is not None:
                 entry["trainer_id"] = tid
                 entry["defeated"] = is_trainer_defeated(emu, tid)
-                if entry["defeated"]:
-                    entry["label"] += " [defeated]"
         obj_info.append(entry)
 
     # Warp destinations within displayed grid
@@ -935,8 +884,7 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
             dest = lookup_map_name(w["dest_map"])
             warp_info.append({
                 "x": w["x"], "y": w["y"],
-                "dest_name": dest["name"],
-                "dest_map_id": w["dest_map"],
+                "dest": dest["name"],
             })
 
     result = {
@@ -944,18 +892,11 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
         "map_id": state["map_id"],
         "player": {
             "x": state["px"], "y": state["py"],
-            "local_x": state["local_px"], "local_y": state["local_py"],
             "facing": facing_name,
         },
-        "origin": {"x": state["origin_x"], "y": state["origin_y"]},
-        "chunked": state["chunked"],
         "objects": obj_info,
         "warps": warp_info,
     }
-    if elevation is not None:
-        result["elevation"] = {
-            "levels": elevation["levels"],
-            "player_level": player_level,
-            "ramps": elevation["ramps"],
-        }
+    if elevation is not None and player_level is not None:
+        result["player"]["elevation"] = player_level
     return result

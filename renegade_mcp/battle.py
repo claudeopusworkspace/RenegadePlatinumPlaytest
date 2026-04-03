@@ -147,7 +147,6 @@ def read_battle(emu: EmulatorClient) -> list[dict[str, Any]]:
         battler = {
             "slot": slot,
             "side": side,
-            "species_id": species,
             "species": sp_names.get(species, f"#{species}"),
             "nickname": nickname,
             "level": level,
@@ -170,12 +169,9 @@ def read_battle(emu: EmulatorClient) -> list[dict[str, Any]]:
             "stages": {k: v for k, v in stages.items() if v != 0},
             "type1": TYPE_NAMES.get(type1, f"#{type1}"),
             "type2": TYPE_NAMES.get(type2, f"#{type2}"),
-            "ability_id": ability_id,
             "ability": ab_names.get(ability_id, f"#{ability_id}"),
             "status": _decode_status(status),
-            "item_id": item_id,
             "item": it_names.get(item_id, None) if item_id > 0 else None,
-            "weight_kg": weight / 10.0,
         }
         battlers.append(battler)
 
@@ -195,6 +191,57 @@ def _format_move_detail(m: dict) -> str:
     if acc:
         parts.append(f"{acc}% acc")
     return f" [{' · '.join(parts)}]"
+
+
+def battle_summary(battlers: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Return a trimmed battle state with only strategically relevant fields.
+
+    Designed for embedding in battle_turn responses — enough info for turn-to-turn
+    decisions without the full read_battle bloat.
+
+    Includes: species, level, hp, types, status, stat stages, moves (name+pp).
+    Enemy side also gets ability and item.
+    Drops: all IDs, weight, nickname (when same as species), move metadata
+    (type/power/accuracy/class), full stats dict.
+    """
+    summary = []
+    for b in battlers:
+        entry: dict[str, Any] = {
+            "slot": b["slot"],
+            "side": b["side"],
+            "species": b["species"],
+            "level": b["level"],
+            "hp": f"{b['hp']}/{b['max_hp']}",
+            "types": b["type1"] if b["type1"] == b["type2"] else f"{b['type1']}/{b['type2']}",
+        }
+
+        # Nickname only when different from species
+        if b.get("nickname") and b["nickname"] != b["species"]:
+            entry["nickname"] = b["nickname"]
+
+        if b.get("status"):
+            entry["status"] = b["status"]
+
+        # Non-zero stat stages only
+        if b.get("stages"):
+            entry["stages"] = b["stages"]
+
+        # Moves: name + PP only
+        entry["moves"] = [
+            {"name": m["name"], "pp": m["pp"]}
+            for m in b.get("moves", [])
+            if m.get("name")
+        ]
+
+        # Enemy gets ability + item (critical for strategy)
+        if b["side"] == "enemy":
+            if b.get("ability"):
+                entry["ability"] = b["ability"]
+            if b.get("item"):
+                entry["item"] = b["item"]
+
+        summary.append(entry)
+    return summary
 
 
 def format_battle(battlers: list[dict[str, Any]]) -> str:

@@ -12,7 +12,7 @@ from __future__ import annotations
 import struct
 from typing import TYPE_CHECKING, Any
 
-from renegade_mcp.battle import format_battle, read_battle
+from renegade_mcp.battle import battle_summary, read_battle
 from renegade_mcp.party import read_party
 from renegade_mcp.battle_tracker import (
     _tracker,
@@ -624,7 +624,7 @@ def battle_turn(
     action — call battle_turn again for the second Pokemon. After both actions are
     submitted, the turn executes and polling returns the result as normal.
 
-    Returns dict with: log, final_state, formatted, battle_state.
+    Returns dict with: log, final_state, battle_state (trimmed summary).
     """
     has_move = move_index >= 0
     has_switch = switch_to >= 0
@@ -638,10 +638,7 @@ def battle_turn(
             "log": prompt["log"],
             "final_state": prompt.get("state", "NO_ACTION_PROMPT"),
         }
-        result["formatted"] = _reformat(result)
-        battlers = read_battle(emu)
-        result["battle_state"] = battlers
-        result["formatted"] += "\n\n" + format_battle(battlers)
+        result["battle_state"] = battle_summary(read_battle(emu))
         return result
 
     pt = prompt["prompt_type"]
@@ -713,11 +710,8 @@ def battle_turn(
     if result["final_state"] in ("SWITCH_PROMPT", "FAINT_SWITCH", "FAINT_FORCED"):
         _enrich_switch_result(result, emu)
 
-    # 5. Format and append battle state
-    result["formatted"] = _reformat(result)
-    battlers = read_battle(emu)
-    result["battle_state"] = battlers
-    result["formatted"] += "\n\n" + format_battle(battlers)
+    # 5. Append trimmed battle state
+    result["battle_state"] = battle_summary(read_battle(emu))
     return result
 
 
@@ -1076,56 +1070,3 @@ def _classify_final_state(emu: EmulatorClient, result: dict[str, Any]) -> str:
     return raw_state
 
 
-def _reformat(result: dict[str, Any]) -> str:
-    """Reformat the log with the updated final state."""
-    lines = ["=== Battle Log ==="]
-    for entry in result.get("log", []):
-        text = entry["text"].replace("\n", " / ")
-        for code in ("[FFFE]", "[VAR]"):
-            while code in text:
-                text = text[: text.index(code)].rstrip()
-        lines.append(f"  {text}")
-
-    state = result["final_state"]
-
-    # Special formatting for MOVE_LEARN
-    if state == "MOVE_LEARN" and "move_to_learn" in result:
-        move = result["move_to_learn"]
-        learner = result.get("learning_pokemon")
-        if learner:
-            lines.append(f"\nState: MOVE_LEARN — {learner['name']} (slot {learner['slot']}) wants to learn {move}")
-        else:
-            lines.append(f"\nState: MOVE_LEARN — wants to learn {move}")
-        if "current_moves" in result:
-            lines.append("  Current moves:")
-            for m in result["current_moves"]:
-                lines.append(f"    {m['slot']}: {m['name']}")
-        lines.append(f"  Use battle_turn(forget_move=N) to forget move N and learn {move}")
-        lines.append(f"  Use battle_turn(forget_move=-1) to skip learning {move}")
-        return "\n".join(lines)
-
-    state_labels = {
-        "WAIT_FOR_ACTION": "Your turn — select next move",
-        "WAIT_FOR_PARTNER_ACTION": "Double battle — select action for your second Pokemon (call battle_turn again with move_index + target)",
-        "SWITCH_PROMPT": "Opponent sending next Pokemon — use battle_turn(switch_to=N) to swap, or battle_turn() to keep battling",
-        "FAINT_SWITCH": "Your Pokemon fainted (wild) — use battle_turn(switch_to=N) to send replacement, or battle_turn() to flee",
-        "FAINT_FORCED": "Your Pokemon fainted (trainer) — use battle_turn(switch_to=N) to send replacement",
-        "BATTLE_ENDED": "Battle is over — back in overworld",
-        "MOVE_LEARN": "Move learning prompt — use battle_turn(forget_move=N) or battle_turn(forget_move=-1)",
-        "LEVEL_UP": "Level up with move learning — handle manually",
-        "CAUGHT": "Pokemon caught! Back in overworld",
-        "NOT_CAUGHT": "Ball failed — back at action prompt",
-        "TIMEOUT": "Polling timed out — check game state manually",
-        "NO_TEXT": "No battle text detected — action may not have registered",
-        "NO_ACTION_PROMPT": "No action prompt detected — game may need manual input to proceed",
-    }
-    label = state_labels.get(state, state)
-    lines.append(f"\nState: {state} — {label}")
-
-    # Show party order for switch states (slot + species only, no HP — it's stale during battle)
-    if state in ("SWITCH_PROMPT", "FAINT_SWITCH", "FAINT_FORCED") and "party" in result:
-        lines.append("  Party:")
-        for p in result["party"]:
-            lines.append(f"    {p['slot']}. {p['name']} Lv{p['level']}")
-
-    return "\n".join(lines)

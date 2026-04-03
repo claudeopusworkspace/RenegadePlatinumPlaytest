@@ -240,12 +240,10 @@ def auto_grind(
     party = _read_party(emu)
     result = _finish(stop_reason, stop_detail, battles, party, encounters=encounters)
 
-    # If stopped for target_species, include battle state for the caller
+    # If stopped for target_species, include trimmed battle state for the caller
     if stop_reason == "target_species":
-        from renegade_mcp.battle import format_battle
-        battlers = _read_battle(emu)
-        result["battle_state"] = battlers
-        result["formatted"] += "\n\n" + format_battle(battlers)
+        from renegade_mcp.battle import battle_summary
+        result["battle_state"] = battle_summary(_read_battle(emu))
 
     return result
 
@@ -269,14 +267,14 @@ def _fight_battle(
 
     # If resuming mid-battle, the initial_result is the last battle_turn response
     if resuming and initial_result:
-        battle_log.append({"turn": turn, "state": initial_result.get("final_state"), "log": initial_result.get("formatted", "")})
+        battle_log.append({"turn": turn, "state": initial_result.get("final_state"), "log": _flatten_log(initial_result)})
         turn += 1
 
     while True:
         emu.create_checkpoint(action=f"auto_grind:battle_turn(move={move_index}, turn={turn})")
         result = _battle_turn(emu, move_index=move_index)
         state = result.get("final_state", "")
-        battle_log.append({"turn": turn, "state": state, "log": result.get("formatted", "")})
+        battle_log.append({"turn": turn, "state": state, "log": _flatten_log(result)})
         turn += 1
 
         if state in _BATTLE_OVER:
@@ -303,7 +301,7 @@ def _fight_battle(
             emu.create_checkpoint(action="auto_grind:decline_switch")
             result2 = _battle_turn(emu)
             state2 = result2.get("final_state", "")
-            battle_log.append({"turn": turn, "state": state2, "log": result2.get("formatted", "")})
+            battle_log.append({"turn": turn, "state": state2, "log": _flatten_log(result2)})
             turn += 1
             if state2 in _BATTLE_OVER:
                 return "", "", battle_log, _extract_level_from_log(battle_log)
@@ -353,7 +351,7 @@ def _run_battle(
         emu.create_checkpoint(action=f"auto_grind:run(turn={turn})")
         result = _battle_turn(emu, run=True)
         state = result.get("final_state", "")
-        battle_log.append({"turn": turn, "state": state, "log": result.get("formatted", "")})
+        battle_log.append({"turn": turn, "state": state, "log": _flatten_log(result)})
         turn += 1
 
         if state in _BATTLE_OVER:
@@ -386,19 +384,21 @@ def _get_move_pp(battle_turn_result: dict[str, Any], move_index: int) -> int | N
     battlers = battle_turn_result.get("battle_state", [])
     if not battlers:
         return None
-    # Slot 0 = player's active Pokemon
     player = battlers[0] if battlers else None
     if not player:
         return None
     moves = player.get("moves", [])
-    for m in moves:
-        if m.get("id", -1) == 0:
-            continue
-        # moves is a list; move_index maps to the Nth non-empty move
-        # Actually, moves[move_index] directly corresponds to the slot
     if move_index < len(moves):
         return moves[move_index].get("pp")
     return None
+
+
+def _flatten_log(battle_turn_result: dict[str, Any]) -> str:
+    """Flatten battle_turn's log entries into a single string for text scanning."""
+    entries = battle_turn_result.get("log", [])
+    return " / ".join(
+        e["text"].replace("\n", " ") for e in entries if isinstance(e, dict) and "text" in e
+    )
 
 
 def _extract_level_from_log(battle_log: list[dict[str, Any]]) -> int | None:
@@ -460,32 +460,23 @@ def _finish(
     enc_list = encounters or []
 
     slot0 = party[0] if party else None
-    summary = (
-        f"Stopped after {len(battles)} battle(s). Reason: {stop_reason}. "
-        f"{stop_detail}"
-    )
-    if slot0:
-        summary += (
-            f"\nSlot 0: {slot0.get('name', '?')} Lv{slot0.get('level', '?')} "
-            f"HP {slot0.get('hp', '?')}/{slot0.get('max_hp', '?')}"
-        )
-    if enc_list:
-        summary += "\n\nEncounters:"
-        for i, e in enumerate(enc_list, 1):
-            summary += f"\n  {i}. {e['species']} (checkpoint: {e['checkpoint_id']})"
-    summary += f"\nFull log: {log_file}"
 
-    last_battle = battles[-1] if battles else None
+    # Slot 0 summary only — caller can read_party for the full picture
+    slot0_summary = None
+    if slot0:
+        slot0_summary = {
+            "name": slot0.get("name", "?"),
+            "level": slot0.get("level", "?"),
+            "hp": f"{slot0.get('hp', '?')}/{slot0.get('max_hp', '?')}",
+        }
 
     result: dict[str, Any] = {
         "stop_reason": stop_reason,
         "stop_detail": stop_detail,
         "battles_fought": len(battles),
         "encounters": enc_list,
-        "last_battle": last_battle,
+        "slot0": slot0_summary,
         "log_file": log_file,
-        "party": party,
-        "formatted": summary,
     }
     if move_learn:
         result["move_to_learn"] = move_learn.get("move_to_learn")
