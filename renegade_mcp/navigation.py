@@ -1254,6 +1254,7 @@ def navigate_manual(emu: EmulatorClient, directions_str: str, flee_encounters: b
 
     # Pre-validate path against terrain before walking
     start_map, start_x, start_y = _read_position(emu)
+    expected_transition = False
     state = get_map_state(emu)
     if state is not None:
         origin_x = state.get("origin_x", 0)
@@ -1284,7 +1285,8 @@ def navigate_manual(emu: EmulatorClient, directions_str: str, flee_encounters: b
                 "start": _pos_with_map(start_x, start_y, start_map),
             }
         # Trim path at door/stair transition — that step is the last before map change
-        if step_idx >= 0 and step_dir == "transition":
+        expected_transition = step_idx >= 0 and step_dir == "transition"
+        if expected_transition:
             directions = directions[:step_idx + 1]
 
     total_path = _summarize_path(directions)
@@ -1350,6 +1352,16 @@ def navigate_manual(emu: EmulatorClient, directions_str: str, flee_encounters: b
                 )
             else:
                 result["flee_failed"] = f"Flee failed against wild {species}: {reason}"
+
+    # Check if an expected warp transition didn't happen
+    if expected_transition and final_map == start_map:
+        result["warp_failed"] = True
+        result["note"] = (
+            "Path ended at a warp/door tile but no map transition occurred. "
+            "Possible causes: locked door (key item required), story flag not yet "
+            "set, or an event/script blocking entry. Check the scene manually "
+            "(screenshot + read_dialogue)."
+        )
 
     return result
 
@@ -1740,6 +1752,27 @@ def _navigate_to_impl(
 
     path_str = _summarize_path(path)
 
+    # Door target but couldn't reach it — likely locked or event-blocked
+    if is_door and stopped_early:
+        final_map, final_x, final_y = _read_position(emu)
+        result = {
+            "path": path_str,
+            "steps": steps_taken,
+            "start": start_pos,
+            "final": _pos_with_map(final_x, final_y, final_map),
+            "warp_failed": True,
+            "note": (
+                "Target tile is a door/warp but could not be entered. "
+                "Possible causes: locked door (key item required), story flag "
+                "not yet set, NPC or obstacle blocking the approach path, or a "
+                "script relocated the warp. Check the scene manually "
+                "(screenshot + read_dialogue)."
+            ),
+        }
+        if repaths_used > 0:
+            result["repaths"] = repaths_used
+        return result
+
     # For door targets, check if the warp already triggered during path execution
     if is_door and not stopped_early:
         cur_map, cur_x, cur_y = _read_position(emu)
@@ -1768,10 +1801,17 @@ def _navigate_to_impl(
         else:
             final_map, final_x, final_y = _read_position(emu)
             result["final"] = _pos_with_map(final_x, final_y, final_map)
-            result["note"] = "Door activation did not trigger a map transition."
+            result["warp_failed"] = True
+            result["note"] = (
+                "Warp transition did not occur — player is still on the same map. "
+                "Possible causes: locked door (key item required), story flag not yet "
+                "set, or an event/script blocking entry. Check the scene manually "
+                "(screenshot + read_dialogue)."
+            )
         return result
 
     # Non-door target: check if we ended up adjacent to a walk-into door/warp
+    adj_warp_failed: dict[str, Any] | None = None
     if not is_door and not stopped_early:
         cur_map, cur_x, cur_y = _read_position(emu)
         ti = repath_ctx["terrain_info"]
@@ -1798,6 +1838,19 @@ def _navigate_to_impl(
                     result.update(door_result)
                     result["final"] = door_result["new_position"]
                     return result
+                # Adjacent door didn't warp — note it and fall through
+                adj_gx, adj_gy = adj_lx + gox, adj_ly + goy
+                adj_warp_failed = {
+                    "warp_failed": True,
+                    "warp_tile": {"x": adj_gx, "y": adj_gy, "behavior": f"0x{adj_behavior:02X}"},
+                    "note": (
+                        f"Adjacent warp tile at ({adj_gx}, {adj_gy}) did not trigger "
+                        f"a map transition. Possible causes: locked door (key item "
+                        f"required), story flag not yet set, or an event/script "
+                        f"blocking entry. Check the scene manually "
+                        f"(screenshot + read_dialogue)."
+                    ),
+                }
                 break  # Only try one adjacent door
 
     # Standard post-nav check
@@ -1818,6 +1871,8 @@ def _navigate_to_impl(
         result["encounter"] = encounter
     if repaths_used > 0:
         result["repaths"] = repaths_used
+    if adj_warp_failed is not None:
+        result.update(adj_warp_failed)
 
     return result
 
