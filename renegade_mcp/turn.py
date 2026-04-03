@@ -93,6 +93,15 @@ BATTLE_SLOT_SIZE = 0xC0
 # BattleContext.partyOrder[0] — player's order array
 PARTY_ORDER_ADDR = 0x022C5B60
 
+# Move-learn identification: which party mon is currently in the learn flow
+# BattleContext.levelUpMons (u8 bitmask, one bit per party slot)
+LEVEL_UP_MONS_ADDR = 0x022C5B3D
+# BattleContext.taskData pointer (non-null when EXP distribution task is active)
+TASK_DATA_PTR_ADDR = 0x022C2BAC
+# Offsets within heap-allocated BattleScriptTaskData.tmpData[]
+TASK_DATA_MOVE_OFF = 0x40      # tmpData[4] = GET_EXP_MOVE (move ID being learned)
+TASK_DATA_SLOT_OFF = 0x48      # tmpData[6] = GET_EXP_PARTY_SLOT (lower bound search index)
+
 # Post-timeout recovery: press B to advance through stat screens / text
 RECOVERY_PRESSES = 8
 RECOVERY_WAIT = 300  # frames between B presses (~5 seconds per press)
@@ -953,21 +962,82 @@ def _enrich_switch_result(result: dict[str, Any], emu: EmulatorClient) -> None:
     result["party"] = ordered
 
 
-def _enrich_move_learn_result(result: dict[str, Any], emu: EmulatorClient) -> None:
-    """Add move_to_learn and current_moves info to a MOVE_LEARN result."""
-    move_name = _scan_move_name_from_memory(emu)
-    if move_name:
-        result["move_to_learn"] = move_name
+def _get_move_learn_info(emu: EmulatorClient) -> tuple[int, int] | None:
+    """Identify which party slot is learning a move and which move.
 
-    # Get current moves from battle state
-    battlers = read_battle(emu)
-    for b in battlers:
-        if b.get("side") == "player":
-            result["current_moves"] = [
-                {"slot": i, "name": m["name"], "pp": m["pp"]}
-                for i, m in enumerate(b.get("moves", []))
-            ]
-            break
+    Reads BattleContext.taskData pointer → tmpData to get the move ID and
+    the lower-bound party search index.  Combines with levelUpMons bitmask
+    to find the exact party slot currently in the move-learn flow.
+
+    Returns (party_slot, move_id) or None if the EXP task isn't active.
+    """
+    # Read taskData pointer (non-null when EXP distribution task is active)
+    task_ptr = emu.read_memory(TASK_DATA_PTR_ADDR, size="long")
+    if not task_ptr:
+        return None
+
+    # Dereference: read move ID and party slot lower bound
+    move_id = emu.read_memory(task_ptr + TASK_DATA_MOVE_OFF, size="long")
+    slot_lower = emu.read_memory(task_ptr + TASK_DATA_SLOT_OFF, size="long")
+
+    # Read levelUpMons bitmask — must be nonzero (at least one mon leveled up)
+    level_up_mask = emu.read_memory(LEVEL_UP_MONS_ADDR, size="byte")
+    if not level_up_mask:
+        return None
+
+    # Validate: move ID must be in range (1-467) and slot in range (0-5)
+    if not (1 <= move_id <= 467 and 0 <= slot_lower <= 5):
+        return None
+
+    # Find the lowest set bit >= slot_lower — that's the current mon
+    for i in range(slot_lower, 6):
+        if level_up_mask & (1 << i):
+            return (i, move_id)
+
+    # Fallback: if bitmask doesn't match (shouldn't happen), use slot_lower
+    return (slot_lower, move_id)
+
+
+def _enrich_move_learn_result(result: dict[str, Any], emu: EmulatorClient) -> None:
+    """Add move_to_learn, current_moves, and learning_pokemon to a MOVE_LEARN result."""
+    from renegade_mcp.data import move_names
+
+    info = _get_move_learn_info(emu)
+    if info:
+        party_slot, move_id = info
+        # Look up move name from ROM data
+        all_moves = move_names()
+        move_name = all_moves.get(move_id)
+        if move_name:
+            result["move_to_learn"] = move_name
+
+        # Read the learning Pokemon's moves from party data (not battle slot 0)
+        party = read_party(emu)
+        for p in party:
+            if p["slot"] == party_slot:
+                result["learning_pokemon"] = {
+                    "slot": party_slot,
+                    "name": p["name"],
+                    "level": p["level"],
+                }
+                result["current_moves"] = [
+                    {"slot": i, "name": mn}
+                    for i, mn in enumerate(p.get("move_names", []))
+                ]
+                break
+    else:
+        # Fallback: text scan for move name, battle slot 0 for moves
+        move_name = _scan_move_name_from_memory(emu)
+        if move_name:
+            result["move_to_learn"] = move_name
+        battlers = read_battle(emu)
+        for b in battlers:
+            if b.get("side") == "player":
+                result["current_moves"] = [
+                    {"slot": i, "name": m["name"], "pp": m["pp"]}
+                    for i, m in enumerate(b.get("moves", []))
+                ]
+                break
 
 
 def _classify_final_state(emu: EmulatorClient, result: dict[str, Any]) -> str:
@@ -1021,11 +1091,15 @@ def _reformat(result: dict[str, Any]) -> str:
     # Special formatting for MOVE_LEARN
     if state == "MOVE_LEARN" and "move_to_learn" in result:
         move = result["move_to_learn"]
-        lines.append(f"\nState: MOVE_LEARN — wants to learn {move}")
+        learner = result.get("learning_pokemon")
+        if learner:
+            lines.append(f"\nState: MOVE_LEARN — {learner['name']} (slot {learner['slot']}) wants to learn {move}")
+        else:
+            lines.append(f"\nState: MOVE_LEARN — wants to learn {move}")
         if "current_moves" in result:
             lines.append("  Current moves:")
             for m in result["current_moves"]:
-                lines.append(f"    {m['slot']}: {m['name']} (PP {m['pp']})")
+                lines.append(f"    {m['slot']}: {m['name']}")
         lines.append(f"  Use battle_turn(forget_move=N) to forget move N and learn {move}")
         lines.append(f"  Use battle_turn(forget_move=-1) to skip learning {move}")
         return "\n".join(lines)
