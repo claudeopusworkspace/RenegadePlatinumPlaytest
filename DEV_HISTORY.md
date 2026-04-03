@@ -383,4 +383,62 @@ Three QoL improvements focused on navigation and battle flow ahead of resuming t
 - **Resolved this session**: player-centered viewport, signpost navigation, auto post-battle dialogue
 - **Remaining open**: 5 double battle bugs, navigate_to failure explanations (deferred QoL), locked/key doors (behind us), tag battle untested (low priority), multi-chunk 3D BFS (deferred)
 - **Next session**: Double battle bug sweep
-- **Session after next**: Resume adventure — Route 205 north → Eterna Forest → Eterna City
+
+## Dev Session 18: Double Battle Bug Sweep (2026-04-03)
+
+Resolved all 5 open double battle bugs. Methodology: review full battle_turn workflow, load debug save states, observe each bug empirically, then implement targeted fixes. All 28 existing tests pass + 3 new regression tests added (31 total).
+
+### Core Architecture Change: `_is_battle_over` (`c9ec239`)
+
+Replaced the single garbage-data heuristic with a **two-tier check**:
+1. **`battleEndFlag`** (0x022C5B53) — authoritative signal set by the game engine when battle result is determined. Catches "battle just ended" before overworld loads.
+2. **Garbage-data fallback** — original species/level/HP validity check on battle slot 0. Catches "overworld loaded" when the flag hasn't been set yet (e.g., during level-up/evolution processing).
+
+Also **removed the "fainted + Exp. Points" text heuristic** from `_classify_final_state` and `_recover_from_level_up`. This heuristic was the root cause of bug #3 (premature BATTLE_ENDED in doubles) — it matched after a single enemy faint in doubles, even though the battle continued.
+
+### Bug Fixes
+
+**1. Switch in doubles → TIMEOUT instead of WAIT_FOR_PARTNER_ACTION**
+- **Root cause**: After a switch, the tracker poll found no battle narration text (switches don't generate "used" text). Returned TIMEOUT. The WAIT_FOR_PARTNER_ACTION detection only checked WAIT_FOR_ACTION, which never fired.
+- **Fix**: Extended doubles handling in `_execute_action` to also catch TIMEOUT/NO_TEXT. Calls `_wait_for_action_prompt` (fresh full scan) to find the partner's "What will X do?" prompt, then classifies as WAIT_FOR_PARTNER_ACTION when no narration was seen.
+- **Secondary fix**: `_classify_prompt` returns "ACTION" while the tracker returns "WAIT_FOR_ACTION" — same concept, different names. Added "ACTION" to both the WAIT_FOR_PARTNER_ACTION check and evolution What? detection.
+
+**2. Partner action effectiveness check reads wrong moveset**
+- **Root cause**: `_check_move_effectiveness` in server.py always read `slot == 0`'s moves, even when the partner (slot 2) was acting.
+- **Fix**: New `_find_acting_player()` helper scans memory for "What will X do?" prompt text, extracts the Pokemon name, matches against battler nicknames. Falls back to slot 0 if prompt can't be parsed. Also updated enemy target lookup to prefer alive enemies (skips fainted targets).
+
+**3. Premature BATTLE_ENDED on multi-KO + exp cascade**
+- **Root cause**: Poll captured "Ledyba fainted!" + "Exp. Points" during the cascade. `_classify_final_state`'s "fainted + Exp" heuristic declared BATTLE_ENDED, but the trainer had more Pokemon (Spinarak). The safety net (`BATTLE_ENDED and not _is_battle_over`) fired, but `_wait_for_action_prompt` couldn't press through the remaining exp text and level-up screens in time.
+- **Fix**: Removed the text heuristic entirely. `battleEndFlag` stays 0 during exp cascades (battle still active), so `_classify_final_state` correctly returns TIMEOUT. The doubles TIMEOUT handler then finds the next action prompt.
+- **Verified**: Log now shows full sequence: Ledyba fainted → 3 exp entries → Zubat attacks → Machop attacks → "Galactic Grunt sent out Spinarak!" → WAIT_FOR_ACTION.
+
+**4. Targeting fainted/empty enemy slot**
+- **Root cause**: Enemy positions on the target screen are static — a fainted enemy leaves a greyed-out slot. The slot-to-position mapping varies across battles (observed Spinarak at top-right in Floaroma, but enemies[0] in other battles maps to top-left). Tapping a greyed-out slot does nothing.
+- **Fix**: New `_target_flow_with_retry()` replaces direct target flow. After tapping, checks if the action prompt is still showing (via `_scan_markers` for "What will X do?" text). If so, retries on the other target position. Handles variable mapping without needing to know which slot maps where.
+- **Also added**: `_alive_enemy_count()` helper — skips retry logic when both enemies are alive (no greyed-out slots).
+
+**5. Exp Share evolution not handled at battle end**
+- **Root cause**: Evolution check in `_execute_action` only fired when "grew to" was in the poll log. During doubles exp cascades, the "grew to" text often wasn't captured (appeared outside the poll's narrow scan region or after the poll timed out).
+- **Fix**: Evolution check now fires on **any** BATTLE_ENDED, not just when "grew to" was logged. The two-tier `_is_battle_over` ensures correct detection timing.
+- **Also added**: General NO_TEXT recovery path for non-doubles — `_execute_action` now tries `_wait_for_action_prompt` on NO_TEXT regardless of battle type (was doubles-only).
+
+### New Tests (`5bd2bb6`)
+
+3 new tests in `test_double_battle.py` (5 total, 31 suite-wide):
+| Test | Save State | Verifies |
+|------|-----------|----------|
+| `test_switch_returns_partner_prompt` | `debug_double_battle_switch_timeout` | Switch → WAIT_FOR_PARTNER_ACTION, both prompts in log |
+| `test_multi_ko_exp_cascade_continues_battle` | `debug_double_battle_end_timeout` | Multi-KO → WAIT_FOR_ACTION (not BATTLE_ENDED), Spinarak in log |
+| `test_fainted_slot_auto_retries` | `debug_double_battle_exp_share_evolution` | Target 0 (fainted) → auto-retry → move executes |
+
+Bug #2 (partner moveset) is in server.py's MCP wrapper — not directly testable without MCP protocol. Verified manually.
+Bug #5 (Exp Share evolution) couldn't be reliably reproduced from existing saves (Charmander needed more exp), but the underlying mechanisms are covered by the evolution test suite (4/4 passing).
+
+### Bonus: DeSmuME MCP Feature Request
+
+Filed claudeopusworkspace/DesmumeMCP#1 — configurable bridge socket path via `DESMUME_BRIDGE_SOCK` env var. ~3-line server.py change. **Already merged.** Will enable isolated test emulator instances once we restart the emulator.
+
+### Backlog Status
+- **Resolved this session**: All 5 double battle bugs
+- **Remaining open**: navigate_to failure explanations (QoL), locked/key doors (behind us), tag battle untested (low priority), multi-chunk 3D BFS (deferred)
+- **Next session**: Resume adventure — Route 205 north → Eterna Forest → Eterna City
