@@ -2,6 +2,38 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: MCP Tool Token Optimization (2026-04-02)
+
+Driven by context audit showing top MCP token consumers: `get_screenshot` (16.5%), `view_map` (4.8%), `battle_turn` (2.9%), `navigate_to` (2.1%). Screenshots can't be easily reduced, so focused on the tool output side.
+
+### battle_turn (~60% reduction per call)
+- New `battle_summary()` function in `battle.py` — trimmed battle state for embedding in every `battle_turn` response. Returns only strategically relevant fields: species, level, hp as `"48/62"` string, combined types, status, stat stages, moves (name+pp only). Enemy side also gets ability and item.
+- Removed `formatted` field (human-readable string that duplicated the `log` array) and the 53-line `_reformat()` function from `turn.py`.
+- Kept `party` on switch states (already minimal: slot/name/level).
+
+### read_battle / read_party (deduplication)
+- `read_battle`: Dropped `species_id`, `ability_id`, `item_id`, `weight_kg` from output. Kept move `id` internally (used by effectiveness checker in `server.py`). Human-readable names retained.
+- `read_party`: Consolidated triple move encoding (`moves` IDs + `move_names` + `move_info` dicts) into single `moves` list with inline detail (name, pp, type, power, accuracy, class). Dropped `species_id`, `ability_id`, raw `status` int. Kept `move_names` and `pp` as separate fields for backward compat with 6+ internal consumers.
+
+### view_map (~70% reduction per call)
+- Compact 1-char-per-tile ASCII grid (was 3-char with axis headers). Symbols: `_` walkable, `#` wall, `.` void, `"` grass, `≈` water, `D` door, `+` warp, `T` tree, etc. Full behavior→symbol mapping in `_BEHAVIOR_CHAR` dict.
+- Removed: axis headers, static legend (same every time), elevation verbose summary. Replaced with compact key (only shows behaviors present on current map) and single-line elevation summary.
+- Trimmed return dict: dropped `local_x`/`local_y` from objects, `label` field, `dest_map_id` from warps (kept `dest` name), `origin`/`chunked` from result, `display`/`code`/`room` from player dict. Compact header: `Map 395 (12,8) down` instead of multi-line.
+
+### navigate_to / navigate_manual (~80% reduction per call)
+- `_execute_path` no longer builds per-step log array with from/to coordinate pairs and NPC change dicts. NPC tracking still runs internally for repathing — only the output is trimmed. Returns compact `nav_info` dict: `blocked_at`, `npc_moves` count, `map_changed` flag (only when relevant).
+- Return dicts: `path` (summarized direction string), `steps`, `start`, `final`. Dropped: `total_directions`, `log` array, `stopped_early` (now only present when true), `steps_with_npc_movement`.
+- `_pos_with_map` trimmed to `{x, y, map, map_id}` — drops `display`, `code`, `room` that were spread from `lookup_map_name`.
+
+### auto_grind (~40% reduction per run)
+- Uses `battle_summary()` for target_species embedded state. Returns `slot0` summary instead of full party array. Added `_flatten_log()` helper to extract text from `battle_turn`'s raw log entries (replaces dependency on removed `formatted` field). Removed `formatted` summary, `last_battle`, full `party` from `_finish()` return.
+
+### Cleanup
+- Removed dead `_reformat` from `turn.py`, unused `format_battle` import.
+- Fixed `catch.py` which imported `_reformat`.
+- Fixed `heal_party.py` and `shop.py` references to `path_summary` → `path`.
+- All syntax checks pass. Tests unaffected (don't reference removed fields).
+
 ## Dev Session: use_medicine Tool + Party Status Reading (2026-04-02)
 
 ### New Tool: `use_medicine`
