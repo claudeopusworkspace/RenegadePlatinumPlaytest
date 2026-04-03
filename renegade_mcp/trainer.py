@@ -22,6 +22,34 @@ MONEY_OFFSET = 0x7C  # u32, verified via snapshot/diff across trainer battles
 BADGE_OFFSET = None  # Set once confirmed
 
 
+# ── Trainer defeat flags ──
+# VarsFlags.flags bitfield in save RAM
+# Flag = FLAG_OFFSET_TRAINER_DEFEATED + trainerID
+# Script field encodes trainer ID: single = 3000 + ID - 1, double = 5000 + ID - 1
+FLAGS_ARRAY = SAVE_BLOCK_BASE + 0xFEC   # 0x0227F1BC
+FLAG_OFFSET_TRAINER_DEFEATED = 1360
+SCRIPT_OFFSET_SINGLE = 3000
+SCRIPT_OFFSET_DOUBLE = 5000
+
+
+def trainer_id_from_script(script: int) -> int | None:
+    """Extract trainer ID from an NPC's script field. Returns None if not a trainer script."""
+    if SCRIPT_OFFSET_SINGLE <= script < SCRIPT_OFFSET_SINGLE + 2000:
+        return script - SCRIPT_OFFSET_SINGLE + 1
+    if SCRIPT_OFFSET_DOUBLE <= script < SCRIPT_OFFSET_DOUBLE + 2000:
+        return script - SCRIPT_OFFSET_DOUBLE + 1
+    return None
+
+
+def is_trainer_defeated(emu: EmulatorClient, trainer_id: int) -> bool:
+    """Check if a trainer has been defeated by reading the VarsFlags bitfield."""
+    flag_id = FLAG_OFFSET_TRAINER_DEFEATED + trainer_id
+    byte_addr = FLAGS_ARRAY + (flag_id // 8)
+    bit_mask = 1 << (flag_id % 8)
+    byte_val = emu.read_memory(byte_addr, size="byte")
+    return bool(byte_val & bit_mask)
+
+
 def read_trainer_status(emu: EmulatorClient) -> dict[str, Any]:
     """Read money and badge count from the save block.
 

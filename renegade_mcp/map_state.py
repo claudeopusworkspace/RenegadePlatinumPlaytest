@@ -909,6 +909,14 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
             entry["movement"] = obj["movement_type"]
         if obj.get("trainer_type", 0) > 0:
             entry["trainer"] = True
+            # Check defeat flag via script field → trainer ID
+            from renegade_mcp.trainer import trainer_id_from_script, is_trainer_defeated
+            tid = trainer_id_from_script(obj.get("script", 0))
+            if tid is not None:
+                entry["trainer_id"] = tid
+                entry["defeated"] = is_trainer_defeated(emu, tid)
+                if entry["defeated"]:
+                    entry["label"] += " [defeated]"
         obj_info.append(entry)
 
     # Warp destinations within displayed grid
