@@ -354,3 +354,46 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - **Evolutions**: None
 - **Moves learned**: Prinplup — Bubble Beam (replaced Bubble). Luxio — skipped Double Kick.
 - **Next**: Continue north on Route 205 upper path. Picnicker and possibly more trainers ahead. Reach Eterna Forest entrance, then through to Eterna City for Gym #2.
+
+### Route 205 North — Upper Path (continued)
+- **Battle Girl Kelsey** (3 Pokemon, moving circular-path NPC): Machop Lv16 (Bubble Beam 2HKO), Meditite Lv16 (Pure Power — free-switched to Luxio, Bite SE + flinch, survived to 1 HP via Endure, finished next turn), Mankey Lv16 (Spark OHKO). Luxio hit 36/57 from Force Palm. Won $256.
+- **Picnicker Karina** (2 Pokemon, spotted us en route to item): Piplup Lv16 (switched to Luxio — Spark SE OHKO), Chimchar Lv16 (free-switched to Prinplup — Bubble Beam SE OHKO). Prinplup leveled to 19. Won $256.
+- Picked up **Repel** and **Antidote** (ground items).
+- Rest house before Eterna Forest — NPC healed full party.
+- **Bug logged**: `interact_with` fails on fast-moving circular-path NPCs (Battle Girl). Debug: `debug_moving_battle_girl_route205`.
+- **Bug logged**: `navigate_to` tries to path off bridge to lower level (multi-chunk 3D elevation). Debug: `debug_bridge_elevation_pathfind`.
+
+### Eterna Forest (Map 203)
+- Entered from Route 205 north gate. Met **Cheryl** — Renegade Platinum change: she battles you first to test your strength before joining.
+- **Cheryl** (4 Pokemon): Drifloon Lv19 (Ghost/Flying — switched to Luxio, crit Bite OHKO), Chansey Lv20 (Normal, 136 HP — free-switched to Machop, Brick Break SE OHKO! 546 XP each, Machop→Lv21, Charmeleon→Lv21), Wailmer Lv19 (Water — free-switched to Grotle, Razor Leaf SE OHKO), Makuhita Lv19 (Fighting, Thick Fat — Fake Out flinch, then Bulldoze 2HKO). Grotle→Lv24. Won $2,400.
+- Cheryl joined as tag battle partner — heals party after every battle.
+- Swapped **Exp. Share** from Charmeleon (Lv23, caught up) to **Prinplup** (Lv19, most underleveled). Gave Charmeleon back the **Charcoal**.
+- **Bug Catcher Jack** (3 Pokemon): Surskit Lv16 (Bug/Water — Peck SE 2HKO), Paras Lv16 (Bug/Grass — free-switched to Charmeleon, Ember 4x SE OHKO! Charmeleon→Lv22, learned **Fire Fang** replacing Ember), Venonat Lv16 (Bug/Poison — crit Fire Fang SE OHKO). Won $256.
+- **Lass Briana** (2 Pokemon): Buneary Lv17 (Normal — Bubble Beam 2HKO, took 19 from Frustration each turn), Marill Lv17 (Water/Fairy, Huge Power — free-switched to Luxio, Spark SE OHKO). Won $272.
+- **Psychic Lindsey** (2 Pokemon): Slowpoke Lv17 (Water/Psychic — switched to Luxio, Spark SE 2HKO), Exeggcute Lv17 (Grass/Psychic — Bite SE, but Reflect + Leech Seed made it a 4-turn grind). Won $544.
+- **Psychic Elijah** (3 Pokemon): Spoink Lv17 (Psychic — mistakenly switched to Machop, Psybeam SE KO'd Machop! Sent Charmeleon, Bite SE OHKO), Baltoy Lv17 (Ground/Psychic — Bite SE + flinch, finished turn 2. Prinplup→Lv20 via Exp Share), Drowzee Lv17 (Psychic — Bite SE 2HKO). Won $544.
+- Picked up **Parlyz Heal**, **TM65 Shadow Claw**, **TM27 Return** (gift from Cheryl at exit).
+- Cheryl's farewell dialogue + TM27 gift at forest exit.
+- Found **Moss Rock** at (17, 66) — Leafeon evolution location.
+- **Bugs logged**: navigate_to treats Cheryl (follower NPC) as impassable in BFS (`debug_navigate_through_cheryl`), navigate_to doesn't detect NPC dialogue interruption at warp (`debug_cheryl_exit_dialogue_pre_navigate`), navigate_to visual failure diagram suggestion.
+
+### Route 205 North — Bridge to Eterna City
+- Crossed bridge with unknown tile behaviors (0x0c, 0x71) — navigate_to treats them as impassable. Used manual `navigate` directions with Woj guiding from visual stream.
+- **Bug logged**: navigate_to treats bridge tiles as impassable. Debug: `debug_unknown_bridge_tiles_route205`.
+- Passed Fishermen trainers (all fishing, didn't engage).
+
+### Eterna City (Map 65)
+- Arrived in Eterna City! Team Galactic grunts visible near buildings.
+- Healed at Pokemon Center. Saved at `eterna_city_pokecenter`.
+
+### Session 21 Summary
+- **Badges**: 1 (Coal Badge)
+- **Money**: ~$13,000 (est.)
+- **Team**: Prinplup Lv20, Machop Lv21, Grotle Lv24, Luxio Lv20, Charmeleon Lv23
+- **Location**: Eterna City Pokemon Center. Save state: `eterna_city_pokecenter`.
+- **New trainers defeated**: Battle Girl Kelsey (Route 205), Picnicker Karina (Route 205), Cheryl (Eterna Forest), Bug Catcher Jack (Eterna Forest), Lass Briana (Eterna Forest), Psychic Lindsey (Eterna Forest), Psychic Elijah (Eterna Forest)
+- **Evolutions**: None
+- **Moves learned**: Charmeleon — Fire Fang (replaced Ember)
+- **Items obtained**: Repel, Antidote, Parlyz Heal, TM65 Shadow Claw, TM27 Return
+- **Bugs logged**: 5 new (moving NPC interact, follower NPC BFS blocking, warp dialogue interruption, bridge tile passability, visual pathfind failure suggestion)
+- **Next**: Explore Eterna City. Gym #2 (Gardenia — Grass type). Team Galactic hideout.
