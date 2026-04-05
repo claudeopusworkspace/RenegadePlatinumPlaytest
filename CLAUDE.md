@@ -59,17 +59,26 @@ The original Python scripts in `scripts/` still work for debugging but are no lo
 
 ### Adding New Tools
 
-All state-changing tools (anything that presses buttons, advances frames, or writes memory) **must** create a checkpoint before performing any emulator interaction. This enables undo/revert when a tool bugs out. Pattern in `server.py`:
+All state-changing tools (anything that presses buttons, advances frames, or writes memory) **must** use the `@renegade_tool` decorator (`renegade_mcp/tool.py`). This automatically handles:
+
+1. **Checkpoint creation** — saves emulator state before the tool runs, with an action string auto-built from the function name and non-default args (e.g. `navigate_to(x=15, y=8)`).
+2. **Frame profiling** — records start/end frame counts and wall-clock time, appended to `logs/frame_usage.jsonl`.
+
+Pattern in `server.py`:
 
 ```python
-emu = get_client()
-emu.create_checkpoint(action="tool_name(relevant args)")
-return _do_stuff(emu, ...)
+@mcp.tool()
+@renegade_tool
+def my_tool(arg1: str, arg2: int = 0) -> dict[str, Any]:
+    """Docstring."""
+    from renegade_mcp.my_module import impl
+    emu = get_client()
+    return impl(emu, arg1, arg2)
 ```
 
-Read-only tools (pure memory reads like `read_party`, `read_battle`, `read_bag`) do **not** need checkpoints.
+Read-only tools (pure memory reads like `read_party`, `read_battle`, `read_bag`) use bare `@mcp.tool()` — they don't advance frames and don't need checkpoints or profiling.
 
-Checkpoints share a unified ring buffer (300 slots) with the DeSmuME MCP's own checkpoints. One checkpoint per tool call is the right granularity — don't checkpoint inside helper functions.
+Checkpoints share a unified ring buffer (300 slots) with the DeSmuME MCP's own checkpoints. One checkpoint per tool call is the right granularity — don't checkpoint inside helper functions. Sub-tools like `auto_grind` may create additional internal checkpoints for per-encounter granularity.
 
 ### Reloading After Code Changes
 

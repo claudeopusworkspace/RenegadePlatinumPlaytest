@@ -11,6 +11,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from renegade_mcp.connection import get_client
+from renegade_mcp.tool import renegade_tool
 
 
 def create_server() -> FastMCP:
@@ -124,6 +125,7 @@ def create_server() -> FastMCP:
     # ── Navigation ──
 
     @mcp.tool()
+    @renegade_tool
     def navigate(directions: str, flee_encounters: bool = False) -> dict[str, Any]:
         """Walk a manual path in the overworld using explicit directions.
 
@@ -145,10 +147,10 @@ def create_server() -> FastMCP:
         from renegade_mcp.navigation import navigate_manual
 
         emu = get_client()
-        emu.create_checkpoint(action=f"navigate: {directions}")
         return navigate_manual(emu, directions, flee_encounters=flee_encounters)
 
     @mcp.tool()
+    @renegade_tool
     def navigate_to(x: int, y: int, path_choice: str | None = None, flee_encounters: bool = False) -> dict[str, Any]:
         """Pathfind to a target tile using BFS, then walk there automatically.
 
@@ -179,10 +181,10 @@ def create_server() -> FastMCP:
         from renegade_mcp.navigation import navigate_to as _navigate_to
 
         emu = get_client()
-        emu.create_checkpoint(action=f"navigate_to({x}, {y}, choice={path_choice}, flee={flee_encounters})")
         return _navigate_to(emu, x, y, path_choice=path_choice, flee_encounters=flee_encounters)
 
     @mcp.tool()
+    @renegade_tool
     def interact_with(object_index: int = -1, x: int = -1, y: int = -1, flee_encounters: bool = False) -> dict[str, Any]:
         """Navigate to a map object/NPC or static tile and interact with it.
 
@@ -203,11 +205,10 @@ def create_server() -> FastMCP:
         from renegade_mcp.navigation import interact_with as _interact_with
 
         emu = get_client()
-        target = f"object {object_index}" if object_index >= 0 else f"({x}, {y})"
-        emu.create_checkpoint(action=f"interact_with {target}")
         return _interact_with(emu, object_index=object_index, x=x, y=y, flee_encounters=flee_encounters)
 
     @mcp.tool()
+    @renegade_tool
     def seek_encounter(cave: bool = False) -> dict[str, Any]:
         """Walk back and forth in grass until a wild encounter triggers.
 
@@ -223,13 +224,12 @@ def create_server() -> FastMCP:
         from renegade_mcp.navigation import seek_encounter as _seek_encounter
 
         emu = get_client()
-        mode = "cave" if cave else "grass"
-        emu.create_checkpoint(action=f"seek_encounter({mode})")
         return _seek_encounter(emu, cave=cave)
 
     # ── Dialogue ──
 
     @mcp.tool()
+    @renegade_tool
     def read_dialogue(region: str = "auto", advance: bool = True) -> dict[str, Any]:
         """Read dialogue text, optionally auto-advancing through the full conversation.
 
@@ -255,7 +255,6 @@ def create_server() -> FastMCP:
 
         emu = get_client()
         if advance:
-            emu.create_checkpoint(action="read_dialogue(advance)")
             return _advance_dialogue(emu)
         return _read_dialogue(emu, region)
 
@@ -361,6 +360,7 @@ def create_server() -> FastMCP:
         }
 
     @mcp.tool()
+    @renegade_tool
     def battle_turn(move_index: int = -1, switch_to: int = -1, forget_move: int = -2, target: int = -1, run: bool = False, force: bool = False) -> dict[str, Any]:
         """Execute a full battle turn: use a move, switch Pokemon, or run.
 
@@ -403,22 +403,12 @@ def create_server() -> FastMCP:
             if warning is not None:
                 return warning
 
-        if run:
-            desc = "battle_turn(run=True)"
-        elif move_index >= 0:
-            desc = f"battle_turn(move={move_index}, target={target})"
-        elif switch_to >= 0:
-            desc = f"battle_turn(switch_to={switch_to})"
-        elif forget_move >= -1:
-            desc = f"battle_turn(forget_move={forget_move})"
-        else:
-            desc = "battle_turn"
-        emu.create_checkpoint(action=desc)
         return _battle_turn(emu, move_index=move_index, switch_to=switch_to, forget_move=forget_move, target=target, run=run)
 
     # ── Catch ──
 
     @mcp.tool()
+    @renegade_tool
     def throw_ball() -> dict[str, Any]:
         """Throw a Poké Ball at the wild Pokemon.
 
@@ -435,7 +425,6 @@ def create_server() -> FastMCP:
         from renegade_mcp.catch import throw_ball as _throw_ball
 
         emu = get_client()
-        emu.create_checkpoint(action="throw_ball")
         return _throw_ball(emu)
 
     # ── ROM Message Decoding ──
@@ -662,6 +651,7 @@ def create_server() -> FastMCP:
         return _read_shop(emu, badge_count=badge_count)
 
     @mcp.tool()
+    @renegade_tool
     def buy_item(item_name: str, quantity: int = 1) -> dict[str, Any]:
         """Buy an item from a standard PokéMart.
 
@@ -681,7 +671,6 @@ def create_server() -> FastMCP:
         from renegade_mcp.trainer import read_trainer_status as _read_status
 
         emu = get_client()
-        emu.create_checkpoint(action=f"buy_item({item_name!r}, {quantity})")
 
         status = _read_status(emu)
         badge_count = status.get("badges") if isinstance(status.get("badges"), int) else None
@@ -691,6 +680,7 @@ def create_server() -> FastMCP:
     # ── Item Use ──
 
     @mcp.tool()
+    @renegade_tool
     def use_item(item_name: str, party_slot: int = 0) -> dict[str, Any]:
         """Use a Medicine pocket item on a party Pokemon in the overworld.
 
@@ -704,10 +694,10 @@ def create_server() -> FastMCP:
         from renegade_mcp.use_item import use_item as _use_item
 
         emu = get_client()
-        emu.create_checkpoint(action=f"use_item({item_name}, slot {party_slot})")
         return _use_item(emu, item_name, party_slot)
 
     @mcp.tool()
+    @renegade_tool
     def use_field_item(item_name: str) -> dict[str, Any]:
         """Use a field item (Repel, Escape Rope, Honey, etc.) from the Items pocket.
 
@@ -722,10 +712,10 @@ def create_server() -> FastMCP:
         from renegade_mcp.use_item import use_field_item as _use_field_item
 
         emu = get_client()
-        emu.create_checkpoint(action=f"use_field_item({item_name})")
         return _use_field_item(emu, item_name)
 
     @mcp.tool()
+    @renegade_tool
     def use_medicine(
         confirm: bool = False,
         exclude_items: list[str] | None = None,
@@ -752,11 +742,10 @@ def create_server() -> FastMCP:
         from renegade_mcp.use_medicine import use_medicine as _use_medicine
 
         emu = get_client()
-        if confirm:
-            emu.create_checkpoint(action="use_medicine(confirm=True)")
         return _use_medicine(emu, confirm, exclude_items, priority)
 
     @mcp.tool()
+    @renegade_tool
     def teach_tm(
         tm_name: str, party_slot: int = 0, forget_move: int | None = None
     ) -> dict[str, Any]:
@@ -776,9 +765,6 @@ def create_server() -> FastMCP:
         from renegade_mcp.teach_tm import teach_tm as _teach_tm
 
         emu = get_client()
-        emu.create_checkpoint(
-            action=f"teach_tm({tm_name}, slot {party_slot}, forget {forget_move})"
-        )
         return _teach_tm(emu, tm_name, party_slot, forget_move)
 
     @mcp.tool()
@@ -860,6 +846,7 @@ def create_server() -> FastMCP:
         }
 
     @mcp.tool()
+    @renegade_tool
     def take_item(party_slot: int = 0) -> dict[str, Any]:
         """Take the held item from a party Pokemon in the overworld.
 
@@ -872,10 +859,10 @@ def create_server() -> FastMCP:
         from renegade_mcp.take_item import take_item as _take_item
 
         emu = get_client()
-        emu.create_checkpoint(action=f"take_item(slot {party_slot})")
         return _take_item(emu, party_slot)
 
     @mcp.tool()
+    @renegade_tool
     def give_item(item_name: str, party_slot: int = 0) -> dict[str, Any]:
         """Give a held item to a party Pokemon in the overworld.
 
@@ -891,12 +878,12 @@ def create_server() -> FastMCP:
         from renegade_mcp.give_item import give_item as _give_item
 
         emu = get_client()
-        emu.create_checkpoint(action=f"give_item({item_name}, slot {party_slot})")
         return _give_item(emu, item_name, party_slot)
 
     # ── PC Storage ──
 
     @mcp.tool()
+    @renegade_tool
     def open_pc() -> dict[str, Any]:
         """Boot up the Pokemon Storage PC and reach the storage menu.
 
@@ -909,10 +896,10 @@ def create_server() -> FastMCP:
         from renegade_mcp.pc import open_pc as _open_pc
 
         emu = get_client()
-        emu.create_checkpoint(action="open_pc")
         return _open_pc(emu)
 
     @mcp.tool()
+    @renegade_tool
     def deposit_pokemon(party_slots: list[int]) -> dict[str, Any]:
         """Deposit party Pokemon into PC Box 1.
 
@@ -926,10 +913,10 @@ def create_server() -> FastMCP:
         from renegade_mcp.pc import deposit_pokemon as _deposit_pokemon
 
         emu = get_client()
-        emu.create_checkpoint(action=f"deposit_pokemon({party_slots})")
         return _deposit_pokemon(emu, party_slots)
 
     @mcp.tool()
+    @renegade_tool
     def withdraw_pokemon(box_slots: list[int]) -> dict[str, Any]:
         """Withdraw Pokemon from PC Box 1 to the party.
 
@@ -943,7 +930,6 @@ def create_server() -> FastMCP:
         from renegade_mcp.pc import withdraw_pokemon as _withdraw_pokemon
 
         emu = get_client()
-        emu.create_checkpoint(action=f"withdraw_pokemon({box_slots})")
         return _withdraw_pokemon(emu, box_slots)
 
     @mcp.tool()
@@ -962,6 +948,7 @@ def create_server() -> FastMCP:
         return _read_box(emu, box)
 
     @mcp.tool()
+    @renegade_tool
     def close_pc() -> dict[str, Any]:
         """Close the PC and return to the overworld.
 
@@ -971,12 +958,12 @@ def create_server() -> FastMCP:
         from renegade_mcp.pc import close_pc as _close_pc
 
         emu = get_client()
-        emu.create_checkpoint(action="close_pc")
         return _close_pc(emu)
 
     # ── Heal ──
 
     @mcp.tool()
+    @renegade_tool
     def heal_party() -> dict[str, Any]:
         """Heal the entire party at a Pokemon Center.
 
@@ -992,12 +979,12 @@ def create_server() -> FastMCP:
         from renegade_mcp.heal_party import heal_party as _heal_party
 
         emu = get_client()
-        emu.create_checkpoint(action="heal_party")
         return _heal_party(emu)
 
     # ── Party Reorder ──
 
     @mcp.tool()
+    @renegade_tool
     def reorder_party(from_slot: int, to_slot: int) -> dict[str, Any]:
         """Swap two party Pokemon positions in the overworld.
 
@@ -1011,12 +998,12 @@ def create_server() -> FastMCP:
         from renegade_mcp.reorder_party import reorder_party as _reorder_party
 
         emu = get_client()
-        emu.create_checkpoint(action=f"reorder_party({from_slot}, {to_slot})")
         return _reorder_party(emu, from_slot, to_slot)
 
     # ── Auto Grind ──
 
     @mcp.tool()
+    @renegade_tool
     def auto_grind(
         move_index: int = -1,
         cave: bool = False,
@@ -1061,17 +1048,6 @@ def create_server() -> FastMCP:
         from renegade_mcp.auto_grind import auto_grind as _auto_grind
 
         emu = get_client()
-        desc = f"auto_grind(move={move_index}, cave={cave}"
-        if target_level > 0:
-            desc += f", target_lv={target_level}"
-        if iterations > 0:
-            desc += f", iters={iterations}"
-        if forget_move >= -1:
-            desc += f", forget={forget_move}"
-        if target_species:
-            desc += f", species={target_species}"
-        desc += ")"
-        emu.create_checkpoint(action=desc)
         return _auto_grind(
             emu,
             move_index=move_index,
