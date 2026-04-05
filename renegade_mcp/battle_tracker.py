@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 from renegade_mcp.text_encoding import CHAR_MAP, CTRL_END, CTRL_NEWLINE, CTRL_PAGE_BREAK, CTRL_VAR
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
 # Scan region
 SCAN_START = 0x0228A000

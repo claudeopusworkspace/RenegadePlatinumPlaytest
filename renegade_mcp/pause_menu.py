@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
 # ── Constants ──
 PAUSE_CURSOR_ADDR = 0x0229FA28  # byte: 0=Pokedex, 1=Pokemon, 2=Bag, ... 6=Exit

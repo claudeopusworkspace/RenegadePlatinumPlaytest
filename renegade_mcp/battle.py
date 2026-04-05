@@ -13,7 +13,7 @@ from renegade_mcp.data import ability_names, item_names, move_data, move_names, 
 from renegade_mcp.text_encoding import decode_gen4_text
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
 # ── Memory layout ──
 BATTLE_BASE = 0x022C5774

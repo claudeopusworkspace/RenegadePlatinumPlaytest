@@ -1,21 +1,21 @@
 {
   "mcpServers": {
-    "desmume": {
-      "command": "/workspace/RenegadePlatinumPlaytest/DesmumeMCP/.venv/bin/python",
-      "args": ["-m", "desmume_mcp"],
-      "cwd": "/workspace/RenegadePlatinumPlaytest/DesmumeMCP",
+    "melonds": {
+      "command": "/workspace/MelonMCP/.venv/bin/python",
+      "args": ["-m", "melonds_mcp"],
+      "cwd": "/workspace/MelonMCP",
       "env": {
         "SDL_VIDEODRIVER": "dummy",
         "SDL_AUDIODRIVER": "dummy",
-        "PYTHONPATH": "/workspace/RenegadePlatinumPlaytest/DesmumeMCP"
+        "PYTHONPATH": "/workspace/MelonMCP"
       }
     },
     "renegade": {
-      "command": "/workspace/RenegadePlatinumPlaytest/DesmumeMCP/.venv/bin/python",
+      "command": "/workspace/MelonMCP/.venv/bin/python",
       "args": ["-m", "renegade_mcp"],
       "cwd": "/workspace/RenegadePlatinumPlaytest",
       "env": {
-        "PYTHONPATH": "/workspace/RenegadePlatinumPlaytest:/workspace/RenegadePlatinumPlaytest/DesmumeMCP"
+        "PYTHONPATH": "/workspace/RenegadePlatinumPlaytest:/workspace/MelonMCP"
       }
     }
   }

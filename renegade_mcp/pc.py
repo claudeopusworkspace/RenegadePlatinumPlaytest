@@ -20,7 +20,7 @@ from renegade_mcp.navigation import interact_with
 from renegade_mcp.party import _decode_encrypted_pokemon, read_party
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
 # ── Constants ──
 PC_BEHAVIOR = 0x83            # Terrain behavior for PC tiles

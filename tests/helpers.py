@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any
 
 # Ensure both projects are importable
-sys.path.insert(0, "/workspace/RenegadePlatinumPlaytest/DesmumeMCP")
+sys.path.insert(0, "/workspace/MelonMCP")
 sys.path.insert(0, "/workspace/RenegadePlatinumPlaytest")
 
 SAVESTATES_DIR = Path("/workspace/RenegadePlatinumPlaytest/savestates")
@@ -15,7 +15,7 @@ SAVESTATES_DIR = Path("/workspace/RenegadePlatinumPlaytest/savestates")
 
 def do_load_state(emu, name: str) -> None:
     """Load a named save state. Raises if the file doesn't exist."""
-    path = SAVESTATES_DIR / f"{name}.dst"
+    path = SAVESTATES_DIR / f"{name}.mst"
     assert path.exists(), f"Save state not found: {path}"
     result = emu.load_state(str(path))
     assert result, f"Failed to load save state: {name}"

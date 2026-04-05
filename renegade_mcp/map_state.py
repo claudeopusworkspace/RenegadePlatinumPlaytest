@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from renegade_mcp.map_names import lookup_map_name
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
 # ── Memory addresses ──
 TERRAIN_ADDR = 0x0231D1E4

@@ -1,0 +1,25 @@
+2026-04-05 12:42:17 INFO  [__main__] [MainThread] Logging initialized — file: /workspace/RenegadePlatinumPlaytest/melonds_mcp.log
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Initializing server 'melonDS MCP'
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Registering handler for ListToolsRequest
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Registering handler for CallToolRequest
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Registering handler for ListResourcesRequest
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Registering handler for ReadResourceRequest
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Registering handler for PromptListRequest
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Registering handler for GetPromptRequest
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Registering handler for ListResourceTemplatesRequest
+2026-04-05 12:42:18 INFO  [__main__] [MainThread] MCP server starting (stdio transport)
+2026-04-05 12:42:18 DEBUG [asyncio] [MainThread] Using selector: EpollSelector
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Received message: root=InitializedNotification(method='notifications/initialized', params=None, jsonrpc='2.0')
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Received message: <mcp.shared.session.RequestResponder object at 0x7b25922484a0>
+2026-04-05 12:42:18 INFO  [mcp.server.lowlevel.server] [MainThread] Processing request of type ListToolsRequest
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Dispatching request of type ListToolsRequest
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Response sent
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Received message: <mcp.shared.session.RequestResponder object at 0x7b25929de690>
+2026-04-05 12:42:18 INFO  [mcp.server.lowlevel.server] [MainThread] Processing request of type ListPromptsRequest
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Dispatching request of type ListPromptsRequest
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Received message: <mcp.shared.session.RequestResponder object at 0x7b25922b2780>
+2026-04-05 12:42:18 INFO  [mcp.server.lowlevel.server] [MainThread] Processing request of type ListResourcesRequest
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Dispatching request of type ListResourcesRequest
+2026-04-05 12:42:18 DEBUG [mcp.server.fastmcp.resources.resource_manager] [MainThread] Listing resources
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Response sent
+2026-04-05 12:42:18 DEBUG [mcp.server.lowlevel.server] [MainThread] Response sent

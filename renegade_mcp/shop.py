@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING, Any
 from renegade_mcp.data import item_names, item_prices, map_table
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
 # ── Common mart items: (item_id, badge_threshold) ──
 # Every standard PokéMart sells these, filtered by the player's badge count.

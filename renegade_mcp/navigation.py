@@ -36,7 +36,7 @@ from renegade_mcp.map_state import (
 from renegade_mcp.turn import _wait_for_action_prompt
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
 # ── Memory addresses ──
 POSITION_BASE = 0x0227F450

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING, Any
 from renegade_mcp.data import item_names
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
 # ── Memory layout ──
 BAG_BASE = 0x0227E800

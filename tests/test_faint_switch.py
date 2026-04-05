@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
 from helpers import assert_final_state, assert_log_contains, do_load_state as load_state
 

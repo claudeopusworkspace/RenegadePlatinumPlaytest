@@ -12,7 +12,7 @@ from renegade_mcp.battle_tracker import _tracker
 from renegade_mcp.turn import _is_battle_over
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
 # Touch coordinates for battle bag navigation
 BAG_XY = (45, 170)

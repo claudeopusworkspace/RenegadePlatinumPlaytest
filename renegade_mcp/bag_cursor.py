@@ -25,7 +25,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
 BAG_CURSOR_PTR_ADDR = 0x0229FA30
 

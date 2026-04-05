@@ -25,7 +25,7 @@ from renegade_mcp.battle_tracker import (
 )
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
 # ── Battle action screen (bottom screen) ──
 FIGHT_XY = (128, 90)

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
 # Lazy imports — resolved at call time so reload_tools order doesn't matter.
 # from renegade_mcp.battle import read_battle

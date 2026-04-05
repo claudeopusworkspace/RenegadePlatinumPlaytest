@@ -22,7 +22,7 @@ from renegade_mcp.navigation import interact_with, navigate_to
 from renegade_mcp.party import read_party
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
 # ── Timing ──
 TEXT_WAIT = 120       # frames to let a dialogue line render

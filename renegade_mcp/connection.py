@@ -1,4 +1,4 @@
-"""Lazy, reconnectable bridge client wrapper for the DeSmuME emulator.
+"""Lazy, reconnectable bridge client wrapper for the melonDS emulator.
 
 The game MCP server starts without requiring an emulator connection.
 Connection is only attempted when a tool is actually called.
@@ -10,12 +10,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
-# Default bridge socket location (project root CWD + DesmumeMCP data dir)
+# Default bridge socket location (project root CWD + MelonMCP data dir)
 _SOCKET_SEARCH_PATHS = [
-    ".desmume_bridge.sock",
-    "DesmumeMCP/.desmume_bridge.sock",
+    ".melonds_bridge.sock",
+    "MelonMCP/.melonds_bridge.sock",
 ]
 
 
@@ -39,12 +39,12 @@ class BridgeConnection:
         socket_path = self._find_socket()
         if socket_path is None:
             raise RuntimeError(
-                "Emulator not connected. The DeSmuME bridge socket was not found. "
-                "Call init_emulator and load_rom via the desmume MCP server first."
+                "Emulator not connected. The melonDS bridge socket was not found. "
+                "Call init_emulator and load_rom via the melonds MCP server first."
             )
 
         try:
-            from desmume_mcp.client import EmulatorClient
+            from melonds_mcp.client import EmulatorClient
 
             self._client = EmulatorClient(str(socket_path))
             # Verify the connection works
@@ -70,7 +70,7 @@ class BridgeConnection:
         """Search common locations for the bridge socket."""
         import os
 
-        env_path = os.environ.get("DESMUME_BRIDGE_SOCK")
+        env_path = os.environ.get("MELONDS_BRIDGE_SOCK")
         if env_path:
             p = Path(env_path)
             if p.exists():

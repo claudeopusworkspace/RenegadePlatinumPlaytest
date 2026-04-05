@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, Any
 from renegade_mcp.text_encoding import CHAR_MAP, CTRL_END, CTRL_PAGE_BREAK, CTRL_NEWLINE, decode_char
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
 # Memory regions: (start_addr, size, label)
 OVERWORLD_REGION = (0x022A7000, 0x2800, "overworld")

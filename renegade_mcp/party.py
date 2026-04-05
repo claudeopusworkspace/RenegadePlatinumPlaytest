@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 from renegade_mcp.data import ability_names, move_data, move_names, species_names
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
 # ── Memory addresses ──
 ENCRYPTED_PARTY_COUNT = 0x0227E26C

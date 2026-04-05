@@ -1,6 +1,6 @@
 """Renegade Platinum MCP server — game-specific tools for Pokemon Renegade Platinum.
 
-Tools connect to the running DeSmuME emulator via the bridge socket.
+Tools connect to the running melonDS emulator via the bridge socket.
 The server starts without requiring the emulator — connection is lazy.
 """
 

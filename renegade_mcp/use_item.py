@@ -19,7 +19,7 @@ from renegade_mcp.pause_menu import (
 )
 
 if TYPE_CHECKING:
-    from desmume_mcp.client import EmulatorClient
+    from melonds_mcp.client import EmulatorClient
 
 # ── Timing ──
 MENU_WAIT = 300       # frames to wait after major menu transitions
