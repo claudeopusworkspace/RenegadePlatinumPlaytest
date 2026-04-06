@@ -149,6 +149,104 @@ def _tile_behavior_hint(behavior: int) -> str:
     return f"behavior 0x{behavior:02X}"
 
 
+# ── Behavior chars for failure diagrams (subset of map_state._BEHAVIOR_CHAR) ──
+_DIAG_CHAR: dict[int, str] = {
+    0x02: '"', 0x03: '"',  # grass
+    0x10: '≈', 0x13: '≈', 0x15: '≈',  # water
+    0x38: 'v', 0x39: '^', 0x3A: '<', 0x3B: '>',  # ledges
+    0x69: 'D', 0x6E: 'D',  # doors
+}
+
+
+def _bfs_reachable(
+    terrain_info: list, npc_set: set,
+    start_x: int, start_y: int,
+    width: int, height: int,
+) -> set[tuple[int, int]]:
+    """Flood-fill BFS from start. Returns set of all reachable (x, y) tiles."""
+    if not (0 <= start_x < width and 0 <= start_y < height):
+        return set()
+    visited = {(start_x, start_y)}
+    queue = deque([(start_x, start_y)])
+    while queue:
+        x, y = queue.popleft()
+        for dx, dy, direction in BFS_MOVES:
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < width and 0 <= ny < height):
+                continue
+            if (nx, ny) in visited or (nx, ny) in npc_set:
+                continue
+            passable, behavior = terrain_info[ny][nx]
+            if not passable:
+                continue
+            if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
+                continue
+            if behavior in LEDGE_DIRECTIONS and LEDGE_DIRECTIONS[behavior] != direction:
+                continue
+            visited.add((nx, ny))
+            queue.append((nx, ny))
+    return visited
+
+
+def _find_nearest_reachable(
+    reachable: set[tuple[int, int]], target_x: int, target_y: int,
+) -> tuple[int, int] | None:
+    """Find the reachable tile closest to target by Manhattan distance."""
+    if not reachable:
+        return None
+    best = None
+    best_dist = float("inf")
+    for rx, ry in reachable:
+        d = abs(rx - target_x) + abs(ry - target_y)
+        if d < best_dist:
+            best_dist = d
+            best = (rx, ry)
+    return best
+
+
+def _render_failure_diagram(
+    terrain_info: list, npc_set: set,
+    player_x: int, player_y: int,
+    target_x: int, target_y: int,
+    nearest: tuple[int, int] | None,
+    width: int, height: int,
+    radius: int = 4,
+) -> str:
+    """Render a small ASCII grid centered on the target for failure diagnosis.
+
+    Shows: @ player, X target, * nearest reachable, # wall, . passable, ≈ water, etc.
+    """
+    cx, cy = target_x, target_y
+    min_x = max(0, cx - radius)
+    max_x = min(width - 1, cx + radius)
+    min_y = max(0, cy - radius)
+    max_y = min(height - 1, cy + radius)
+
+    lines = []
+    for y in range(min_y, max_y + 1):
+        row = []
+        for x in range(min_x, max_x + 1):
+            if (x, y) == (player_x, player_y):
+                row.append("@")
+            elif (x, y) == (target_x, target_y):
+                row.append("X")
+            elif nearest and (x, y) == nearest:
+                row.append("*")
+            elif (x, y) in npc_set:
+                row.append("N")
+            elif 0 <= y < len(terrain_info) and 0 <= x < len(terrain_info[0]):
+                passable, behavior = terrain_info[y][x]
+                if not passable:
+                    row.append(_DIAG_CHAR.get(behavior, "#"))
+                else:
+                    row.append(_DIAG_CHAR.get(behavior, "."))
+            else:
+                row.append(" ")
+        lines.append("".join(row))
+
+    return "\n".join(lines)
+
+
 def _get_field_move_availability(emu: EmulatorClient) -> dict[str, bool]:
     """Check which field moves are usable (party has move + badge).
 
@@ -1620,7 +1718,13 @@ def _navigate_to_impl(
         )
 
         if path_3d is None:
-            return {
+            combined_3d = npc_set | set(obstacle_map.keys())
+            reachable_3d = _bfs_reachable(
+                terrain_info, combined_3d,
+                bfs_sx, bfs_sy, bfs_w, bfs_h,
+            )
+            nearest_3d = _find_nearest_reachable(reachable_3d, bfs_tx, bfs_ty)
+            result_3d: dict[str, Any] = {
                 "error": (
                     "No 3D path found. Target may be on an unreachable elevation "
                     "level or blocked by walls on all connected levels."
@@ -1630,6 +1734,19 @@ def _navigate_to_impl(
                 "player_level": player_level,
                 "elevation_levels": len(elevation["levels"]),
             }
+            if nearest_3d:
+                gx = nearest_3d[0] + repath_ox
+                gy = nearest_3d[1] + repath_oy
+                dist = abs(nearest_3d[0] - bfs_tx) + abs(nearest_3d[1] - bfs_ty)
+                result_3d["nearest_reachable"] = {"x": gx, "y": gy, "distance": dist}
+            diagram_3d = _render_failure_diagram(
+                terrain_info, combined_3d,
+                bfs_sx, bfs_sy, bfs_tx, bfs_ty,
+                nearest_3d, bfs_w, bfs_h,
+            )
+            result_3d["diagram"] = diagram_3d
+            result_3d["diagram_key"] = "@=player X=target *=nearest_reachable #=wall .=passable N=NPC ≈=water D=door"
+            return result_3d
 
         path = path_3d
     else:
@@ -1760,11 +1877,37 @@ def _navigate_to_impl(
                 "by walls, water, NPCs, or obstacles"
             )
 
-        return {
+        # Build visual failure diagram + nearest reachable suggestion
+        result: dict[str, Any] = {
             "error": "No path found: " + "; ".join(reasons) + ".",
             "start": start_pos,
             "target": {"x": target_x, "y": target_y},
         }
+
+        reachable = _bfs_reachable(
+            terrain_info, combined_blocked,
+            bfs_sx, bfs_sy, bfs_w, bfs_h,
+        )
+        nearest = _find_nearest_reachable(reachable, bfs_tx, bfs_ty)
+
+        if nearest:
+            gx = nearest[0] + repath_ox
+            gy = nearest[1] + repath_oy
+            dist = abs(nearest[0] - bfs_tx) + abs(nearest[1] - bfs_ty)
+            result["nearest_reachable"] = {
+                "x": gx, "y": gy, "distance": dist,
+            }
+
+        if target_in_bounds:
+            diagram = _render_failure_diagram(
+                terrain_info, combined_blocked,
+                bfs_sx, bfs_sy, bfs_tx, bfs_ty,
+                nearest, bfs_w, bfs_h,
+            )
+            result["diagram"] = diagram
+            result["diagram_key"] = "@=player X=target *=nearest_reachable #=wall .=passable N=NPC ≈=water D=door"
+
+        return result
 
     if len(path) == 0:
         if is_door:
