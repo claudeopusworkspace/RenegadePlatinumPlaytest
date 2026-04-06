@@ -291,11 +291,10 @@ SIGN_GFX_IDS = {91, 93, 94, 95, 96}  # Map Signpost, Signboard, Arrow, Gym, Trai
 
 
 def read_sign_tiles_from_rom(emu: "EmulatorClient", map_id: int) -> list[tuple[int, int]]:
-    """Read sign activation tiles from ROM zone_event data.
+    """Read sign obstacle tiles from ROM zone_event data.
 
-    Signs auto-trigger when the player walks onto the tile directly south
-    of the sign while facing north. Returns list of (x, y) activation tiles
-    (i.e. sign_y + 1 for each sign).
+    Returns both the sign tile itself (impassable object) and the activation
+    tile one south of it (auto-triggers dialogue when facing north).
     """
     addr = ZONE_HEADER_BASE + map_id * ZONE_HEADER_STRIDE + _EVENTS_ARCHIVE_OFFSET
     events_id = emu.read_memory(addr, size="short")
@@ -319,7 +318,8 @@ def read_sign_tiles_from_rom(emu: "EmulatorClient", map_id: int) -> list[tuple[i
         if gfx_id in SIGN_GFX_IDS:
             sign_x = struct.unpack_from("<H", data, off + 0x18)[0]
             sign_y = struct.unpack_from("<H", data, off + 0x1A)[0]
-            tiles.append((sign_x, sign_y + 1))  # activation tile is one south
+            tiles.append((sign_x, sign_y))        # sign tile itself (impassable)
+            tiles.append((sign_x, sign_y + 1))  # activation tile one south
         off += _OBJ_EVENT_SIZE
 
     return tiles

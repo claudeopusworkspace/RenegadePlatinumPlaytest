@@ -431,6 +431,8 @@ def _bfs_pathfind(
     visited = {(start_x, start_y)}
     queue = deque([(start_x, start_y, [])])
 
+    goal = (goal_x, goal_y)
+
     while queue:
         x, y, path = queue.popleft()
 
@@ -438,7 +440,9 @@ def _bfs_pathfind(
             nx, ny = x + dx, y + dy
             if not (0 <= nx < width and 0 <= ny < height):
                 continue
-            if (nx, ny) in visited or (nx, ny) in npc_set:
+            if (nx, ny) in visited:
+                continue
+            if (nx, ny) in npc_set and (nx, ny) != goal:
                 continue
 
             passable, behavior = terrain_info[ny][nx]
@@ -453,7 +457,7 @@ def _bfs_pathfind(
                 continue
 
             new_path = path + [direction]
-            if (nx, ny) == (goal_x, goal_y):
+            if (nx, ny) == goal:
                 return new_path
 
             visited.add((nx, ny))
@@ -506,7 +510,7 @@ def _bfs_pathfind_obstacles(
                     new_obs.append(ob)
                 else:
                     continue  # skill not available, treat as blocked
-            elif (nx, ny) in npc_set:
+            elif (nx, ny) in npc_set and (nx, ny) != (goal_x, goal_y):
                 continue  # regular NPC or strength boulder
             else:
                 # Normal terrain check
@@ -578,6 +582,7 @@ def _bfs_pathfind_level(
         # No elevation data → accessible on any level
         return True
 
+    goal = (goal_x, goal_y)
     visited = {(start_x, start_y)}
     queue: deque[tuple[int, int, list[str]]] = deque([(start_x, start_y, [])])
     reachable_ramps: dict[int, tuple[list[str], tuple[int, int], int]] = {}
@@ -589,7 +594,9 @@ def _bfs_pathfind_level(
             nx, ny = x + dx, y + dy
             if not (0 <= nx < width and 0 <= ny < height):
                 continue
-            if (nx, ny) in visited or (nx, ny) in npc_set:
+            if (nx, ny) in visited:
+                continue
+            if (nx, ny) in npc_set and (nx, ny) != goal:
                 continue
 
             passable, behavior = terrain_info[ny][nx]
