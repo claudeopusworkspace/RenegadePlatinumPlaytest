@@ -2276,6 +2276,121 @@ _ADJACENT_OFFSETS = [
 INTERACT_DIALOGUE_WAIT = 60  # frames to wait for auto-interaction
 INTERACT_A_WAIT = 60         # frames to wait after pressing A
 
+# Moving NPC intercept timing
+_MOVING_NPC_POLL = 15        # frames between polls (~4/sec)
+_MOVING_NPC_TIMEOUT = 900    # ~15 sec, covers 2 full patrol cycles
+_INTERACT_COOLDOWN = 90      # min frames between A-press attempts
+
+# Direction deltas → face direction string
+_DELTA_TO_FACE = {(1, 0): "right", (-1, 0): "left", (0, 1): "down", (0, -1): "up"}
+_FACE_TO_INT = {"up": 0, "down": 1, "left": 2, "right": 3}
+
+
+def _wait_for_moving_npc(
+    emu: "EmulatorClient",
+    object_index: int,
+    nav_result: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Wait for a patrolling NPC to become interactable.
+
+    Called after the normal face→A sequence fails because the target NPC
+    has a patrol movement and moved away from the expected position.
+
+    Polls for up to ~15 seconds (2 full patrol cycles):
+      - Checks for battle (trainer spotted us during patrol).
+      - Checks for overworld dialogue (script triggered).
+      - When NPC is adjacent, faces them and presses A.
+
+    Returns the updated *nav_result* on success, or None on timeout.
+    """
+    polls = _MOVING_NPC_TIMEOUT // _MOVING_NPC_POLL
+    last_attempt_frame = -_INTERACT_COOLDOWN  # allow first attempt immediately
+    elapsed = 0
+
+    for _ in range(polls):
+        # ── 1. Battle check (trainer spotted us during patrol) ──
+        battlers = read_battle(emu)
+        if battlers:
+            encounter = _post_nav_check(emu)
+            if encounter:
+                nav_result["encounter"] = encounter
+                nav_result["intercepted_moving_npc"] = True
+                return nav_result
+
+        # ── 2. Dialogue check (NPC script triggered) ──
+        dlg = read_dialogue(emu, region="overworld")
+        if dlg["region"] != "none":
+            adv = advance_dialogue(emu)
+            nav_result["dialogue"] = adv
+            battlers = read_battle(emu)
+            if battlers:
+                encounter = _post_nav_check(emu)
+                if encounter:
+                    nav_result["encounter"] = encounter
+            nav_result["intercepted_moving_npc"] = True
+            return nav_result
+
+        # ── 3. Adjacency check — face + A when NPC is next to us ──
+        if elapsed - last_attempt_frame >= _INTERACT_COOLDOWN:
+            _, px, py, _ = read_player_state(emu)
+            objects_now = read_objects(emu)
+            target = next((o for o in objects_now if o["index"] == object_index), None)
+            if target:
+                dx = target["x"] - px
+                dy = target["y"] - py
+                if abs(dx) + abs(dy) == 1:
+                    face_dir = _DELTA_TO_FACE.get((dx, dy))
+                    if face_dir:
+                        last_attempt_frame = elapsed
+
+                        # Face the NPC
+                        emu.advance_frames(HOLD_FRAMES, buttons=[face_dir])
+                        emu.advance_frames(WAIT_FRAMES)
+
+                        # Check if trainer spotted us during face turn
+                        _, _, _, new_facing = read_player_state(emu)
+                        if new_facing != _FACE_TO_INT[face_dir]:
+                            encounter = _post_nav_check(emu)
+                            if encounter:
+                                nav_result["encounter"] = encounter
+                                nav_result["intercepted_moving_npc"] = True
+                                return nav_result
+
+                        # Press A and check for response
+                        emu.press_buttons(["a"], frames=8)
+                        emu.advance_frames(INTERACT_A_WAIT)
+
+                        dlg = read_dialogue(emu, region="overworld")
+                        if dlg["region"] != "none":
+                            adv = advance_dialogue(emu)
+                            nav_result["dialogue"] = adv
+                            nav_result["pressed_a"] = True
+                            battlers = read_battle(emu)
+                            if battlers:
+                                encounter = _post_nav_check(emu)
+                                if encounter:
+                                    nav_result["encounter"] = encounter
+                            nav_result["intercepted_moving_npc"] = True
+                            return nav_result
+
+                        # Check for approach animation (ctx0=RUN after A press)
+                        mgr = _find_script_manager(emu)
+                        if mgr:
+                            ss = _read_script_state(emu, mgr)
+                            if not ss["is_msg_box_open"] and not ss["sub_ctx_active"] and ss["ctx0_ptr"]:
+                                ctx0 = _read_context_state(emu, ss["ctx0_ptr"])
+                                if ctx0["state"] == CTX_RUNNING:
+                                    encounter = _post_nav_check(emu)
+                                    if encounter:
+                                        nav_result["encounter"] = encounter
+                                        nav_result["intercepted_moving_npc"] = True
+                                        return nav_result
+
+        emu.advance_frames(_MOVING_NPC_POLL)
+        elapsed += _MOVING_NPC_POLL
+
+    return None
+
 
 def _target_info(has_object: bool, object_index: int, name: str, x: int, y: int) -> dict:
     """Build target dict for interact_with results."""
@@ -2547,6 +2662,22 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
                 nav_result["encounter"] = encounter
                 nav_result["interrupted"] = True
                 return nav_result
+
+    # ── Moving NPC retry: if target has a patrol movement, wait for it ──
+    if has_object and target is not None:
+        movement = target.get("movement_type", "none")
+        if movement not in ("none", "stationary"):
+            intercept = _wait_for_moving_npc(emu, object_index, nav_result)
+            if intercept is not None:
+                return intercept
+            # Timeout — include diagnostics
+            nav_result["dialogue"] = None
+            nav_result["note"] = (
+                f"{target_name} has patrol movement ({movement}) and could not "
+                f"be intercepted within {_MOVING_NPC_TIMEOUT // 60:.0f} seconds. "
+                f"Try navigating to their patrol area and waiting manually."
+            )
+            return nav_result
 
     # ── No dialogue found ──
     nav_result["dialogue"] = None
