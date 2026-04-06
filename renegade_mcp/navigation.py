@@ -777,6 +777,166 @@ def _build_multi_chunk_terrain(
     return combined, grid_origin_x, grid_origin_y, grid_w, grid_h
 
 
+def _build_multi_chunk_elevation(
+    emu: EmulatorClient, map_id: int,
+    terrain_info: list, grid_ox: int, grid_oy: int, grid_w: int, grid_h: int,
+) -> dict | None:
+    """Load BDHC for each chunk in the terrain grid, build combined elevation data.
+
+    Returns elevation dict compatible with _bfs_pathfind_3d, or None if flat.
+    """
+    from renegade_mcp.map_state import (
+        _tile_to_bdhc, get_matrix_for_map, parse_bdhc,
+    )
+
+    result = get_matrix_for_map(emu, map_id)
+    if result is None:
+        return None
+
+    _matrix_id, mw, mh, _header_ids, terrain_ids = result
+
+    min_cx = grid_ox // CHUNK_SIZE
+    min_cy = grid_oy // CHUNK_SIZE
+    num_cx = grid_w // CHUNK_SIZE
+    num_cy = grid_h // CHUNK_SIZE
+
+    # Pass 1: Load all BDHC data and collect flat heights
+    chunk_bdhcs: dict[tuple[int, int], dict] = {}
+    all_flat_heights: set[int] = set()
+
+    for cy in range(min_cy, min_cy + num_cy):
+        for cx in range(min_cx, min_cx + num_cx):
+            if cy >= mh or cx >= mw:
+                continue
+            land_id = terrain_ids[cy][cx]
+            if land_id == 0xFFFF:
+                continue
+            bdhc = parse_bdhc(land_id)
+            if bdhc is None:
+                continue
+
+            chunk_bdhcs[(cx, cy)] = bdhc
+
+            for plate in bdhc["plates"]:
+                nx, ny, nz = bdhc["normals"][plate["normal"]]
+                if abs(nx) < 0.01 and abs(nz) < 0.01 and abs(ny) > 0.01:
+                    d = bdhc["constants"][plate["constant"]]
+                    all_flat_heights.add(round(-d / ny))
+
+    if len(all_flat_heights) <= 1:
+        return None  # Flat terrain across all loaded chunks
+
+    sorted_heights = sorted(all_flat_heights)
+    h2l = {h: i for i, h in enumerate(sorted_heights)}
+
+    # Pass 2: Map tiles to levels across all chunks
+    level_map: dict[tuple[int, int], list[int]] = {}
+    ramp_tiles: dict[tuple[int, int], dict] = {}
+    ramps: list[dict] = []
+
+    for (cx, cy), bdhc in chunk_bdhcs.items():
+        base_x = (cx - min_cx) * CHUNK_SIZE
+        base_y = (cy - min_cy) * CHUNK_SIZE
+
+        plates = bdhc["plates"]
+        pts = bdhc["points"]
+        norms = bdhc["normals"]
+        consts = bdhc["constants"]
+
+        # Flat plates → tile level assignments
+        for row in range(CHUNK_SIZE):
+            for col in range(CHUNK_SIZE):
+                gx = base_x + col
+                gy = base_y + row
+                if gx >= grid_w or gy >= grid_h:
+                    continue
+                passable, _ = terrain_info[gy][gx]
+                if not passable:
+                    continue
+
+                x, z = _tile_to_bdhc(col, row)
+                levels: set[int] = set()
+                for plate in plates:
+                    x1, z1 = pts[plate["p1"]]
+                    x2, z2 = pts[plate["p2"]]
+                    if not (min(x1, x2) <= x <= max(x1, x2)
+                            and min(z1, z2) <= z <= max(z1, z2)):
+                        continue
+                    nx, ny, nz = norms[plate["normal"]]
+                    if abs(nx) < 0.01 and abs(nz) < 0.01 and abs(ny) > 0.01:
+                        d = consts[plate["constant"]]
+                        h = round(-d / ny)
+                        if h in h2l:
+                            levels.add(h2l[h])
+                if levels:
+                    level_map[(gx, gy)] = sorted(levels)
+
+        # Ramp plates
+        for plate in plates:
+            nx, ny, nz = norms[plate["normal"]]
+            if abs(nx) < 0.01 and abs(nz) < 0.01:
+                continue
+            if abs(ny) < 0.01:
+                continue
+
+            x1, z1 = pts[plate["p1"]]
+            x2, z2 = pts[plate["p2"]]
+            d = consts[plate["constant"]]
+
+            corners = [
+                (min(x1, x2), min(z1, z2)), (min(x1, x2), max(z1, z2)),
+                (max(x1, x2), min(z1, z2)), (max(x1, x2), max(z1, z2)),
+            ]
+            corner_heights = [
+                round(-(nx * cx_ + nz * cz + d) / ny) for cx_, cz in corners
+            ]
+            h_max, h_min = max(corner_heights), min(corner_heights)
+
+            from_level = h2l.get(h_max)
+            to_level = h2l.get(h_min)
+            if from_level is None or to_level is None:
+                continue
+
+            direction = (
+                ("south" if nz > 0 else "north")
+                if abs(nz) >= abs(nx) else ("east" if nx > 0 else "west")
+            )
+
+            col_min = int((min(x1, x2) + 256) / 16)
+            col_max = int((max(x1, x2) + 256) / 16)
+            row_min = int((min(z1, z2) + 256) / 16)
+            row_max = int((max(z1, z2) + 256) / 16)
+
+            ramp_info = {
+                "ramp_index": len(ramps),
+                "col_range": (base_x + col_min, base_x + col_max),
+                "row_range": (base_y + row_min, base_y + row_max),
+                "from_level": from_level,
+                "to_level": to_level,
+                "direction": direction,
+            }
+            ramps.append(ramp_info)
+
+            for r in range(row_min, row_max):
+                for c in range(col_min, col_max):
+                    gx = base_x + c
+                    gy = base_y + r
+                    if 0 <= gx < grid_w and 0 <= gy < grid_h:
+                        passable, _ = terrain_info[gy][gx]
+                        if passable:
+                            ramp_tiles[(gx, gy)] = ramp_info
+
+    levels_info = [{"level": h2l[h], "height": h} for h in sorted_heights]
+
+    return {
+        "level_map": level_map,
+        "ramp_tiles": ramp_tiles,
+        "ramps": ramps,
+        "levels": levels_info,
+        "height_to_level": h2l,
+    }
+
+
 def _summarize_path(directions: list[str]) -> str:
     """Compress direction list into readable summary."""
     if not directions:
@@ -847,10 +1007,25 @@ def _try_repath(
         if 0 <= rx < w and 0 <= ry < h:
             npc_set.add((rx, ry))
 
+    sx = player_x - ox
+    sy = player_y - oy
+
+    # Use 3D BFS when elevation data is available
+    elevation = ctx.get("elevation")
+    if elevation is not None:
+        emu = ctx["emu"]
+        from renegade_mcp.map_state import read_player_height
+        player_level = _height_to_level(read_player_height(emu), elevation)
+        if player_level is not None:
+            return _bfs_pathfind_3d(
+                ctx["terrain_info"], npc_set, elevation,
+                sx, sy, ctx["goal_x"], ctx["goal_y"],
+                player_level, width=w, height=h,
+            )
+
     return _bfs_pathfind(
         ctx["terrain_info"], npc_set,
-        player_x - ox, player_y - oy,
-        ctx["goal_x"], ctx["goal_y"],
+        sx, sy, ctx["goal_x"], ctx["goal_y"],
         width=w, height=h,
     )
 
@@ -1692,12 +1867,22 @@ def _navigate_to_impl(
         "sign_tiles": sign_block_set,
     }
 
-    # ── 3D elevation detection (single-chunk maps only) ──
+    # ── 3D elevation detection ──
     elevation = None
     player_level = None
     is_3d = False
 
-    if not (is_global and chunked):
+    if is_global and chunked:
+        # Multi-chunk: load BDHC per chunk, build combined elevation
+        mc_elev = _build_multi_chunk_elevation(
+            emu, map_id, terrain_info, grid_ox, grid_oy, grid_w, grid_h,
+        )
+        if mc_elev is not None:
+            player_level = _height_to_level(read_player_height(emu), mc_elev)
+            if player_level is not None:
+                elevation = mc_elev
+                is_3d = True
+    else:
         land_id = get_land_data_id(emu, map_id, px, py)
         if land_id is not None:
             bdhc = parse_bdhc(land_id)
@@ -1709,6 +1894,9 @@ def _navigate_to_impl(
                         is_3d = True
 
     if is_3d:
+        repath_ctx["elevation"] = elevation
+        repath_ctx["emu"] = emu
+
         # ── 3D pathfinding (replaces dual BFS for elevated maps) ──
         combined_npc_set = npc_set | set(obstacle_map.keys())
         path_3d = _bfs_pathfind_3d(
