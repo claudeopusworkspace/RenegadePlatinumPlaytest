@@ -136,6 +136,7 @@ def read_shop(emu: EmulatorClient, badge_count: int | None = None) -> dict[str, 
     Returns dict with common_items, specialty_items, formatted text, etc.
     """
     from renegade_mcp.map_state import read_player_state
+    from renegade_mcp.trainer import read_trainer_status
 
     map_id, x, y, _facing = read_player_state(emu)
     city_code = _city_code_from_map(map_id)
@@ -151,7 +152,11 @@ def read_shop(emu: EmulatorClient, badge_count: int | None = None) -> dict[str, 
 
     loc_name = _city_name(city_code)
 
-    badges = badge_count if badge_count is not None else 0
+    if badge_count is not None:
+        badges = badge_count
+    else:
+        status = read_trainer_status(emu)
+        badges = status.get("badges", 0) if isinstance(status.get("badges"), int) else 0
     threshold = _badge_threshold(badges)
 
     names = item_names()
@@ -367,7 +372,11 @@ def buy_item(
             )
 
     # ── Resolve badge threshold ──
-    badges = badge_count if badge_count is not None else 0
+    if badge_count is not None:
+        badges = badge_count
+    else:
+        status = read_trainer_status(emu)
+        badges = status.get("badges", 0) if isinstance(status.get("badges"), int) else 0
     threshold = _badge_threshold(badges)
 
     # ── Find item in shop inventory ──
@@ -420,10 +429,9 @@ def buy_item(
     if nav_result.get("stopped_early"):
         return _error(f"Could not reach {cashier_name} — path blocked.")
 
-    # Dialogue: "Welcome! What do you need?"
-    # ── Press A to advance greeting, then A to select BUY ──
-    _press(emu, ["a"])               # advance greeting text
-    _press(emu, ["a"], _MENU_WAIT)   # select BUY (cursor defaults to BUY)
+    # interact_with auto-advances "Welcome! What do you need?" dialogue.
+    # We're now at the BUY/SELL/SEE YA menu with cursor on BUY.
+    _press(emu, ["a"], _MENU_WAIT)   # select BUY → item list loads
 
     # ── Navigate item list to target item ──
     for _ in range(menu_index):

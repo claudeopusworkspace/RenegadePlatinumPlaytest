@@ -17,9 +17,8 @@ if TYPE_CHECKING:
 SAVE_BLOCK_BASE = 0x0227E1D0
 MONEY_OFFSET = 0x7C  # u32, verified via snapshot/diff across trainer battles
 
-# Badge offset: unverified (we have 0 badges). Will confirm at first gym.
-# PKHeX Platinum puts badges around offset 0x82 but our layout may differ.
-BADGE_OFFSET = None  # Set once confirmed
+# Badge offset: verified with 1 badge (Coal Badge = bit 0 → value 0x01).
+BADGE_OFFSET = 0x82
 
 
 # ── Trainer defeat flags ──
