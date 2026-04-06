@@ -1648,13 +1648,19 @@ def navigate_manual(emu: EmulatorClient, directions_str: str, flee_encounters: b
 
     # Check if an expected warp transition didn't happen
     if expected_transition and final_map == start_map:
-        result["warp_failed"] = True
-        result["note"] = (
-            "Path ended at a warp/door tile but no map transition occurred. "
-            "Possible causes: locked door (key item required), story flag not yet "
-            "set, or an event/script blocking entry. Check the scene manually "
-            "(screenshot + read_dialogue)."
-        )
+        # Dialogue/battle may have preempted the warp — check before declaring failure
+        if encounter is None:
+            encounter = _post_nav_check(emu)
+            if encounter:
+                result["encounter"] = encounter
+        if encounter is None:
+            result["warp_failed"] = True
+            result["note"] = (
+                "Path ended at a warp/door tile but no map transition occurred. "
+                "Possible causes: locked door (key item required), story flag not yet "
+                "set, or an event/script blocking entry. Check the scene manually "
+                "(screenshot + read_dialogue)."
+            )
 
     return result
 
@@ -2114,14 +2120,20 @@ def _navigate_to_impl(
                 result.update(door_result)
                 result["final"] = door_result["new_position"]
             else:
-                result["final"] = start_pos
-                result["warp_failed"] = True
-                result["note"] = (
-                    "Already on door tile but activation did not trigger a map "
-                    "transition. Possible causes: locked door (key item required), "
-                    "story flag not yet set, or a script relocated the warp. "
-                    "Check the scene manually (screenshot + read_dialogue)."
-                )
+                # Check if dialogue/battle preempted the warp activation
+                encounter = _post_nav_check(emu)
+                if encounter:
+                    result["final"] = start_pos
+                    result["encounter"] = encounter
+                else:
+                    result["final"] = start_pos
+                    result["warp_failed"] = True
+                    result["note"] = (
+                        "Already on door tile but activation did not trigger a map "
+                        "transition. Possible causes: locked door (key item required), "
+                        "story flag not yet set, or a script relocated the warp. "
+                        "Check the scene manually (screenshot + read_dialogue)."
+                    )
             return result
 
         emu.advance_frames(SETTLE_FRAMES)
@@ -2138,23 +2150,29 @@ def _navigate_to_impl(
 
     path_str = _summarize_path(path)
 
-    # Door target but couldn't reach it — likely locked or event-blocked
+    # Door target but couldn't reach it — check for dialogue/battle that
+    # interrupted the path (e.g., NPC farewell at zone exit), then fall back
+    # to warp_failed if nothing is found.
     if is_door and stopped_early:
+        encounter = _post_nav_check(emu)
         final_map, final_x, final_y = _read_position(emu)
         result = {
             "path": path_str,
             "steps": steps_taken,
             "start": start_pos,
             "final": _pos_with_map(final_x, final_y, final_map),
-            "warp_failed": True,
-            "note": (
+        }
+        if encounter:
+            result["encounter"] = encounter
+        else:
+            result["warp_failed"] = True
+            result["note"] = (
                 "Target tile is a door/warp but could not be entered. "
                 "Possible causes: locked door (key item required), story flag "
                 "not yet set, NPC or obstacle blocking the approach path, or a "
                 "script relocated the warp. Check the scene manually "
                 "(screenshot + read_dialogue)."
-            ),
-        }
+            )
         if repaths_used > 0:
             result["repaths"] = repaths_used
         return result
@@ -2185,14 +2203,19 @@ def _navigate_to_impl(
             result.update(door_result)
             result["final"] = door_result["new_position"]
         else:
+            # Warp failed — check if dialogue/battle preempted it
+            encounter = _post_nav_check(emu)
             final_map, final_x, final_y = _read_position(emu)
             result["final"] = _pos_with_map(final_x, final_y, final_map)
-            result["warp_failed"] = True
-            result["note"] = (
-                "Warp transition did not occur — player is still on the same map. "
-                "Possible causes: locked door (key item required), story flag not yet "
-                "set, or an event/script blocking entry. Check the scene manually "
-                "(screenshot + read_dialogue)."
+            if encounter:
+                result["encounter"] = encounter
+            else:
+                result["warp_failed"] = True
+                result["note"] = (
+                    "Warp transition did not occur — player is still on the same map. "
+                    "Possible causes: locked door (key item required), story flag not yet "
+                    "set, or an event/script blocking entry. Check the scene manually "
+                    "(screenshot + read_dialogue)."
             )
         return result
 
@@ -2257,7 +2280,7 @@ def _navigate_to_impl(
         result["encounter"] = encounter
     if repaths_used > 0:
         result["repaths"] = repaths_used
-    if adj_warp_failed is not None:
+    if adj_warp_failed is not None and encounter is None:
         result.update(adj_warp_failed)
 
     return result
