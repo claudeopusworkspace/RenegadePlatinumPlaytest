@@ -674,6 +674,7 @@ def battle_turn(
 
     Trainer switch prompt (SWITCH_PROMPT — "Will you switch?"):
         switch_to (1-5): Switch to a different Pokemon.
+        move_index (0-3): Decline the switch, then use that move on the next turn.
         No args / switch_to=-1: Keep battling with current Pokemon.
 
     Move learning (MOVE_LEARN — "give up on learning?"):
@@ -724,8 +725,11 @@ def battle_turn(
     elif pt in ("FAINT_SWITCH", "SWITCH_PROMPT"):
         if has_forget:
             return {"error": f"Not at a move learning prompt. Currently in {pt} state."}
-        if has_move:
-            return {"error": f"Can't use a move in {pt} state. Use switch_to (1-5), or omit to {'flee' if pt == 'FAINT_SWITCH' else 'keep battling'}."}
+        if has_move and pt == "FAINT_SWITCH":
+            return {"error": f"Can't use a move in {pt} state. Use switch_to (1-5), or omit to flee."}
+        # SWITCH_PROMPT + has_move: allowed — decline switch, then use that move (see below)
+        if has_move and has_switch:
+            return {"error": "Specify move_index OR switch_to, not both."}
         if has_switch and switch_to == 0:
             return {"error": "switch_to=0 is the active battler. Use 1-5 to switch to a different Pokemon."}
         if has_switch and switch_to > 5:
@@ -756,6 +760,9 @@ def battle_turn(
         result = _execute_faint_switch(emu, prompt, switch_to, has_switch)
     elif pt == "FAINT_FORCED":
         result = _execute_forced_switch(emu, prompt, switch_to)
+    elif pt == "SWITCH_PROMPT" and has_move:
+        # Decline the switch, then chain into the move action on the next prompt
+        result = _execute_switch_prompt_then_move(emu, prompt, move_index, target)
     elif pt == "SWITCH_PROMPT":
         result = _execute_switch_prompt(emu, prompt, switch_to, has_switch)
     elif pt == "MOVE_LEARN":
@@ -925,6 +932,35 @@ def _execute_switch_prompt(
     else:
         _decline_flow(emu)
     return _poll_after_action(emu, prompt["log"])
+
+
+def _execute_switch_prompt_then_move(
+    emu: EmulatorClient, prompt: dict, move_index: int, target: int = -1,
+) -> dict[str, Any]:
+    """Decline switch prompt, then chain into using a move on the next action prompt.
+
+    This allows `battle_turn(move_index=N)` during SWITCH_PROMPT to act as a
+    shorthand for: decline switch → wait for action prompt → use move N.
+    """
+    # Step 1: Decline the switch (same as bare _execute_switch_prompt)
+    emu.advance_frames(PROMPT_SETTLE)
+    _decline_flow(emu)
+
+    # Step 2: Poll for next state after declining
+    decline_result = _poll_after_action(emu, prompt["log"])
+
+    # Step 3: If we landed on an action prompt, chain into the move
+    if decline_result["final_state"] in ("WAIT_FOR_ACTION", "ACTION"):
+        # Build a synthetic prompt from the decline result for _execute_action
+        action_prompt = {
+            "ready": True,
+            "prompt_type": "ACTION",
+            "log": decline_result["log"],
+        }
+        return _execute_action(emu, action_prompt, move_index, -1, True, target)
+
+    # Otherwise (battle ended, fainted, move learn, etc.), return as-is
+    return decline_result
 
 
 def _execute_move_learn(

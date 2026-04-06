@@ -1088,6 +1088,9 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
                 entry["defeated"] = is_trainer_defeated(emu, tid)
         obj_info.append(entry)
 
+    # Sort objects by Manhattan distance from player
+    obj_info.sort(key=lambda o: abs(o["x"] - px) + abs(o["y"] - py))
+
     # Warp destinations within viewport
     all_warps = read_warps_from_rom(emu, map_id)
     warp_info = []
