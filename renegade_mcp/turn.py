@@ -89,9 +89,9 @@ BATTLE_SLOT_SIZE = 0xC0
 
 
 def _scan_start() -> int:
-    """Resolve BATTLE__scan_start() at call time (lazy for reload_tools compat)."""
+    """Resolve BATTLE_SCAN_START at call time (lazy for reload_tools compat)."""
     from renegade_mcp.addresses import addr
-    return addr("BATTLE__scan_start()")
+    return addr("BATTLE_SCAN_START")
 # Offsets within heap-allocated BattleScriptTaskData.tmpData[]
 TASK_DATA_MOVE_OFF = 0x40      # tmpData[4] = GET_EXP_MOVE (move ID being learned)
 TASK_DATA_SLOT_OFF = 0x48      # tmpData[6] = GET_EXP_PARTY_SLOT (lower bound search index)

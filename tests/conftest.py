@@ -66,6 +66,12 @@ def emu() -> Any:
                 mod = importlib.import_module(cfg["import"])
                 client = mod.EmulatorClient(sock)
                 client.get_frame_count()  # verify connection
+
+                # Initialize address resolution (tests bypass connection.py)
+                from renegade_mcp.addresses import detect_shift, get_delta
+                if get_delta() is None:
+                    detect_shift(client)
+
                 return client
 
     pytest.skip("No emulator bridge socket found — is an emulator running?")
