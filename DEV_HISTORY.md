@@ -502,3 +502,66 @@ All 6 cases verified with live emulator tests.
 - **Resolved this session**: Locked door warp failure detection, navigate_to failure explanations
 - **Remaining open**: Tag battle untested (low priority, needs GUI), multi-chunk 3D BFS (deferred)
 - **Next session**: Resume adventure — Route 205 north → Eterna Forest → Eterna City
+
+---
+
+## Dev Session: Pre-Migration Bug Sweep (2026-04-05/06)
+
+Motivated by planned melonDS migration: save states can't transfer, so we need to close bugs that have debug save states tied to them. Also tackled several quick QoL wins.
+
+### Bridge Tiles "Bug" — Closed as Not-a-Bug
+- **Investigation**: Loaded `debug_unknown_bridge_tiles_route205`, tested `navigate_to(262, 540)`. Error: "target tile is impassable (behavior 0x00)" — the target itself was a wall tile, not a bridge tile.
+- **Confirmed**: Behaviors 0x0c and 0x71 do NOT have `is_blocked` set. BFS already treats them as passable. Successfully navigated through bridge tiles to (269, 532) and (249, 544).
+- **Root cause of confusion**: Text-only failure message gave no spatial context, so nearby `?` tiles were blamed instead of the actual wall at the target.
+
+### Visual Failure Diagram + Nearest Reachable Suggestion
+- **New helpers**: `_bfs_reachable()` (flood-fill from player), `_find_nearest_reachable()` (min Manhattan distance from target), `_render_failure_diagram()` (9×9 ASCII grid centered on target).
+- **Output**: `diagram` field shows `@`=player, `X`=target, `*`=nearest reachable, `#`=wall, `.`=passable, `N`=NPC, `≈`=water, `D`=door. `nearest_reachable` field gives global coords + distance.
+- **Coverage**: Both 2D and 3D path failure returns.
+- **Directly prevents** the bridge-tile misdiagnosis that created the original bug.
+
+### view_map: Sort Objects by Distance
+- Single line: `obj_info.sort(key=lambda o: abs(o["x"] - px) + abs(o["y"] - py))`.
+- Nearest objects appear first — prevents overlooking nearby items buried at high indices.
+
+### battle_turn: move_index During SWITCH_PROMPT
+- `battle_turn(move_index=N)` during SWITCH_PROMPT now auto-declines the switch and chains into the move action.
+- New `_execute_switch_prompt_then_move()`: decline → poll → if ACTION prompt, call `_execute_action` with the move.
+- Saves one tool call per trainer KO prompt.
+
+### buy_item Fix + Badge Detection
+Two-part fix:
+1. **Extra A press removed** — `interact_with` already auto-advances cashier greeting dialogue. The old code had two A presses: one "advancing greeting" (actually selected BUY) and one "selecting BUY" (actually selected first item). Removed the redundant press.
+2. **Badge address confirmed** — `BADGE_OFFSET = 0x82` in trainer.py. Verified: Coal Badge = bit 0, value `0x01` at `SAVE_BLOCK_BASE + 0x82`. `read_shop` and `buy_item` now read actual badge count instead of defaulting to 0. Threshold 2 (1 badge) unlocks Super Potion, Awakening, Burn Heal, Ice Heal, Escape Rope, Repel.
+- **Tested**: Potion x3 (¥900) and Escape Rope x2 (¥1,100) from Floaroma Town overworld.
+- **New save state**: `floaroma_town_buy_item_debug`.
+
+### Trainer Detection False Positives Fixed
+- **Root cause**: `trainer: true` was set whenever `trainerType > 0` in the MapObject struct, but non-trainer objects (Pokeball items, etc.) can have non-zero trainerType values. Pokeball at gfxID 87 had trainerType=3, script=7017 (not in trainer range).
+- **Fix**: Only set `trainer: true` when both `trainerType > 0` AND `trainer_id_from_script(script)` returns a valid ID (script in 3000-4999 or 5000-6999 range). One-line change.
+- **Verified**: Pokeball at (213,640) no longer flagged; Camper at (215,646) still correctly shows `trainer: true, defeated: true`.
+
+### Multi-Chunk 3D Elevation-Aware Navigation
+The big one — previously only single-chunk maps (gyms, caves) had elevation-aware pathfinding. Multi-chunk overworld routes fell through to 2D BFS, which doesn't understand elevation.
+- **New `_build_multi_chunk_elevation()`**: Loads BDHC per chunk, collects flat heights across all chunks for unified height→level mapping, builds combined `level_map` + `ramp_tiles` with chunk-offset coordinates.
+- **3D BFS activation**: Now triggers for both single-chunk and multi-chunk maps when BDHC data yields multiple elevation levels.
+- **Repath fix**: `_try_repath` now uses 3D BFS when elevation context is available — was falling back to 2D BFS, which was the actual cause of the Route 205 bridge failures (initial 3D path was correct, but repaths crossed elevation boundaries).
+- **Tested on Route 205 bridge area**:
+  - Same-level: player at level 4 (upper path) → target at level 4 — 7 steps, stayed on upper path.
+  - Cross-level: level 4 → level 2 via ramp — 24 steps, no blocks, no repaths.
+
+### Backlog Status
+| Closed | Type |
+|--------|------|
+| Bridge tiles impassable | Not a bug |
+| Badge count not reading | Fixed (BADGE_OFFSET=0x82) |
+| buy_item wrong item | Fixed (extra A press + badge) |
+| Trainer detection false positives | Fixed (script validation) |
+| Multi-chunk 3D BFS | Fixed (per-chunk BDHC loading) |
+| Visual failure diagram | Implemented |
+| Sort objects by distance | Implemented |
+| SWITCH_PROMPT move_index | Implemented |
+
+**Remaining open bugs with save states**: interact_with circular NPCs (2 saves), interact_with trainer approach (1 save), tag battle untested (1 save), NPC dialogue at warp (1 save), BFS blocks follower NPCs (2 saves).
+
+**Commits**: 5 this session — `aa09a42`, `8b5765a`, `93d7bc9`, `c52253d`, `6b37f7f`.
