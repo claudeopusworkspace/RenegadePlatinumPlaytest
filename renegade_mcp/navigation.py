@@ -12,7 +12,11 @@ from collections import deque
 from typing import TYPE_CHECKING, Any
 
 from renegade_mcp.battle import format_battle, read_battle
-from renegade_mcp.dialogue import _find_script_manager, _read_script_state, advance_dialogue, read_dialogue
+from renegade_mcp.dialogue import (
+    CTX_RUNNING, CTX_WAITING,
+    _find_script_manager, _read_context_state, _read_script_state,
+    advance_dialogue, read_dialogue,
+)
 from renegade_mcp.map_names import lookup_map_name
 from renegade_mcp.party import read_party
 from renegade_mcp.trainer import read_trainer_status
@@ -2525,11 +2529,19 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
         return nav_result
 
     # ── Fallback: check for script activation (trainer spotted during walk
-    #    but approach animation still in progress) ──
+    #    or "!" approach animation still in progress after A press) ──
     mgr = _find_script_manager(emu)
     if mgr is not None:
         ss = _read_script_state(emu, mgr)
-        if ss["is_msg_box_open"] or ss["sub_ctx_active"]:
+        script_active = ss["is_msg_box_open"] or ss["sub_ctx_active"]
+        # During trainer approach animations ("!" bubble + walk toward player),
+        # msgBox and subCtx are both 0 for ~170 frames.  The only signal is
+        # ctx0 being in RUN or WAIT state.
+        if not script_active and ss["ctx0_ptr"]:
+            ctx0 = _read_context_state(emu, ss["ctx0_ptr"])
+            if ctx0["state"] in (CTX_RUNNING, CTX_WAITING):
+                script_active = True
+        if script_active:
             encounter = _post_nav_check(emu)
             if encounter:
                 nav_result["encounter"] = encounter
