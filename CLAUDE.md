@@ -245,7 +245,7 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 
 - **Character**: CLAUDE | **Rival**: WOJ
 - **Badges**: 1 (Coal Badge — Roark defeated)
-- **Location**: Route 216 (mid-route). Save state: `route216_snow_nav_bug`. Nav tools broken on snow tiles — fix needed before continuing.
+- **Location**: Route 216 (mid-route). Save state: `route216_snow_nav_bug`.
 - **Prinplup** Lv21 — Lax (+Def/-SpD), Vital Spirit. Held: Exp. Share. Moves: Metal Claw, Growl, Bubble Beam, Peck. HP: 23/64.
 - **Machop** Lv21 — Brave (+Atk/-Spe), No Guard. No held item. Moves: Low Kick, Brick Break, Focus Energy, Knock Off.
 - **Grotle** Lv24 — Naughty (+Atk/-SpD), Overgrow. Held: Muscle Band. Moves: Bulldoze, Cut, Bullet Seed, Razor Leaf.
@@ -256,7 +256,7 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 - **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202), Reporter Kayla (Jubilife Pokemon Center), Rival WOJ (Route 203), Youngster D (Route 203 double battle), Youngster Sebastian (Route 203), Lass Kaitlin (Route 203), Lass Madeline (Route 203), Camper Curtis (Oreburgh Gate), Picnicker Diana (Oreburgh Gate), Youngster Jonathon (Oreburgh Gym), Youngster Darius (Oreburgh Gym), **Gym Leader Roark** (6-0 sweep), 2x Team Galactic Grunts (Jubilife tag battle with Dawn), Lass Sarah (Route 204), Aroma Lady Taylor (Route 204), Bug Catcher Brandon (Route 204), Twins Liv & Liz (Route 204), Camper Jacob (Route 205), Galactic Grunt (Windworks exterior), 2x Galactic Grunts (Floaroma Meadow double battle), 2x Galactic Grunts (Windworks interior), **Commander Mars**, Hiker Daniel (Route 205), Aroma Lady Elizabeth (Route 205), Camper Zackary (Route 205), Hiker Nicholas (Route 205), Battle Girl Kelsey (Route 205), Picnicker Karina (Route 205), **Cheryl** (Eterna Forest — pre-join battle), Bug Catcher Jack (Eterna Forest), Lass Briana (Eterna Forest), Psychic Lindsey (Eterna Forest), Psychic Elijah (Eterna Forest).
 - **Defeated trainers (new)**: Hiker Louis (Route 211 — Geodude, Beldum, Slugma), Ace Trainer Laura (Route 216 — Togetic, Swellow).
 - **Story progress**: Beat Roark → Coal Badge. Cleared Route 204 north. Arrived Floaroma Town. Cleared Valley Windworks storyline. Looker: Team Galactic hideout is in Eterna City. Completed Route 205 north (upper path). Entered Eterna Forest, defeated Cheryl to prove strength, she joined as tag battle partner. Traversed Eterna Forest with Cheryl. Cheryl gave TM27 (Return) at exit. Crossed Route 205 bridge to Eterna City. Team Galactic grunts spotted in Eterna City. Explored Eterna City: triggered WOJ+Cyrus statue cutscene, met Cynthia (got HM01 Cut), bought herbs at Herb Shop, explored Route 211 and Mt. Coronet tunnel. Gardenia is NOT at gym — went to Route 216 (Renegade Platinum change). Galactic building requires Forest Badge. Traversed Mt. Coronet (Route 211 entrance → map 218 → map 219 → map 217 → Route 216 exit). Reached Route 216. Defeated Ace Trainer Laura.
-- **Next**: Fix snow tile navigation bug (behaviors 0x70, 0x71, 0x75, 0xa1, 0xa2, 0xa8 classified as impassable by BFS). Then continue Route 216 to find Gardenia, return for gym battle. After gym: Team Galactic Eterna Building. Shroomish on Route 203 wants an Oran Berry (come back later).
+- **Next**: Continue Route 216 to find Gardenia, return for gym battle. After gym: Team Galactic Eterna Building. Shroomish on Route 203 wants an Oran Berry (come back later).
 
 See GAME_HISTORY.md for full chronological playthrough details.
 
