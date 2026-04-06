@@ -1951,11 +1951,18 @@ def _navigate_to_impl(
     is_3d = False
 
     if is_global and chunked:
-        # Multi-chunk overworld maps: skip 3D BFS.
-        # BDHC data on the overworld controls camera height, not walkability.
-        # Using it for pathfinding creates false elevation barriers on slopes
-        # and oscillation on ramp tiles during repaths.
-        pass
+        # Multi-chunk: load BDHC per chunk, build combined elevation
+        mc_elev = _build_multi_chunk_elevation(
+            emu, map_id, terrain_info, grid_ox, grid_oy, grid_w, grid_h,
+        )
+        if mc_elev is not None:
+            player_level = _height_to_level(
+                read_player_height(emu), mc_elev,
+                tile_x=bfs_sx, tile_y=bfs_sy,
+            )
+            if player_level is not None:
+                elevation = mc_elev
+                is_3d = True
     else:
         land_id = get_land_data_id(emu, map_id, px, py)
         if land_id is not None:
@@ -1983,36 +1990,46 @@ def _navigate_to_impl(
         )
 
         if path_3d is None:
-            combined_3d = npc_set | set(obstacle_map.keys())
-            reachable_3d = _bfs_reachable(
-                terrain_info, combined_3d,
-                bfs_sx, bfs_sy, bfs_w, bfs_h,
-            )
-            nearest_3d = _find_nearest_reachable(reachable_3d, bfs_tx, bfs_ty)
-            result_3d: dict[str, Any] = {
-                "error": (
-                    "No 3D path found. Target may be on an unreachable elevation "
-                    "level or blocked by walls on all connected levels."
-                ),
-                "start": _pos_with_map(px, py, map_id),
-                "target": {"x": target_x, "y": target_y},
-                "player_level": player_level,
-                "elevation_levels": len(elevation["levels"]),
-            }
-            if nearest_3d:
-                gx = nearest_3d[0] + repath_ox
-                gy = nearest_3d[1] + repath_oy
-                dist = abs(nearest_3d[0] - bfs_tx) + abs(nearest_3d[1] - bfs_ty)
-                result_3d["nearest_reachable"] = {"x": gx, "y": gy, "distance": dist}
-            diagram_3d = _render_failure_diagram(
-                terrain_info, combined_3d,
-                bfs_sx, bfs_sy, bfs_tx, bfs_ty,
-                nearest_3d, bfs_w, bfs_h,
-            )
-            result_3d["diagram"] = diagram_3d
-            result_3d["diagram_key"] = "@=player X=target *=nearest_reachable #=wall .=passable N=NPC ≈=water D=door"
-            return result_3d
+            if is_global and chunked:
+                # Multi-chunk overworld: 3D BFS can over-constrain on slopes
+                # where BDHC controls camera height, not walkability.
+                # Fall back to 2D BFS (drops through to the else branch below).
+                is_3d = False
+                elevation = None
+                repath_ctx.pop("elevation", None)
+                repath_ctx.pop("emu", None)
+            else:
+                combined_3d = npc_set | set(obstacle_map.keys())
+                reachable_3d = _bfs_reachable(
+                    terrain_info, combined_3d,
+                    bfs_sx, bfs_sy, bfs_w, bfs_h,
+                )
+                nearest_3d = _find_nearest_reachable(reachable_3d, bfs_tx, bfs_ty)
+                result_3d: dict[str, Any] = {
+                    "error": (
+                        "No 3D path found. Target may be on an unreachable elevation "
+                        "level or blocked by walls on all connected levels."
+                    ),
+                    "start": _pos_with_map(px, py, map_id),
+                    "target": {"x": target_x, "y": target_y},
+                    "player_level": player_level,
+                    "elevation_levels": len(elevation["levels"]),
+                }
+                if nearest_3d:
+                    gx = nearest_3d[0] + repath_ox
+                    gy = nearest_3d[1] + repath_oy
+                    dist = abs(nearest_3d[0] - bfs_tx) + abs(nearest_3d[1] - bfs_ty)
+                    result_3d["nearest_reachable"] = {"x": gx, "y": gy, "distance": dist}
+                diagram_3d = _render_failure_diagram(
+                    terrain_info, combined_3d,
+                    bfs_sx, bfs_sy, bfs_tx, bfs_ty,
+                    nearest_3d, bfs_w, bfs_h,
+                )
+                result_3d["diagram"] = diagram_3d
+                result_3d["diagram_key"] = "@=player X=target *=nearest_reachable #=wall .=passable N=NPC ≈=water D=door"
+                return result_3d
 
+    if is_3d:
         path = path_3d
     else:
         # ── Dual BFS: clean path vs obstacle path ──
