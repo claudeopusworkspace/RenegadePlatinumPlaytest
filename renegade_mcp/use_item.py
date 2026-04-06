@@ -14,7 +14,6 @@ from renegade_mcp.data import item_field_use
 from renegade_mcp.party import read_party
 from renegade_mcp.pause_menu import (
     MENU_SIZE,
-    PAUSE_CURSOR_ADDR,
     open_pause_menu,
 )
 
@@ -117,7 +116,8 @@ def use_item(emu: EmulatorClient, item_name: str, party_slot: int = 0) -> dict[s
         return _error("Could not open pause menu — player may not have control.")
 
     # ── Step 2: Navigate to Bag ──
-    cursor = emu.read_memory(PAUSE_CURSOR_ADDR, size="byte")
+    from renegade_mcp.addresses import addr
+    cursor = emu.read_memory(addr("PAUSE_CURSOR_ADDR"), size="byte")
     steps = (BAG_INDEX - cursor) % MENU_SIZE
     for _ in range(steps):
         _press(emu, ["down"])
@@ -274,7 +274,8 @@ def use_field_item(emu: EmulatorClient, item_name: str) -> dict[str, Any]:
         return _error("Could not open pause menu — player may not have control.")
 
     # ── Step 2: Navigate to Bag ──
-    cursor = emu.read_memory(PAUSE_CURSOR_ADDR, size="byte")
+    from renegade_mcp.addresses import addr
+    cursor = emu.read_memory(addr("PAUSE_CURSOR_ADDR"), size="byte")
     steps = (BAG_INDEX - cursor) % MENU_SIZE
     for _ in range(steps):
         _press(emu, ["down"])

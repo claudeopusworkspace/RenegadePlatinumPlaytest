@@ -12,9 +12,9 @@ from typing import TYPE_CHECKING, Any
 
 from renegade_mcp.data import map_table
 from renegade_mcp.dialogue import (
-    OVERWORLD_REGION,
     _decode_values,
     _find_active_slots,
+    _overworld_region,
     read_dialogue,
 )
 from renegade_mcp.map_state import get_map_state, read_player_state, read_warps_from_rom
@@ -41,7 +41,7 @@ def _press(emu: EmulatorClient, buttons: list[str], wait: int = TEXT_WAIT) -> No
 
 def _dialogue_contains(emu: EmulatorClient, needle: str) -> bool:
     """Check if ANY active dialogue slot contains the given text (case-insensitive)."""
-    start_addr, size, _ = OVERWORLD_REGION
+    start_addr, size, _ = _overworld_region()
     raw = emu.read_memory_range(start_addr, size="byte", count=size)
     if not raw:
         return False

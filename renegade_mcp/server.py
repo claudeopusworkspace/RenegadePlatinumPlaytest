@@ -267,12 +267,14 @@ def create_server() -> FastMCP:
         player battler nicknames.  In doubles, this distinguishes the primary
         battler (slot 0) from the partner (slot 2).  Falls back to slot 0.
         """
-        from renegade_mcp.battle_tracker import SCAN_START, SCAN_SIZE, _scan_for_new_text
+        from renegade_mcp.battle_tracker import SCAN_SIZE, _scan_for_new_text
+        from renegade_mcp.addresses import addr
+        scan_start = addr("BATTLE_SCAN_START")
 
-        raw = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
+        raw = emu.read_memory_range(scan_start, size="byte", count=SCAN_SIZE)
         if raw:
             data = bytes(raw)
-            results = _scan_for_new_text(data, SCAN_START, {})
+            results = _scan_for_new_text(data, scan_start, {})
             for _, text, _, _ in results:
                 clean = text.replace("\n", " ")
                 if "What will" in clean and "do?" in clean:

@@ -16,7 +16,6 @@ from renegade_mcp.bag_cursor import get_pocket_cursor
 from renegade_mcp.party import read_party
 from renegade_mcp.pause_menu import (
     MENU_SIZE,
-    PAUSE_CURSOR_ADDR,
     open_pause_menu,
 )
 
@@ -141,7 +140,8 @@ def give_item(emu: EmulatorClient, item_name: str, party_slot: int = 0) -> dict[
         return _error("Could not open pause menu — player may not have control.")
 
     # ── Step 2: Navigate to POKEMON ──
-    cursor = emu.read_memory(PAUSE_CURSOR_ADDR, size="byte")
+    from renegade_mcp.addresses import addr
+    cursor = emu.read_memory(addr("PAUSE_CURSOR_ADDR"), size="byte")
     diff = (POKEMON_INDEX - cursor) % MENU_SIZE
     for _ in range(diff):
         _press(emu, ["down"])

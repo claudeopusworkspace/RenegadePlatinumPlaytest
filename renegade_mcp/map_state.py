@@ -445,7 +445,7 @@ def get_land_data_id(emu: "EmulatorClient", map_id: int, px: int, py: int) -> in
 def read_player_height(emu: "EmulatorClient") -> float:
     """Read the player's current Y height from MapObject[0].pos.y (fx32)."""
     from renegade_mcp.addresses import addr
-    raw = emu.read_memory(addr("PLAYER_POS_Y_FX32"), size="long")
+    raw = emu.read_memory(addr("OBJ_ARRAY_FPX_BASE") + 4, size="long")
     if raw >= 0x80000000:
         raw -= 0x100000000
     return raw / 4096.0

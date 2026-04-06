@@ -490,6 +490,7 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
 
         pokemon: dict[str, Any] = {
             "slot": i,
+            "species_id": species,
             "name": name,
             "level": level,
             "hp": cur_hp,
