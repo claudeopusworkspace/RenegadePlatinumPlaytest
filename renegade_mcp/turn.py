@@ -21,7 +21,6 @@ from renegade_mcp.battle_tracker import (
     _scan_markers,
     POLL_FRAMES,
     SCAN_SIZE,
-    SCAN_START,
 )
 
 if TYPE_CHECKING:
@@ -85,20 +84,14 @@ FORGET_MOVE_XY = [
     (190, 125),  # Move 3 — bottom-right
 ]
 
-# Battle struct addresses
-BATTLE_BASE = 0x022C5774
+# Battle struct constants (struct-internal offsets, no shift)
 BATTLE_SLOT_SIZE = 0xC0
-BATTLE_END_FLAG_ADDR = 0x022C5B53  # BattleContext.battleEndFlag — 0 during battle, non-zero when over
 
-# Battle party order: maps UI position → persistent party slot (6 bytes per battler)
-# BattleContext.partyOrder[0] — player's order array
-PARTY_ORDER_ADDR = 0x022C5B60
 
-# Move-learn identification: which party mon is currently in the learn flow
-# BattleContext.levelUpMons (u8 bitmask, one bit per party slot)
-LEVEL_UP_MONS_ADDR = 0x022C5B3D
-# BattleContext.taskData pointer (non-null when EXP distribution task is active)
-TASK_DATA_PTR_ADDR = 0x022C2BAC
+def _scan_start() -> int:
+    """Resolve BATTLE__scan_start() at call time (lazy for reload_tools compat)."""
+    from renegade_mcp.addresses import addr
+    return addr("BATTLE__scan_start()")
 # Offsets within heap-allocated BattleScriptTaskData.tmpData[]
 TASK_DATA_MOVE_OFF = 0x40      # tmpData[4] = GET_EXP_MOVE (move ID being learned)
 TASK_DATA_SLOT_OFF = 0x48      # tmpData[6] = GET_EXP_PARTY_SLOT (lower bound search index)
@@ -137,12 +130,13 @@ def _is_battle_over(emu: EmulatorClient) -> bool:
     loaded" (garbage) reliably, without false positives during doubles
     exp cascades where the struct is still valid and flag is still 0.
     """
-    flag = emu.read_memory(BATTLE_END_FLAG_ADDR, size="byte")
+    from renegade_mcp.addresses import addr
+    flag = emu.read_memory(addr("BATTLE_END_FLAG_ADDR"), size="byte")
     if flag != 0:
         return True
 
     # Fallback: garbage-data check on battle slot 0
-    raw = emu.read_memory_range(BATTLE_BASE, size="byte", count=BATTLE_SLOT_SIZE)
+    raw = emu.read_memory_range(addr("BATTLE_BASE"), size="byte", count=BATTLE_SLOT_SIZE)
     data = bytes(raw)
     species = struct.unpack_from("<H", data, 0x00)[0]
     level = data[0x34]
@@ -162,7 +156,8 @@ def _is_battle_over(emu: EmulatorClient) -> bool:
 
 def _get_player_hp(emu: EmulatorClient) -> int:
     """Read player's current HP from battle struct slot 0."""
-    raw = emu.read_memory_range(BATTLE_BASE + 0x4C, size="long", count=1)
+    from renegade_mcp.addresses import addr
+    raw = emu.read_memory_range(addr("BATTLE_BASE") + 0x4C, size="long", count=1)
     return raw[0] if raw else -1
 
 
@@ -221,12 +216,12 @@ def _scan_move_name_from_memory(emu: EmulatorClient) -> str | None:
     from renegade_mcp.data import move_names
     known_moves = set(move_names().values())
 
-    raw_bytes = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
+    raw_bytes = emu.read_memory_range(_scan_start(), size="byte", count=SCAN_SIZE)
     if not raw_bytes:
         return None
 
     data = bytes(raw_bytes)
-    results = _scan_for_new_text(data, SCAN_START, {})
+    results = _scan_for_new_text(data, _scan_start(), {})
 
     for _, text, _, _ in results:
         if text.strip() in known_moves:
@@ -243,9 +238,9 @@ def _advance_text(emu: EmulatorClient, presses: int = 1, wait: int = TEXT_ADVANC
 
 def _is_evolution_text_on_screen(emu: EmulatorClient) -> bool:
     """Check if evolution text is currently displayed (e.g. 'is evolving!')."""
-    raw = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
+    raw = emu.read_memory_range(_scan_start(), size="byte", count=SCAN_SIZE)
     data = bytes(raw)
-    markers = _scan_markers(data, SCAN_START)
+    markers = _scan_markers(data, _scan_start())
     for text in markers.values():
         if "is evolving" in text.replace("\n", " "):
             return True
@@ -262,8 +257,8 @@ def _wait_for_evolution(emu: EmulatorClient, result: dict[str, Any]) -> dict[str
     # Dismiss "is evolving" text if still on screen
     if _is_evolution_text_on_screen(emu):
         # Capture the actual text for the log
-        raw = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
-        markers = _scan_markers(bytes(raw), SCAN_START)
+        raw = emu.read_memory_range(_scan_start(), size="byte", count=SCAN_SIZE)
+        markers = _scan_markers(bytes(raw), _scan_start())
         for text in markers.values():
             if "is evolving" in text.replace("\n", " "):
                 result["log"].append({"text": text, "stop": "AUTO_ADVANCE"})
@@ -276,8 +271,8 @@ def _wait_for_evolution(emu: EmulatorClient, result: dict[str, Any]) -> dict[str
     for _ in range(EVOLUTION_MAX_CHUNKS):
         emu.advance_frames(EVOLUTION_ADVANCE)
 
-        raw = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
-        markers = _scan_markers(bytes(raw), SCAN_START)
+        raw = emu.read_memory_range(_scan_start(), size="byte", count=SCAN_SIZE)
+        markers = _scan_markers(bytes(raw), _scan_start())
 
         for text in markers.values():
             clean = text.replace("\n", " ")
@@ -292,9 +287,9 @@ def _wait_for_evolution(emu: EmulatorClient, result: dict[str, Any]) -> dict[str
                 _advance_text(emu, presses=2, wait=180)
                 emu.advance_frames(300)
                 for _ in range(RECOVERY_PRESSES):
-                    raw2 = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
+                    raw2 = emu.read_memory_range(_scan_start(), size="byte", count=SCAN_SIZE)
                     if raw2:
-                        markers2 = _scan_markers(bytes(raw2), SCAN_START)
+                        markers2 = _scan_markers(bytes(raw2), _scan_start())
                         for t2 in markers2.values():
                             if "Should a move be deleted" in t2.replace("\n", " "):
                                 result["final_state"] = "MOVE_LEARN"
@@ -354,10 +349,10 @@ def _target_flow_with_retry(emu: EmulatorClient, target: int) -> None:
 
     # Only one alive: check if the tap registered by looking for new text
     emu.advance_frames(TAP_WAIT)
-    raw = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
+    raw = emu.read_memory_range(_scan_start(), size="byte", count=SCAN_SIZE)
     if raw:
         data = bytes(raw)
-        markers = _scan_markers(data, SCAN_START)
+        markers = _scan_markers(data, _scan_start())
         # If the action prompt ("What will X do?") is still the dominant text,
         # the target tap didn't work — retry on the other position.
         still_at_prompt = any("What will" in t and "do?" in t for t in markers.values())
@@ -402,10 +397,10 @@ def _wait_for_action_prompt(emu: EmulatorClient) -> dict[str, Any]:
     prev_text: str | None = None
 
     for _ in range(ACTION_PROMPT_MAX_POLLS):
-        raw_bytes = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
+        raw_bytes = emu.read_memory_range(_scan_start(), size="byte", count=SCAN_SIZE)
         if raw_bytes:
             data = bytes(raw_bytes)
-            results = _scan_for_new_text(data, SCAN_START, {})
+            results = _scan_for_new_text(data, _scan_start(), {})
 
             # Check every active marker for the action prompt stop type.
             # Multiple WAIT_FOR_ACTION texts may coexist (stale "What will X do?"
@@ -878,9 +873,9 @@ def _execute_action(
         if _is_evolution_text_on_screen(emu):
             result = _wait_for_evolution(emu, result)
         else:
-            raw_scan = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
+            raw_scan = emu.read_memory_range(_scan_start(), size="byte", count=SCAN_SIZE)
             if raw_scan:
-                for t_scan in _scan_markers(bytes(raw_scan), SCAN_START).values():
+                for t_scan in _scan_markers(bytes(raw_scan), _scan_start()).values():
                     if t_scan.strip().startswith("What?"):
                         emu.press_buttons(["b"], frames=8)
                         emu.advance_frames(60)
@@ -1058,7 +1053,8 @@ def _enrich_switch_result(result: dict[str, Any], emu: EmulatorClient) -> None:
     party_by_slot = {p["slot"]: p for p in party}
 
     # Read the 6-byte UI→party mapping from BattleContext.partyOrder[0]
-    ui_order = emu.read_memory_range(PARTY_ORDER_ADDR, size="byte", count=6)
+    from renegade_mcp.addresses import addr
+    ui_order = emu.read_memory_range(addr("PARTY_ORDER_ADDR"), size="byte", count=6)
 
     ordered: list[dict[str, Any]] = []
     for ui_pos, party_slot in enumerate(ui_order):
@@ -1082,7 +1078,8 @@ def _get_move_learn_info(emu: EmulatorClient) -> tuple[int, int] | None:
     Returns (party_slot, move_id) or None if the EXP task isn't active.
     """
     # Read taskData pointer (non-null when EXP distribution task is active)
-    task_ptr = emu.read_memory(TASK_DATA_PTR_ADDR, size="long")
+    from renegade_mcp.addresses import addr
+    task_ptr = emu.read_memory(addr("TASK_DATA_PTR_ADDR"), size="long")
     if not task_ptr:
         return None
 
@@ -1091,7 +1088,7 @@ def _get_move_learn_info(emu: EmulatorClient) -> tuple[int, int] | None:
     slot_lower = emu.read_memory(task_ptr + TASK_DATA_SLOT_OFF, size="long")
 
     # Read levelUpMons bitmask — must be nonzero (at least one mon leveled up)
-    level_up_mask = emu.read_memory(LEVEL_UP_MONS_ADDR, size="byte")
+    level_up_mask = emu.read_memory(addr("LEVEL_UP_MONS_ADDR"), size="byte")
     if not level_up_mask:
         return None
 

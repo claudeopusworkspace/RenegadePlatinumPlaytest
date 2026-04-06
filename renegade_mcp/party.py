@@ -32,14 +32,9 @@ from renegade_mcp.data import ability_names, move_data, move_names, species_name
 if TYPE_CHECKING:
     from melonds_mcp.client import EmulatorClient
 
-# ── Memory addresses ──
-ENCRYPTED_PARTY_COUNT = 0x0227E26C
-ENCRYPTED_PARTY_BASE = 0x0227E270
+# ── Memory layout constants (struct-internal, no shift) ──
 ENCRYPTED_SLOT_SIZE = 236
 PARTY_MAX_SLOTS = 6
-
-# Unencrypted species array (catch-order, 8 bytes per entry, u16 species at offset 0)
-SPECIES_ARRAY_BASE = 0x0227F3E8
 SPECIES_ARRAY_STRIDE = 8
 
 # All 24 permutations of ABCD (block unshuffle table)
@@ -389,8 +384,9 @@ def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
 
 def _read_species_array(emu: EmulatorClient) -> list[int]:
     """Read the unencrypted species array (catch-order, not party-order)."""
+    from renegade_mcp.addresses import addr
     raw = emu.read_memory_range(
-        SPECIES_ARRAY_BASE, size="byte", count=PARTY_MAX_SLOTS * SPECIES_ARRAY_STRIDE
+        addr("SPECIES_ARRAY_BASE"), size="byte", count=PARTY_MAX_SLOTS * SPECIES_ARRAY_STRIDE
     )
     data = bytes(raw)
     species = []
@@ -415,14 +411,15 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
     mv_data = move_data()
     ab_names = ability_names()
 
-    enc_count_raw = emu.read_memory_range(ENCRYPTED_PARTY_COUNT, size="long", count=1)
+    from renegade_mcp.addresses import addr
+    enc_count_raw = emu.read_memory_range(addr("ENCRYPTED_PARTY_COUNT"), size="long", count=1)
     enc_party_count = min(enc_count_raw[0], PARTY_MAX_SLOTS)
 
     if enc_party_count == 0:
         return []
 
     enc_raw = emu.read_memory_range(
-        ENCRYPTED_PARTY_BASE, size="byte", count=enc_party_count * ENCRYPTED_SLOT_SIZE
+        addr("ENCRYPTED_PARTY_BASE"), size="byte", count=enc_party_count * ENCRYPTED_SLOT_SIZE
     )
 
     # First pass: decode all slots

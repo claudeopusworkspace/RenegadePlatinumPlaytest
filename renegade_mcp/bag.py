@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from melonds_mcp.client import EmulatorClient
 
 # ── Memory layout ──
-BAG_BASE = 0x0227E800
 
 # Pocket definitions: (name, max_slots)
 POCKETS = [
@@ -34,7 +33,8 @@ BAG_SIZE = sum(slots for _, slots in POCKETS) * 4  # 1844 bytes
 def read_bag(emu: EmulatorClient) -> list[dict[str, Any]]:
     """Read all bag pockets from memory. Returns list of pocket dicts."""
     it_names = item_names()
-    raw = emu.read_memory_range(BAG_BASE, size="byte", count=BAG_SIZE)
+    from renegade_mcp.addresses import addr
+    raw = emu.read_memory_range(addr("BAG_BASE"), size="byte", count=BAG_SIZE)
     raw_bytes = bytes(raw)
 
     result = []

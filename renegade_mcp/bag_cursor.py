@@ -27,7 +27,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from melonds_mcp.client import EmulatorClient
 
-BAG_CURSOR_PTR_ADDR = 0x0229FA30
+# BAG_CURSOR_PTR_ADDR resolved at runtime via addr("BAG_CURSOR_PTR_ADDR")
 
 POCKET_IDS: dict[str, int] = {
     "Items": 0,
@@ -50,7 +50,8 @@ def get_pocket_cursor(emu: EmulatorClient, pocket_name: str) -> tuple[int, int]:
     if pocket_id is None:
         return (0, 0)
 
-    ptr = emu.read_memory(BAG_CURSOR_PTR_ADDR, size="long")
+    from renegade_mcp.addresses import addr
+    ptr = emu.read_memory(addr("BAG_CURSOR_PTR_ADDR"), size="long")
     if not ptr:
         return (0, 0)
 

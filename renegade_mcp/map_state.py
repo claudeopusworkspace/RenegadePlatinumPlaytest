@@ -17,23 +17,14 @@ from renegade_mcp.map_names import lookup_map_name
 if TYPE_CHECKING:
     from melonds_mcp.client import EmulatorClient
 
-# ── Memory addresses ──
-TERRAIN_ADDR = 0x0231D1E4
+# ── Memory layout constants ──
 TERRAIN_SIZE = 2048  # 32*32*2
-
-PLAYER_POS_BASE = 0x0227F450
-# Player facing: MapObject[0].facingDir (0x022A1A38 + 0x28)
-PLAYER_FACING_ADDR = 0x022A1A60
-# Player height: MapObject[0].pos.y (fx32, 0x022A1A38 + 0x74)
-PLAYER_POS_Y_FX32 = 0x022A1AAC
 
 # Zone header table in ARM9 (Platinum US / Renegade Platinum).
 # Each entry is 24 bytes; first u16 is the matrix_id for that zone.
-ZONE_HEADER_BASE = 0x020E601E
-ZONE_HEADER_STRIDE = 24
+# ARM9 address — fixed across all emulators, no shift.
+from renegade_mcp.addresses import ZONE_HEADER_BASE, ZONE_HEADER_STRIDE
 
-OBJ_ARRAY_FPX_BASE = 0x022A1AA8
-OBJ_STRUCT_BASE = OBJ_ARRAY_FPX_BASE - 0x70  # True start of MapObject[0]
 OBJ_STRIDE = 0x128
 OBJ_MAX_ENTRIES = 64
 
@@ -111,7 +102,8 @@ MOVEMENT_TYPES = {
 
 def read_terrain_from_ram(emu: EmulatorClient) -> list[list[int]]:
     """Read the 32x32 terrain collision grid from RAM."""
-    vals = emu.read_memory_range(TERRAIN_ADDR, size="short", count=1024)
+    from renegade_mcp.addresses import addr
+    vals = emu.read_memory_range(addr("TERRAIN_ADDR"), size="short", count=1024)
     return [vals[row * 32 : (row + 1) * 32] for row in range(32)]
 
 
@@ -452,7 +444,8 @@ def get_land_data_id(emu: "EmulatorClient", map_id: int, px: int, py: int) -> in
 
 def read_player_height(emu: "EmulatorClient") -> float:
     """Read the player's current Y height from MapObject[0].pos.y (fx32)."""
-    raw = emu.read_memory(PLAYER_POS_Y_FX32, size="long")
+    from renegade_mcp.addresses import addr
+    raw = emu.read_memory(addr("PLAYER_POS_Y_FX32"), size="long")
     if raw >= 0x80000000:
         raw -= 0x100000000
     return raw / 4096.0
@@ -699,11 +692,15 @@ def read_objects(emu: EmulatorClient) -> list[dict[str, Any]]:
     movementType, localID, trainerType, and script — enabling identification of
     what each object actually is (NPC, item ball, briefcase, boulder, etc.).
     """
+    from renegade_mcp.addresses import addr
+    obj_fpx_base = addr("OBJ_ARRAY_FPX_BASE")
+    obj_struct_base = obj_fpx_base - 0x70  # True start of MapObject[0]
+
     objects = []
     consecutive_empty = 0
 
     for i in range(OBJ_MAX_ENTRIES):
-        struct_base = OBJ_STRUCT_BASE + (i * OBJ_STRIDE)
+        struct_base = obj_struct_base + (i * OBJ_STRIDE)
 
         # Read struct header first: status, unk, localID, mapID, graphicsID,
         # movementType, trainerType, flag, script (9 longs from struct base)
@@ -719,7 +716,7 @@ def read_objects(emu: EmulatorClient) -> list[dict[str, Any]]:
             continue
         consecutive_empty = 0
 
-        fpx_addr = OBJ_ARRAY_FPX_BASE + (i * OBJ_STRIDE)
+        fpx_addr = obj_fpx_base + (i * OBJ_STRIDE)
         fpy_addr = fpx_addr + 8
 
         fpx = emu.read_memory(fpx_addr, size="long")
@@ -753,10 +750,12 @@ def read_objects(emu: EmulatorClient) -> list[dict[str, Any]]:
 
 def read_player_state(emu: EmulatorClient) -> tuple[int, int, int, int]:
     """Read player position and facing. Returns (map_id, x, y, facing)."""
-    map_id = emu.read_memory(PLAYER_POS_BASE, size="long")
-    x = emu.read_memory(PLAYER_POS_BASE + 8, size="long")
-    y = emu.read_memory(PLAYER_POS_BASE + 12, size="long")
-    facing = emu.read_memory(PLAYER_FACING_ADDR, size="long")
+    from renegade_mcp.addresses import addr
+    pos_base = addr("PLAYER_POS_BASE")
+    map_id = emu.read_memory(pos_base, size="long")
+    x = emu.read_memory(pos_base + 8, size="long")
+    y = emu.read_memory(pos_base + 12, size="long")
+    facing = emu.read_memory(addr("PLAYER_FACING_ADDR"), size="long")
     return map_id, x, y, facing
 
 

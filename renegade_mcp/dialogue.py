@@ -17,9 +17,18 @@ from renegade_mcp.text_encoding import CHAR_MAP, CTRL_END, CTRL_PAGE_BREAK, CTRL
 if TYPE_CHECKING:
     from melonds_mcp.client import EmulatorClient
 
-# Memory regions: (start_addr, size, label)
-OVERWORLD_REGION = (0x022A7000, 0x2800, "overworld")
-BATTLE_REGION = (0x0228A000, 0x180000, "battle")
+# Memory regions: start addresses resolved at runtime, sizes are constant
+from renegade_mcp.addresses import OVERWORLD_SCAN_SIZE, BATTLE_SCAN_SIZE, SM_SCAN_SIZE
+
+
+def _overworld_region() -> tuple[int, int, str]:
+    from renegade_mcp.addresses import addr
+    return (addr("OVERWORLD_SCAN_START"), OVERWORLD_SCAN_SIZE, "overworld")
+
+
+def _battle_region() -> tuple[int, int, str]:
+    from renegade_mcp.addresses import addr
+    return (addr("BATTLE_SCAN_START"), BATTLE_SCAN_SIZE, "battle")
 
 # ── Script engine constants (from pret/pokeplatinum decompilation) ──
 
@@ -41,8 +50,7 @@ CTX_WAITING = 2   # paused on a callback
 CTX_OFF_STATE = 0x01   # u8: CTX_STOPPED / CTX_RUNNING / CTX_WAITING
 CTX_OFF_SHOULD_RESUME = 0x04  # u32: ShouldResumeScriptFunc (callback ptr)
 
-# TextPrinter struct (heap-allocated, stable address observed across sessions)
-TP_BASE = 0x02271534
+# TextPrinter struct — resolved at runtime via addr("TP_BASE")
 TP_OFF_ACTIVE = 0x27   # u8: 1 while printer is running
 TP_OFF_STATE = 0x28    # u8: 0=HANDLE_CHAR, 1=WAIT, 2=CLEAR, 3=START_SCROLL
 TP_OFF_CURR_X = 0x0C   # u16: current X draw position (advances as chars render)
@@ -57,9 +65,7 @@ MAX_ITERATIONS = 200   # max main-loop iterations
 MAX_ANIM_POLLS = 200   # max polls waiting for animation to finish
 YES_NO_VERIFY_POLLS = 30  # max polls for Yes/No cursor-idle detection (30*15=450 frames)
 
-# Scan range for ScriptManager magic search
-SM_SCAN_START = 0x0229F000
-SM_SCAN_SIZE = 0x11000  # 68KB covers 0x0229F000-0x022B0000
+# Scan range for ScriptManager magic search — start resolved at runtime
 
 # Session-level cache
 _script_mgr_addr: int | None = None
@@ -177,13 +183,13 @@ def read_dialogue(emu: EmulatorClient, region: str = "auto") -> dict[str, Any]:
     Returns dict with text, region, address, and lines.
     """
     if region == "battle":
-        result = _scan_region(emu, BATTLE_REGION)
+        result = _scan_region(emu, _battle_region())
     elif region == "overworld":
-        result = _scan_region(emu, OVERWORLD_REGION)
+        result = _scan_region(emu, _overworld_region())
     else:
-        result = _scan_region(emu, OVERWORLD_REGION)
+        result = _scan_region(emu, _overworld_region())
         if result is None:
-            result = _scan_region(emu, BATTLE_REGION)
+            result = _scan_region(emu, _battle_region())
 
     if result is None:
         return {"text": "(no active text)", "region": "none", "lines": [], "slot_count": 0}
@@ -215,7 +221,9 @@ def _find_script_manager(emu: EmulatorClient) -> int | None:
         _script_mgr_addr = None
 
     # Scan heap region
-    raw = emu.read_memory_range(SM_SCAN_START, size="byte", count=SM_SCAN_SIZE)
+    from renegade_mcp.addresses import addr as resolve_addr
+    sm_scan_start = resolve_addr("SM_SCAN_START")
+    raw = emu.read_memory_range(sm_scan_start, size="byte", count=SM_SCAN_SIZE)
     if not raw:
         return None
 
@@ -226,11 +234,11 @@ def _find_script_manager(emu: EmulatorClient) -> int | None:
         if idx < 0:
             return None
         if idx % 4 == 0:  # must be 4-byte aligned
-            addr = SM_SCAN_START + idx
-            check = emu.read_memory(addr + SM_OFF_MSGBOX, size="byte")
+            found_addr = sm_scan_start + idx
+            check = emu.read_memory(found_addr + SM_OFF_MSGBOX, size="byte")
             if check in (0, 1):
-                _script_mgr_addr = addr
-                return addr
+                _script_mgr_addr = found_addr
+                return found_addr
         idx += 4
 
     return None
@@ -261,7 +269,9 @@ def _read_context_state(emu: EmulatorClient, ctx_ptr: int) -> dict:
 
 def _read_tp_state(emu: EmulatorClient) -> dict:
     """Read TextPrinter active flag and render state."""
-    raw = emu.read_memory_range(TP_BASE + TP_OFF_ACTIVE, size="byte", count=2)
+    from renegade_mcp.addresses import addr as resolve_addr
+    tp_base = resolve_addr("TP_BASE")
+    raw = emu.read_memory_range(tp_base + TP_OFF_ACTIVE, size="byte", count=2)
     return {"active": raw[0] == 1, "state": raw[1]}
 
 
@@ -466,7 +476,9 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
                 # Dialogue ending: isMsgBoxOpen/script/TP.active changes → break.
                 # Yes/No prompt: nothing changes for all polls → exhausted.
                 yes_no_detected = True  # Assume Yes/No; disproven by any break
-                cursor_pos = emu.read_memory(TP_BASE + TP_OFF_CURR_X, size="short")
+                from renegade_mcp.addresses import addr as _resolve
+                _tp = _resolve("TP_BASE")
+                cursor_pos = emu.read_memory(_tp + TP_OFF_CURR_X, size="short")
                 for _ in range(YES_NO_VERIFY_POLLS):
                     emu.advance_frames(RENDER_POLL)
                     if not _script_still_alive():
@@ -487,7 +499,7 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
                     if ctx3["state"] != CTX_WAITING:
                         yes_no_detected = False
                         break  # Script resumed
-                    new_pos = emu.read_memory(TP_BASE + TP_OFF_CURR_X, size="short")
+                    new_pos = emu.read_memory(_tp + TP_OFF_CURR_X, size="short")
                     if new_pos != cursor_pos:
                         yes_no_detected = False
                         break  # Cursor moved — still rendering

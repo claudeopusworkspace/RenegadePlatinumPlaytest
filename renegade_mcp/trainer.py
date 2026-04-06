@@ -11,21 +11,15 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from melonds_mcp.client import EmulatorClient
 
-# ── Save block addresses ──
-# Small save block base derived from encrypted party data:
-#   party_count @ 0x0227E26C = base + 0x9C → base = 0x0227E1D0
-SAVE_BLOCK_BASE = 0x0227E1D0
+# ── Save block offsets ──
 MONEY_OFFSET = 0x7C  # u32, verified via snapshot/diff across trainer battles
-
-# Badge offset: verified with 1 badge (Coal Badge = bit 0 → value 0x01).
-BADGE_OFFSET = 0x82
-
+BADGE_OFFSET = 0x82  # verified with 1 badge (Coal Badge = bit 0 → value 0x01)
 
 # ── Trainer defeat flags ──
 # VarsFlags.flags bitfield in save RAM
 # Flag = FLAG_OFFSET_TRAINER_DEFEATED + trainerID
 # Script field encodes trainer ID: single = 3000 + ID - 1, double = 5000 + ID - 1
-FLAGS_ARRAY = SAVE_BLOCK_BASE + 0xFEC   # 0x0227F1BC
+# FLAGS_ARRAY = SAVE_BLOCK_BASE + 0xFEC (resolved at runtime via addr())
 FLAG_OFFSET_TRAINER_DEFEATED = 1360
 SCRIPT_OFFSET_SINGLE = 3000
 SCRIPT_OFFSET_DOUBLE = 5000
@@ -42,8 +36,10 @@ def trainer_id_from_script(script: int) -> int | None:
 
 def is_trainer_defeated(emu: EmulatorClient, trainer_id: int) -> bool:
     """Check if a trainer has been defeated by reading the VarsFlags bitfield."""
+    from renegade_mcp.addresses import addr
+    flags_array = addr("FLAGS_ARRAY")
     flag_id = FLAG_OFFSET_TRAINER_DEFEATED + trainer_id
-    byte_addr = FLAGS_ARRAY + (flag_id // 8)
+    byte_addr = flags_array + (flag_id // 8)
     bit_mask = 1 << (flag_id % 8)
     byte_val = emu.read_memory(byte_addr, size="byte")
     return bool(byte_val & bit_mask)
@@ -54,7 +50,9 @@ def read_trainer_status(emu: EmulatorClient) -> dict[str, Any]:
 
     Works anytime — pure memory read, no UI interaction.
     """
-    money_addr = SAVE_BLOCK_BASE + MONEY_OFFSET
+    from renegade_mcp.addresses import addr
+    save_base = addr("SAVE_BLOCK_BASE")
+    money_addr = save_base + MONEY_OFFSET
     money = emu.read_memory(money_addr, size="long")
 
     result: dict[str, Any] = {
@@ -63,7 +61,7 @@ def read_trainer_status(emu: EmulatorClient) -> dict[str, Any]:
 
     # Badges: placeholder until we confirm the address at first gym
     if BADGE_OFFSET is not None:
-        badge_addr = SAVE_BLOCK_BASE + BADGE_OFFSET
+        badge_addr = save_base + BADGE_OFFSET
         badge_byte = emu.read_memory(badge_addr, size="byte")
         badges = bin(badge_byte).count("1")
         badge_names = [

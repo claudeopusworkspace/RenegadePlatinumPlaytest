@@ -15,17 +15,9 @@ from renegade_mcp.text_encoding import decode_gen4_text
 if TYPE_CHECKING:
     from melonds_mcp.client import EmulatorClient
 
-# ── Memory layout ──
-BATTLE_BASE = 0x022C5774
+# ── Memory layout constants (struct-internal, no shift) ──
 BATTLE_SLOT_SIZE = 0xC0  # 192 bytes
 BATTLE_MAX_SLOTS = 4
-
-# battleEndFlag lives in BattleContext, after battleMons + move/damage arrays.
-# Offset from BATTLE_BASE (start of battleMons): 4*0xC0 + 0xDF = 0x3DF.
-# Source: pret/pokeplatinum BattleContext struct — set to 1 when battle ends,
-# 0 when battle is active. Stale battle RAM persists after battle (especially
-# tag battles with partner data in slot 2), so this flag gates read_battle.
-BATTLE_END_FLAG = BATTLE_BASE + 0x3DF  # 0x022C5B53
 
 # Field offsets within BattleMon struct (from pret/pokeplatinum decomp)
 OFF_SPECIES = 0x00
@@ -91,8 +83,9 @@ def _decode_status(status_val: int) -> str | None:
 
 def read_battle(emu: EmulatorClient) -> list[dict[str, Any]]:
     """Read all battle slots. Returns list of battler dicts, or empty if not in battle."""
+    from renegade_mcp.addresses import addr
     # Check battleEndFlag first — if nonzero, battle RAM is stale
-    end_flag = emu.read_memory_range(BATTLE_END_FLAG, size="byte", count=1)
+    end_flag = emu.read_memory_range(addr("BATTLE_END_FLAG_ADDR"), size="byte", count=1)
     if end_flag[0] != 0:
         return []
 
@@ -103,7 +96,7 @@ def read_battle(emu: EmulatorClient) -> list[dict[str, Any]]:
     ab_names = ability_names()
 
     total_size = BATTLE_MAX_SLOTS * BATTLE_SLOT_SIZE
-    raw = emu.read_memory_range(BATTLE_BASE, size="byte", count=total_size)
+    raw = emu.read_memory_range(addr("BATTLE_BASE"), size="byte", count=total_size)
     raw_bytes = bytes(raw)
 
     battlers = []

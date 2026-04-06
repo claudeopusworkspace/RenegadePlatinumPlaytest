@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from melonds_mcp.client import EmulatorClient
 
 # ── Constants ──
-PAUSE_CURSOR_ADDR = 0x0229FA28  # byte: 0=Pokedex, 1=Pokemon, 2=Bag, ... 6=Exit
+# PAUSE_CURSOR_ADDR resolved at runtime via addr("PAUSE_CURSOR_ADDR")
 MENU_SIZE = 7
 MENU_WAIT = 300       # frames after major menu transitions
 NAV_WAIT = 60         # frames after D-pad navigation
@@ -30,14 +30,16 @@ def open_pause_menu(emu: EmulatorClient) -> bool:
     The cursor will be one position below wherever it started — callers
     should read it fresh before navigating.
     """
+    from renegade_mcp.addresses import addr
+    cursor_addr = addr("PAUSE_CURSOR_ADDR")
     for _ in range(MAX_OPEN_RETRIES):
         emu.press_buttons(["x"], frames=8)
         emu.advance_frames(MENU_WAIT)
 
-        c1 = emu.read_memory(PAUSE_CURSOR_ADDR, size="byte")
+        c1 = emu.read_memory(cursor_addr, size="byte")
         emu.press_buttons(["down"], frames=8)
         emu.advance_frames(NAV_WAIT)
-        c2 = emu.read_memory(PAUSE_CURSOR_ADDR, size="byte")
+        c2 = emu.read_memory(cursor_addr, size="byte")
 
         if c1 != c2:
             return True

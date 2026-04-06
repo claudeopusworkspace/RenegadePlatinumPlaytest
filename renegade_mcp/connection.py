@@ -99,6 +99,11 @@ class BridgeConnection:
             self._client = client_cls(str(socket_path))
             self._client.get_frame_count()
             self._backend = backend
+
+            # Detect heap address shift for this emulator
+            from renegade_mcp.addresses import detect_shift
+            detect_shift(self._client)
+
             return self._client
         except Exception as e:
             self._client = None
@@ -116,6 +121,10 @@ class BridgeConnection:
                 pass
             self._client = None
             self._backend = None
+
+        # Clear cached address resolution
+        from renegade_mcp.addresses import reset as reset_addresses
+        reset_addresses()
 
     @staticmethod
     def _find_socket(cfg: dict) -> Path | None:

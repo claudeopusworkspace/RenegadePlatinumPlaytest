@@ -38,8 +38,7 @@ from renegade_mcp.turn import _wait_for_action_prompt
 if TYPE_CHECKING:
     from melonds_mcp.client import EmulatorClient
 
-# ── Memory addresses ──
-POSITION_BASE = 0x0227F450
+# ── Memory addresses (resolved at runtime) ──
 
 # ── Movement timing ──
 HOLD_FRAMES = 16
@@ -284,9 +283,11 @@ def _get_field_move_availability(emu: EmulatorClient) -> dict[str, bool]:
 
 def _read_position(emu: EmulatorClient) -> tuple[int, int, int]:
     """Read current map_id, x, y from memory."""
-    map_id = emu.read_memory(POSITION_BASE, size="long")
-    x = emu.read_memory(POSITION_BASE + 8, size="long")
-    y = emu.read_memory(POSITION_BASE + 12, size="long")
+    from renegade_mcp.addresses import addr
+    pos_base = addr("PLAYER_POS_BASE")
+    map_id = emu.read_memory(pos_base, size="long")
+    x = emu.read_memory(pos_base + 8, size="long")
+    y = emu.read_memory(pos_base + 12, size="long")
     return map_id, x, y
 
 

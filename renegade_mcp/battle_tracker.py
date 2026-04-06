@@ -14,9 +14,8 @@ from renegade_mcp.text_encoding import CHAR_MAP, CTRL_END, CTRL_NEWLINE, CTRL_PA
 if TYPE_CHECKING:
     from melonds_mcp.client import EmulatorClient
 
-# Scan region
-SCAN_START = 0x0228A000
-SCAN_SIZE = 0x180000  # 1.5 MB
+# Scan region — SCAN_START resolved at runtime, SCAN_SIZE is constant
+from renegade_mcp.addresses import BATTLE_SCAN_SIZE as SCAN_SIZE
 
 HEADER_MARKER = b"\xEC\xD2\xF8\xB6"
 MAX_TEXT_CHARS = 120
@@ -193,10 +192,12 @@ class BattleTracker:
 
     def init(self, emu: EmulatorClient) -> dict[str, Any]:
         """Snapshot current text markers as baseline. Call at battle start."""
+        from renegade_mcp.addresses import addr
+        scan_start = addr("BATTLE_SCAN_START")
         frame = emu.get_frame_count()
-        raw_bytes = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
+        raw_bytes = emu.read_memory_range(scan_start, size="byte", count=SCAN_SIZE)
         data = bytes(raw_bytes)
-        markers = _scan_markers(data, SCAN_START)
+        markers = _scan_markers(data, scan_start)
 
         self._baseline = markers
         self._baseline_frame = frame
@@ -314,20 +315,22 @@ class BattleTracker:
 
     def _discover_region(self, emu: EmulatorClient, baseline: dict[str, str]) -> tuple[int, int] | None:
         """Broad scan to find where NEW battle text lives."""
+        from renegade_mcp.addresses import addr
+        scan_start = addr("BATTLE_SCAN_START")
         for attempt in range(DISCOVERY_POLLS):
             emu.advance_frames(POLL_FRAMES)
 
-            raw_bytes = emu.read_memory_range(SCAN_START, size="byte", count=SCAN_SIZE)
+            raw_bytes = emu.read_memory_range(scan_start, size="byte", count=SCAN_SIZE)
             if not raw_bytes:
                 continue
 
             data = bytes(raw_bytes)
-            results = _scan_for_new_text(data, SCAN_START, baseline)
+            results = _scan_for_new_text(data, scan_start, baseline)
             if results:
                 addrs = [r[0] for r in results]
                 nearest = min(addrs)
                 furthest = max(addrs)
-                region_start = max(SCAN_START, nearest - POLL_REGION_PADDING)
+                region_start = max(scan_start, nearest - POLL_REGION_PADDING)
                 region_end = furthest + POLL_REGION_PADDING
                 return region_start, region_end - region_start
 

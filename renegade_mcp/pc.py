@@ -38,8 +38,8 @@ STORAGE_SEE_YA = 4
 
 # ── PC Box Memory Layout ──
 # Discovered via PID search: 5 Pokemon deposited in Box 1, PIDs found at
-# 136-byte intervals starting at 0x0228B100. All checksums validated.
-BOX_DATA_BASE = 0x0228B100    # Box 1 slot 0 address
+# 136-byte intervals. All checksums validated.
+# BOX_DATA_BASE resolved at runtime via addr("BOX_DATA_BASE")
 BOX_SLOT_SIZE = 136           # Gen 4 stored Pokemon (no battle extension)
 SLOTS_PER_BOX = 30
 NUM_BOXES = 18
@@ -213,7 +213,8 @@ def read_box(emu: EmulatorClient, box: int = 1) -> dict[str, Any]:
     it_names = item_names()
 
     # Calculate base address for this box
-    box_base = BOX_DATA_BASE + (box - 1) * SLOTS_PER_BOX * BOX_SLOT_SIZE
+    from renegade_mcp.addresses import addr
+    box_base = addr("BOX_DATA_BASE") + (box - 1) * SLOTS_PER_BOX * BOX_SLOT_SIZE
 
     # Read all 30 slots at once
     raw = emu.read_memory_range(box_base, size="byte", count=SLOTS_PER_BOX * BOX_SLOT_SIZE)
