@@ -1163,7 +1163,25 @@ def _post_nav_check(emu: EmulatorClient) -> dict[str, Any] | None:
         # Check for overworld dialogue
         dialogue = read_dialogue(emu, region="overworld")
         if dialogue["region"] != "none":
-            # Auto-advance through dialogue (trainer taunts, cutscenes, etc.)
+            # Validate: text buffer can contain stale data during NPC approach
+            # animations. Only trust it when msgBox=1 (dialogue box visible).
+            mgr = _find_script_manager(emu)
+            if mgr is not None:
+                ss = _read_script_state(emu, mgr)
+                if not ss["is_msg_box_open"]:
+                    # msgBox=0: text is pre-positioned, not yet displayed.
+                    # If a script is running, keep polling — dialogue will
+                    # appear once the approach animation finishes.
+                    if ss["ctx0_ptr"]:
+                        ctx0 = _read_context_state(emu, ss["ctx0_ptr"])
+                        if ctx0["state"] in (CTX_RUNNING, CTX_WAITING):
+                            emu.advance_frames(POST_NAV_POLL_FRAMES)
+                            continue
+                    # No active script — stale buffer data, skip.
+                    emu.advance_frames(POST_NAV_POLL_FRAMES)
+                    continue
+
+            # msgBox is open — real dialogue. Auto-advance.
             adv_result = advance_dialogue(emu)
 
             # After dialogue, check if it transitioned into a battle
@@ -2648,14 +2666,16 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
     dialogue = read_dialogue(emu, region="overworld")
     if dialogue["region"] != "none":
         adv_result = advance_dialogue(emu)
-        nav_result["dialogue"] = adv_result
-        # Check if dialogue led into a battle (trainer taunts, etc.)
-        battlers = read_battle(emu)
-        if battlers:
-            encounter = _post_nav_check(emu)
-            if encounter:
-                nav_result["encounter"] = encounter
-        return nav_result
+        if adv_result.get("status") != "no_dialogue":
+            nav_result["dialogue"] = adv_result
+            # Check if dialogue led into a battle (trainer taunts, etc.)
+            battlers = read_battle(emu)
+            if battlers:
+                encounter = _post_nav_check(emu)
+                if encounter:
+                    nav_result["encounter"] = encounter
+            return nav_result
+        # msgBox=0: text buffer had stale data. Fall through to A press.
 
     # ── Press A to interact ──
     emu.press_buttons(["a"], frames=8)
@@ -2664,15 +2684,18 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
     dialogue = read_dialogue(emu, region="overworld")
     if dialogue["region"] != "none":
         adv_result = advance_dialogue(emu)
-        nav_result["dialogue"] = adv_result
-        nav_result["pressed_a"] = True
-        # Check if dialogue led into a battle
-        battlers = read_battle(emu)
-        if battlers:
-            encounter = _post_nav_check(emu)
-            if encounter:
-                nav_result["encounter"] = encounter
-        return nav_result
+        if adv_result.get("status") != "no_dialogue":
+            nav_result["dialogue"] = adv_result
+            nav_result["pressed_a"] = True
+            # Check if dialogue led into a battle
+            battlers = read_battle(emu)
+            if battlers:
+                encounter = _post_nav_check(emu)
+                if encounter:
+                    nav_result["encounter"] = encounter
+            return nav_result
+        # msgBox=0: text buffer had pre-positioned data (cutscene approach).
+        # Fall through to script detection.
 
     # ── Fallback: check for script activation (trainer spotted during walk
     #    or "!" approach animation still in progress after A press) ──
