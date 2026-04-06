@@ -2,6 +2,46 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Pre-Migration Bug Sweep, Final Round (2026-04-06)
+
+Last bug-fix session before MelonMCP migration. Cleared all remaining open items from the tool backlog — the backlog is now empty.
+
+### Fix: interact_with trainer approach animation (commit 9dc1bbc)
+
+**Root cause**: During trainer "!" exclamation + walk-toward-player animation, `msgBox` and `subCtx` are both 0 for ~170 frames. The only signal of an active script is `ctx0` being in `RUN` state. The fallback in `interact_with` only checked `msgBox || subCtx`, missing the entire approach window.
+
+**Investigation**: Frame-by-frame sampling of the ScriptManager struct while a Route 205 Hiker approached. Baseline idle overworld shows `msgBox=1, ctx0=WAIT`; after A-press during approach animation, `msgBox=0, subCtx=0, ctx0=RUN` persists from +5f through +170f, then `msgBox=1, ctx0=WAIT` when dialogue opens at +175f.
+
+**Fix**: Added `_read_context_state(ctx0)` check to the fallback. When `msgBox` and `subCtx` are both 0 but `ctx0` is `CTX_RUNNING` or `CTX_WAITING`, sets `script_active=True` and polls via `_post_nav_check` (300 frames). Added `CTX_RUNNING`, `CTX_WAITING`, `_read_context_state` to navigation.py imports from dialogue.py.
+
+### Fix: interact_with circular-patrol NPCs (commit 54d1d50)
+
+**Problem**: NPCs with patrol movement types (e.g., Battle Girl type_39 on Route 205 — rectangular 2×5 loop, ~450f cycle) move away during the face→A interaction sequence, causing "no dialogue" returns.
+
+**Investigation**: Sampled Battle Girl's position every 30 frames for 1800 frames. Mapped the full patrol: (207,598) → left to (205,598) → down to (205,603) → right to (207,603) → up to (207,598). Cycle time ~450f (~7.5 sec).
+
+**Fix**: Added `_wait_for_moving_npc` — a 15-second polling loop (900 frames, ~2 full patrol cycles) that activates when normal interaction fails on a non-stationary NPC (`movement_type not in ("none", "stationary")`). Polls for: (1) trainer-spotted battles via `read_battle`, (2) dialogue appearing via `read_dialogue`, (3) NPC adjacency → face + A-press with 90-frame cooldown. Includes `facing_seized` detection and `ctx0=RUN` approach animation check during the wait. Non-moving NPCs skip the loop entirely.
+
+**Testing**: Battle Girl (index 6) and Camper (index 19) on Route 205 both successfully triggered battles. Existing mechanisms (`facing_seized`, auto-dialogue) caught both cases, with the wait loop as safety net. Verified no regression on stationary NPCs (Hiker, defeated Pokemon Breeder F).
+
+### Fix: navigate warp_failed dialogue detection (commit 24912e2)
+
+**Problem**: When an NPC triggered dialogue near a warp tile (e.g., Cheryl's farewell at Eterna Forest exit), `navigate_to` returned `warp_failed: true` instead of the dialogue. All four `warp_failed` code paths returned immediately without checking for pending dialogue.
+
+**Fix**: All four `warp_failed` paths now call `_post_nav_check` before declaring failure:
+1. `navigate`: expected_transition but map unchanged
+2. `navigate_to`: `is_door + stopped_early` (main bug path)
+3. `navigate_to`: door reached but `_handle_door_transition` returned None
+4. `navigate_to`: `adj_warp_failed` suppressed when encounter already exists
+
+**Testing**: Loaded `debug_cheryl_exit_dialogue_pre_navigate`, navigated to exit warp (86, 36). Correctly captured Cheryl's full farewell: "Oh! There's the exit!", TM27 gift, "Bye for now!" — instead of `warp_failed`.
+
+### Backlog Cleanup
+
+- **Closed**: Tag battle (NPC ally) support untested — no issues encountered during gameplay, will re-add if problems surface.
+- **Closed**: navigate_to BFS blocks follower NPCs (Cheryl) — Eterna Forest-specific, that section is complete.
+- **Result**: Open backlog is now empty. Ready for MelonMCP migration.
+
 ## Dev Session: MCP Tool Token Optimization (2026-04-02)
 
 Driven by context audit showing top MCP token consumers: `get_screenshot` (16.5%), `view_map` (4.8%), `battle_turn` (2.9%), `navigate_to` (2.1%). Screenshots can't be easily reduced, so focused on the tool output side.
