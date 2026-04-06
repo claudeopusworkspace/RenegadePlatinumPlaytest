@@ -2,6 +2,53 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Snow Tile Navigation Fix (2026-04-06)
+
+Route 216 navigation was completely broken — the nav tools couldn't pathfind through snow tiles. Diagnosed and fixed in a single session.
+
+### Investigation
+
+Loaded `debug_route216_blocked_down` save state at (374, 402) on Route 216. Initial assumption from the backlog was that snow tile behaviors (0x70, 0x71, 0x75, 0xA1, 0xA2, 0xA8) were classified as impassable by BFS. Terrain analysis proved this wrong — snow tiles have no collision flag in either RAM or ROM. They were correctly marked passable.
+
+The real culprit was the **3D elevation system (BDHC)**:
+
+1. **`_height_to_level` returned the wrong level.** Player at height 136 on a ramp tile (level 7↔3) was matched to Ramp 1 (level 8↔2, range 48–160) because the code returned the first ramp match. Surrounding snow tiles were all level 7, so 3D BFS on level 8 found nothing.
+
+2. **Ramp oscillation during repaths.** Even with the correct level, walking onto a ramp changes the player's height mid-step. Each repath recalculated the level, sometimes flipping direction — causing the player to walk up-down-up-down on stairs before eventually settling.
+
+### Fix 1: Improved `_height_to_level` (commit 9ff5cd2)
+
+Three improvements to height→level resolution:
+- **Tile-based pre-check**: if the player's tile is a known ramp or has level_map data, use that directly instead of scanning all ramps
+- **Narrowest-range preference**: when multiple ramps match the height, pick the one with the smallest height span (most specific)
+- **Nearest-level fallback**: if no exact match or ramp contains the height, return the closest defined level
+
+Also added snow tile display names to the BEHAVIORS dict so `view_map` renders them with proper labels instead of `?`.
+
+### Fix 2: 3D→2D BFS fallback for multi-chunk maps (commit 1ca4d38)
+
+Initial approach was to disable 3D BFS entirely for multi-chunk overworld maps. This fixed Route 216 but **regressed bridge pathfinding** on Route 211 — 2D BFS has no elevation concept, so it routed straight off the side of bridges.
+
+Final approach: try 3D BFS first (needed for bridges), fall back to 2D when 3D fails (needed for slopes where BDHC over-constrains). On fallback, elevation is cleared from the repath context so subsequent repaths also use 2D (prevents ramp oscillation).
+
+### Verification
+
+| Test | Save State | Result |
+|------|-----------|--------|
+| Route 216 snow stairs | `debug_route216_blocked_down` → `navigate_to(365, 409)` | 16-step clean path through snow |
+| Route 216 snow walk | `route216_snow_nav_bug` → `navigate_to(336, 394)` | 7-step path through snow tiles |
+| Route 211 bridge | `debug_route211_bridge_pathfind` → `navigate_to(368, 535)` | 31-step elevated path (correct, no bridge jump-off) |
+
+### Lessons
+
+- **The backlog entry was partially inaccurate.** It attributed the bug to "tile classification" when the root cause was 3D elevation. The documented coordinates were also wrong. Future backlog entries need verified, tested repro steps.
+- **Observe before fixing.** Should have reproduced the exact original failure before writing any code. Loaded the save state but jumped to analysis without a clean before/after comparison.
+- **Watch for regressions in related subsystems.** Disabling 3D BFS for overworld maps seemed safe until we checked bridge pathfinding — a feature built on the same 3D system.
+
+**Commits**: 3 this session — `9ff5cd2`, `9363e88`, `1ca4d38`.
+
+---
+
 ## Dev Session: Pre-Migration Bug Sweep, Final Round (2026-04-06)
 
 Last bug-fix session before MelonMCP migration. Cleared all remaining open items from the tool backlog — the backlog is now empty.
