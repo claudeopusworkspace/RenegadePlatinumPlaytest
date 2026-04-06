@@ -53,6 +53,8 @@ BEHAVIORS = {
     0x00: "ground", 0x02: "tall_grass", 0x03: "very_tall_grass",
     0x08: "cave_floor", 0x10: "water", 0x13: "waterfall", 0x15: "sea",
     0x20: "ice", 0x21: "sand",
+    0x70: "deep_snow", 0x71: "snow", 0x75: "snow_covered",
+    0xA0: "snow_slope", 0xA1: "snow_path", 0xA2: "snow_bridge", 0xA8: "snow_grass",
     0x30: "block_E", 0x31: "block_W",
     0x38: "ledge_S", 0x39: "ledge_N", 0x3A: "ledge_W", 0x3B: "ledge_E",
     0x5E: "stairs_E", 0x5F: "stairs_W",

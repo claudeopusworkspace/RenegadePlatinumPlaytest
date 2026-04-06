@@ -375,27 +375,66 @@ def _build_terrain_info(
 
 # ── 3D elevation helpers ──
 
-def _height_to_level(height: float, elevation: dict) -> int | None:
+def _height_to_level(
+    height: float, elevation: dict,
+    tile_x: int | None = None, tile_y: int | None = None,
+) -> int | None:
     """Convert player height (fx32 float) to a level index.
 
-    Exact match first; if none (player mid-ramp), finds the ramp whose
-    height range contains the value and returns its from_level.
+    Exact match first. If tile coords are given, checks whether the tile has
+    explicit level data (ramp or level_map). Falls back to mid-ramp range
+    matching (preferring narrowest range) and finally nearest level by height.
     """
     h = round(height)
     level = elevation["height_to_level"].get(h)
     if level is not None:
         return level
 
-    # Player might be mid-ramp — check ramp height ranges
+    # If tile coords provided, use the tile's own elevation data
+    if tile_x is not None and tile_y is not None:
+        key = (tile_x, tile_y)
+        if key in elevation["ramp_tiles"]:
+            ri = elevation["ramp_tiles"][key]
+            # Player is on this ramp — pick the end closer to their height
+            levels_info = elevation["levels"]
+            hbl: dict[int, int] = {lv["level"]: lv["height"] for lv in levels_info}
+            fh = hbl.get(ri["from_level"], 0)
+            th = hbl.get(ri["to_level"], 0)
+            if abs(h - fh) <= abs(h - th):
+                return ri["from_level"]
+            return ri["to_level"]
+        if key in elevation["level_map"]:
+            tile_levels = elevation["level_map"][key]
+            if tile_levels:
+                # Pick the level whose defined height is closest to player height
+                levels_info = elevation["levels"]
+                hbl = {lv["level"]: lv["height"] for lv in levels_info}
+                return min(tile_levels, key=lambda lv: abs(hbl.get(lv, 0) - h))
+
+    # Player might be mid-ramp — check ramp height ranges, prefer narrowest
     levels_info = elevation["levels"]
     height_by_level: dict[int, int] = {lv["level"]: lv["height"] for lv in levels_info}
+    best_ramp_level = None
+    best_span = float("inf")
     for ramp in elevation["ramps"]:
         from_h = height_by_level.get(ramp["from_level"])
         to_h = height_by_level.get(ramp["to_level"])
         if from_h is not None and to_h is not None:
             lo, hi = min(from_h, to_h), max(from_h, to_h)
-            if lo <= h <= hi:
-                return ramp["from_level"]
+            span = hi - lo
+            if lo <= h <= hi and span < best_span:
+                best_span = span
+                # Pick the ramp end closer to the player's height
+                if abs(h - from_h) <= abs(h - to_h):
+                    best_ramp_level = ramp["from_level"]
+                else:
+                    best_ramp_level = ramp["to_level"]
+    if best_ramp_level is not None:
+        return best_ramp_level
+
+    # Final fallback: nearest defined level by height
+    if levels_info:
+        return min(levels_info, key=lambda lv: abs(lv["height"] - h))["level"]
 
     return None
 
@@ -1027,7 +1066,10 @@ def _try_repath(
     if elevation is not None:
         emu = ctx["emu"]
         from renegade_mcp.map_state import read_player_height
-        player_level = _height_to_level(read_player_height(emu), elevation)
+        player_level = _height_to_level(
+            read_player_height(emu), elevation,
+            tile_x=sx, tile_y=sy,
+        )
         if player_level is not None:
             return _bfs_pathfind_3d(
                 ctx["terrain_info"], npc_set, elevation,
@@ -1909,15 +1951,11 @@ def _navigate_to_impl(
     is_3d = False
 
     if is_global and chunked:
-        # Multi-chunk: load BDHC per chunk, build combined elevation
-        mc_elev = _build_multi_chunk_elevation(
-            emu, map_id, terrain_info, grid_ox, grid_oy, grid_w, grid_h,
-        )
-        if mc_elev is not None:
-            player_level = _height_to_level(read_player_height(emu), mc_elev)
-            if player_level is not None:
-                elevation = mc_elev
-                is_3d = True
+        # Multi-chunk overworld maps: skip 3D BFS.
+        # BDHC data on the overworld controls camera height, not walkability.
+        # Using it for pathfinding creates false elevation barriers on slopes
+        # and oscillation on ramp tiles during repaths.
+        pass
     else:
         land_id = get_land_data_id(emu, map_id, px, py)
         if land_id is not None:
@@ -1925,7 +1963,10 @@ def _navigate_to_impl(
             if bdhc is not None:
                 elevation = analyze_elevation(bdhc, state["terrain"])
                 if elevation is not None:
-                    player_level = _height_to_level(read_player_height(emu), elevation)
+                    player_level = _height_to_level(
+                        read_player_height(emu), elevation,
+                        tile_x=bfs_sx, tile_y=bfs_sy,
+                    )
                     if player_level is not None:
                         is_3d = True
 
