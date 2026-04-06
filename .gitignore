@@ -27,11 +27,16 @@ checkpoints/
 # Auto-grind session logs
 logs/
 
-# DeSmuME MCP server logs (rotated)
+# MCP server logs (rotated)
 desmume_mcp.log*
+melonds_mcp.log*
 
-# IPC bridge socket
+# IPC bridge sockets
 .desmume_bridge.sock
+.melonds_bridge.sock
+
+# Battery save (exported from emulator, large binary)
+*.sav
 
 # Python
 __pycache__/

@@ -2,21 +2,43 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 from typing import Any
 
 # Ensure both projects are importable
 sys.path.insert(0, "/workspace/MelonMCP")
+sys.path.insert(0, "/workspace/DesmumeMCP")
 sys.path.insert(0, "/workspace/RenegadePlatinumPlaytest")
 
 SAVESTATES_DIR = Path("/workspace/RenegadePlatinumPlaytest/savestates")
 
+# Save state extension per backend
+_EXT = {"melonds": ".mst", "desmume": ".dst"}
+
+
+def _savestate_ext() -> str:
+    """Get the save state file extension for the active backend."""
+    backend = os.environ.get("EMU_BACKEND", "").lower()
+    if backend in _EXT:
+        return _EXT[backend]
+    # Auto-detect: if .dst files exist, assume DeSmuME (legacy tests)
+    if any(SAVESTATES_DIR.glob("*.dst")):
+        return ".dst"
+    return ".mst"
+
 
 def do_load_state(emu, name: str) -> None:
-    """Load a named save state. Raises if the file doesn't exist."""
-    path = SAVESTATES_DIR / f"{name}.mst"
-    assert path.exists(), f"Save state not found: {path}"
+    """Load a named save state. Tries the active backend's extension first."""
+    ext = _savestate_ext()
+    path = SAVESTATES_DIR / f"{name}{ext}"
+    if not path.exists():
+        # Try the other extension as fallback
+        alt_ext = ".dst" if ext == ".mst" else ".mst"
+        alt_path = SAVESTATES_DIR / f"{name}{alt_ext}"
+        assert alt_path.exists(), f"Save state not found: {path} or {alt_path}"
+        path = alt_path
     result = emu.load_state(str(path))
     assert result, f"Failed to load save state: {name}"
     # Give the emulator a moment to settle after state load
