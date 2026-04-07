@@ -397,3 +397,44 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - **Items obtained**: Repel, Antidote, Parlyz Heal, TM65 Shadow Claw, TM27 Return
 - **Bugs logged**: 5 new (moving NPC interact, follower NPC BFS blocking, warp dialogue interruption, bridge tile passability, visual pathfind failure suggestion)
 - **Next**: Explore Eterna City. Gym #2 (Gardenia — Grass type). Team Galactic hideout.
+
+## Chapter 8: Route 216 — Gardenia & Shiny Swinub
+
+### Session: Route 216 Exploration
+
+#### Route 216 West — Snowbound Lodge
+- Loaded save at Route 216, position (331, 396). Used `use_medicine` to heal party (2 Energy Roots, 1 Revival Herb).
+- Navigated south and west through deep snow terrain toward western passage.
+- **Skier Edward** (3 Pokemon): Snover Lv20 (Grass/Ice, Snow Warning — hail started. Prinplup Metal Claw SE but Swagger caused confusion + Bullet Seed 3-hit KO'd Prinplup. Free-switched Charmeleon, Fire Fang 4x SE OHKO), Swinub Lv20 (Ice/Ground, Thick Fat — free-switched Machop, Brick Break SE + crit OHKO), Snorunt Lv20 (Ice, Inner Focus — Disable'd Brick Break! Bite flinch, then Low Kick SE. Hail chip throughout). Knock Off finished. Won $640.
+- Healed at **Snowbound Lodge** — free rest house on Route 216 west. "A Warm Bed and Little Else."
+- **Found Gardenia** inside the lodge! Dialogue: she came to Route 216 to catch a Snover but hail scared her off. Heading back to Eterna City Gym. Gym battle unlocked.
+- Picked up **Revive** (ground item near lodge).
+
+#### Ace Trainer Garrett — Wipe & Reload
+- Attempted **Ace Trainer Garrett** northwest of lodge. **Total party wipe.**
+  - Mr. Mime Lv22 (Psychic/Fairy, Filter): Psybeam 2HKO'd Prinplup, 2HKO'd Charmeleon. Filter reduced SE Metal Claw damage. Grotle's Bulldoze finally brought it to 2 HP.
+  - Scyther Lv22 (Bug/Flying, Technician): Wing Attack + Technician + STAB devastating. SE vs Grotle, Machop. Luxio took NVE Wing Attack, Spark SE brought to 18 HP. Quick Attack priority chip to 6 HP. Wing Attack SE OHKO'd Machop before Knock Off. Grotle Cut (0.25x) finished at 2 HP.
+  - Nuzleaf Lv22 (Grass/Dark, Chlorophyll): Fake Out KO'd last-standing Grotle (4 HP).
+- **Blacked out.** Lost $384. Reloaded `route216_lodge_healed`.
+- Lesson: Lv22 Ace Trainers with perfect coverage too strong at current levels. Need to come back later.
+
+#### Swinub Hunt — The Shiny
+- Navigated around Ace Trainer Garrett using Woj's visual guidance (south to tree line, one column left of trainer, north past sight line, west into grass).
+- **Snow terrain navigation bug**: `navigate` consistently blocks after 2 tiles going north at (298, 402-404), but works on immediate retry. Saved debug state `route216_snow_nav_bug_v2`.
+- Put Luxio in front (fastest Pokemon, Jolly nature) to improve flee success rate in hail.
+- **Swinub #1** (caught): Gentle (+SpD/-Def), Thick Fat. IVs: 7/12/16/30/10/27. Bad — low Atk IV, wrong nature for physical attacker. Kept in party temporarily.
+- **Swinub #2** (caught, sent to Box 1): Serious (neutral), Snow Cloak. IVs: 27/3/22/22/14/8. Even worse Atk IV (3/31).
+- **Swinub #3** (caught, sent to Box 1): **SHINY!** Timid (+Spe/-Atk), Thick Fat. IVs: 23/**31**/25/24/10/22. **Perfect 31 Attack IV on a shiny!** Green coloration. Timid nature hurts Attack but the perfect IV compensates. Future Mamoswine (Ice/Ground) — excellent offensive coverage for the team.
+- Wild encounters observed: Smoochum Lv19 (Ice/Psychic), Snorunt, Sneasel Lv20 (Dark/Ice, Technician — failed to flee once, Ice Shard SE chunked Grotle).
+
+### Session Summary
+- **Badges**: 1 (Coal Badge)
+- **Money**: ~$7,800
+- **Team**: Luxio Lv21, Machop Lv21, Grotle Lv24, Prinplup Lv21, Charmeleon Lv23, Swinub Lv19 (Gentle — placeholder, shiny is in Box 1)
+- **Location**: Route 216, Snowbound Lodge. Save state: `route216_lodge_post_shiny`.
+- **New trainers defeated**: Skier Edward (Route 216)
+- **Catches**: 3x Swinub (including one **SHINY** with perfect Atk IV — Box 1 slot 5)
+- **Items obtained**: Revive
+- **Items used**: 2 Energy Root, 1 Revival Herb, 4 Potion, 1 Revive (from medicine), 3 Poke Ball
+- **Bugs noted**: Snow terrain nav blocks after 2 tiles going north (retries work), lodge heal animation requires 600+ frames before input registers
+- **Next**: Return to Eterna City via Mt. Coronet. Swap shiny Swinub into party at Pokemon Center PC. Challenge Gardenia's Grass-type gym. Then: Team Galactic Eterna Building.
