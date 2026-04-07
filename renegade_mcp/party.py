@@ -289,6 +289,7 @@ def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
         # All recovery methods failed — genuine corruption
         return {
             "pid": pid,
+            "shiny": False,
             "partial": True,
             "species_id": 0,
             "item_id": 0,
@@ -337,9 +338,16 @@ def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
     # Block A (Growth)
     species = struct.unpack_from("<H", blocks, 0)[0]
     item = struct.unpack_from("<H", blocks, 2)[0]
+    ot_id = struct.unpack_from("<I", blocks, 4)[0]  # TID (lower 16) | SID (upper 16)
     exp = struct.unpack_from("<I", blocks, 8)[0]
     friendship = blocks[12]
     ability_idx = blocks[13]
+
+    # Shiny detection: (TID ^ SID ^ (PID >> 16) ^ (PID & 0xFFFF)) < threshold
+    # Renegade Platinum increases shiny rate from 1/8192 (threshold 8) to ~1/512 (threshold 128)
+    tid = ot_id & 0xFFFF
+    sid = (ot_id >> 16) & 0xFFFF
+    shiny = (tid ^ sid ^ (pid >> 16) ^ (pid & 0xFFFF)) < 128
     evs = {
         "hp": blocks[16], "atk": blocks[17], "def": blocks[18],
         "spe": blocks[19], "spa": blocks[20], "spd": blocks[21],
@@ -363,6 +371,7 @@ def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
 
     return {
         "pid": pid,
+        "shiny": shiny,
         "species_id": species,
         "item_id": item,
         "exp": exp,
@@ -495,6 +504,7 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
             "level": level,
             "hp": cur_hp,
             "max_hp": max_hp,
+            "shiny": decoded.get("shiny", False),
             "status_conditions": status_conds,
             "moves": moves_combined,
             "move_names": move_names_list,
@@ -547,11 +557,12 @@ def format_party(party: list[dict[str, Any]]) -> str:
         else:
             hp_str = "HP ?/?"
 
+        shiny_tag = " *SHINY*" if p.get("shiny") else ""
         ability_str = f"  [{p['ability']}]" if p.get("ability") and p.get("ability") != "-" else ""
         status_conds = p.get("status_conditions", [])
         status_str = f"  ⚠ {', '.join(status_conds)}" if status_conds else ""
         partial_tag = " [stale data]" if p.get("partial") else ""
-        lines.append(f"  {p['slot']}. {p['name']} {level_str}{nature_str}{ability_str}  {hp_str}{status_str}{partial_tag}")
+        lines.append(f"  {p['slot']}. {p['name']}{shiny_tag} {level_str}{nature_str}{ability_str}  {hp_str}{status_str}{partial_tag}")
 
         if p.get("partial"):
             lines.append("     (moves/IVs/EVs unavailable — encrypted data stale)")

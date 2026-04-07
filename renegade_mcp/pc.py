@@ -238,6 +238,7 @@ def read_box(emu: EmulatorClient, box: int = 1) -> dict[str, Any]:
             "slot": i,
             "species_id": species,
             "name": name,
+            "shiny": decoded.get("shiny", False),
             "nature": decoded["nature"],
             "exp": decoded["exp"],
             "moves": decoded["moves"],
@@ -259,10 +260,11 @@ def read_box(emu: EmulatorClient, box: int = 1) -> dict[str, Any]:
     # Format output
     lines = [f"=== Box {box} ({len(pokemon)} Pokemon) ==="]
     for p in pokemon:
+        shiny_tag = " *SHINY*" if p.get("shiny") else ""
         nature_str = f" ({p['nature']})" if p.get("nature") else ""
         held_str = f"  [{p['held_item']}]" if p.get("held_item") else ""
         partial_tag = " [stale]" if p.get("partial") else ""
-        lines.append(f"  {p['slot']:2d}. {p['name']}{nature_str}{held_str}{partial_tag}")
+        lines.append(f"  {p['slot']:2d}. {p['name']}{shiny_tag}{nature_str}{held_str}{partial_tag}")
         if not p.get("partial") and p.get("move_names"):
             moves = [m for m in p["move_names"] if m != "-"]
             lines.append(f"      Moves: {', '.join(moves)}")

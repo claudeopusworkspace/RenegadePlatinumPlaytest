@@ -31,6 +31,7 @@ OFF_STAGES = 0x18
 OFF_WEIGHT = 0x20
 OFF_TYPES = 0x24
 OFF_ABILITY = 0x27
+OFF_FORM_SHINY = 0x26     # formNum:5, isShiny:1, padding:2
 OFF_ABILITY_FLAGS = 0x28  # ability announcement bitfield (intimidate, trace, etc.)
 OFF_PP = 0x2C
 OFF_LEVEL = 0x34
@@ -129,6 +130,7 @@ def read_battle(emu: EmulatorClient) -> list[dict[str, Any]]:
 
         type1 = data[OFF_TYPES]
         type2 = data[OFF_TYPES + 1]
+        is_shiny = bool((data[OFF_FORM_SHINY] >> 5) & 1)
         ability_id = data[OFF_ABILITY]
         status = struct.unpack_from("<I", data, OFF_STATUS)[0]
         item_id = struct.unpack_from("<H", data, OFF_ITEM)[0]
@@ -145,6 +147,7 @@ def read_battle(emu: EmulatorClient) -> list[dict[str, Any]]:
             "level": level,
             "hp": cur_hp,
             "max_hp": max_hp,
+            "shiny": is_shiny,
             "stats": {"atk": atk, "def": df, "spa": spa, "spd": spd, "spe": spe},
             "moves": [
                 {
@@ -207,6 +210,8 @@ def battle_summary(battlers: list[dict[str, Any]]) -> list[dict[str, Any]]:
             "hp": f"{b['hp']}/{b['max_hp']}",
             "types": b["type1"] if b["type1"] == b["type2"] else f"{b['type1']}/{b['type2']}",
         }
+        if b.get("shiny"):
+            entry["shiny"] = True
 
         # Nickname only when different from species
         if b.get("nickname") and b["nickname"] != b["species"]:
@@ -249,12 +254,13 @@ def format_battle(battlers: list[dict[str, Any]]) -> str:
         nick = b["nickname"]
         name = b["species"]
         name_str = nick if nick == name else f"{nick} ({name})"
+        shiny_tag = " *SHINY*" if b.get("shiny") else ""
 
         hp_pct = b["hp"] / b["max_hp"] * 100 if b["max_hp"] > 0 else 0
         filled = int(hp_pct / 100 * 20)
         bar = "\u2588" * filled + "\u2591" * (20 - filled)
 
-        lines.append(f"\n  [{side_label}] {name_str} Lv{b['level']}")
+        lines.append(f"\n  [{side_label}] {name_str}{shiny_tag} Lv{b['level']}")
         lines.append(f"    HP: {b['hp']}/{b['max_hp']} [{bar}] {hp_pct:.0f}%")
 
         type_str = b["type1"]
