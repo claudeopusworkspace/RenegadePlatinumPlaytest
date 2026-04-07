@@ -29,6 +29,15 @@
 | `debug_heal_party_dialogue_stuck` | Eterna City PC, pre-heal. heal_party doesn't dismiss final "We hope to see you again!" text. |
 | `debug_deposit_extra_a_press` | Eterna City PC storage menu. deposit_pokemon presses extra A before navigating to target slot. |
 
+## Test Suite
+
+| Name | Description |
+|------|-------------|
+| `test_wild_battle_action` | Route 216 wild Smoochum battle at action prompt. Prinplup Lv21 (lead) vs Smoochum Lv19. 5 Pokemon party. Hail active. |
+| `test_eterna_city_overworld` | Eterna City at (305, 530) facing down. Outside Pokemon Center. 6 Pokemon party (shiny Swinub). Open streets, nearby NPCs/signs/doors. |
+| `test_damaged_party_overworld` | Route 216 grass. Prinplup at 32/66 HP (48%), rest full. 5 Pokemon party. Overworld, post-battle. |
+| `test_npc_dialogue_active` | Eterna City at (301, 530). Mid-dialogue with Galactic Grunt: "Hey, you! Yeah, you, Trainer!" text on screen. |
+
 ---
 
 *DeSmuME-era save states (.dst) are documented in [LEGACY_SAVE_STATES.md](LEGACY_SAVE_STATES.md). These are not compatible with melonDS but preserved for reference.*

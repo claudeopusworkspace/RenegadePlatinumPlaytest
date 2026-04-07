@@ -1,7 +1,8 @@
-"""Shared test helpers for battle test suite."""
+"""Shared test helpers for Renegade MCP test suite."""
 
 from __future__ import annotations
 
+import functools
 import os
 import sys
 from pathlib import Path
@@ -87,3 +88,27 @@ def assert_final_state(result: dict[str, Any], expected: str) -> None:
         f"Expected final_state={expected}, got {actual}.\n"
         f"Log: {result.get('log', 'N/A')}"
     )
+
+
+def retry_on_rng(state_name: str, max_retries: int = 3):
+    """Retry test up to max_retries, reloading save state each time.
+
+    Use for tests involving RNG (damage rolls, encounters, etc.).
+    Read-only tests should NOT use this — if they fail, it's a real bug.
+
+    The decorator loads the save state before each attempt, so tests
+    using this should NOT call load_state themselves.
+    """
+    def decorator(fn):
+        @functools.wraps(fn)
+        def wrapper(self, emu, *args, **kwargs):
+            last_error = None
+            for attempt in range(max_retries):
+                do_load_state(emu, state_name)
+                try:
+                    return fn(self, emu, *args, **kwargs)
+                except AssertionError as e:
+                    last_error = e
+            raise last_error
+        return wrapper
+    return decorator
