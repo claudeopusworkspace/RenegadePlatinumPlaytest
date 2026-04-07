@@ -22,6 +22,7 @@ from renegade_mcp.party import read_party
 from renegade_mcp.trainer import read_trainer_status
 from renegade_mcp.map_state import (
     CHUNK_SIZE,
+    SIGN_GFX_IDS,
     analyze_elevation,
     get_land_data_id,
     get_map_state,
@@ -44,6 +45,7 @@ if TYPE_CHECKING:
 HOLD_FRAMES = 16
 WAIT_FRAMES = 8
 SETTLE_FRAMES = 120
+SLOW_TERRAIN_EXTRA_WAIT = 16  # Extra wait on apparent block (deep snow, ice)
 
 MAX_REPATHS = 5
 
@@ -1495,6 +1497,12 @@ def _execute_path(
         new_map, new_x, new_y = _read_position(emu)
 
         blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
+        if blocked:
+            # Slow terrain (deep snow, ice) may not update position within
+            # HOLD_FRAMES + WAIT_FRAMES. Wait extra frames and re-check.
+            emu.advance_frames(SLOW_TERRAIN_EXTRA_WAIT)
+            new_map, new_x, new_y = _read_position(emu)
+            blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
         if not blocked:
             steps_taken += 1
 
@@ -2733,7 +2741,23 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
                 if encounter:
                     nav_result["encounter"] = encounter
             return nav_result
-        # msgBox=0: text buffer had stale data. Fall through to A press.
+        # msgBox=0: might be stale buffer data, or a sign overlay (board
+        # message) that doesn't set msgBox.  Signs use a BG-layer overlay
+        # for text instead of the standard dialogue box.
+        is_sign = (has_object and target is not None
+                   and target.get("graphics_id", 0) in SIGN_GFX_IDS)
+        if is_sign:
+            # Accept the text from read_dialogue and dismiss the overlay
+            emu.press_buttons(["b"], frames=8)
+            emu.advance_frames(SETTLE_FRAMES)
+            nav_result["dialogue"] = {
+                "status": "completed",
+                "text": dialogue.get("text", ""),
+                "lines": dialogue.get("lines", []),
+                "sign_overlay": True,
+            }
+            return nav_result
+        # Not a sign — stale data. Fall through to A press.
 
     # ── Press A to interact ──
     emu.press_buttons(["a"], frames=8)
@@ -2752,8 +2776,21 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
                 if encounter:
                     nav_result["encounter"] = encounter
             return nav_result
-        # msgBox=0: text buffer had pre-positioned data (cutscene approach).
-        # Fall through to script detection.
+        # msgBox=0: might be pre-positioned cutscene data, or sign overlay.
+        is_sign = (has_object and target is not None
+                   and target.get("graphics_id", 0) in SIGN_GFX_IDS)
+        if is_sign:
+            emu.press_buttons(["b"], frames=8)
+            emu.advance_frames(SETTLE_FRAMES)
+            nav_result["dialogue"] = {
+                "status": "completed",
+                "text": dialogue.get("text", ""),
+                "lines": dialogue.get("lines", []),
+                "sign_overlay": True,
+            }
+            nav_result["pressed_a"] = True
+            return nav_result
+        # Not a sign — fall through to script detection.
 
     # ── Fallback: check for script activation (trainer spotted during walk
     #    or "!" approach animation still in progress after A press) ──
