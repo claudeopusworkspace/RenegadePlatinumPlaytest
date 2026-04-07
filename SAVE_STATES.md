@@ -11,6 +11,8 @@
 | `route216_grass_swinub_hunt` | Route 216 tall grass west of lodge (295, 393). Past Ace Trainer Garrett. Ready for wild encounters. |
 | `route216_shiny_swinub_caught` | Route 216 tall grass. Just caught SHINY Swinub (perfect Atk IV). Pre-heal. |
 | `route216_lodge_post_shiny` | Route 216 Snowbound Lodge, fully healed. 6 party + shiny Swinub in Box 1. Session end. |
+| `route211_from_coronet` | Route 211 east at (419, 527). Just exited Mt. Coronet east side. Pre-trainer battle. |
+| `eterna_city_shiny_swinub_in_party` | Eterna City Pokemon Center. Shiny Swinub in party (slot 5, Never-Melt Ice). Healed. Ready for Gardenia. |
 
 ## Debug & Testing
 
@@ -21,6 +23,11 @@
 | `debug_route211_bridge_pathfind` | Route 211 at (377, 532). 3D BFS walks off bridge to reach Pokeball at (368, 535). |
 | `debug_route216_blocked_down` | Route 216 at (374, 402). Deep snow movement timing bug — nav code reports impassable but `advance_frames` with held direction moves fine. |
 | `route216_snow_nav_bug_v2` | Route 216 at (298, 404). Navigate blocks after 2 tiles going north in snow — works on immediate retry. melonDS era. |
+| `debug_coronet218_3d_path_blocked` | Mt. Coronet map 218 at (29, 31). navigate_to(29, 35) fails 3D BFS but manual nav works. |
+| `debug_doubles_target_swapped` | Route 211 double battle start. target=0/1 reversed — target=0 hits right enemy. |
+| `debug_doubles_faint_switch_bug` | Route 211 double battle. Machop's turn, about to faint. battle_turn(switch_to=N) returns NO_ACTION_PROMPT after faint. |
+| `debug_heal_party_dialogue_stuck` | Eterna City PC, pre-heal. heal_party doesn't dismiss final "We hope to see you again!" text. |
+| `debug_deposit_extra_a_press` | Eterna City PC storage menu. deposit_pokemon presses extra A before navigating to target slot. |
 
 ---
 

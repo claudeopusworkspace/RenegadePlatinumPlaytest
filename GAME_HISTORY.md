@@ -438,3 +438,53 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - **Items used**: 2 Energy Root, 1 Revival Herb, 4 Potion, 1 Revive (from medicine), 3 Poke Ball
 - **Bugs noted**: Snow terrain nav blocks after 2 tiles going north (retries work), lodge heal animation requires 600+ frames before input registers
 - **Next**: Return to Eterna City via Mt. Coronet. Swap shiny Swinub into party at Pokemon Center PC. Challenge Gardenia's Grass-type gym. Then: Team Galactic Eterna Building.
+
+## Chapter 9: Return to Eterna City
+
+### Session: Mt. Coronet Return & PC Swap (2026-04-07)
+
+#### melonDS Migration
+- First gameplay session on melonDS (JIT recompiler). ~3.5x faster frame-advancing.
+- Multiple tool timing issues discovered — melonDS processes inputs differently from DeSmuME. Several tools need retesting.
+
+#### Route 216 → Mt. Coronet Traverse
+- Loaded save `route216_lodge_post_shiny`. Full party, all healed.
+- Navigated east across Route 216 to Mt. Coronet entrance at (375, 403).
+- Entered Mt. Coronet map 217 → map 219 (large cave with water).
+- Picked up **Never-Melt Ice** in treasure room off map 217 (room [D35]).
+- Map 219 is much larger than 32x32 viewport — had to traverse south along the left wall past the water to find the exit at (8, 60).
+- Exited map 219 → map 218. Found two Route 211 exits: west (2, 41) to Eterna City side, east (29, 35) to Celestic Town side.
+- Hit navigate_to 3D BFS bug at (29, 31) — couldn't pathfind to (29, 35). Manual navigation worked.
+- Initially took the **wrong exit** (east to Celestic Town side of Route 211). Oops.
+
+#### Route 211 East — Double Battle
+- **Bird Keeper Katherine & Ruin Maniac Harry** (double battle): Noctowl Lv22 (Psychic/Flying, Tinted Lens) + Aerodactyl Lv21 (Rock/Flying, Rock Head).
+  - Discovered **target=0/1 swap bug** in battle_turn — target=0 hits right enemy, target=1 hits left. Misdirected attacks throughout.
+  - Discovered **doubles faint-switch bug** — battle_turn(switch_to=N) returns NO_ACTION_PROMPT after ally faints. Had to manual-switch via touch screen 3 times.
+  - Machop fainted (Wing Attack SE + Extrasensory SE), Charmeleon fainted (Ancient Power SE + Extrasensory crit), Grotle fainted (Air Cutter via Tinted Lens), Luxio fainted (Wing Attack).
+  - Prinplup cleaned up both at 1-2 HP with Bubble Beam. Won $1,712.
+  - **Prinplup leveled to 22**, learned **Icy Wind** (forgot Peck).
+
+#### Correct Route Back
+- Woj pointed out the east exit goes to Celestic Town, not Eterna City.
+- Re-entered Mt. Coronet map 218, took the **west exit** at (2, 41).
+- Emerged on Route 211 west side (map 365). Walked west into **Eterna City**.
+
+#### Eterna City — PC Swap
+- Healed at Pokemon Center (heal_party tool — leftover dialogue bug noted).
+- Opened PC to swap placeholder Swinub for shiny Swinub.
+  - deposit_pokemon tool had extra A-press bug on melonDS. Woj guided manual deposit/withdraw via button presses.
+  - Successfully deposited placeholder Swinub (Gentle, slot 5) into Box 1.
+  - Withdrew **SHINY Swinub** (Timid, 31 Atk IV, Thick Fat) from Box 1 into party slot 5.
+- Gave **Never-Melt Ice** to shiny Swinub (+20% Ice moves).
+
+### Session Summary
+- **Badges**: 1 (Coal Badge)
+- **Money**: $9,924
+- **Team**: Luxio Lv21, Machop Lv21, Grotle Lv24, Prinplup Lv22 (+Icy Wind), Charmeleon Lv23, **SHINY Swinub Lv19** (Never-Melt Ice)
+- **Location**: Eterna City Pokemon Center. Save state: `eterna_city_shiny_swinub_in_party`.
+- **New trainers defeated**: Bird Keeper Katherine & Ruin Maniac Harry (Route 211 east — double battle)
+- **Items obtained**: Never-Melt Ice (Mt. Coronet treasure room)
+- **Bugs found**: 4 new — doubles target swap, doubles faint-switch NO_ACTION_PROMPT, navigate_to 3D BFS false block (map 218), deposit_pokemon extra A press on melonDS, heal_party lingering dialogue
+- **Decision**: Full tool retest on melonDS planned for next sessions before continuing gameplay.
+- **Next**: Retest tools on melonDS. Then: Challenge Gardenia's Grass-type gym. After gym: Team Galactic Eterna Building.
