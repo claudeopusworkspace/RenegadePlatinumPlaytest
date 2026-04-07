@@ -2,6 +2,59 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Comprehensive melonDS Test Suite (2026-04-07b)
+
+Built a full regression test suite for all 35 Renegade MCP tools on melonDS. No tool code was modified — strictly test infrastructure.
+
+### Motivation
+
+After migrating from DeSmuME to melonDS, recurring timing/input bugs made it clear we needed a proper test suite. The existing 34 battle-focused tests all depended on DeSmuME .dst save states (incompatible with melonDS).
+
+### What was built
+
+- **121 tests across 11 new files** covering all 35 tools
+- **4 new melonDS save states** created for test scenarios:
+  - `test_wild_battle_action` — wild Smoochum battle at action prompt (Route 216)
+  - `test_eterna_city_overworld` — standing outside Pokemon Center in Eterna City
+  - `test_damaged_party_overworld` — Prinplup at 48% HP after battle (Route 216)
+  - `test_npc_dialogue_active` — mid-dialogue with Galactic Grunt (Eterna City)
+- **`retry_on_rng` decorator** added to `helpers.py` — reloads save state and retries up to 3x for RNG-dependent tests
+- **7 DeSmuME-era test files** moved to `tests/legacy/`
+
+### Test file breakdown
+
+| File | Tests | Tools Covered |
+|------|-------|---------------|
+| `test_data_tools.py` | 16 | type_matchup, move_info, decode_rom_message, search_rom_messages |
+| `test_read_tools.py` | 24 | read_party, read_battle, read_bag, read_trainer_status, read_box, read_shop, tm_compat |
+| `test_map_tools.py` | 11 | view_map, map_name |
+| `test_navigation.py` | 22 | navigate, navigate_to, interact_with, seek_encounter |
+| `test_battle.py` | 13 | battle_turn, throw_ball, read_dialogue |
+| `test_item_tools.py` | 15 | use_item, use_field_item, use_medicine, take_item, give_item, teach_tm |
+| `test_shop_tools.py` | 3 | buy_item |
+| `test_pc_tools.py` | 7 | open_pc, deposit_pokemon, withdraw_pokemon, close_pc |
+| `test_party_tools.py` | 5 | reorder_party, heal_party |
+| `test_auto_grind_v2.py` | 5 | auto_grind |
+| `test_utility.py` | 1 | reload_tools |
+
+### Pass rates
+
+- **Deterministic tests** (data, read, map, utility): 52/52 (100%)
+- **State-changing tests** (fresh session): ~96% (shop 3/3, navigation 22/22, most battle/item/PC pass)
+- **Known failure**: double battle both-actions test — pre-existing timing bug in `debug_doubles_target_swapped` state
+
+### Known issue: address cache staleness
+
+When running the full 121-test suite sequentially, some mid-suite tests destabilize the emulator's address resolution (`detect_shift` cache), causing a cascade of `RuntimeError` in later tests. Running test groups independently avoids this. Root cause TBD — likely needs periodic re-detection in `addresses.py`.
+
+### Deferred tests (need game progress)
+
+- Trainer battle (no undefeated trainers in current area)
+- Move learn / evolution in battle
+- Yes/No dialogue prompt
+
+**Commits**: `de26266`
+
 ## Dev Session: Shiny Detection, Bug Fixes, Map Reachability (2026-04-07)
 
 Feature + bug fix session. Cleared 3 bugs from the backlog, added shiny detection, improved auto_grind and view_map.
