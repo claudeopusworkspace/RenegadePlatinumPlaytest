@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import struct
+from collections import deque
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -290,6 +291,50 @@ def read_warps_from_rom(emu: "EmulatorClient", map_id: int) -> list[dict[str, in
 # Sign graphics IDs that auto-trigger dialogue when the player steps onto the
 # tile directly south while facing north.
 SIGN_GFX_IDS = {91, 93, 94, 95, 96}  # Map Signpost, Signboard, Arrow, Gym, Trainer Tips
+
+# ── Lightweight passability for BFS flood-fill (view_map reachability) ──
+# Mirrors navigation.py's passability logic without importing it.
+_FLOOD_OBSTACLES = {0x10, 0x15, 0x13, 0x4A, 0x4B}  # water, waterfall, rock climb
+_FLOOD_PASSABLE_OVERRIDES = {
+    0x69,                                  # door
+    0x62, 0x63, 0x64, 0x6C, 0x6D, 0x6F,   # directional warps
+    0x38, 0x39, 0x3A, 0x3B,               # ledges
+    0x6E,                                  # walk-into warp north
+}
+
+
+def _bfs_flood_fill(
+    terrain: list[list[int]],
+    start_x: int, start_y: int,
+    npc_positions: set[tuple[int, int]],
+    width: int, height: int,
+) -> dict[tuple[int, int], int]:
+    """BFS flood-fill from (start_x, start_y). Returns {(x,y): steps} for all reachable tiles."""
+    dist: dict[tuple[int, int], int] = {(start_x, start_y): 0}
+    queue: deque[tuple[int, int, int]] = deque([(start_x, start_y, 0)])
+
+    while queue:
+        x, y, d = queue.popleft()
+        for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0)):
+            nx, ny = x + dx, y + dy
+            if (nx, ny) in dist:
+                continue
+            if not (0 <= nx < width and 0 <= ny < height):
+                continue
+            if (nx, ny) in npc_positions:
+                continue
+            val = terrain[ny][nx]
+            behavior = val & 0x00FF
+            is_blocked = (val & 0x8000) != 0
+            if is_blocked and behavior not in _FLOOD_PASSABLE_OVERRIDES:
+                continue
+            if behavior in _FLOOD_OBSTACLES:
+                continue
+            nd = d + 1
+            dist[(nx, ny)] = nd
+            queue.append((nx, ny, nd))
+
+    return dist
 
 
 def read_sign_tiles_from_rom(emu: "EmulatorClient", map_id: int) -> list[tuple[int, int]]:
@@ -1089,8 +1134,37 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
                 entry["defeated"] = is_trainer_defeated(emu, tid)
         obj_info.append(entry)
 
-    # Sort objects by Manhattan distance from player
-    obj_info.sort(key=lambda o: abs(o["x"] - px) + abs(o["y"] - py))
+    # BFS flood-fill from player for reachability + step counts
+    npc_positions: set[tuple[int, int]] = set()
+    for obj in visible_objects:
+        if obj["index"] == 0:
+            continue
+        npc_positions.add((obj["local_x"], obj["local_y"]))
+
+    reachable_tiles = _bfs_flood_fill(
+        vp_terrain, player_grid_x, player_grid_y,
+        npc_positions, vp_w, vp_h,
+    )
+
+    # Annotate each object with reachability (min BFS steps to any adjacent tile)
+    for o in obj_info:
+        lx, ly = o["x"] - vp_x, o["y"] - vp_y
+        best_steps = None
+        for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0)):
+            adj = (lx + dx, ly + dy)
+            if adj in reachable_tiles:
+                s = reachable_tiles[adj]
+                if best_steps is None or s < best_steps:
+                    best_steps = s
+        if best_steps is not None:
+            o["reachable"] = True
+            o["steps"] = best_steps
+        else:
+            o["reachable"] = False
+            o["distance"] = abs(o["x"] - px) + abs(o["y"] - py)
+
+    # Sort: reachable first (by steps), then unreachable (by Manhattan distance)
+    obj_info.sort(key=lambda o: (not o.get("reachable", False), o.get("steps", 0) if o.get("reachable") else o.get("distance", 0)))
 
     # Warp destinations within viewport
     all_warps = read_warps_from_rom(emu, map_id)
