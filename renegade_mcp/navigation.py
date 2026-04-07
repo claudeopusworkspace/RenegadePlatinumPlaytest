@@ -45,7 +45,7 @@ if TYPE_CHECKING:
 HOLD_FRAMES = 16
 WAIT_FRAMES = 8
 SETTLE_FRAMES = 120
-SLOW_TERRAIN_EXTRA_WAIT = 16  # Extra wait on apparent block (deep snow, ice)
+SLOW_TERRAIN_RETRIES = 3  # Re-press attempts on apparent block (deep snow, ice)
 
 MAX_REPATHS = 5
 
@@ -1498,11 +1498,17 @@ def _execute_path(
 
         blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
         if blocked:
-            # Slow terrain (deep snow, ice) may not update position within
-            # HOLD_FRAMES + WAIT_FRAMES. Wait extra frames and re-check.
-            emu.advance_frames(SLOW_TERRAIN_EXTRA_WAIT)
-            new_map, new_x, new_y = _read_position(emu)
-            blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
+            # Slow terrain (deep snow, ice) may not complete a step within
+            # HOLD_FRAMES + WAIT_FRAMES. Retry with full press cycles —
+            # the first press may have only turned the character, or the
+            # animation may still be in progress.
+            for _ in range(SLOW_TERRAIN_RETRIES):
+                emu.advance_frames(HOLD_FRAMES, buttons=[direction])
+                emu.advance_frames(WAIT_FRAMES)
+                new_map, new_x, new_y = _read_position(emu)
+                blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
+                if not blocked:
+                    break
         if not blocked:
             steps_taken += 1
 
