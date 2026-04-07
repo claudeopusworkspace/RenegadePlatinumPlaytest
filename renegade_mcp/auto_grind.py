@@ -189,6 +189,17 @@ def auto_grind(
 
         first_loop = False
 
+        # Check for shiny before anything else — always stop on shinies
+        enemy_shiny = any(
+            b.get("shiny") for b in battlers if b.get("side") == "enemy"
+        )
+        if enemy_shiny:
+            stop_reason = "shiny"
+            stop_detail = (
+                f"SHINY {enemy_species}! At action prompt — ready to fight or catch."
+            )
+            break
+
         # Check target_species before fighting/running
         if target_species and enemy_species.lower() == target_species.lower():
             stop_reason = "target_species"
@@ -240,8 +251,8 @@ def auto_grind(
     party = _read_party(emu)
     result = _finish(stop_reason, stop_detail, battles, party, encounters=encounters)
 
-    # If stopped for target_species, include trimmed battle state for the caller
-    if stop_reason == "target_species":
+    # If stopped for target_species or shiny, include trimmed battle state
+    if stop_reason in ("target_species", "shiny"):
         from renegade_mcp.battle import battle_summary
         result["battle_state"] = battle_summary(_read_battle(emu))
 

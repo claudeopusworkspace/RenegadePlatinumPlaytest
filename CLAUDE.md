@@ -160,6 +160,7 @@ auto_grind(move_index=0, target_species="Larvitar")  # grind, but stop if Larvit
 | Reason | Meaning | What to do |
 |--------|---------|------------|
 | `target_level` | Slot 0 reached the target level. | Done! |
+| `shiny` | Wild shiny Pokemon encountered. At action prompt. | Catch it! Battle state included in response. Always triggers regardless of other params. |
 | `target_species` | Found the target species. At action prompt. | Fight, catch, or flee. Battle state included in response. |
 | `iterations` | Completed the requested number of encounters. | Review encounter log. |
 | `fainted` | Slot 0 fainted. | Heal, then grind again or switch lead. |
