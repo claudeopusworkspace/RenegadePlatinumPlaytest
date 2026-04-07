@@ -2,6 +2,68 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Shiny Detection, Bug Fixes, Map Reachability (2026-04-07)
+
+Feature + bug fix session. Cleared 3 bugs from the backlog, added shiny detection, improved auto_grind and view_map.
+
+### Feature: Shiny detection across all read tools
+
+Added `shiny: true/false` to `read_party`, `read_battle`, `read_box`, and all formatters (`*SHINY*` tag).
+
+- **Party/box**: Reads OT ID (u32) from Block A offset 4 — TID in lower 16, SID in upper 16. Computes `(TID ^ SID ^ (PID >> 16) ^ (PID & 0xFFFF)) < 128`.
+- **Battle**: Reads `isShiny` bit from BattleMon struct +0x26 (formNum:5, isShiny:1, padding:2). Game-computed, no threshold needed.
+- **Threshold discovery**: Vanilla Gen 4 uses `< 8` (1/8192 rate). Initial implementation returned `shiny: false` for our known shiny Swinub. Debug script revealed XOR = 92 — Renegade Platinum increases the rate to ~1/512 (threshold 128). All non-shiny Pokemon had XOR values 400+, confirming the threshold.
+- **Verified**: Box 1 slot 5 (shiny Swinub, 31 Atk IV, Timid) correctly flagged. Party members correctly unflagged.
+
+**Commits**: `f6306f0`
+
+### Feature: auto_grind stops on shiny encounters
+
+`auto_grind` now checks the enemy's `shiny` field before fighting or running. Any shiny halts with `stop_reason="shiny"` and battle state attached. Checked before `target_species` so shinies are never accidentally KO'd or fled from. With the 1/512 rate, we'll hit these during grinding sessions.
+
+**Commits**: `fe65b1b`
+
+### Fix: Snow terrain false blocks (revised)
+
+Original fix (single extra wait of 16 frames) only worked when starting from a north-facing position. Failed on direction changes — the first button press in deep snow turns the character without stepping. Woj caught this with a visual repro: d2 then u9 still stopped after the turn.
+
+**Final fix**: Retry up to 3 full press cycles (HOLD_FRAMES + WAIT_FRAMES each) when a block is detected. The second press initiates the actual step after the turn completes. Only triggers on apparent blocks — no impact on normal movement.
+
+**Verified**: `route216_snow_nav_bug_v2` → d2, then u9 — all 9 steps complete through deep snow with direction change.
+
+**Commits**: `e08d3c8`, `d8d3c09`
+
+### Fix: Sign overlay dialogue detection
+
+Signposts (all types: Signboard, Arrow, Gym, Trainer Tips — gfx IDs 91-96) render text via BG-layer board message overlay without setting `msgBox=1` in ScriptManager. `advance_dialogue` checked msgBox first and returned `"no_dialogue"`, discarding valid text.
+
+**Investigation**: Loaded `route216_lodge_post_shiny`, interacted with Signboard at (305, 399). `read_dialogue` found "Snowbound Lodge / A Warm Bed and Little Else" in memory, but `msgBox: False`. Confirmed this affects ALL signpost types, not just arrow signs as originally reported.
+
+**Fix**: In `interact_with`, when target is a sign object (gfx_id in SIGN_GFX_IDS) and `read_dialogue` found text but `advance_dialogue` rejected it, accept the text directly and dismiss overlay with B. Both auto-trigger and A-press paths covered. Returns `sign_overlay: true` flag.
+
+**Commits**: `e08d3c8`
+
+### Feature: view_map object reachability sorting
+
+Objects in `view_map` are now grouped by BFS reachability instead of pure Manhattan distance:
+
+1. **Reachable**: sorted by actual step count to nearest adjacent tile (`reachable: true, steps: N`)
+2. **Unreachable**: sorted by Manhattan distance (`reachable: false, distance: N`)
+
+Uses a single BFS flood-fill from the player position — one traversal covers all objects. Lightweight passability check (collision bit + warp/ledge overrides + obstacle exclusion) mirrors navigation.py's logic without circular imports.
+
+**Verified**: Route 216 (5 reachable objects, correct step ordering), Eterna Pokemon Center (Nurse behind counter correctly unreachable), `route216_snow_nav_bug` (Black Belt across wall correctly unreachable at distance 10 despite being close).
+
+**Commits**: `eb17449`
+
+### Fix: Git credential warning
+
+Removed malformed global credential helper from `~/.gitconfig`. The `\\!` escape caused git to look for a command called `credential-!/usr/bin/gh` on every push. Per-host helpers for `github.com` and `gist.github.com` already handled auth correctly — the global fallback was redundant noise.
+
+**Commits**: 6 this session — `f6306f0`, `e08d3c8`, `830b196`, `fe65b1b`, `eb17449`, `d8d3c09`.
+
+---
+
 ## Dev Session: Snow Tile Navigation Fix (2026-04-06)
 
 Route 216 navigation was completely broken — the nav tools couldn't pathfind through snow tiles. Diagnosed and fixed in a single session.
