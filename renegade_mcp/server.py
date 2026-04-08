@@ -1013,6 +1013,7 @@ def create_server() -> FastMCP:
         iterations: int = 0,
         forget_move: int = -2,
         target_species: str = "",
+        backup_move: int = -1,
     ) -> dict[str, Any]:
         """Grind wild encounters automatically: seek → battle → repeat.
 
@@ -1033,6 +1034,9 @@ def create_server() -> FastMCP:
         - seek_failed: Unexpected interruption while seeking encounters (cutscene, blocked path).
         - move_learn: Pokemon wants to learn a new move but has no room. Call again with
           forget_move to continue (0-3 = forget that slot, -1 = skip learning).
+        - move_blocked: Primary move was blocked by Torment/Disable/Encore/Taunt and no
+          backup_move was provided. Provide backup_move to auto-alternate.
+        - turn_limit: Battle exceeded 10 turns without ending (safety valve).
         - unexpected: Unknown battle state — check game manually.
 
         Returns an `encounters` list: each entry has `species` (name) and
@@ -1046,6 +1050,9 @@ def create_server() -> FastMCP:
             forget_move: Resume from a move_learn stop. 0-3 = forget that move slot,
                         -1 = skip learning. -2 (default) = not resuming.
             target_species: Stop when this species is encountered. Case-insensitive.
+            backup_move: Fallback move slot (0-3) when primary is blocked by Torment/Disable/
+                        Encore/Taunt. Alternates with primary move. -1 = no backup (stops
+                        with move_blocked on first block).
         """
         from renegade_mcp.auto_grind import auto_grind as _auto_grind
 
@@ -1058,6 +1065,7 @@ def create_server() -> FastMCP:
             iterations=iterations,
             forget_move=forget_move,
             target_species=target_species,
+            backup_move=backup_move,
         )
 
     # ── Reload ──

@@ -1192,6 +1192,15 @@ def _classify_final_state(emu: EmulatorClient, result: dict[str, Any]) -> str:
                 return "SWITCH_PROMPT"
             if "give up on" in t or "forget another move" in t:
                 return "MOVE_LEARN"
+        # Move-lock detection: Torment, Disable, Taunt, Encore, Choice items.
+        # These reject the move at the UI level without consuming a turn,
+        # returning to the action prompt with rejection text in the log.
+        # Note: _classify_final_state runs before prompt log is merged,
+        # so result["log"] here contains only poll entries.
+        for entry in result.get("log", []):
+            t = entry.get("text", "").replace("\n", " ").lower()
+            if "can't use" in t or "cannot use" in t:
+                return "MOVE_BLOCKED"
         return "WAIT_FOR_ACTION"
 
     if raw_state in ("TIMEOUT", "NO_TEXT"):

@@ -38,6 +38,7 @@ def auto_grind(
     iterations: int = 0,
     forget_move: int = -2,
     target_species: str = "",
+    backup_move: int = -1,
 ) -> dict[str, Any]:
     """Grind wild encounters automatically.
 
@@ -58,6 +59,8 @@ def auto_grind(
                      (0-3 = forget that slot, -1 = skip learning). -2 = not resuming.
         target_species: Stop when this species appears. Case-insensitive.
                         Empty = no species filter.
+        backup_move: Fallback move slot (0-3) when primary is blocked by Torment/Disable/
+                     Encore/Taunt. -1 = no backup (stops with move_blocked on first block).
 
     Returns:
         Dict with stop_reason, battles fought, encounters list (species + checkpoint),
@@ -95,7 +98,8 @@ def auto_grind(
             # Move learn resolved mid-battle — continue this battle
             if fighting:
                 stop_reason, stop_detail, battle_log, detected_level = _fight_battle(
-                    emu, move_index, result, resuming=True,
+                    emu, move_index, backup_move=backup_move,
+                    initial_result=result, resuming=True,
                 )
             else:
                 stop_reason, stop_detail, battle_log, detected_level = _run_battle(emu)
@@ -210,7 +214,7 @@ def auto_grind(
 
         # We have a battle — fight or run
         if fighting:
-            stop_reason, stop_detail, battle_log, detected_level = _fight_battle(emu, move_index)
+            stop_reason, stop_detail, battle_log, detected_level = _fight_battle(emu, move_index, backup_move=backup_move)
         else:
             stop_reason, stop_detail, battle_log, detected_level = _run_battle(emu)
         battles.append({"turns": battle_log})
@@ -262,6 +266,7 @@ def auto_grind(
 def _fight_battle(
     emu: EmulatorClient,
     move_index: int,
+    backup_move: int = -1,
     initial_result: dict[str, Any] | None = None,
     resuming: bool = False,
 ) -> tuple[str, str, list[dict[str, Any]], int | None]:
@@ -275,15 +280,26 @@ def _fight_battle(
 
     battle_log: list[dict[str, Any]] = []
     turn = 0
+    use_backup = False  # Alternates with primary after MOVE_BLOCKED
 
     # If resuming mid-battle, the initial_result is the last battle_turn response
     if resuming and initial_result:
         battle_log.append({"turn": turn, "state": initial_result.get("final_state"), "log": _flatten_log(initial_result)})
         turn += 1
 
+    max_turns = 10
     while True:
-        emu.create_checkpoint(action=f"auto_grind:battle_turn(move={move_index}, turn={turn})")
-        result = _battle_turn(emu, move_index=move_index)
+        if turn >= max_turns:
+            return (
+                "turn_limit",
+                f"Battle exceeded {max_turns} turns without ending. "
+                "Possible move-lock (Torment/Disable/Encore/Taunt) or unexpectedly tanky opponent.",
+                battle_log,
+                _extract_level_from_log(battle_log),
+            )
+        current_move = backup_move if use_backup else move_index
+        emu.create_checkpoint(action=f"auto_grind:battle_turn(move={current_move}, turn={turn})")
+        result = _battle_turn(emu, move_index=current_move)
         state = result.get("final_state", "")
         battle_log.append({"turn": turn, "state": state, "log": _flatten_log(result)})
         turn += 1
@@ -292,7 +308,46 @@ def _fight_battle(
             # Normal end — no stop reason
             return "", "", battle_log, _extract_level_from_log(battle_log)
 
+        if state == "MOVE_BLOCKED":
+            if backup_move < 0:
+                return (
+                    "move_blocked",
+                    f"Move slot {current_move} was blocked (Torment/Disable/Encore/Taunt). "
+                    "Provide backup_move to auto-alternate, or handle manually.",
+                    battle_log,
+                    _extract_level_from_log(battle_log),
+                )
+            # After Torment rejection, the game stays in the move selection
+            # submenu. Tap the backup move directly — no FIGHT tap needed.
+            alt_move = move_index if use_backup else backup_move
+            from renegade_mcp.turn import MOVE_XY
+            mx, my = MOVE_XY[alt_move]
+            emu.tap_touch_screen(mx, my, frames=8)
+            # Poll for the result via a fresh battle_turn(run=False) — but
+            # we can't use battle_turn here since it would re-tap FIGHT.
+            # Instead, use the tracker directly to poll battle narration.
+            from renegade_mcp.turn import _poll_after_action
+            poll_result = _poll_after_action(emu, result.get("log", []))
+            state2 = poll_result.get("final_state", "")
+            battle_log.append({"turn": turn, "state": state2, "log": _flatten_log(poll_result)})
+            turn += 1
+            if state2 in _BATTLE_OVER:
+                return "", "", battle_log, _extract_level_from_log(battle_log)
+            if state2 == "MOVE_BLOCKED":
+                # Both moves blocked — bail
+                return (
+                    "move_blocked",
+                    f"Both move slot {move_index} and backup slot {backup_move} are blocked.",
+                    battle_log,
+                    _extract_level_from_log(battle_log),
+                )
+            # Successful turn with backup — toggle for next iteration
+            use_backup = not use_backup
+            continue
+
         if state == "WAIT_FOR_ACTION":
+            # Successful turn — reset to primary move
+            use_backup = False
             # Check PP for our spam move before next turn
             pp = _get_move_pp(result, move_index)
             if pp is not None and pp <= 0:
