@@ -488,3 +488,38 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - **Bugs found**: 4 new — doubles target swap, doubles faint-switch NO_ACTION_PROMPT, navigate_to 3D BFS false block (map 218), deposit_pokemon extra A press on melonDS, heal_party lingering dialogue
 - **Decision**: Full tool retest on melonDS planned for next sessions before continuing gameplay.
 - **Next**: Retest tools on melonDS. Then: Challenge Gardenia's Grass-type gym. After gym: Team Galactic Eterna Building.
+
+## Chapter 6: Eterna Gym — Scouting Run & Grind Prep
+
+### Eterna Gym — Trainer Gauntlet (2026-04-08)
+- Entered Eterna Gym. Multi-level floral clock puzzle with elevation ramps.
+- Gym Guide: Must defeat all trainers before challenging Gardenia. Grass-type gym.
+- **Lass Caroline** (3 Pokemon): Lotad Lv22, Cacnea Lv22, Shroomish Lv22, Exeggcute Lv22. Luxio handled Lotad with Spark. Charmeleon swept Cacnea/Shroomish/Exeggcute with Fire Fang. Got poisoned by Shroomish. Won $352. Clock turned.
+- **Aroma Lady Jenna** (3 Pokemon): Weepinbell Lv23, Ivysaur Lv23, Gloom Lv23. Luxio flinch-locked Weepinbell with Bite. Charmeleon Fire Fang'd Ivysaur and Gloom. Won $736. Clock turned again.
+- **Aroma Lady Angela** (3 Pokemon): Roselia Lv23, Bayleef Lv23, Skiploom Lv23. Charmeleon swept with Fire Fang + Dragon Breath. Won $736.
+- Post-battle dialogue bug: "The fountain's water level dropped!" text not dismissed by battle_turn's auto-advance. Had to manually B through twice.
+- Healed at Pokemon Center between trainers. Out of Potions after healing Charmeleon's poison.
+
+### Gardenia Battle — Scouting Run (2026-04-08)
+- Led with Charmeleon Lv25 (Fire Fang, Charcoal).
+- **Gardenia's team (scouted 2 of 6)**:
+  1. **Bellossom** Lv25 — Grass Knot, Teeter Dance, Dazzling Gleam, Stun Spore. Wide Lens. Chlorophyll. Charmeleon 2HKO'd with Fire Fang but got paralyzed by Stun Spore and confused by Teeter Dance.
+  2. **Tangela** Lv25 — Grass Knot, Shock Wave, Ancient Power, Stun Spore. Coba Berry. Chlorophyll. THE WALL. Got TWO Ancient Power omniboosts (+2 all stats, 1% odds). Swept entire team. Ancient Power SE on Fire, Shock Wave SE on Water. Grotle walled its Grass/Electric moves but Ancient Power (Rock, neutral on Grass) hit hard. Nothing could break through +2 defenses.
+- **Full team wipe.** Lost $400. Blacked out to Pokemon Center.
+- Key lessons: (1) Must KO Tangela before it boosts. (2) Stun Spore everywhere — bring Parlyz Heals. (3) Charmeleon can't solo. (4) Swinub is a liability (4x weak to Grass).
+
+### Rematch Prep (2026-04-08)
+- **TMs taught**: Aerial Ace (TM40) to Charmeleon (replaced Metal Claw) — Flying SE on Grass, never misses, second SE option. Return (TM27) to Machop (replaced Focus Energy) — neutral on Grass, better than NVE Fighting/Dark.
+- **Items bought**: Parlyz Heal x5 ($1,000), Super Potion x5 ($3,500), Awakening x3 ($750). $6,098 remaining.
+- **Exp. Share swap**: Took from Prinplup, gave to Swinub for passive leveling during grind.
+- **Grinding attempts**: Route 211 too dangerous (Meditite/Swablu at Lv17-18 still fainted Swinub and Machop). Route 205 started but hit Torment bug from Croagunk — auto_grind infinite loop.
+- Save state: `bug_auto_grind_torment_loop` (Machop Lv22 vs Croagunk Lv16, at action prompt).
+
+### Session Summary
+- **Badges**: 1 (Coal Badge)
+- **Money**: ~$6,098
+- **Team**: Machop Lv22 (lead, grinding), Swinub ✨ Lv19 (Exp. Share), Grotle Lv24, Prinplup Lv25, Luxio Lv22, Charmeleon Lv25 (+Aerial Ace)
+- **Location**: Route 205 (mid-battle vs Croagunk). Save state: `bug_auto_grind_torment_loop`.
+- **New trainers defeated**: Lass Caroline, Aroma Lady Jenna, Aroma Lady Angela (all Eterna Gym)
+- **Bugs found**: 6 new — post-battle fountain dialogue stuck, navigate_to clock hand passability, navigate ramps-as-impassable, navigate_to no-3D-path L0→exit, navigate_to occupied-tile repath loop, auto_grind Torment infinite loop. Plus 1 QoL: battle_turn wipe blackout handling.
+- **Next**: Tool dev session to fix Torment/move-lock handling. Then grind team to 25+ on Route 205. Rematch Gardenia with full team, Parlyz Heals, and Charmeleon's Aerial Ace.
