@@ -2,6 +2,44 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Multi-Chunk BFS Fix (2026-04-08c)
+
+**Goal**: Fix the last open bug — `navigate_to` 3D BFS false block in Mt. Coronet map 218.
+
+### Investigation
+
+Loaded debug save state `debug_coronet218_3d_path_blocked` and reproduced the error: `navigate_to(29, 35)` returned "No 3D path found" with `player_level: 1, elevation_levels: 2`.
+
+Initial hypothesis was a 3D elevation issue (both `view_map(level=0)` and `view_map(level=1)` rendered identically). Dumped BDHC plate data — elevation analysis was actually correct: 2 levels with a valid ramp transition at row 20.
+
+Wrote diagnostic scripts tracing the actual BFS with real terrain data. Key discovery: `get_map_state` returned `Origin: (0, 0)` and `Chunked: False`, but the map's matrix is **1x2 chunks**. The target warp at y=35 was in chunk (0, 1), outside the single 32x32 chunk the BFS was working with. `_bfs_pathfind_level` immediately returned `None` because `goal_y=35 >= height=32`.
+
+### Root Cause
+
+`get_map_state` determined `chunked` via `origin_x > 0 or origin_y > 0`. When the player was in chunk (0, 0), origin was (0, 0) → `chunked = False`, even though the map had multiple chunks. `view_map` already handled this correctly by checking `matrix_w > 1 or matrix_h > 1`.
+
+### Fix
+
+- `resolve_terrain_from_rom` now returns matrix dimensions `(grid, origin_x, origin_y, matrix_w, matrix_h)`
+- `get_map_state` uses `matrix_w > 1 or matrix_h > 1` for chunked detection
+- Updated the `view_map` caller to unpack the new return signature
+
+### Test Update
+
+`test_3d_elevation` was previously written to accept both success and error (accommodating the known bug). Updated to:
+- Use `flee_encounters=True` (cave encounters are RNG)
+- Assert success (no error)
+- Verify warp to Route 211 (map_id 366) is reached
+- Added `@retry_on_rng` decorator for encounter variance
+
+### Results
+
+- All 21 navigation tests pass
+- All 11 map tools tests pass
+- Last open bug on the backlog is resolved
+
+**Commit**: `7a1c146` — fix: multi-chunk map detection for navigate_to when player is in chunk (0,0)
+
 ## Dev Session: melonDS Regression Cleanup + Doubles Faint Fix (2026-04-08b)
 
 Resolved all remaining melonDS migration regressions (backlog items 3-5) and fixed the doubles faint switch bug (backlog item 1). All 12 originally-failing tests now pass.
