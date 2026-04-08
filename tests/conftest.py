@@ -67,10 +67,19 @@ def emu() -> Any:
                 client = mod.EmulatorClient(sock)
                 client.get_frame_count()  # verify connection
 
-                # Initialize address resolution (tests bypass connection.py)
+                # Initialize address resolution (tests bypass connection.py).
+                # detect_shift needs valid game data in RAM — if the emulator
+                # just loaded the ROM (title screen), load a known save state
+                # first so the party/badge canary values are present.
                 from renegade_mcp.addresses import detect_shift, get_delta
                 if get_delta() is None:
-                    detect_shift(client)
+                    try:
+                        detect_shift(client)
+                    except RuntimeError:
+                        # No valid game data — load a save state and retry
+                        from helpers import do_load_state
+                        do_load_state(client, "eterna_city_shiny_swinub_in_party")
+                        detect_shift(client)
 
                 return client
 

@@ -50,9 +50,12 @@ class TestNavigate:
         from renegade_mcp.navigation import navigate_manual
         # From (305, 530) facing down, walk up into the PC door
         result = navigate_manual(emu, "u1")
-        # Should detect door entry and transition to indoor map
-        assert result.get("door_entered") or result.get("new_map"), (
-            f"Expected door_entered or new_map, got: {result}"
+        # Should detect warp — start and final map IDs differ
+        assert "start" in result and "final" in result, (
+            f"Expected start/final position dicts, got: {list(result.keys())}"
+        )
+        assert result["start"]["map_id"] != result["final"]["map_id"], (
+            f"Expected map transition, but stayed on map {result['start']['map_id']}"
         )
 
     @retry_on_rng("route216_grass_swinub_hunt")
@@ -161,10 +164,11 @@ class TestNavigateTo:
         """Short path inside Pokemon Center — arrives at target."""
         load_state(emu, "eterna_city_shiny_swinub_in_party")
         from renegade_mcp.navigation import navigate_to
-        result = navigate_to(emu, 10, 6)
+        # Target (8,7) — open floor tile, no NPCs. (10,6) was blocked by Idol NPC.
+        result = navigate_to(emu, 8, 7)
         assert "final" in result, f"Expected final position, got: {list(result.keys())}"
-        assert result["final"]["x"] == 10 and result["final"]["y"] == 6, (
-            f"Expected arrival at (10,6), got ({result['final']['x']},{result['final']['y']})"
+        assert result["final"]["x"] == 8 and result["final"]["y"] == 7, (
+            f"Expected arrival at (8,7), got ({result['final']['x']},{result['final']['y']})"
         )
 
 
@@ -222,7 +226,13 @@ class TestInteractWith:
         load_state(emu, "debug_pokeball_cutscene_interrupt")
         from renegade_mcp.navigation import interact_with
         result = interact_with(emu, object_index=21)
-        assert "dialogue" in result or "conversation" in result, (
+        # Cutscene dialogue may be top-level or nested under encounter
+        has_dialogue = (
+            "dialogue" in result
+            or "conversation" in result
+            or (result.get("encounter", {}).get("encounter") == "dialogue")
+        )
+        assert has_dialogue, (
             f"Expected cutscene dialogue, got: {list(result.keys())}"
         )
 

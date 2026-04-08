@@ -163,6 +163,26 @@ def _get_player_hp(emu: EmulatorClient) -> int:
     return raw[0] if raw else -1
 
 
+def _any_player_fainted(emu: EmulatorClient) -> bool:
+    """Check if any player battler (slot 0 or slot 2) has 0 HP.
+
+    In doubles, the fainted Pokemon may be in slot 2 (partner), not slot 0.
+    Also validates that the slot has a real Pokemon (species > 0) to avoid
+    false positives from empty doubles slots in singles battles.
+    """
+    from renegade_mcp.addresses import addr
+    base = addr("BATTLE_BASE")
+    for slot in (0, 2):
+        offset = slot * BATTLE_SLOT_SIZE
+        species = emu.read_memory(base + offset + 0x00, size="short")
+        if species == 0 or species > 493:
+            continue  # empty or garbage slot
+        cur_hp = emu.read_memory(base + offset + 0x4C, size="short")
+        if cur_hp == 0:
+            return True
+    return False
+
+
 def _log_has(log: list[dict], text: str) -> bool:
     """Check if any log entry contains the given text."""
     return any(text in e.get("text", "") for e in log)
@@ -453,8 +473,9 @@ def _wait_for_action_prompt(emu: EmulatorClient) -> dict[str, Any]:
 
         emu.advance_frames(POLL_FRAMES)
 
-    # Timed out — check for forced switch (trainer faint, party grid showing)
-    if not _is_battle_over(emu) and _get_player_hp(emu) == 0:
+    # Timed out — check for forced switch (trainer faint, party grid showing).
+    # In doubles, the fainted Pokemon may be slot 2 (partner), not slot 0.
+    if not _is_battle_over(emu) and _any_player_fainted(emu):
         return {"ready": True, "log": log, "prompt_type": "FAINT_FORCED"}
 
     state = "BATTLE_ENDED" if _is_battle_over(emu) else "NO_ACTION_PROMPT"

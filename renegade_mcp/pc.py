@@ -76,21 +76,33 @@ def _find_pc_tile(state: dict[str, Any]) -> tuple[int, int] | None:
 def _advance_to_storage_menu(emu: EmulatorClient) -> dict[str, Any] | None:
     """Advance through PC boot dialogue to the storage system menu.
 
-    After interact_with returns, the game is showing "CLAUDE booted up the PC."
-    text (read_dialogue already captured it, but the text box is still visible).
+    After interact_with returns, the game may be in different states:
+    - On melonDS: advance_dialogue dismisses the "Which PC?" menu (B = cancel),
+      returning to overworld. Player is still facing the PC.
+    - On DeSmuME: advance_dialogue stops at "Which PC?" menu.
 
-    Flow:
-    1. B × 2 + waits → clears boot text, "Which PC?" menu appears
-    2. A → selects SOMEONE'S PC (first option)
-    3. B + wait → clears "Storage System was accessed" text
-    4. Storage menu visible (DEPOSIT/WITHDRAW/MOVE/MOVE ITEMS/SEE YA!)
+    This function detects the current state and navigates to the storage menu.
 
     Returns None on success, error dict on failure.
     """
-    # Clear "booted up the PC" text — may need 2 B presses depending on
-    # where read_dialogue left the text state
-    _press(emu, ["b"], wait=TEXT_WAIT)
-    _press(emu, ["b"], wait=MENU_WAIT)
+    from renegade_mcp.dialogue import _find_script_manager, _read_script_state
+
+    # Check if a dialogue box or menu is still active
+    mgr = _find_script_manager(emu)
+    in_dialogue = False
+    if mgr:
+        ss = _read_script_state(emu, mgr)
+        in_dialogue = ss["is_msg_box_open"] or ss["sub_ctx_active"]
+
+    if not in_dialogue:
+        # Overworld — re-interact with PC (player is still facing it)
+        _press(emu, ["a"], wait=TEXT_WAIT)
+        # "CLAUDE booted up the PC." has two text pages — advance both
+        _press(emu, ["b"], wait=TEXT_WAIT)
+        _press(emu, ["b"], wait=MENU_WAIT)
+    else:
+        # Still in dialogue — clear any remaining boot text
+        _press(emu, ["b"], wait=MENU_WAIT)
 
     # "Which PC?" menu should now be visible — select SOMEONE'S PC
     _press(emu, ["a"], wait=MENU_WAIT)
