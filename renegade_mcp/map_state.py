@@ -376,14 +376,15 @@ def resolve_terrain_from_rom(emu: "EmulatorClient", map_id: int, px: int, py: in
     """Resolve terrain from ROM via zone header → matrix → land_data.
 
     Works for both indoor (single-chunk) and overworld (multi-chunk) maps.
-    Returns (grid, origin_x, origin_y) or (None, 0, 0) on failure.
+    Returns (grid, origin_x, origin_y, matrix_w, matrix_h) or
+    (None, 0, 0, 1, 1) on failure.
     """
     addr = ZONE_HEADER_BASE + map_id * ZONE_HEADER_STRIDE
     matrix_id = emu.read_memory(addr, size="short")
 
     matrix_path = MATRIX_DIR / f"{matrix_id:04d}.bin"
     if not matrix_path.exists():
-        return None, 0, 0
+        return None, 0, 0, 1, 1
 
     w, h, _header_ids, terrain_ids = parse_matrix(matrix_path)
 
@@ -391,16 +392,16 @@ def resolve_terrain_from_rom(emu: "EmulatorClient", map_id: int, px: int, py: in
     chunk_y = py // CHUNK_SIZE
 
     if not (0 <= chunk_x < w and 0 <= chunk_y < h):
-        return None, 0, 0
+        return None, 0, 0, 1, 1
 
     land_data_id = terrain_ids[chunk_y][chunk_x]
     if land_data_id == 0xFFFF:
-        return None, 0, 0
+        return None, 0, 0, 1, 1
 
     grid = load_terrain_from_rom(land_data_id)
     origin_x = chunk_x * CHUNK_SIZE
     origin_y = chunk_y * CHUNK_SIZE
-    return grid, origin_x, origin_y
+    return grid, origin_x, origin_y, w, h
 
 
 # ── BDHC elevation system ──
@@ -822,8 +823,8 @@ def get_map_state(emu: EmulatorClient) -> dict[str, Any] | None:
     objects = read_objects(emu)
 
     # Always try ROM first — reliable regardless of menu state.
-    terrain, origin_x, origin_y = resolve_terrain_from_rom(emu, map_id, px, py)
-    chunked = origin_x > 0 or origin_y > 0
+    terrain, origin_x, origin_y, matrix_w, matrix_h = resolve_terrain_from_rom(emu, map_id, px, py)
+    chunked = matrix_w > 1 or matrix_h > 1
 
     # Fall back to RAM terrain if ROM resolution failed.
     if terrain is None:
@@ -1028,7 +1029,7 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
         chunked = matrix_w > 1 or matrix_h > 1
 
         # Load the player's chunk for indoor content-bounds detection
-        chunk_terrain, origin_x, origin_y = resolve_terrain_from_rom(emu, map_id, px, py)
+        chunk_terrain, origin_x, origin_y, _, _ = resolve_terrain_from_rom(emu, map_id, px, py)
         if chunk_terrain is None:
             return {"error": "Could not resolve terrain", "map": "", "player": {}, "objects": []}
         terrain = chunk_terrain

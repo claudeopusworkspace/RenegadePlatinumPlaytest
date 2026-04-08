@@ -121,18 +121,17 @@ class TestNavigateTo:
         assert "final" in result, f"Expected final position, got: {list(result.keys())}"
         assert result["final"]["x"] == 355, f"Should arrive at x=355, got {result['final']['x']}"
 
+    @retry_on_rng("debug_coronet218_3d_path_blocked")
     def test_3d_elevation(self, emu: EmulatorClient):
-        """3D elevation pathfinding in Mt. Coronet — reaches target."""
-        load_state(emu, "debug_coronet218_3d_path_blocked")
+        """3D elevation pathfinding in multi-chunk Mt. Coronet — reaches warp."""
         from renegade_mcp.navigation import navigate_to
-        result = navigate_to(emu, 29, 35)
-        # This was a known issue — assert current behavior
-        assert "final" in result or "error" in result, (
-            f"Expected final or error, got: {list(result.keys())}"
+        result = navigate_to(emu, 29, 35, flee_encounters=True)
+        assert "error" not in result, f"Navigation failed: {result.get('error')}"
+        assert "final" in result, f"Expected final position, got: {list(result.keys())}"
+        # Warp at (29, 35) leads to Route 211
+        assert result.get("door_entered") or result["final"]["map_id"] == 366, (
+            f"Expected warp to Route 211, got: {result['final']}"
         )
-        # If it succeeds, verify arrival
-        if "final" in result:
-            assert result["final"]["x"] == 29 and result["final"]["y"] == 35
 
     @retry_on_rng("route216_grass_swinub_hunt")
     def test_flee_encounters_navigation(self, emu: EmulatorClient):
