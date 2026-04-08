@@ -2,6 +2,55 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: melonDS Regression Cleanup + Doubles Faint Fix (2026-04-08b)
+
+Resolved all remaining melonDS migration regressions (backlog items 3-5) and fixed the doubles faint switch bug (backlog item 1). All 12 originally-failing tests now pass.
+
+### PC deposit/withdraw after open_pc
+
+- **Root cause**: `interact_with`'s `advance_dialogue` on melonDS presses B through the "Which PC?" selection menu (B=cancel), returning to overworld. The old `_advance_to_storage_menu` assumed it was still in dialogue — its B→B→A→B sequence accidentally re-triggered the PC and stopped one step short at "Which PC?"
+- **Fix**: `_advance_to_storage_menu` now detects overworld state via `_find_script_manager` + `_read_script_state` (`is_msg_box_open` check). If in overworld, re-interacts with PC (A) and advances through both pages of boot text (B→B) before selecting SOMEONE'S PC (A→B)
+- **Traced manually**: 5-step dialogue sequence from overworld: A (trigger) → B (page 1) → B (page 2 → "Which PC?") → A (select SOMEONE'S PC) → B (dismiss "Storage System accessed") → storage menu
+- **All 7 PC tests pass**
+
+### Doubles faint switch — NO_ACTION_PROMPT (backlog #1)
+
+- **Root cause**: `_wait_for_action_prompt`'s FAINT_FORCED timeout check only read slot 0's HP via `_get_player_hp`. In doubles, the fainted Pokemon (Machop) was in slot 2 — Luxio (slot 0) was alive at 59 HP, so `_get_player_hp(emu) == 0` was False
+- **Fix**: Added `_any_player_fainted()` that checks both player slots (0 and 2) for 0 HP, with species validation (>0 and ≤493) to avoid false positives from empty doubles slots in singles battles
+- **PROMPT_SETTLE increase alone was NOT sufficient** — the slot check was the real blocker
+- **Verified**: Machop faints → FAINT_FORCED detected → `battle_turn(switch_to=4)` sends Charmeleon → WAIT_FOR_ACTION
+
+### Navigation test assertions (3 tests — not actual bugs)
+
+- **test_walk_triggers_warp**: Warp worked (map 65→69), but test checked nonexistent `door_entered`/`new_map` keys. Fixed to compare `start.map_id != final.map_id`
+- **test_short_path_indoor**: Target (10,6) was occupied by Idol NPC. Changed to (8,7) — open floor tile
+- **test_cutscene_trigger**: Cynthia dialogue captured perfectly, but nested under `result["encounter"]["dialogue"]`. Fixed to accept nested structure
+
+### auto_grind iteration tests (save state XP issue)
+
+- **Root cause**: Save state's Prinplup Lv21 was only 670 XP from Lv22. First Route 216 encounter gave enough XP to level up, triggering `move_learn` before iteration count was checked
+- **test_iterations_stop**: Accept `move_learn` as valid alongside `iterations` — encounter was fought, Pokemon just leveled up
+- **test_iterations_multiple**: Switched to run mode (no XP gain) to test multi-iteration counting without level-up interference
+
+### conftest robustness
+
+- `detect_shift` in the `emu` session fixture now catches `RuntimeError` and auto-loads `eterna_city_shiny_swinub_in_party` before retrying — prevents cryptic failures when emulator is freshly started without a save state
+
+### Backlog status
+
+| Item | Status |
+|---|---|
+| Doubles faint switch NO_ACTION_PROMPT | **DONE** — slot 0 vs slot 2 HP check |
+| open_pc → deposit/withdraw on melonDS | **DONE** — ScriptManager state detection |
+| Navigation tests on melonDS | **DONE** — test assertions, not nav bugs |
+| auto_grind iteration tests | **DONE** — save state XP, test resilience |
+| 3D BFS false block Mt. Coronet 218 | Open — elevation data issue |
+| Specialty shop tool (Veilstone) | Deferred — build when we get there |
+
+**Commits**: 1 this session — df69fd2
+
+---
+
 ## Dev Session: melonDS Timing Bug Sweep (2026-04-08a)
 
 Investigated and fixed 5 of 7 open melonDS-era bugs. Found 3 root causes shared across all 5 bugs.
