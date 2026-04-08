@@ -27,45 +27,53 @@ class TestBattleTurn:
 
     @retry_on_rng("test_wild_battle_action")
     def test_use_move(self, emu: EmulatorClient):
-        """Use move 0 — returns WAIT_FOR_ACTION or BATTLE_ENDED."""
+        """Use move 0 — log shows the move was used."""
         from renegade_mcp.turn import battle_turn
         result = battle_turn(emu, move_index=0)
         assert result["final_state"] in (
             "WAIT_FOR_ACTION", "BATTLE_ENDED", "MOVE_LEARN",
         ), f"Unexpected: {result['final_state']}"
+        assert_log_contains(result, "used")
 
     @retry_on_rng("test_wild_battle_action")
     def test_run_from_battle(self, emu: EmulatorClient):
-        """Run from wild battle — returns BATTLE_ENDED."""
+        """Run from wild battle — BATTLE_ENDED on success, WAIT_FOR_ACTION on fail."""
         from renegade_mcp.turn import battle_turn
         result = battle_turn(emu, run=True)
-        # May fail to flee (Smoochum might use Mean Look), but should return a valid state
-        assert result["final_state"] in (
-            "BATTLE_ENDED", "WAIT_FOR_ACTION",
-        ), f"Unexpected: {result['final_state']}"
+        state = result["final_state"]
+        assert state in ("BATTLE_ENDED", "WAIT_FOR_ACTION"), f"Unexpected: {state}"
+        if state == "BATTLE_ENDED":
+            assert_log_contains(result, "got away")
+        else:
+            assert_log_contains(result, "can't escape")
 
     @retry_on_rng("test_wild_battle_action")
     def test_switch_pokemon(self, emu: EmulatorClient):
-        """Switch to party slot 1 mid-battle."""
+        """Switch to party slot 1 mid-battle — new Pokemon is now active."""
         from renegade_mcp.turn import battle_turn
         result = battle_turn(emu, switch_to=1)
-        assert result["final_state"] in (
-            "WAIT_FOR_ACTION", "BATTLE_ENDED",
-        ), f"Unexpected: {result['final_state']}"
+        assert result["final_state"] == "WAIT_FOR_ACTION", (
+            f"Switch should return WAIT_FOR_ACTION, got: {result['final_state']}"
+        )
+        # Active battler should now be slot 1's species (Machop in this state)
+        player = next(b for b in result["battle_state"] if b["side"] == "player")
+        assert player["species"] != "Prinplup", "Active battler should have changed from lead"
 
     @retry_on_rng("test_wild_battle_action")
-    def test_force_flag(self, emu: EmulatorClient):
-        """force=True executes move without effectiveness check."""
+    def test_battle_state_has_battlers(self, emu: EmulatorClient):
+        """battle_turn response includes player and enemy battler data."""
         from renegade_mcp.turn import battle_turn
-        # Use Metal Claw with force=True — should proceed normally
         result = battle_turn(emu, move_index=0)
-        assert result["final_state"] in (
-            "WAIT_FOR_ACTION", "BATTLE_ENDED", "EFFECTIVENESS_WARNING", "MOVE_LEARN",
-        )
-        # If we got a warning, force should override it
-        if result["final_state"] == "EFFECTIVENESS_WARNING":
-            result2 = battle_turn(emu, move_index=0, force=True)
-            assert result2["final_state"] in ("WAIT_FOR_ACTION", "BATTLE_ENDED", "MOVE_LEARN")
+        assert "battle_state" in result, "Response missing battle_state"
+        if result["final_state"] != "BATTLE_ENDED":
+            bs = result["battle_state"]
+            assert len(bs) >= 2, f"Expected >=2 battlers, got {len(bs)}"
+            player = next((b for b in bs if b["side"] == "player"), None)
+            enemy = next((b for b in bs if b["side"] == "enemy"), None)
+            assert player is not None, "No player battler in battle_state"
+            assert enemy is not None, "No enemy battler in battle_state"
+            assert "species" in player and "hp" in player
+            assert "species" in enemy and "hp" in enemy
 
     @retry_on_rng("test_wild_battle_action")
     def test_fight_until_ko(self, emu: EmulatorClient):
@@ -88,37 +96,39 @@ class TestBattleTurn:
         assert result["final_state"] == "BATTLE_ENDED"
 
     @retry_on_rng("test_wild_battle_action")
-    def test_battle_state_in_response(self, emu: EmulatorClient):
-        """battle_turn response includes battle_state data."""
+    def test_fight_log_contains_damage(self, emu: EmulatorClient):
+        """Using a damaging move produces log with move name and damage text."""
         from renegade_mcp.turn import battle_turn
+        # Move 0 is Metal Claw (Steel, Physical) — should deal damage to Smoochum
         result = battle_turn(emu, move_index=0)
-        assert "battle_state" in result
-        if result["final_state"] != "BATTLE_ENDED":
-            assert len(result["battle_state"]) > 0
+        assert result["final_state"] in ("WAIT_FOR_ACTION", "BATTLE_ENDED", "MOVE_LEARN")
+        assert_log_contains(result, "Metal Claw")
 
-    def test_double_battle_targeting(self, emu: EmulatorClient):
-        """Double battle: use move with target."""
+    def test_double_battle_first_action(self, emu: EmulatorClient):
+        """Double battle: first action returns WAIT_FOR_PARTNER_ACTION."""
         load_state(emu, "debug_doubles_target_swapped")
         from renegade_mcp.turn import battle_turn
         result = battle_turn(emu, move_index=0, target=0)
-        assert result["final_state"] in (
-            "WAIT_FOR_ACTION", "WAIT_FOR_PARTNER_ACTION",
-            "BATTLE_ENDED", "SWITCH_PROMPT", "MOVE_LEARN",
+        # First action in doubles should prompt for partner's action
+        assert result["final_state"] == "WAIT_FOR_PARTNER_ACTION", (
+            f"Expected WAIT_FOR_PARTNER_ACTION, got: {result['final_state']}"
         )
 
     def test_double_battle_both_actions(self, emu: EmulatorClient):
-        """Double battle: first action returns a valid state."""
+        """Double battle: submit both actions — turn resolves."""
         load_state(emu, "debug_doubles_target_swapped")
         from renegade_mcp.turn import battle_turn
-        valid_states = (
-            "WAIT_FOR_ACTION", "WAIT_FOR_PARTNER_ACTION",
-            "BATTLE_ENDED", "SWITCH_PROMPT",
-            "FAINT_SWITCH", "FAINT_FORCED", "MOVE_LEARN",
-            "EFFECTIVENESS_WARNING", "NO_ACTION_PROMPT", "TIMEOUT",
-            "NO_TEXT",
+        # First Pokemon's action
+        result1 = battle_turn(emu, move_index=0, target=0)
+        assert result1["final_state"] == "WAIT_FOR_PARTNER_ACTION", (
+            f"First action: expected WAIT_FOR_PARTNER_ACTION, got {result1['final_state']}"
         )
-        result = battle_turn(emu, move_index=0, target=0, force=True)
-        assert result["final_state"] in valid_states
+        # Second Pokemon's action
+        result2 = battle_turn(emu, move_index=0, target=0)
+        assert result2["final_state"] in (
+            "WAIT_FOR_ACTION", "BATTLE_ENDED", "SWITCH_PROMPT",
+            "FAINT_SWITCH", "MOVE_LEARN", "LEVEL_UP",
+        ), f"Second action: unexpected state {result2['final_state']}"
 
 
 # ---------------------------------------------------------------------------
@@ -135,49 +145,63 @@ class TestTrainerBattle:
 
     @retry_on_rng("test_trainer_battle_action")
     def test_trainer_use_move(self, emu: EmulatorClient):
-        """Use a move against trainer Pokemon — KO or continue."""
+        """Spark vs Natu — super effective OHKO into SWITCH_PROMPT."""
         from renegade_mcp.turn import battle_turn
+        # Spark (Electric) vs Natu (Psychic/Flying) = SE, should OHKO
         result = battle_turn(emu, move_index=0)
-        assert result["final_state"] in (
-            "WAIT_FOR_ACTION", "SWITCH_PROMPT", "BATTLE_ENDED", "MOVE_LEARN",
-        ), f"Unexpected: {result['final_state']}"
+        assert result["final_state"] == "SWITCH_PROMPT", (
+            f"Expected SWITCH_PROMPT (Spark OHKO), got: {result['final_state']}"
+        )
+        assert_log_contains(result, "Spark", "super effective", "fainted")
 
     @retry_on_rng("test_trainer_battle_action")
-    def test_switch_prompt_after_ko(self, emu: EmulatorClient):
-        """KO first Pokemon — trainer sends next, SWITCH_PROMPT returned."""
+    def test_switch_prompt_has_next_pokemon(self, emu: EmulatorClient):
+        """After KO, SWITCH_PROMPT includes the trainer's next Pokemon."""
         from renegade_mcp.turn import battle_turn
-        # Spark should OHKO Natu (Electric vs Psychic/Flying = SE)
         result = battle_turn(emu, move_index=0)
-        if result["final_state"] == "SWITCH_PROMPT":
-            assert_log_contains(result, "fainted")
-            # Battle state should show the next Pokemon
-            enemies = [b for b in result["battle_state"] if b["side"] == "enemy"]
-            assert len(enemies) > 0, "Should have next enemy Pokemon in battle state"
+        assert result["final_state"] == "SWITCH_PROMPT"
+        # Battle state should show Swablu as next enemy
+        enemies = [b for b in result["battle_state"] if b["side"] == "enemy"]
+        assert len(enemies) > 0, "Should have next enemy Pokemon in battle state"
+        assert enemies[0]["species"] == "Swablu", (
+            f"Expected Swablu next, got: {enemies[0]['species']}"
+        )
 
     @retry_on_rng("test_trainer_battle_action")
     def test_decline_switch_and_continue(self, emu: EmulatorClient):
-        """At SWITCH_PROMPT, decline switch via move_index — continue battling."""
+        """At SWITCH_PROMPT, decline switch via move_index — battle advances."""
         from renegade_mcp.turn import battle_turn
         result = battle_turn(emu, move_index=0)
-        if result["final_state"] == "SWITCH_PROMPT":
-            # Pass move_index to decline switch AND queue the next move
-            result2 = battle_turn(emu, move_index=0)
-            assert result2["final_state"] in (
-                "WAIT_FOR_ACTION", "BATTLE_ENDED", "MOVE_LEARN",
-                "SWITCH_PROMPT",  # can chain if KO triggers another
-            )
+        assert result["final_state"] == "SWITCH_PROMPT"
+        # Pass move_index to decline switch AND queue the next move
+        result2 = battle_turn(emu, move_index=0)
+        assert result2["final_state"] in (
+            "WAIT_FOR_ACTION", "BATTLE_ENDED", "MOVE_LEARN",
+            "SWITCH_PROMPT",  # can chain if KO triggers another
+        ), f"After decline+move, unexpected state: {result2['final_state']}"
 
     @retry_on_rng("test_trainer_battle_action")
     def test_accept_switch_at_prompt(self, emu: EmulatorClient):
-        """At SWITCH_PROMPT, switch to slot 1 — then continue."""
+        """At SWITCH_PROMPT, switch to slot 1 — Machop becomes active.
+
+        BUG: switch_to at SWITCH_PROMPT may not execute the switch on melonDS.
+        Player species remains unchanged (Luxio instead of Machop).
+        See project backlog for tracking.
+        """
+        import pytest
+        pytest.xfail("Known bug: switch_to at SWITCH_PROMPT doesn't execute on melonDS")
         from renegade_mcp.turn import battle_turn
         result = battle_turn(emu, move_index=0)
-        if result["final_state"] == "SWITCH_PROMPT":
-            result2 = battle_turn(emu, switch_to=1)
-            assert result2["final_state"] in (
-                "WAIT_FOR_ACTION", "BATTLE_ENDED", "MOVE_LEARN",
-                "SWITCH_PROMPT",
-            )
+        assert result["final_state"] == "SWITCH_PROMPT"
+        result2 = battle_turn(emu, switch_to=1)
+        assert result2["final_state"] in (
+            "WAIT_FOR_ACTION", "SWITCH_PROMPT",
+        ), f"Expected WAIT_FOR_ACTION or SWITCH_PROMPT after switch, got: {result2['final_state']}"
+        # Verify Machop is now the active battler
+        player = next(b for b in result2["battle_state"] if b["side"] == "player")
+        assert player["species"] == "Machop", (
+            f"Expected Machop active after switch, got: {player['species']}"
+        )
 
     @retry_on_rng("test_trainer_battle_action")
     def test_trainer_full_battle(self, emu: EmulatorClient):
@@ -220,9 +244,9 @@ class TestTrainerBattle:
             else:
                 break
         assert result["final_state"] == "BATTLE_ENDED"
-        # Trainer battles should have post-battle dialogue
-        if "post_battle_dialogue" in result:
-            assert len(result["post_battle_dialogue"]) > 0
+        # Trainer defeat text should appear in the battle log
+        # (either in post_battle_dialogue or directly in log)
+        assert_log_contains(result, "defeated")
 
 
 # ---------------------------------------------------------------------------
@@ -230,62 +254,72 @@ class TestTrainerBattle:
 # Prinplup wants to learn Icy Wind, has 4 moves. At "Make it forget?" prompt.
 # ---------------------------------------------------------------------------
 
-class TestMoveLean:
+class TestMoveLearn:
     """Move-learn prompt handling during battle."""
 
-    def test_move_learn_state_fields(self, emu: EmulatorClient):
-        """MOVE_LEARN state includes move_to_learn and current_moves."""
+    def test_skip_move_learn_keeps_moves(self, emu: EmulatorClient):
+        """Skip learning (forget_move=-1) — original moves unchanged."""
         load_state(emu, "test_move_learn_prompt")
         from renegade_mcp.turn import battle_turn
-        # We're already at the move-learn prompt — just need to read state.
-        # Re-invoke battle_turn with forget_move to interact, but first
-        # let's verify the state by skipping (forget_move=-1) and checking
-        # that the response had the right fields. We need to reload and
-        # get back to the prompt. Actually, the state IS at the prompt,
-        # so let's just skip and check the response.
-        result = battle_turn(emu, forget_move=-1)
-        # The tool should have processed the move-learn prompt
-        assert result is not None
-
-    def test_skip_move_learn(self, emu: EmulatorClient):
-        """Skip learning new move (forget_move=-1) — battle continues or ends."""
-        load_state(emu, "test_move_learn_prompt")
-        from renegade_mcp.turn import battle_turn
+        from renegade_mcp.party import read_party
         result = battle_turn(emu, forget_move=-1)
         assert result["final_state"] in (
             "WAIT_FOR_ACTION", "BATTLE_ENDED", "MOVE_LEARN",
-            "SWITCH_PROMPT",  # move learn can resolve mid-trainer-battle
+            "SWITCH_PROMPT",
         ), f"After skip, unexpected state: {result['final_state']}"
+        # Verify Prinplup (slot 3) still has original 4 moves
+        party = read_party(emu)
+        prinplup = party[3]
+        move_names = [m["name"] for m in prinplup["moves"]]
+        assert "Peck" in move_names, f"Peck should still be known after skip, got: {move_names}"
+        assert "Icy Wind" not in move_names, (
+            f"Icy Wind should NOT be learned after skip, got: {move_names}"
+        )
 
     def test_forget_move_and_learn(self, emu: EmulatorClient):
-        """Forget move slot 3 (Peck) and learn Icy Wind."""
+        """Forget Peck (slot 3) and learn Icy Wind — move list updated.
+
+        BUG: forget_move touch taps in _learn_move_flow don't register on melonDS.
+        Moves remain unchanged after forget_move=3. See project backlog.
+        """
+        import pytest
+        pytest.xfail("Known bug: _learn_move_flow touch taps don't register on melonDS")
         load_state(emu, "test_move_learn_prompt")
         from renegade_mcp.turn import battle_turn
+        from renegade_mcp.party import read_party
         result = battle_turn(emu, forget_move=3)
         assert result["final_state"] in (
             "WAIT_FOR_ACTION", "BATTLE_ENDED", "MOVE_LEARN",
+            "SWITCH_PROMPT",
         ), f"After forget, unexpected state: {result['final_state']}"
+        # Verify Prinplup (slot 3) now has Icy Wind instead of Peck
+        party = read_party(emu)
+        prinplup = party[3]
+        move_names = [m["name"] for m in prinplup["moves"]]
+        assert "Icy Wind" in move_names, f"Icy Wind should be learned, got: {move_names}"
+        assert "Peck" not in move_names, f"Peck should be forgotten, got: {move_names}"
 
 
 class TestThrowBall:
     """Catching Pokemon."""
 
     @retry_on_rng("test_wild_battle_action")
-    def test_throw_ball(self, emu: EmulatorClient):
-        """Throw a ball in wild battle — returns catch result."""
+    def test_throw_ball_returns_valid_state(self, emu: EmulatorClient):
+        """Throw a ball — returns CAUGHT, NOT_CAUGHT, or BATTLE_ENDED."""
         from renegade_mcp.catch import throw_ball
         result = throw_ball(emu)
-        # Should return some result about the catch attempt
-        assert result is not None
-        assert "error" not in result or "caught" in result or "final_state" in result
+        assert "final_state" in result, f"Missing final_state in: {list(result.keys())}"
+        assert result["final_state"] in ("CAUGHT", "NOT_CAUGHT", "BATTLE_ENDED"), (
+            f"Unexpected final_state: {result['final_state']}"
+        )
 
     @retry_on_rng("test_wild_battle_action")
-    def test_throw_ball_has_fields(self, emu: EmulatorClient):
-        """Catch result has expected response fields."""
+    def test_throw_ball_has_log(self, emu: EmulatorClient):
+        """Catch attempt includes battle log entries."""
         from renegade_mcp.catch import throw_ball
         result = throw_ball(emu)
-        # Should have some indication of what happened
-        assert isinstance(result, dict)
+        assert "log" in result, f"Missing log in: {list(result.keys())}"
+        assert len(result["log"]) > 0, "Log should not be empty after throw"
 
 
 # ---------------------------------------------------------------------------
@@ -295,28 +329,30 @@ class TestThrowBall:
 class TestReadDialogue:
     """Dialogue reading and advancement."""
 
-    def test_active_dialogue(self, emu: EmulatorClient):
-        """Active dialogue returns conversation text."""
+    def test_active_dialogue_has_text(self, emu: EmulatorClient):
+        """Active dialogue returns non-empty text from the Galactic Grunt."""
         load_state(emu, "test_npc_dialogue_active")
         from renegade_mcp.dialogue import read_dialogue
         result = read_dialogue(emu)
-        assert "conversation" in result or "text" in result or "status" in result
-        # Should have found and advanced through the text
-        if "conversation" in result:
-            assert len(result["conversation"]) > 0
+        assert "text" in result, f"Missing 'text' in result: {list(result.keys())}"
+        assert len(result["text"]) > 0, "Text should not be empty for active dialogue"
 
-    def test_no_dialogue(self, emu: EmulatorClient):
-        """No active dialogue returns completed status."""
+    def test_no_dialogue_returns_empty(self, emu: EmulatorClient):
+        """No active dialogue returns placeholder text."""
         load_state(emu, "eterna_city_shiny_swinub_in_party")
         from renegade_mcp.dialogue import read_dialogue
         result = read_dialogue(emu)
-        # Should indicate no dialogue or completed
-        assert result.get("status") in ("completed", "no_dialogue", None) or "error" not in result
+        # read_dialogue returns "(no active text)" when nothing is on screen
+        assert result["region"] == "none" or "no active" in result.get("text", ""), (
+            f"Expected no-dialogue indicator, got region={result.get('region')}, text={result.get('text', '')[:50]}"
+        )
 
-    def test_passive_read(self, emu: EmulatorClient):
-        """advance=false reads text without advancing."""
+    def test_advance_dialogue_completes(self, emu: EmulatorClient):
+        """advance_dialogue processes full conversation and returns status."""
         load_state(emu, "test_npc_dialogue_active")
-        from renegade_mcp.dialogue import read_dialogue
-        result = read_dialogue(emu, region="auto")
-        # With advance=True (default), text should be consumed
-        assert result is not None
+        from renegade_mcp.dialogue import advance_dialogue
+        result = advance_dialogue(emu)
+        assert "status" in result, f"Missing 'status' in result: {list(result.keys())}"
+        assert "conversation" in result, f"Missing 'conversation' in result"
+        assert len(result["conversation"]) > 0, "Should have captured dialogue text"
+        assert result["status"] in ("completed", "yes_no_prompt", "multi_choice_prompt")

@@ -18,10 +18,10 @@ class TestOpenPc:
 
     @retry_on_rng("eterna_city_shiny_swinub_in_party")
     def test_open_pc(self, emu: EmulatorClient):
-        """open_pc reaches storage menu."""
+        """open_pc reaches storage menu without error."""
         from renegade_mcp.pc import open_pc
         result = open_pc(emu)
-        assert "error" not in result
+        assert "error" not in result, f"open_pc errored: {result.get('error')}"
 
 
 class TestDepositPokemon:
@@ -29,23 +29,39 @@ class TestDepositPokemon:
 
     @retry_on_rng("eterna_city_shiny_swinub_in_party")
     def test_deposit_single(self, emu: EmulatorClient):
-        """Deposit 1 Pokemon — completes without error."""
+        """Deposit 1 Pokemon — party shrinks by 1."""
+        from renegade_mcp.party import read_party
         from renegade_mcp.pc import deposit_pokemon, open_pc
+
+        party_before = read_party(emu)
+        count_before = len(party_before)
 
         open_pc(emu)
         result = deposit_pokemon(emu, [5])  # Deposit Swinub (last slot)
-        assert "error" not in result
-        assert result.get("success", True) is not False
+        assert "error" not in result, f"Deposit errored: {result.get('error')}"
+
+        party_after = read_party(emu)
+        assert len(party_after) == count_before - 1, (
+            f"Party should shrink by 1: {count_before} -> {len(party_after)}"
+        )
 
     @retry_on_rng("eterna_city_shiny_swinub_in_party")
     def test_deposit_multiple(self, emu: EmulatorClient):
-        """Deposit 2 Pokemon — completes without error."""
+        """Deposit 2 Pokemon — party shrinks by 2."""
+        from renegade_mcp.party import read_party
         from renegade_mcp.pc import deposit_pokemon, open_pc
+
+        party_before = read_party(emu)
+        count_before = len(party_before)
 
         open_pc(emu)
         result = deposit_pokemon(emu, [4, 5])  # Deposit last two
-        assert "error" not in result
-        assert result.get("success", True) is not False
+        assert "error" not in result, f"Deposit errored: {result.get('error')}"
+
+        party_after = read_party(emu)
+        assert len(party_after) == count_before - 2, (
+            f"Party should shrink by 2: {count_before} -> {len(party_after)}"
+        )
 
 
 class TestWithdrawPokemon:
@@ -62,7 +78,7 @@ class TestWithdrawPokemon:
 
     @retry_on_rng("eterna_city_pokecenter_melonds")
     def test_withdraw_changes_party(self, emu: EmulatorClient):
-        """Withdrawn Pokemon appears in party."""
+        """Withdrawn Pokemon appears in party — party grows by 1."""
         from renegade_mcp.party import read_party
         from renegade_mcp.pc import open_pc, withdraw_pokemon
 
@@ -71,11 +87,12 @@ class TestWithdrawPokemon:
 
         open_pc(emu)
         result = withdraw_pokemon(emu, [0])
-        if "error" not in result:
-            party_after = read_party(emu)
-            assert len(party_after) >= count_before, (
-                f"Party should not shrink: {count_before} -> {len(party_after)}"
-            )
+        assert "error" not in result, f"withdraw error: {result.get('error')}"
+
+        party_after = read_party(emu)
+        assert len(party_after) == count_before + 1, (
+            f"Party should grow by 1: {count_before} -> {len(party_after)}"
+        )
 
 
 class TestClosePc:
@@ -83,11 +100,11 @@ class TestClosePc:
 
     @retry_on_rng("eterna_city_shiny_swinub_in_party")
     def test_close_pc(self, emu: EmulatorClient):
-        """close_pc returns to overworld."""
+        """close_pc returns to overworld without error."""
         from renegade_mcp.pc import close_pc, open_pc
         open_pc(emu)
         result = close_pc(emu)
-        assert "error" not in result
+        assert "error" not in result, f"close_pc errored: {result.get('error')}"
 
 
 class TestPcFromStorageMenu:
@@ -95,9 +112,9 @@ class TestPcFromStorageMenu:
 
     @retry_on_rng("debug_deposit_extra_a_press")
     def test_deposit_from_storage_menu(self, emu: EmulatorClient):
-        """Deposit from already-open storage menu."""
+        """Deposit from already-open storage menu — completes without error."""
         from renegade_mcp.pc import deposit_pokemon
-        # This state is already at the storage menu
         result = deposit_pokemon(emu, [5])
-        # Should work or return error about state
-        assert isinstance(result, dict)
+        assert "error" not in result, (
+            f"Deposit from storage menu errored: {result.get('error')}"
+        )

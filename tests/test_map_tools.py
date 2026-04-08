@@ -61,16 +61,17 @@ class TestViewMap:
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
         objects = result["objects"]
-        if len(objects) >= 2:
-            # Reachable objects should have increasing step counts
-            reachable = [o for o in objects if o.get("reachable")]
-            for i in range(len(reachable) - 1):
-                steps_a = reachable[i].get("steps", 0)
-                steps_b = reachable[i + 1].get("steps", 0)
-                assert steps_a <= steps_b, (
-                    f"Objects not sorted: {reachable[i]['name']} ({steps_a}) "
-                    f"before {reachable[i+1]['name']} ({steps_b})"
-                )
+        assert len(objects) >= 2, "Pokemon Center should have multiple objects"
+        # Reachable objects should have increasing step counts
+        reachable = [o for o in objects if o.get("reachable")]
+        assert len(reachable) >= 2, "Should have multiple reachable objects"
+        for i in range(len(reachable) - 1):
+            steps_a = reachable[i].get("steps", 0)
+            steps_b = reachable[i + 1].get("steps", 0)
+            assert steps_a <= steps_b, (
+                f"Objects not sorted: {reachable[i]['name']} ({steps_a}) "
+                f"before {reachable[i+1]['name']} ({steps_b})"
+            )
 
     def test_outdoor_multi_chunk(self, emu: EmulatorClient):
         """Outdoor route loads adjacent chunks."""
@@ -92,16 +93,19 @@ class TestViewMap:
         assert result["player"]["y"] > 0
 
     def test_3d_cave_elevation(self, emu: EmulatorClient):
-        """Mt. Coronet 3D map includes elevation data."""
+        """Mt. Coronet 3D map includes elevation markers in the grid."""
         load_state(emu, "debug_coronet218_3d_path_blocked")
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
         assert len(result["map"]) > 0
-        # 3D maps should show elevation info in the map string
-        # or the player should have elevation data
-        player = result["player"]
-        assert "x" in player
-        assert "y" in player
+        map_str = result["map"]
+        # 3D maps show height level numbers (0-9), ramps (/ \), or ledges (> <)
+        has_elevation = any(c in map_str for c in "0123456789\\/><|")
+        assert has_elevation, (
+            "Mt. Coronet 3D map should contain elevation markers "
+            "(digits, ramps, ledges), but map only contains: "
+            + "".join(sorted(set(c for c in map_str if not c.isspace() and c != '#')))[:30]
+        )
 
     def test_elevation_filter(self, emu: EmulatorClient):
         """level=0 filters to single elevation — map still renders."""
