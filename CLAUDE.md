@@ -25,7 +25,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `view_map(level=-1)` | **Player-centered viewport**: 32x32 ASCII map centered on the player, loading adjacent chunks as needed on overworld maps. Indoor/small maps use compact content-fitted rendering (no void padding). Header includes `origin:(x,y) WxH` — the global coordinate of the top-left grid corner and viewport dimensions. Convert any grid position to global coords: `global = origin + grid_pos`. Player dict includes `grid_x`/`grid_y` for the player's position in the grid. Warp coordinates can be passed directly to `navigate_to`. **Objects sorted by distance**: nearest objects/NPCs appear first in the list (Manhattan distance from player). **Trainer defeated status**: trainer NPCs show `[defeated]` in label, plus `trainer_id` and `defeated` fields (reads VarsFlags bitfield from save RAM). Works for regular trainers; gym leaders/rivals use separate story flags. **Elevation-aware**: on 3D maps, passable tiles show height level numbers (0-9), ramps show `\ /`, bridges show `n*`, directional blockers show `] [`, with an elevation summary listing all levels and the player's current height. Pass `level=N` to filter to a single elevation level (other tiles dimmed to `~`). Flat maps render unchanged. Uses BDHC data from ROM land_data files. |
 | `map_name(map_id=-1)` | Location name lookup. Defaults to current map. |
 | `navigate(directions, flee_encounters)` | Manual walk: "d2 l3 u1". Validates path before moving; auto-trims at door/stair/warp transitions. Returns `encounter` key if battle/dialogue detected. **`flee_encounters=True`**: auto-flees wild battles and resumes remaining directions. Trainer battles and cutscenes still halt. |
-| `navigate_to(x, y, path_choice, flee_encounters)` | BFS pathfind to target tile. **Sign-aware**: reads sign positions from ROM zone_event data (gfx IDs 91-96) and blocks the activation tile (one south of each sign) in BFS to prevent auto-trigger dialogue. **Elevation-aware**: on 3D maps (gyms, caves, AND multi-chunk overworld routes with bridges/cliffs), uses hierarchical BFS — constrains search to current elevation level and brute-forces through ramp transitions when target is on a different level. Multi-chunk maps load BDHC per chunk with unified height→level mapping. Depth-capped (5 transitions) with 5-minute timeout. Enforces directional blocks (0x30/0x31). Falls through to 2D BFS for flat maps only. **Obstacle-aware**: runs dual BFS (clean vs obstacle path). When HM obstacles (Rock Smash rocks, Cut trees) shorten or enable a path, returns `obstacle_choice`/`obstacle_required` status without moving — call again with `path_choice="obstacle"` or `"clean"`. Strength boulders never auto-cleared. Handles all 14 warp tile types. Water/waterfall/rock climb terrain recognized but deferred. Returns `encounter` key if battle/dialogue detected. **`flee_encounters=True`**: auto-flees wild battles and re-BFS's from current position. Trainer battles (detected by pre-battle dialogue) and cutscenes halt for the caller. Returns `flee_log` with species/attempts. **Failure diagnostics**: on "no path found," returns a 9x9 ASCII `diagram` centered on the target (`@`=player, `X`=target, `*`=nearest reachable, `#`=wall, `.`=passable, `N`=NPC, `≈`=water) plus `nearest_reachable` with global coords and distance. |
+| `navigate_to(x, y, path_choice, flee_encounters)` | BFS pathfind to target tile. **Sign-aware**: reads sign positions from ROM zone_event data (gfx IDs 91-96) and blocks the activation tile (one south of each sign) in BFS to prevent auto-trigger dialogue. **Elevation-aware**: on 3D maps (gyms, caves, AND multi-chunk overworld routes with bridges/cliffs), uses hierarchical BFS — constrains search to current elevation level and brute-forces through ramp transitions when target is on a different level. Multi-chunk maps load BDHC per chunk with unified height→level mapping. Depth-capped (5 transitions) with 5-minute timeout. Enforces directional blocks (0x30/0x31). Falls through to 2D BFS for flat maps only. **Obstacle-aware**: runs dual BFS (clean vs obstacle path). When HM obstacles (Rock Smash rocks, Cut trees) shorten or enable a path, returns `obstacle_choice`/`obstacle_required` status without moving — call again with `path_choice="obstacle"` or `"clean"`. Strength boulders never auto-cleared. Handles all 14 warp tile types. Water/waterfall/rock climb terrain recognized but deferred. Returns `encounter` key if battle/dialogue detected. **`flee_encounters=True`**: auto-flees wild battles and re-BFS's from current position. Trainer battles (detected by pre-battle dialogue) and cutscenes halt for the caller. Returns `flee_log` with species/attempts. **Adjacent target**: when the target tile is occupied by an NPC/entity, stops one tile away and returns `adjacent_to_target: true` with target coordinates — no wasted repaths. **Failure diagnostics**: on "no path found," returns a 9x9 ASCII `diagram` centered on the target (`@`=player, `X`=target, `*`=nearest reachable, `#`=wall, `.`=passable, `N`=NPC, `≈`=water) plus `nearest_reachable` with global coords and distance. |
 | `interact_with(object_index, x, y, flee_encounters)` | Navigate to a map object/NPC by index OR static tile by (x,y) and interact. Handles adjacent tiles, counter NPCs, facing, and dialogue. **Auto-advances** through full multi-page dialogue (chains into `advance_dialogue`). Detects trainer-spotted interruptions and checks for battle transitions post-dialogue. **Sign overlay support**: signpost text (board messages that bypass msgBox) is captured via memory scan and dismissed automatically — returns `sign_overlay: true`. **`flee_encounters=True`**: auto-flees wild battles encountered during the walk to the target. |
 | `seek_encounter(cave=false)` | Pace in grass until wild encounter. Returns at first action prompt with full battle state. `cave=true` for non-grass encounters. |
 | `read_dialogue(advance=true)` | Auto-advance through dialogue, collect full conversation. Stops at Yes/No prompts and multi-choice prompts. `advance=false` for passive read. |
@@ -129,7 +129,8 @@ Key ROM file indices: 0392=items, 0412=species, 0610=abilities, 0647=moves, 0433
    - `SWITCH_PROMPT` — trainer sending next Pokemon. Call `battle_turn(switch_to=N)` to swap, `battle_turn()` to keep battling, or `battle_turn(move_index=N)` to decline the switch and use that move in one call.
    - `FAINT_SWITCH` — your Pokemon fainted (wild battle). Call `battle_turn(switch_to=N)` to send replacement, or `battle_turn()` to flee.
    - `FAINT_FORCED` — your Pokemon fainted (trainer battle). Call `battle_turn(switch_to=N)` to send replacement (required).
-   - `BATTLE_ENDED` — back in overworld. **Auto-advances post-battle dialogue** (trainer defeat text, story triggers) if present — returned as `post_battle_dialogue` list. No manual `read_dialogue` needed.
+   - `MOVE_BLOCKED` — move was rejected by Torment, Disable, Encore, Taunt, or Choice item lock. No turn consumed, still at action prompt (in move selection submenu). Pick a different move or switch.
+   - `BATTLE_ENDED` — back in overworld. **Auto-advances post-battle dialogue** (trainer defeat text, story triggers) if present — returned as `post_battle_dialogue` list. **Handles full party wipe**: auto-advances through blackout sequence + Nurse Joy dialogue, returns with `blackout: true` and player free in Pokemon Center. No manual `read_dialogue` needed.
    - `MOVE_LEARN` — Pokemon wants to learn a new move. Response includes `move_to_learn` (the new move name, read directly from memory) and `current_moves` with slot indices. Call `battle_turn(forget_move=N)` to forget move N (0-3) and learn the new move, or `battle_turn(forget_move=-1)` to skip. Works in both trainer and wild battles.
    - `NO_ACTION_PROMPT` — action prompt never appeared (~30 sec timeout). Game may need manual input.
    - `TIMEOUT` — something unexpected. If actually in the overworld (not in battle), auto-checks for dialogue and upgrades to `BATTLE_ENDED`. Otherwise, screenshot + `read_battle` to diagnose.
@@ -154,6 +155,7 @@ auto_grind(move_index=0, iterations=5)      # stop after 5 encounters (scouting)
 auto_grind(move_index=0, iterations=10, target_level=20)  # whichever comes first
 auto_grind(target_species="Machop")         # run from everything until Machop appears
 auto_grind(move_index=0, target_species="Larvitar")  # grind, but stop if Larvitar appears
+auto_grind(move_index=3, backup_move=2)     # alternate moves when Tormented/Disabled
 ```
 
 ### Stop conditions (returned as `stop_reason`)
@@ -166,6 +168,8 @@ auto_grind(move_index=0, target_species="Larvitar")  # grind, but stop if Larvit
 | `fainted` | Slot 0 fainted. | Heal, then grind again or switch lead. |
 | `pp_depleted` | Spam move has 0 PP mid-battle. | Handle manually: flee, use another move, or use an Ether. |
 | `move_learn` | Pokemon wants to learn a move but all 4 slots are full. | Call `auto_grind` again with `forget_move` to continue (see below). |
+| `move_blocked` | Primary move blocked by Torment/Disable/Encore/Taunt, no `backup_move` set. | Provide `backup_move` to auto-alternate, or handle manually. |
+| `turn_limit` | Battle exceeded 10 turns without ending (safety valve). | Likely move-lock or unexpectedly tanky opponent. |
 | `seek_failed` | `seek_encounter` didn't find a battle (cutscene, blocked path). | Investigate manually. |
 | `unexpected` | Unknown battle state. | Screenshot + `read_battle` to diagnose. |
 
@@ -246,7 +250,7 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 
 - **Character**: CLAUDE | **Rival**: WOJ
 - **Badges**: 1 (Coal Badge — Roark defeated)
-- **Location**: Route 205 (mid-battle vs Croagunk, Torment bug). Save state: `bug_auto_grind_torment_loop`.
+- **Location**: Route 205 / Eterna City area. Torment bug fixed — ready to grind.
 - **Machop** Lv22 — Brave (+Atk/-Spe), No Guard. No held item. Moves: Low Kick, Brick Break, Return, Knock Off. *(party lead for grinding)*
 - **Swinub** ✨ Lv19 — Timid (+Spe/-Atk), Thick Fat. Held: **Exp. Share** (temporary, for passive leveling). Moves: Powder Snow, Ice Shard, Bulldoze, Endure. IVs: 23/**31**/25/24/10/22. *(SHINY — future Mamoswine. Never-Melt Ice in bag.)*
 - **Grotle** Lv24 — Naughty (+Atk/-SpD), Overgrow. Held: Muscle Band. Moves: Bulldoze, Cut, Bullet Seed, Razor Leaf.
@@ -260,7 +264,7 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 - **Undefeated trainers (Route 216)**: Ace Trainer Garrett (Mr. Mime/Scyther/Nuzleaf — wiped us, come back later), Ace Trainer Snow M (near lodge), Ace Trainer Snow F (east side), Black Belt (across wall, inaccessible from current area).
 - **Gardenia scouting** (2 of 6 Pokemon seen): Bellossom Lv25 (Grass Knot/Teeter Dance/Dazzling Gleam/Stun Spore, Wide Lens, Chlorophyll), Tangela Lv25 (Grass Knot/Shock Wave/Ancient Power/Stun Spore, Coba Berry, Chlorophyll). Tangela is the biggest threat — Ancient Power can omniboost. Wiped on scouting run.
 - **Story progress**: Beat Roark → Coal Badge. Cleared Route 204 north. Arrived Floaroma Town. Cleared Valley Windworks storyline. Looker: Team Galactic hideout is in Eterna City. Completed Route 205 north (upper path). Entered Eterna Forest, defeated Cheryl to prove strength, she joined as tag battle partner. Traversed Eterna Forest with Cheryl. Cheryl gave TM27 (Return) at exit. Crossed Route 205 bridge to Eterna City. Team Galactic grunts spotted in Eterna City. Explored Eterna City: triggered WOJ+Cyrus statue cutscene, met Cynthia (got HM01 Cut), bought herbs at Herb Shop, explored Route 211 and Mt. Coronet tunnel. Gardenia is NOT at gym — went to Route 216 (Renegade Platinum change). Galactic building requires Forest Badge. Traversed Mt. Coronet (Route 211 entrance → map 218 → map 219 → map 217 → Route 216 exit). Reached Route 216. Defeated Ace Trainer Laura and Skier Edward. Found Snowbound Lodge. **Found Gardenia** at Snowbound Lodge — she's returning to Eterna Gym. **Caught shiny Swinub** (perfect Atk IV). Caught 3 Swinub total. Returned to Eterna City via Mt. Coronet (reverse route: map 217 → 219 → 218 → Route 211 west). **Swapped shiny Swinub into party** with Never-Melt Ice. **Defeated all 3 Eterna Gym trainers.** Scouted Gardenia — wiped to Tangela's double Ancient Power boost. Taught Aerial Ace to Charmeleon, Return to Machop. Bought Parlyz Heals/Super Potions/Awakenings. Swapped Exp. Share to Swinub for passive leveling.
-- **Next**: Fix Torment/move-lock bug in auto_grind. Grind team to 25+ on Route 205. Rematch Gardenia. After gym: Team Galactic Eterna Building. Shroomish on Route 203 wants an Oran Berry (come back later).
+- **Next**: Grind team to 25+ on Route 205 (use `backup_move` for Torment). Fix Eterna Gym 3D nav bugs (clock hand passability, L0→L1 ramp, navigate ramp inconsistency, post-battle event text). Rematch Gardenia. After gym: Team Galactic Eterna Building. Shroomish on Route 203 wants an Oran Berry (come back later).
 
 See GAME_HISTORY.md for full chronological playthrough details.
 
@@ -286,28 +290,18 @@ See GAME_HISTORY.md for full chronological playthrough details.
 ### Reordering party (overworld)
 1. `reorder_party(0, 2)` — swap slot 0 and slot 2. Navigates pause menu automatically.
 
-## Battle Test Suite
+## Test Suite
 
-Integration tests for `battle_turn` and `auto_grind` live in `tests/`. They require a running emulator with the ROM loaded.
+Integration tests live in `tests/` (140 tests across 14 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
 
 ```bash
-DesmumeMCP/.venv/bin/python -m pytest tests/ -v          # full suite (~17 min)
-DesmumeMCP/.venv/bin/python -m pytest tests/test_X.py -v  # single file
+MelonMCP/.venv/bin/python -m pytest tests/ -v          # full suite (~24 min)
+MelonMCP/.venv/bin/python -m pytest tests/test_X.py -v  # single file
 ```
 
-Tests load save states, call battle functions directly (bypassing MCP protocol), and assert on `final_state`, log contents, and party data. Each test resets via `load_state` so they're independent.
+Tests load save states, call implementation functions directly (bypassing MCP protocol), and assert on `final_state`, log contents, and party data. Each test resets via `load_state` so they're independent.
 
-| File | Coverage |
-|------|----------|
-| `test_battle_end.py` | Wild KO, trainer multi-Pokemon, switch prompt after KO |
-| `test_move_learn.py` | Level-up move-learn, auto-learn (open slot), skip, forget |
-| `test_evolution.py` | Mid-battle evo chain, Exp Share evo, "What?" animation |
-| `test_faint_switch.py` | Wild faint send/flee, trainer switch accept/decline, voluntary |
-| `test_double_battle.py` | Partner action prompt, both actions complete turn |
-| `test_multi_hit.py` | 5-hit Bullet Seed KO → SWITCH_PROMPT (not TIMEOUT), log completeness |
-| `test_auto_grind.py` | Iteration stop, encounter log, mid-battle resume |
-
-**Run tests after any change to `turn.py`, `auto_grind.py`, or `battle_tracker.py`.**
+**Run tests after any change to `turn.py`, `auto_grind.py`, `navigation.py`, or `battle_tracker.py`.**
 
 ## Tips
 

@@ -2,6 +2,59 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: QoL Sweep — Move Blocks, Blackout, Adjacent Targets (2026-04-08e)
+
+**Goal**: Clear the non-gym QoL backlog so next session can focus entirely on Eterna Gym 3D elevation bugs.
+
+### 1. auto_grind Torment infinite loop → MOVE_BLOCKED + backup_move
+
+**Problem**: `auto_grind(move_index=3)` looped forever against a Tormented Croagunk. The game rejected Knock Off at the UI level ("can't use the same move twice in a row") without consuming a turn, so no stop condition was ever reached.
+
+**Investigation**: Added a 10-turn safety valve first so we could observe the behavior. The battle log showed the rejection text clearly. Then added `MOVE_BLOCKED` detection in `_classify_final_state` (turn.py) — checks for "can't use" / "cannot use" in poll log entries.
+
+**Key discovery**: After Torment rejects a move, the game stays in the **move selection submenu** (not the main FIGHT/BAG/POKEMON/RUN menu). When `auto_grind` called `_battle_turn` again, `_fight_flow` tapped FIGHT first — but the FIGHT coordinates (128, 90) land in the center of the move grid, accidentally selecting a move before the intended backup tap. Confirmed by screenshot + manual tap testing.
+
+**Fix**: When `MOVE_BLOCKED` is detected and `backup_move` is set, tap the backup move directly on the already-visible move selection screen (skip the FIGHT tap), then poll via `_poll_after_action`. Without backup, returns `stop_reason="move_blocked"` immediately. 10-turn safety valve remains as ultimate fallback.
+
+**Files**: turn.py, auto_grind.py, server.py (new `backup_move` param — required `/mcp` restart).
+**Tests**: 5 in `test_move_blocked.py` — blocked detection, unblocked succeeds, no-backup bailout, backup completes battle, same-move-backup hits safety.
+**Commit**: `4121e59`
+
+### 2. Party wipe blackout recovery
+
+**Problem**: `battle_turn` returned `BATTLE_ENDED` after a full party wipe, but the game was in the blackout sequence (fade → "scurried to a Pokémon Center" → warp → Nurse Joy dialogue). Player stuck with no automated way to recover.
+
+**Investigation**: Loaded save state, triggered wipe (Swinub vs +2 Tangela), manually stepped through the sequence: ~300 frames black screen, B to dismiss scurry text, ~300 frames warp, 3× B for Nurse Joy dialogue, then free movement in PC.
+
+**Fix**: Detect full wipe via `"is out of"` in battle log (note: text has newline between "of" and "usable" — initial `"out of usable"` match failed). `_handle_blackout` presses B periodically through the fade (20 × 188 frames), then `advance_dialogue` for Nurse Joy. Returns `BATTLE_ENDED` with `blackout: true`.
+
+**Files**: turn.py (new `_handle_blackout` helper + detection in post-battle handler).
+**Tests**: 3 in `test_blackout.py` — flag detection, party fully healed, player in Pokemon Center (via Pokecenter Nurse NPC check).
+**Commit**: `a3bec2c`
+
+### 3. navigate_to adjacent_to_target for occupied tiles
+
+**Problem**: Navigating to an NPC-occupied tile burned 5 repath attempts then reported `stopped_early` / `blocked_at`. Common annoyance with gym trainers, signposts, NPCs.
+
+**Fix**: In `_execute_path`, detect when blocked on the **final step** of the path (`i == len(directions) - 1`) — short-circuit the repath loop with `blocked_on_final_step` flag. In the result builder, convert to `adjacent_to_target: true` with target coordinates when Manhattan distance ≤ 1. Zero wasted repaths.
+
+**Files**: navigation.py (2 edits: `_execute_path` short-circuit + result builder).
+**Tests**: 3 in `test_adjacent_target.py` — static NPC returns adjacent, no wasted repaths, empty tile has no flag.
+**Commit**: `48e423b`
+
+### 4. Test suite cleanup
+
+- **Legacy exclusion**: `norecursedirs = legacy` in pytest.ini — 30 DeSmuME-era tests no longer collected by default (140 → 140 without noise). Run explicitly with `pytest tests/legacy/ -v`.
+- **Flaky doubles fix**: `test_double_battle_both_actions` added `retry_on_rng` decorator + `FAINT_FORCED` to accepted states. RNG damage roll could KO our Pokemon. 5/5 passes confirmed it was a fluke.
+- **Full suite**: 140 collected, 140 passed, 0 failed.
+
+**Commit**: `7b17052`
+
+### Backlog status after session
+
+**Resolved this session**: 3 bugs/QoL items + test cleanup
+**Remaining**: 4 Eterna Gym bugs (3D elevation + dynamic clock terrain), 1 deferred (Veilstone shop)
+
 ## Dev Session: Multi-Chunk BFS Fix (2026-04-08c)
 
 **Goal**: Fix the last open bug — `navigate_to` 3D BFS false block in Mt. Coronet map 218.
