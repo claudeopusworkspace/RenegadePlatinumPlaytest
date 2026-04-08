@@ -862,6 +862,31 @@ def battle_turn(
                 if result["final_state"] == "TIMEOUT":
                     result["final_state"] = "BATTLE_ENDED"
 
+            # 5c. Dismiss lingering event animation text (gym puzzle events).
+            #     These scripts show text without setting is_msg_box_open, so
+            #     advance_dialogue can't detect them. Press B through any remaining
+            #     event text until the script context stops running.
+            from renegade_mcp.dialogue import (
+                _find_script_manager, _read_script_state,
+                _read_context_state, CTX_RUNNING,
+            )
+            for _ in range(20):  # safety cap
+                emu.advance_frames(60)
+                mgr = _find_script_manager(emu)
+                if mgr is None:
+                    break
+                ss = _read_script_state(emu, mgr)
+                ctx_ptr = (ss["ctx1_ptr"]
+                           if ss["sub_ctx_active"] and ss["ctx1_ptr"]
+                           else ss["ctx0_ptr"])
+                if not ctx_ptr:
+                    break
+                ctx = _read_context_state(emu, ctx_ptr)
+                if ctx["state"] != CTX_RUNNING:
+                    break
+                emu.press_buttons(["b"], frames=8)
+                emu.advance_frames(30)
+
     # 6. Append trimmed battle state
     result["battle_state"] = battle_summary(read_battle(emu))
     return result

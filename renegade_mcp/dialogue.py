@@ -304,11 +304,20 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
     # ── Check initial state ──
     ss = _read_script_state(emu, mgr)
     if not ss["is_msg_box_open"]:
-        result = read_dialogue(emu, "overworld")
-        result["status"] = "no_dialogue"
-        result["conversation"] = result.get("lines", [])
-        result["frames_elapsed"] = 0
-        return result
+        # A script context in CTX_RUNNING means an animation/event is in progress
+        # (e.g., gym puzzle "The fountain's water level dropped!"). Enter the main
+        # loop so we can wait for event text and dismiss it with B.
+        ctx_ptr = ss["ctx1_ptr"] if (ss["sub_ctx_active"] and ss["ctx1_ptr"]) else ss["ctx0_ptr"]
+        event_running = False
+        if ctx_ptr:
+            ctx = _read_context_state(emu, ctx_ptr)
+            event_running = ctx["state"] == CTX_RUNNING
+        if not event_running:
+            result = read_dialogue(emu, "overworld")
+            result["status"] = "no_dialogue"
+            result["conversation"] = result.get("lines", [])
+            result["frames_elapsed"] = 0
+            return result
 
     # ── Collect initial text ──
     conversation: list[str] = []
@@ -344,6 +353,8 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
         """When isMsgBoxOpen==0, wait to see if text comes back or script ends.
 
         Returns "completed" if script truly ended, None if text came back.
+        Also detects event animation text (TextPrinter active without message
+        box — e.g., gym puzzle "The fountain's water level dropped!").
         """
         for _ in range(MAX_ANIM_POLLS):
             emu.advance_frames(ANIM_POLL)
@@ -352,6 +363,10 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
             ss2 = _read_script_state(emu, mgr)
             if ss2["is_msg_box_open"]:
                 return None  # text came back — continue advancing
+            # Event text: TextPrinter rendering without message box flag
+            tp = _read_tp_state(emu)
+            if tp["active"] and tp["state"] >= 1:
+                return None  # event text visible — let main loop dismiss it
         return "completed"  # script alive but no text after long wait
 
     # ── Main advance loop ──
@@ -364,6 +379,14 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
         if not ss["is_msg_box_open"]:
             if not _script_still_alive():
                 return _result("completed", conversation, start_frame, emu)
+            # Event text: TextPrinter showing text without message box flag
+            # (gym puzzle events like "The fountain's water level dropped!")
+            tp = _read_tp_state(emu)
+            if tp["active"] and tp["state"] >= 1:
+                emu.press_buttons(["b"], frames=ADVANCE_HOLD)
+                emu.advance_frames(SETTLE_FRAMES)
+                _collect_text()
+                continue
             outcome = _wait_for_msgbox_or_script_end()
             if outcome == "completed":
                 return _result("completed", conversation, start_frame, emu)
