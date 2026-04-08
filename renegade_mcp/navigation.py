@@ -1073,11 +1073,14 @@ def _try_repath(
             tile_x=sx, tile_y=sy,
         )
         if player_level is not None:
-            return _bfs_pathfind_3d(
+            path_3d = _bfs_pathfind_3d(
                 ctx["terrain_info"], npc_set, elevation,
                 sx, sy, ctx["goal_x"], ctx["goal_y"],
                 player_level, width=w, height=h,
             )
+            if path_3d is not None:
+                return path_3d
+            # 3D BFS failed (disconnected level, dynamic terrain) — fall through to 2D
 
     return _bfs_pathfind(
         ctx["terrain_info"], npc_set,
@@ -2012,44 +2015,15 @@ def _navigate_to_impl(
         )
 
         if path_3d is None:
-            if is_global and chunked:
-                # Multi-chunk overworld: 3D BFS can over-constrain on slopes
-                # where BDHC controls camera height, not walkability.
-                # Fall back to 2D BFS (drops through to the else branch below).
-                is_3d = False
-                elevation = None
-                repath_ctx.pop("elevation", None)
-                repath_ctx.pop("emu", None)
-            else:
-                combined_3d = npc_set | set(obstacle_map.keys())
-                reachable_3d = _bfs_reachable(
-                    terrain_info, combined_3d,
-                    bfs_sx, bfs_sy, bfs_w, bfs_h,
-                )
-                nearest_3d = _find_nearest_reachable(reachable_3d, bfs_tx, bfs_ty)
-                result_3d: dict[str, Any] = {
-                    "error": (
-                        "No 3D path found. Target may be on an unreachable elevation "
-                        "level or blocked by walls on all connected levels."
-                    ),
-                    "start": _pos_with_map(px, py, map_id),
-                    "target": {"x": target_x, "y": target_y},
-                    "player_level": player_level,
-                    "elevation_levels": len(elevation["levels"]),
-                }
-                if nearest_3d:
-                    gx = nearest_3d[0] + repath_ox
-                    gy = nearest_3d[1] + repath_oy
-                    dist = abs(nearest_3d[0] - bfs_tx) + abs(nearest_3d[1] - bfs_ty)
-                    result_3d["nearest_reachable"] = {"x": gx, "y": gy, "distance": dist}
-                diagram_3d = _render_failure_diagram(
-                    terrain_info, combined_3d,
-                    bfs_sx, bfs_sy, bfs_tx, bfs_ty,
-                    nearest_3d, bfs_w, bfs_h,
-                )
-                result_3d["diagram"] = diagram_3d
-                result_3d["diagram_key"] = "@=player X=target *=nearest_reachable #=wall .=passable N=NPC ≈=water D=door"
-                return result_3d
+            # 3D BFS failed — fall back to 2D BFS.  This handles:
+            # - Disconnected elevation levels (e.g., L0 with no ramp to L1)
+            # - Dynamic terrain changes (e.g., rotated clock puzzles in gyms)
+            # - Multi-chunk overworld slopes that control camera, not walkability
+            # The _try_repath fallback also drops to 2D when 3D fails mid-walk.
+            is_3d = False
+            elevation = None
+            repath_ctx.pop("elevation", None)
+            repath_ctx.pop("emu", None)
 
     if is_3d:
         path = path_3d
