@@ -2,6 +2,50 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: melonDS Timing Bug Sweep (2026-04-08a)
+
+Investigated and fixed 5 of 7 open melonDS-era bugs. Found 3 root causes shared across all 5 bugs.
+
+### Root causes discovered
+
+1. **Gen 4 target screen coordinate mapping**: The doubles target selection screen places enemy slot 1 (first enemy from `read_battle`) on the RIGHT and slot 3 (second enemy) on the LEFT — opposite of the battle field layout. Swapped `TARGET_XY[0]` and `[1]`. Verified empirically by tapping (190,50) and confirming Noctowl (slot 1) took Spark damage.
+
+2. **PROMPT_SETTLE too short (300→600 frames)**: `_wait_for_action_prompt` detects prompt text in memory before bottom-screen UI buttons render. At SWITCH_PROMPT, buttons appeared ~600 frames after text detection. Same pattern for MOVE_LEARN prompt. Increased `PROMPT_SETTLE` from 300 to 600 and added PROMPT_SETTLE wait before move-learn touch flows.
+
+3. **8-frame button hold bleed-through**: On melonDS, holding A for 8 frames spans fast menu transitions — the A registers on BOTH the source menu (entering DEPOSIT) and the destination (selecting slot 0 on the party grid). Fixed surgically: 2-frame hold only on the specific A presses that enter DEPOSIT and WITHDRAW modes. Other presses keep 8-frame holds.
+
+### Bugs fixed
+
+| Bug | Root Cause | Fix |
+|---|---|---|
+| Doubles target=0/1 swapped | #1 coordinate mapping | Swap TARGET_XY entries |
+| switch_to at SWITCH_PROMPT fails | #2 PROMPT_SETTLE | 300→600 frames |
+| forget_move taps don't register | #2 + misdiagnosed | Added PROMPT_SETTLE before learn flow; taps always worked but read_party returns stale pre-battle data |
+| deposit_pokemon extra A press | #3 bleed-through | 2-frame hold on DEPOSIT entry |
+| heal_party dialogue stuck | Insufficient cleanup | 5 B presses instead of 3 A presses |
+
+### Key discovery: read_party stale during battle on melonDS
+
+The `read_party` function reads from `ENCRYPTED_PARTY_BASE`, which is frozen at battle start on melonDS. Move changes from in-battle move-learn don't appear until the battle ends and the game writes battle state back to the encrypted party block. The forget_move bug was misdiagnosed as "taps don't register" — debug screenshots proved all 3 taps work. Updated the test to verify moves after battle completion.
+
+### Test changes
+
+- Removed `pytest.xfail` from `test_accept_switch_at_prompt` and `test_forget_move_and_learn`
+- `test_forget_move_and_learn` now fights through the remaining trainer Pokemon before checking moves via `read_party`
+- All 21 battle tests pass. 121/129 non-legacy tests pass (8 pre-existing failures unchanged).
+
+### Pre-existing failures noted (new backlog items)
+
+8 non-legacy tests were already failing before this session:
+- 3 PC tools (open_pc → deposit/withdraw e2e): entry A-press fix works standalone but `open_pc` flow has separate issues
+- 3 navigation (walk warp, short path, cutscene): likely same timing class, uninvestigated
+- 2 auto_grind (iterations stop/multiple): possibly PROMPT_SETTLE cascade or seek_encounter timing
+
+### Still open from melonDS migration
+
+- **Doubles faint switch NO_ACTION_PROMPT**: May be fixed by PROMPT_SETTLE increase — needs retest
+- **navigate_to 3D BFS false block in Mt. Coronet 218**: Separate issue, not timing related
+
 ## Dev Session: Test Audit & Tightening + Deferred Test States (2026-04-07c)
 
 Created save states for previously-deferred test scenarios, wrote 9 new tests, then audited all 130 tests for vacuous assertions — tightened 6 files and discovered 2 real melonDS bugs.

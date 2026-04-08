@@ -665,7 +665,7 @@ def battle_turn(
         switch_to (1-5): Use POKEMON to switch voluntarily.
         run=True: Attempt to flee (wild battles only). Returns BATTLE_ENDED on
             success, WAIT_FOR_ACTION on failure (enemy gets a free turn).
-        target (doubles only): 0=left enemy, 1=right enemy, 2=self/ally. -1=auto (first enemy).
+        target (doubles only): 0=first enemy (slot 1), 1=second enemy (slot 3), 2=self/ally. -1=auto (first enemy).
 
     Faint in wild battle (FAINT_SWITCH — "Use next Pokemon?"):
         switch_to (1-5): Send in a replacement.

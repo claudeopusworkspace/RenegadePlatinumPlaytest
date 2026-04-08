@@ -120,7 +120,7 @@ Key ROM file indices: 0392=items, 0412=species, 0610=abilities, 0647=moves, 0433
 2. **`battle_turn(move_index=N)`** — use a move (0-3). **Checks type effectiveness first** — returns `EFFECTIVENESS_WARNING` if the move is immune or not very effective against the target. Call with `force=True` to proceed anyway (e.g., status moves, chip damage, or when no better option). Returns battle log + final state + updated battle state.
    - Or **`battle_turn(switch_to=N)`** — switch to party slot N (0-5) instead of attacking.
    - Or **`battle_turn(run=True)`** — attempt to flee a wild battle. Returns `BATTLE_ENDED` on success, `WAIT_FOR_ACTION` on failure (enemy gets a free turn).
-   - In **double battles**, add `target=` to specify the target: `0`=left enemy, `1`=right enemy, `2`=self/ally. Default `-1` auto-targets first enemy.
+   - In **double battles**, add `target=` to specify the target: `0`=first enemy (slot 1), `1`=second enemy (slot 3), `2`=self/ally. Default `-1` auto-targets first enemy.
    - Works on the very first turn of battle — no need to call twice.
 3. Handle the returned state:
    - `EFFECTIVENESS_WARNING` — move is immune or not very effective. Review the warning, then either pick a different move/switch, or call `battle_turn(move_index=N, force=True)` to use it anyway. No game state has changed yet.
