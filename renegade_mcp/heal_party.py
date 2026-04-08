@@ -34,8 +34,12 @@ NURSE_GREETING = "would you like to rest your"
 
 
 def _press(emu: EmulatorClient, buttons: list[str], wait: int = TEXT_WAIT) -> None:
-    """Press buttons and wait."""
-    emu.press_buttons(buttons, frames=8)
+    """Press buttons and wait.
+
+    Uses a 2-frame hold to avoid bleed-through on melonDS — 8 frames
+    can span fast menu transitions and register as multiple actions.
+    """
+    emu.press_buttons(buttons, frames=2)
     emu.advance_frames(wait)
 
 
@@ -142,15 +146,15 @@ def _heal_at_nurse(emu: EmulatorClient) -> dict[str, Any]:
     # so the first A press selects YES (no extra press needed to reach it).
     _press(emu, ["a"])                    # select YES
     _press(emu, ["a"], wait=HEAL_ANIM_WAIT)  # healing animation
-    for _ in range(3):                    # clear remaining dialogue lines
-        _press(emu, ["a"])
+    for _ in range(5):                    # clear remaining dialogue lines
+        _press(emu, ["b"])
     emu.advance_frames(SETTLE_WAIT)
 
     # ── Verify dialogue is gone (back to free movement) ──
     leftover = read_dialogue(emu, region="overworld")
     if leftover.get("region") != "none" and leftover.get("text"):
-        for _ in range(3):
-            _press(emu, ["a"])
+        for _ in range(5):
+            _press(emu, ["b"])
         emu.advance_frames(SETTLE_WAIT)
 
     # ── Verify healing ──

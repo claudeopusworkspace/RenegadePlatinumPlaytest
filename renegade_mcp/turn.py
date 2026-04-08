@@ -33,10 +33,12 @@ POKEMON_XY = (210, 170)  # Bottom-right of action screen (green button)
 
 # Double battle target selection screen (bottom screen, after move selection)
 # Layout: two enemies on top row, ally/self on bottom.
-# Coordinates calibrated from Route 203 double battle.
+# Gen 4 target screen places enemy slot 1 (first enemy) on the RIGHT and
+# enemy slot 3 (second enemy) on the LEFT — the opposite of the battle field.
+# Verified on melonDS: tapping (190,50) targets Noctowl (slot 1, first enemy).
 TARGET_XY = [
-    (70, 50),    # 0: top-left enemy (left side of field from player's view)
-    (190, 50),   # 1: top-right enemy (right side of field from player's view)
+    (190, 50),   # 0: first enemy (slot 1) — right position on target screen
+    (70, 50),    # 1: second enemy (slot 3) — left position on target screen
     (100, 130),  # 2: bottom — self or ally
 ]
 
@@ -106,7 +108,7 @@ EVOLUTION_MAX_CHUNKS = 40   # 40 seconds max wait for animation
 
 # Timing
 ACTION_SETTLE = 120   # frames before first tap (covers send-out animations)
-PROMPT_SETTLE = 300   # frames before tapping switch/faint prompts (game delays control handoff)
+PROMPT_SETTLE = 600   # frames before tapping switch/faint prompts (melonDS: buttons render ~600f after text detection)
 TAP_WAIT = 60         # frames between sequential taps
 DPAD_WAIT = 30        # frames between D-pad presses
 ACTION_PROMPT_MAX_POLLS = 120  # polls waiting for "What will X do?" (~30 sec)
@@ -560,9 +562,14 @@ def _learn_move_flow(emu: EmulatorClient, forget_index: int) -> bool:
 
     # 3. Tap FORGET on the detail view
     emu.tap_touch_screen(FORGET_BTN_XY[0], FORGET_BTN_XY[1], frames=8)
-    emu.advance_frames(ACTION_SETTLE)
 
-    # 4. Advance through "1, 2, and... Poof!" / "forgot [old]" / "learned [new]" text
+    # Wait for the "1, 2, and... Poof!" animation to complete and the game
+    # to commit the move replacement before pressing B.  On melonDS the game
+    # needs the full animation to process (~600 frames) before the move is
+    # actually swapped in memory.
+    emu.advance_frames(PROMPT_SETTLE)
+
+    # 4. Advance through "forgot [old]" / "learned [new]" confirmation text.
     #    Stop pressing B if evolution text appears to avoid cancelling it.
     for _ in range(6):
         if _is_evolution_text_on_screen(emu):
@@ -980,6 +987,10 @@ def _execute_move_learn(
         else:
             _learn_move_overworld(emu, forget_move)
         return _poll_after_action(emu, prompt["log"])
+
+    # Wait for bottom-screen buttons to render (text detected in memory
+    # before UI is interactive — same pattern as SWITCH_PROMPT).
+    emu.advance_frames(PROMPT_SETTLE)
 
     if forget_move == -1:
         evolving = _skip_move_learn_flow(emu)

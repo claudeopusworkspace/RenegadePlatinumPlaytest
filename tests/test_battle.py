@@ -182,14 +182,7 @@ class TestTrainerBattle:
 
     @retry_on_rng("test_trainer_battle_action")
     def test_accept_switch_at_prompt(self, emu: EmulatorClient):
-        """At SWITCH_PROMPT, switch to slot 1 — Machop becomes active.
-
-        BUG: switch_to at SWITCH_PROMPT may not execute the switch on melonDS.
-        Player species remains unchanged (Luxio instead of Machop).
-        See project backlog for tracking.
-        """
-        import pytest
-        pytest.xfail("Known bug: switch_to at SWITCH_PROMPT doesn't execute on melonDS")
+        """At SWITCH_PROMPT, switch to slot 1 — Machop becomes active."""
         from renegade_mcp.turn import battle_turn
         result = battle_turn(emu, move_index=0)
         assert result["final_state"] == "SWITCH_PROMPT"
@@ -279,11 +272,10 @@ class TestMoveLearn:
     def test_forget_move_and_learn(self, emu: EmulatorClient):
         """Forget Peck (slot 3) and learn Icy Wind — move list updated.
 
-        BUG: forget_move touch taps in _learn_move_flow don't register on melonDS.
-        Moves remain unchanged after forget_move=3. See project backlog.
+        Verification happens after battle ends: read_party returns stale
+        (pre-battle) data during battle on melonDS because the encrypted party
+        block is frozen until the battle result is written back.
         """
-        import pytest
-        pytest.xfail("Known bug: _learn_move_flow touch taps don't register on melonDS")
         load_state(emu, "test_move_learn_prompt")
         from renegade_mcp.turn import battle_turn
         from renegade_mcp.party import read_party
@@ -292,6 +284,20 @@ class TestMoveLearn:
             "WAIT_FOR_ACTION", "BATTLE_ENDED", "MOVE_LEARN",
             "SWITCH_PROMPT",
         ), f"After forget, unexpected state: {result['final_state']}"
+        # Fight through remaining trainer Pokemon to end the battle
+        for _ in range(20):
+            state = result["final_state"]
+            if state == "BATTLE_ENDED":
+                break
+            elif state == "MOVE_LEARN":
+                result = battle_turn(emu, forget_move=-1)
+            elif state == "SWITCH_PROMPT":
+                result = battle_turn(emu, move_index=0)
+            else:
+                result = battle_turn(emu, move_index=0)
+        assert result["final_state"] == "BATTLE_ENDED", (
+            f"Battle should have ended, got: {result['final_state']}"
+        )
         # Verify Prinplup (slot 3) now has Icy Wind instead of Peck
         party = read_party(emu)
         prinplup = party[3]
