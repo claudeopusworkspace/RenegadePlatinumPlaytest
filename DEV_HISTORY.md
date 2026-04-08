@@ -2,6 +2,60 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Test Audit & Tightening + Deferred Test States (2026-04-07c)
+
+Created save states for previously-deferred test scenarios, wrote 9 new tests, then audited all 130 tests for vacuous assertions — tightened 6 files and discovered 2 real melonDS bugs.
+
+### New save states & tests
+
+Navigated from Route 211 east through Mt. Coronet to Route 211 west. Found Bird Keeper Alexandra (3 Pokemon: Natu, Swablu, Staravia).
+
+**Save states created:**
+- `route211_west_pre_trainer` — pre-battle overworld position
+- `test_trainer_battle_action` — Luxio vs Natu at action prompt (trainer battle)
+- `test_move_learn_prompt` — Prinplup wants to learn Icy Wind at "Make it forget?" prompt
+
+**9 new tests (previously deferred):**
+- `TestTrainerBattle` (6 tests): use move, switch prompt after KO, switch prompt has next Pokemon, decline switch, accept switch, full battle, post-battle dialogue
+- `TestMoveLearn` (3→2 tests): skip move learn (verify moves unchanged), forget move and learn (verify moves updated)
+
+**Still deferred:** Evolution in battle, Yes/No dialogue prompt (need different game progress).
+
+### Test suite audit
+
+Ran a comprehensive audit of all tests for "vacuous" assertions — tests written so loosely they can't fail. Found **58 issues** across 6 anti-patterns:
+
+| Anti-pattern | Count | Example |
+|---|---|---|
+| Accepts every possible outcome | 10 | `test_double_battle_both_actions` accepted all 10 states |
+| Conditional `if` silently skips | 14 | `test_switch_prompt_after_ko` only asserted inside `if SWITCH_PROMPT` |
+| Trivially true assertions | 14 | `assert result is not None` on functions that always return dicts |
+| Only asserts type/presence | 7 | `assert isinstance(result, dict)` with no content checks |
+| Interesting assertion behind `if` | 5 | `test_force_flag` only tested force when warning fired |
+
+### Tightened assertions (6 files, +421/-285 lines)
+
+- **test_battle.py**: Verify specific species in battle_state, move names in logs, party moves after learn/skip
+- **test_navigation.py**: Verify arrival at exact target coordinates, unconditional warp/error checks
+- **test_auto_grind_v2.py**: Unconditional iteration count and encounter log assertions
+- **test_item_tools.py**: Verify HP changes after medicine, bag changes after take_item, move lists after teach_tm
+- **test_pc_tools.py**: Verify party size changes after deposit/withdraw
+- **test_map_tools.py**: Unconditional object count checks, elevation marker verification
+
+### Bugs discovered (2 new, added to backlog)
+
+1. **`switch_to` at SWITCH_PROMPT doesn't execute on melonDS**: `battle_turn(switch_to=1)` at a trainer switch prompt returns a valid state but the active battler remains unchanged (Luxio instead of Machop). Marked `xfail`.
+
+2. **`forget_move` touch taps don't register on melonDS**: `battle_turn(forget_move=3)` at a MOVE_LEARN prompt returns a valid state but `read_party` shows moves unchanged (Peck still in slot 3, Icy Wind not learned). The `_learn_move_flow` touch inputs likely need timing adjustments for melonDS. Marked `xfail`.
+
+Both bugs were invisible under the old loose assertions — the tests passed because they only checked `final_state`, not the actual game state changes.
+
+### Performance
+
+MelonMCP render-skip optimization (skipping GPU rendering on bulk-advance intermediate frames) improved emulator throughput from ~800 FPS to ~2000 FPS. Test suite benefits from faster frame advancement.
+
+**Commits**: `2c641ce`, `0497c6d`
+
 ## Dev Session: Comprehensive melonDS Test Suite (2026-04-07b)
 
 Built a full regression test suite for all 35 Renegade MCP tools on melonDS. No tool code was modified — strictly test infrastructure.
