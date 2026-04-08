@@ -188,6 +188,41 @@ def _log_has(log: list[dict], text: str) -> bool:
     return any(text in e.get("text", "") for e in log)
 
 
+def _handle_blackout(emu: "EmulatorClient") -> list[str]:
+    """Advance through the full party-wipe blackout sequence.
+
+    After all Pokemon faint, the game plays:
+    1. Fade to black (~5 sec)
+    2. "PLAYER scurried to a Pokémon Center..." text
+    3. Warp to Pokemon Center + Nurse Joy healing dialogue
+    4. Free movement
+
+    Presses B periodically to dismiss text and waits for the overworld
+    to settle. Returns collected dialogue lines.
+    """
+    from renegade_mcp.dialogue import advance_dialogue
+
+    dialogue: list[str] = []
+
+    # Phase 1: Wait through the blackout fade + scurry text.
+    # Press B periodically to dismiss any text that appears.
+    for _ in range(20):  # ~60 seconds max
+        emu.press_buttons(["b"], frames=8)
+        emu.advance_frames(180)
+
+    # Phase 2: Dismiss Nurse Joy dialogue via advance_dialogue.
+    # The warp animation may still be settling, so retry a few times.
+    for _ in range(3):
+        emu.advance_frames(120)
+        adv = advance_dialogue(emu)
+        if adv["status"] != "no_dialogue" and adv.get("conversation"):
+            dialogue.extend(adv["conversation"])
+        if adv["status"] == "completed":
+            break
+
+    return dialogue
+
+
 def _classify_prompt(text: str) -> str:
     """Classify a WAIT_FOR_ACTION prompt by its text content."""
     t = text.replace("\n", " ")
@@ -801,8 +836,21 @@ def battle_turn(
     if result["final_state"] in ("SWITCH_PROMPT", "FAINT_SWITCH", "FAINT_FORCED"):
         _enrich_switch_result(result, emu)
 
-    # 5. Auto-advance post-battle overworld dialogue (trainer defeat text, story triggers)
+    # 5. Full-party wipe blackout recovery
+    #    When all Pokemon faint, the game plays a long blackout sequence:
+    #    fade → "scurried to a Pokémon Center" → warp → Nurse Joy dialogue.
+    #    Detect this from the battle log and advance through the entire sequence
+    #    so the caller gets back control with the player in the Pokemon Center.
     if result["final_state"] in ("BATTLE_ENDED", "TIMEOUT"):
+        if _log_has(result.get("log", []), "is out of"):
+            blackout_dialogue = _handle_blackout(emu)
+            result["blackout"] = True
+            if blackout_dialogue:
+                result["post_battle_dialogue"] = blackout_dialogue
+            result["final_state"] = "BATTLE_ENDED"
+
+    # 5b. Auto-advance post-battle overworld dialogue (trainer defeat text, story triggers)
+    if result["final_state"] in ("BATTLE_ENDED", "TIMEOUT") and not result.get("blackout"):
         from renegade_mcp.battle import read_battle as _rb
         if not _rb(emu):
             # We're in the overworld — check for pending dialogue
