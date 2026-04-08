@@ -2,6 +2,59 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Eterna Gym Navigation Fixes (2026-04-08f)
+
+Resolved all remaining Eterna Gym bugs — 3D navigation and post-battle event text. Full gym now navigable end-to-end.
+
+### 3D BFS Fallback to 2D
+
+**Problem**: 3D elevation-constrained BFS over-restricted navigation in gyms:
+- Clock hand tiles: 3D BFS planned paths through L2 tiles disconnected by clock rotation → player stuck
+- L0→exit: no BDHC ramp from L0 to L1 → "No 3D path found" error
+- Ramps impassable via `navigate`: misdiagnosis — (4,14) is a wall, ramp is at (4,13)
+
+**Root cause investigation**:
+- Loaded all 3 bug save states and reproduced each issue
+- Compared ROM vs RAM terrain — RAM terrain unreliable (corrupted by other data)
+- Confirmed ROM terrain marks clock tiles as passable even when game's 3D collision blocks them
+- Verified `navigate` correctly handles ramp tiles (bug 4 was misdiagnosis)
+
+**Fix (3 changes to navigation.py)**:
+1. `_try_repath`: when 3D BFS returns None, fall through to 2D BFS instead of returning None
+2. `navigate_to`: when 3D BFS fails for ANY map type (not just multi-chunk), fall through to 2D BFS
+3. `_execute_path`: track dynamically-blocked tiles — when a step fails at runtime (3D collision blocks despite ROM passability), add tile to `dynamic_blocks` set in `repath_ctx`. `_try_repath` includes these in obstacle set. `MAX_REPATHS` raised from 5 to 15 for gym puzzle discovery.
+
+**Tests**: 4 in `test_3d_nav_fallback.py` — L0→exit warp, L0→exit reaches city, clock hand dynamic blocks, clock hand reaches exit.
+
+### Post-Battle Event Animation Text
+
+**Problem**: After defeating Eterna Gym trainers, event text ("The fountain's water level dropped!" + "It's possible to walk across the fountain now!") stays on screen. `battle_turn` returns `BATTLE_ENDED` but player can't move.
+
+**Root cause investigation**:
+- Probed ScriptManager state while stuck: `is_msg_box_open=False`, `CTX_RUNNING`, `TextPrinter active`
+- Event scripts render text via TextPrinter during CTX_RUNNING without setting `is_msg_box_open`
+- `advance_dialogue` early-exits on `is_msg_box_open=False` (line 306) → never enters main loop
+- Even when entering main loop, `_wait_for_msgbox_or_script_end` only checks `is_msg_box_open`
+
+**Fix (3 changes)**:
+1. `advance_dialogue` initial state check: when `is_msg_box_open=False` but a script context is in `CTX_RUNNING`, enter the main loop instead of returning "no_dialogue"
+2. `_wait_for_msgbox_or_script_end`: also check TextPrinter `active + state >= 1` (event text visible)
+3. `battle_turn` post-battle handler: B-press cleanup loop — after `advance_dialogue`, poll script context; while `CTX_RUNNING`, press B + wait; stop when context stops or no script found. Safety cap of 20 iterations.
+
+**Tests**: 2 in `test_event_text.py` — player free after gym event, navigation works after gym event.
+
+### Backlog Status
+| Fixed | Type |
+|-------|------|
+| Clock hand passability | 3D→2D fallback + dynamic blocks |
+| L0→exit "no 3D path" | 3D→2D fallback for all map types |
+| Ramps impassable (navigate) | Closed — misdiagnosis |
+| Post-battle event text stuck | CTX_RUNNING detection + B-press loop |
+
+**Remaining open**: Veilstone Dept Store specialty shop tool (deferred to Veilstone).
+
+**Commits**: `e57461b` (3D nav fallback), `6a37640` (event text fix). Full suite: **146/146 pass**.
+
 ## Dev Session: QoL Sweep — Move Blocks, Blackout, Adjacent Targets (2026-04-08e)
 
 **Goal**: Clear the non-gym QoL backlog so next session can focus entirely on Eterna Gym 3D elevation bugs.
