@@ -47,7 +47,7 @@ WAIT_FRAMES = 8
 SETTLE_FRAMES = 120
 SLOW_TERRAIN_RETRIES = 3  # Re-press attempts on apparent block (deep snow, ice)
 
-MAX_REPATHS = 5
+MAX_REPATHS = 15
 
 # ── Direction handling ──
 DIR_ALIASES = {"u": "up", "d": "down", "l": "left", "r": "right"}
@@ -1055,6 +1055,7 @@ def _try_repath(
     w, h = ctx["grid_w"], ctx["grid_h"]
 
     npc_set = set(ctx.get("sign_tiles", set()))
+    npc_set.update(ctx.get("dynamic_blocks", set()))
     for nx, ny in current_npcs.values():
         rx, ry = nx - ox, ny - oy
         if 0 <= rx < w and 0 <= ry < h:
@@ -1526,6 +1527,15 @@ def _execute_path(
             prev_npcs = curr_npcs
 
         if blocked:
+            # Mark the blocked destination so future repaths avoid it.
+            # Handles dynamic terrain (gym puzzles, rotated clock hands)
+            # where ROM says passable but the game's 3D collision blocks.
+            if repath_ctx is not None:
+                dx, dy = _DIR_DELTAS.get(direction, (0, 0))
+                bx = old_x + dx - repath_ctx["grid_ox"]
+                by = old_y + dy - repath_ctx["grid_oy"]
+                repath_ctx.setdefault("dynamic_blocks", set()).add((bx, by))
+
             # Check if this is the final step — blocked on the target tile
             # itself (NPC, signpost, etc.). Skip repath since the target is
             # inherently occupied; just stop adjacent.
