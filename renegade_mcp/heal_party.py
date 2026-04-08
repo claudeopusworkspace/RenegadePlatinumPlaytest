@@ -34,12 +34,8 @@ NURSE_GREETING = "would you like to rest your"
 
 
 def _press(emu: EmulatorClient, buttons: list[str], wait: int = TEXT_WAIT) -> None:
-    """Press buttons and wait.
-
-    Uses a 2-frame hold to avoid bleed-through on melonDS — 8 frames
-    can span fast menu transitions and register as multiple actions.
-    """
-    emu.press_buttons(buttons, frames=2)
+    """Press buttons and wait."""
+    emu.press_buttons(buttons, frames=8)
     emu.advance_frames(wait)
 
 

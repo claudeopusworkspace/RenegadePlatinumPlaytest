@@ -47,12 +47,8 @@ BOX_GRID_COLS = 6             # Withdraw UI grid: 6 columns × 5 rows
 
 
 def _press(emu: EmulatorClient, buttons: list[str], wait: int = TEXT_WAIT) -> None:
-    """Press buttons and wait.
-
-    Uses a 2-frame hold to avoid bleed-through on melonDS — 8 frames
-    can span fast menu transitions and register as multiple actions.
-    """
-    emu.press_buttons(buttons, frames=2)
+    """Press buttons and wait."""
+    emu.press_buttons(buttons, frames=8)
     emu.advance_frames(wait)
 
 
@@ -132,8 +128,11 @@ def _deposit_one(emu: EmulatorClient, slot: int) -> None:
 
     Cursor always starts at slot 0 when entering DEPOSIT fresh.
     """
-    # Enter DEPOSIT (first option, already highlighted)
-    _press(emu, ["a"], wait=MENU_WAIT)
+    # Enter DEPOSIT (first option, already highlighted).
+    # Short hold (2f) to prevent A from bleeding into the party grid —
+    # on melonDS, 8f spans the fast menu transition and auto-selects slot 0.
+    emu.press_buttons(["a"], frames=2)
+    emu.advance_frames(MENU_WAIT)
 
     # Navigate to target slot from slot 0
     _nav_to_party_slot(emu, slot)
@@ -464,8 +463,9 @@ def withdraw_pokemon(emu: EmulatorClient, box_slots: list[int]) -> dict[str, Any
             _press(emu, ["up"], wait=NAV_WAIT)
         # Down to WITHDRAW (index 1)
         _press(emu, ["down"], wait=NAV_WAIT)
-        # Enter WITHDRAW mode
-        _press(emu, ["a"], wait=MENU_WAIT)
+        # Enter WITHDRAW mode — short hold to prevent A bleed-through
+        emu.press_buttons(["a"], frames=2)
+        emu.advance_frames(MENU_WAIT)
 
         # Withdraw — box grid positions are fixed (no shifting)
         _withdraw_one(emu, raw_slot)
