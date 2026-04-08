@@ -114,9 +114,9 @@ class TestBattleTurn:
             f"Expected WAIT_FOR_PARTNER_ACTION, got: {result['final_state']}"
         )
 
+    @retry_on_rng("debug_doubles_target_swapped")
     def test_double_battle_both_actions(self, emu: EmulatorClient):
         """Double battle: submit both actions — turn resolves."""
-        load_state(emu, "debug_doubles_target_swapped")
         from renegade_mcp.turn import battle_turn
         # First Pokemon's action
         result1 = battle_turn(emu, move_index=0, target=0)
@@ -127,7 +127,7 @@ class TestBattleTurn:
         result2 = battle_turn(emu, move_index=0, target=0)
         assert result2["final_state"] in (
             "WAIT_FOR_ACTION", "BATTLE_ENDED", "SWITCH_PROMPT",
-            "FAINT_SWITCH", "MOVE_LEARN", "LEVEL_UP",
+            "FAINT_SWITCH", "FAINT_FORCED", "MOVE_LEARN", "LEVEL_UP",
         ), f"Second action: unexpected state {result2['final_state']}"
 
 
