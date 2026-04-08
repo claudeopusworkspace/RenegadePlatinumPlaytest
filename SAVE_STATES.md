@@ -18,6 +18,7 @@
 
 | Name | Description |
 |------|-------------|
+| `route211_west_pre_trainer` | Route 211 west at (368, 524). Pre-trainer (Bird Keeper Alexandra 1 tile left). 6 Pokemon party, full HP. |
 | `debug_pokeball_cutscene_interrupt` | Eterna City at (326, 516). `interact_with(object_index=21)` on Pokeball triggers Cynthia cutscene with delayed dialogue. |
 | `debug_signpost_blocking_navigate` | Route 211 at (352, 531). Arrow Signpost at (353, 531) blocks BFS pathfinding east. |
 | `debug_route211_bridge_pathfind` | Route 211 at (377, 532). 3D BFS walks off bridge to reach Pokeball at (368, 535). |
@@ -37,6 +38,8 @@
 | `test_eterna_city_overworld` | Eterna City at (305, 530) facing down. Outside Pokemon Center. 6 Pokemon party (shiny Swinub). Open streets, nearby NPCs/signs/doors. |
 | `test_damaged_party_overworld` | Route 216 grass. Prinplup at 32/66 HP (48%), rest full. 5 Pokemon party. Overworld, post-battle. |
 | `test_npc_dialogue_active` | Eterna City at (301, 530). Mid-dialogue with Galactic Grunt: "Hey, you! Yeah, you, Trainer!" text on screen. |
+| `test_trainer_battle_action` | Route 211 west trainer battle at action prompt. Luxio Lv21 (lead) vs Bird Keeper Alexandra's Natu Lv20. 6 Pokemon party. Trainer has 2 Pokemon (Natu, Swablu). |
+| `test_move_learn_prompt` | Route 211 west trainer battle. At "Make it forget?" prompt — Prinplup wants to learn Icy Wind (knows Metal Claw/Growl/Bubble Beam/Peck). Mid-battle after KO'ing Swablu. |
 
 ---
 
