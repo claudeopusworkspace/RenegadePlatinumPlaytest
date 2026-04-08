@@ -1523,6 +1523,14 @@ def _execute_path(
             prev_npcs = curr_npcs
 
         if blocked:
+            # Check if this is the final step — blocked on the target tile
+            # itself (NPC, signpost, etc.). Skip repath since the target is
+            # inherently occupied; just stop adjacent.
+            if i == len(directions) - 1:
+                nav_info["blocked_at"] = {"x": old_x, "y": old_y, "step": steps_taken}
+                nav_info["blocked_on_final_step"] = True
+                return True, steps_taken, repaths_used, nav_info
+
             # Attempt repath around obstacle
             if repath_ctx is not None and repaths_used < MAX_REPATHS:
                 new_path = _try_repath(repath_ctx, prev_npcs, new_x, new_y)
@@ -2372,8 +2380,18 @@ def _navigate_to_impl(
     }
 
     if stopped_early:
-        result["stopped_early"] = True
-        result.update(nav_info)
+        # Check if we stopped adjacent to the target (Manhattan distance 1).
+        # This happens when the target tile is occupied by an NPC, signpost,
+        # or other entity — the player can't walk onto it but is right next
+        # to it. Treat this as a successful arrival rather than an error.
+        dx = abs(final_x - target_x)
+        dy = abs(final_y - target_y)
+        if (dx + dy) <= 1 and nav_info.get("blocked_on_final_step"):
+            result["adjacent_to_target"] = True
+            result["target"] = {"x": target_x, "y": target_y}
+        else:
+            result["stopped_early"] = True
+            result.update(nav_info)
     if encounter is not None:
         result["encounter"] = encounter
     if repaths_used > 0:
