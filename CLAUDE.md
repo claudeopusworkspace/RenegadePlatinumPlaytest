@@ -1,10 +1,10 @@
 # Pokemon Renegade Platinum Playtest
 
-You are playtesting the DeSmuME MCP server by playing Pokemon Renegade Platinum (a difficulty/QoL hack of Pokemon Platinum by Drayano).
+You are playtesting the melonDS MCP server by playing Pokemon Renegade Platinum (a difficulty/QoL hack of Pokemon Platinum by Drayano).
 
 ## Getting Started
 
-1. Call `init_emulator` to initialize DeSmuME.
+1. Call `init_emulator` to initialize melonDS.
 2. Call `load_rom` with path `/workspace/RenegadePlatinumPlaytest/RenegadePlatinum.nds`.
 3. Load a save state if one exists (e.g., `load_state("living_room")`).
 4. If no save state, you'll need to advance through the intro (~8000 frames) to reach the title screen.
@@ -15,7 +15,7 @@ See [SAVE_STATES.md](SAVE_STATES.md) for the full save state table (60+ entries)
 
 ## Renegade MCP Tools
 
-Game-specific tools are provided by the `renegade` MCP server (defined in `renegade_mcp/`). These run alongside the generic `desmume` MCP server. All tools connect to the emulator via the bridge socket — if the emulator isn't initialized yet, they return a clear error.
+Game-specific tools are provided by the `renegade` MCP server (defined in `renegade_mcp/`). These run alongside the generic `melonds` MCP server. All tools connect to the emulator via the bridge socket — if the emulator isn't initialized yet, they return a clear error.
 
 | Tool | Purpose |
 |------|---------|
@@ -78,7 +78,7 @@ def my_tool(arg1: str, arg2: int = 0) -> dict[str, Any]:
 
 Read-only tools (pure memory reads like `read_party`, `read_battle`, `read_bag`) use bare `@mcp.tool()` — they don't advance frames and don't need checkpoints or profiling.
 
-Checkpoints share a unified ring buffer (300 slots) with the DeSmuME MCP's own checkpoints. One checkpoint per tool call is the right granularity — don't checkpoint inside helper functions. Sub-tools like `auto_grind` may create additional internal checkpoints for per-encounter granularity.
+Checkpoints share a unified ring buffer (300 slots) with the melonDS MCP's own checkpoints. One checkpoint per tool call is the right granularity — don't checkpoint inside helper functions. Sub-tools like `auto_grind` may create additional internal checkpoints for per-encounter granularity.
 
 ### Reloading After Code Changes
 
@@ -319,7 +319,7 @@ See GAME_HISTORY.md for full chronological playthrough details.
 
 ## Test Suite
 
-Integration tests live in `tests/` (140 tests across 14 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
+Integration tests live in `tests/` (146 tests across 16 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
 
 ```bash
 MelonMCP/.venv/bin/python -m pytest tests/ -v          # full suite (~24 min)
@@ -336,7 +336,7 @@ Tests load save states, call implementation functions directly (bypassing MCP pr
 - **Use `read_battle` at the start of every battle** — Renegade Platinum changes abilities and movesets from vanilla.
 - **`read_dialogue` auto-advances by default** — just call it after triggering dialogue and it handles everything. Returns full conversation + status. Only need manual intervention for Yes/No prompts and multi-choice prompts.
 - The `load_state` tool may occasionally hang — check `get_status` to verify.
-- Addresses must be passed as decimal integers to DeSmuME MCP tools, not hex strings.
+- Addresses must be passed as decimal integers to MCP tools, not hex strings.
 - **Touch screen taps default to `frames=8`** — changed from 1 to avoid missed inputs.
 - **Wait 300 frames between UI navigation steps** — Pokemon ignores input during forced text delays.
 - **Always check the bottom screen for Yes/No prompts** — battle/switch prompts use touch screen.

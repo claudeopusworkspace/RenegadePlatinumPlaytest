@@ -12,7 +12,7 @@ snapshots/
 map_view.txt
 nav_view.txt
 
-# DeSmuME MCP subproject (separate repo)
+# DeSmuME MCP subproject (legacy, separate repo)
 DesmumeMCP/
 
 # Reference decompilation (external repo, ~26k files)
@@ -28,12 +28,12 @@ checkpoints/
 logs/
 
 # MCP server logs (rotated)
-desmume_mcp.log*
 melonds_mcp.log*
+desmume_mcp.log*
 
 # IPC bridge sockets
-.desmume_bridge.sock
 .melonds_bridge.sock
+.desmume_bridge.sock
 
 # Battery save (exported from emulator, large binary)
 *.sav
