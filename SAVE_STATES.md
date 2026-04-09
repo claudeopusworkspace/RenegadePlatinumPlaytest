@@ -13,12 +13,18 @@
 | `route216_lodge_post_shiny` | Route 216 Snowbound Lodge, fully healed. 6 party + shiny Swinub in Box 1. Session end. |
 | `route211_from_coronet` | Route 211 east at (419, 527). Just exited Mt. Coronet east side. Pre-trainer battle. |
 | `eterna_city_shiny_swinub_in_party` | Eterna City Pokemon Center. Shiny Swinub in party (slot 5, Never-Melt Ice). Healed. Ready for Gardenia. |
+| `eterna_city_pre_gardenia_rematch` | Eterna City Pokemon Center. Post-Gardenia scout wipe. TMs not yet taught. Pre-grind. |
+| `bug_auto_grind_torment_loop` | Route 205 mid-battle. Machop Lv22 vs Croagunk Lv16 (Torment). auto_grind stopped. |
+| `eterna_city_grind_complete_pre_gardenia` | Eterna City Pokemon Center. Main team at 25. Swinub still in party. Pre-Chimchar swap. |
+| `eterna_city_chimchar_ready_to_grind` | Eterna City Pokemon Center. Chimchar Lv12 in party (Exp. Share). Swinub deposited. Ready to grind Chimchar. |
 
 ## Debug & Testing
 
 | Name | Description |
 |------|-------------|
 | `route211_west_pre_trainer` | Route 211 west at (368, 524). Pre-trainer (Bird Keeper Alexandra 1 tile left). 6 Pokemon party, full HP. |
+| `bug_wild_faint_switch_trainer_error` | Route 205 mid-battle. Charmeleon vs Volbeat Lv17, Luxio fainted. `battle_turn(run=True)` errored "Must switch in a trainer battle" on a wild battle. |
+| `bug_move_learn_skip_fire_fang_stuck` | Route 205 mid-battle. Luxio Lv24, "give up on Fire Fang?" prompt. `forget_move=-1` fails to dismiss. |
 | `debug_pokeball_cutscene_interrupt` | Eterna City at (326, 516). `interact_with(object_index=21)` on Pokeball triggers Cynthia cutscene with delayed dialogue. |
 | `debug_signpost_blocking_navigate` | Route 211 at (352, 531). Arrow Signpost at (353, 531) blocks BFS pathfinding east. |
 | `debug_route211_bridge_pathfind` | Route 211 at (377, 532). 3D BFS walks off bridge to reach Pokeball at (368, 535). |

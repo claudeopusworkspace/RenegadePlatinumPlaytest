@@ -523,3 +523,37 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - **New trainers defeated**: Lass Caroline, Aroma Lady Jenna, Aroma Lady Angela (all Eterna Gym)
 - **Bugs found**: 6 new — post-battle fountain dialogue stuck, navigate_to clock hand passability, navigate ramps-as-impassable, navigate_to no-3D-path L0→exit, navigate_to occupied-tile repath loop, auto_grind Torment infinite loop. Plus 1 QoL: battle_turn wipe blackout handling.
 - **Next**: Tool dev session to fix Torment/move-lock handling. Then grind team to 25+ on Route 205. Rematch Gardenia with full team, Parlyz Heals, and Charmeleon's Aerial Ace.
+
+## Chapter 7: Route 205 Grinding Session (2026-04-08)
+
+### Route 205 Grind — Machop & Luxio
+- Loaded `bug_auto_grind_torment_loop` save state. Machop Lv22 mid-battle vs Croagunk Lv16.
+- Finished Croagunk manually (Return → Knock Off to work around Torment).
+- **auto_grind backup_move working**: Torment handling confirmed fixed. Used `backup_move` parameter throughout.
+- Machop as lead was too fragile (No Guard + Brave = guaranteed hits, slow). Fainted every 2-4 encounters.
+- **Strategy pivot**: Swapped Exp. Share from Swinub to Machop. Put Charmeleon lead → also fragile (Water types SE on Route 205: Marill, Slowpoke). Switched to **Luxio lead** — Jolly (fast), Spark SE on Water types. Lasted 8-10 encounters per cycle.
+- Machop leveled passively via Exp. Share while Luxio fought.
+- **Luxio learned all 3 fang moves at Lv23** (Renegade Platinum buff): Thunder Fang (skipped), **Ice Fang** (learned, replaced Quick Attack), Fire Fang (skipped — had to manually dismiss due to move-learn skip bug).
+- **Bug found**: `forget_move=-1` (skip) doesn't dismiss the "give up on learning" confirmation prompt in the Gen 4 two-step move-learn flow. Save state: `bug_move_learn_skip_fire_fang_stuck`.
+- **Bug found**: `battle_turn(run=True)` at FAINT_SWITCH in a wild battle returned "Must switch in a trainer battle" error. Save state: `bug_wild_faint_switch_trainer_error`.
+- **use_item/use_medicine failing**: Both tools failed to use Super Potions on Route 205 overworld. Cause unknown — game appeared in normal overworld state. Worked around by navigating to Pokemon Center for each heal.
+
+### Grind Results
+- **Luxio**: Lv22 → **Lv25** (+Ice Fang)
+- **Machop**: Lv22 → **Lv25** (via Exp. Share)
+- **Swinub ✨**: Lv19 → **Lv20** (early Exp. Share gains before swap)
+- Grotle stayed at Lv24, Charmeleon and Prinplup already at Lv25.
+
+### Party Restructure for Gardenia
+- Deposited Swinub ✨ (4x Grass weakness = liability).
+- Withdrew **Chimchar** Lv12 (Careful, Iron Fist) from Box 1. Fire type for Grass gym.
+- Gave Chimchar the Exp. Share for passive leveling.
+- Plan: Enhance auto_grind with auto-heal loop (dev session), then grind Chimchar Lv12→25.
+
+### Session Summary
+- **Badges**: 1 (Coal Badge)
+- **Money**: ~$6,098
+- **Team**: Luxio Lv25 (+Ice Fang), Grotle Lv24, Prinplup Lv25, Charmeleon Lv25, Machop Lv25, Chimchar Lv12 (Exp. Share)
+- **Location**: Eterna City Pokemon Center. Save state: `eterna_city_chimchar_ready_to_grind`.
+- **Bugs found**: 2 new — move-learn skip stuck on "give up" prompt, wild faint switch "trainer battle" error. Plus use_item/use_medicine failure (undiagnosed).
+- **Next**: Dev session — auto_grind auto-heal loop enhancement. Then grind Chimchar to 25. Challenge Gardenia.
