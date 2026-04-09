@@ -119,13 +119,13 @@ def detect_shift(emu: Any) -> int:
         if isinstance(badge, dict):
             badge = badge.get("values", [0])[0]
 
-        if 1 <= pc <= 6 and 0 <= badge <= 8:
+        if 0 <= pc <= 6 and 0 <= badge <= 8:
             _delta = candidate
             return candidate
 
     raise RuntimeError(
         "Could not detect emulator heap layout. Tried deltas "
-        f"{_KNOWN_DELTAS} but no valid party count (1-6) + badge count (0-8) found. "
+        f"{_KNOWN_DELTAS} but no valid party count (0-6) + badge count (0-8) found. "
         "Verify the game is loaded and a save file is active."
     )
 
