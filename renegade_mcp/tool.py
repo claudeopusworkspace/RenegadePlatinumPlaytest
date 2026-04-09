@@ -100,6 +100,11 @@ def renegade_tool(fn):
 
         _log_frame_usage(fn.__name__, action, frame_start, frame_end, elapsed_ms)
 
+        # Flush bridge profiling stats for this tool call
+        from renegade_mcp.profiler import ProfiledClient
+        if isinstance(emu, ProfiledClient):
+            emu.flush(tool_name=fn.__name__, action=action)
+
         return result
 
     return wrapper

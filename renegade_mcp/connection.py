@@ -100,6 +100,12 @@ class BridgeConnection:
             self._client.get_frame_count()
             self._backend = backend
 
+            # Wrap client in profiling proxy if enabled
+            from renegade_mcp.profiler import is_enabled as _profile_enabled
+            if _profile_enabled():
+                from renegade_mcp.profiler import ProfiledClient
+                self._client = ProfiledClient(self._client)
+
             # Detect heap address shift for this emulator
             from renegade_mcp.addresses import detect_shift
             detect_shift(self._client)
