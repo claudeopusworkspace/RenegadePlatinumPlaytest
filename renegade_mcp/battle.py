@@ -97,8 +97,7 @@ def read_battle(emu: EmulatorClient) -> list[dict[str, Any]]:
     ab_names = ability_names()
 
     total_size = BATTLE_MAX_SLOTS * BATTLE_SLOT_SIZE
-    raw = emu.read_memory_range(addr("BATTLE_BASE"), size="byte", count=total_size)
-    raw_bytes = bytes(raw)
+    raw_bytes = emu.read_memory_block(addr("BATTLE_BASE"), total_size)
 
     battlers = []
     for slot in range(BATTLE_MAX_SLOTS):

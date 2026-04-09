@@ -42,10 +42,9 @@ def _press(emu: EmulatorClient, buttons: list[str], wait: int = TEXT_WAIT) -> No
 def _dialogue_contains(emu: EmulatorClient, needle: str) -> bool:
     """Check if ANY active dialogue slot contains the given text (case-insensitive)."""
     start_addr, size, _ = _overworld_region()
-    raw = emu.read_memory_range(start_addr, size="byte", count=size)
-    if not raw:
+    data = emu.read_memory_block(start_addr, size)
+    if not data:
         return False
-    data = bytes(raw)
     slots = _find_active_slots(data, start_addr)
     for _, values, _ in slots:
         lines = _decode_values(values)

@@ -394,10 +394,9 @@ def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
 def _read_species_array(emu: EmulatorClient) -> list[int]:
     """Read the unencrypted species array (catch-order, not party-order)."""
     from renegade_mcp.addresses import addr
-    raw = emu.read_memory_range(
-        addr("SPECIES_ARRAY_BASE"), size="byte", count=PARTY_MAX_SLOTS * SPECIES_ARRAY_STRIDE
+    data = emu.read_memory_block(
+        addr("SPECIES_ARRAY_BASE"), PARTY_MAX_SLOTS * SPECIES_ARRAY_STRIDE
     )
-    data = bytes(raw)
     species = []
     for i in range(PARTY_MAX_SLOTS):
         sp = struct.unpack_from("<H", data, i * SPECIES_ARRAY_STRIDE)[0]
@@ -427,8 +426,8 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
     if enc_party_count == 0:
         return []
 
-    enc_raw = emu.read_memory_range(
-        addr("ENCRYPTED_PARTY_BASE"), size="byte", count=enc_party_count * ENCRYPTED_SLOT_SIZE
+    enc_raw = emu.read_memory_block(
+        addr("ENCRYPTED_PARTY_BASE"), enc_party_count * ENCRYPTED_SLOT_SIZE
     )
 
     # First pass: decode all slots

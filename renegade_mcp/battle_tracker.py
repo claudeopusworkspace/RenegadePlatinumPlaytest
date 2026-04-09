@@ -195,8 +195,7 @@ class BattleTracker:
         from renegade_mcp.addresses import addr
         scan_start = addr("BATTLE_SCAN_START")
         frame = emu.get_frame_count()
-        raw_bytes = emu.read_memory_range(scan_start, size="byte", count=SCAN_SIZE)
-        data = bytes(raw_bytes)
+        data = emu.read_memory_block(scan_start, SCAN_SIZE)
         markers = _scan_markers(data, scan_start)
 
         self._baseline = markers
@@ -320,11 +319,10 @@ class BattleTracker:
         for attempt in range(DISCOVERY_POLLS):
             emu.advance_frames(POLL_FRAMES)
 
-            raw_bytes = emu.read_memory_range(scan_start, size="byte", count=SCAN_SIZE)
-            if not raw_bytes:
+            data = emu.read_memory_block(scan_start, SCAN_SIZE)
+            if not data:
                 continue
 
-            data = bytes(raw_bytes)
             results = _scan_for_new_text(data, scan_start, baseline)
             if results:
                 addrs = [r[0] for r in results]
@@ -342,11 +340,10 @@ class BattleTracker:
         baseline: dict[str, str] | None,
     ) -> tuple[str | None, list[int]]:
         """Scan narrow region for best active text slot."""
-        raw_bytes = emu.read_memory_range(scan_start, size="byte", count=scan_size)
-        if not raw_bytes:
+        data = emu.read_memory_block(scan_start, scan_size)
+        if not data:
             return None, []
 
-        data = bytes(raw_bytes)
         results = _scan_for_new_text(data, scan_start, baseline)
         if results:
             _, text, vals, _ = results[0]

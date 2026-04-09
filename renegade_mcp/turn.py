@@ -138,8 +138,7 @@ def _is_battle_over(emu: EmulatorClient) -> bool:
         return True
 
     # Fallback: garbage-data check on battle slot 0
-    raw = emu.read_memory_range(addr("BATTLE_BASE"), size="byte", count=BATTLE_SLOT_SIZE)
-    data = bytes(raw)
+    data = emu.read_memory_block(addr("BATTLE_BASE"), BATTLE_SLOT_SIZE)
     species = struct.unpack_from("<H", data, 0x00)[0]
     level = data[0x34]
     max_hp = struct.unpack_from("<H", data, 0x50)[0]
@@ -273,11 +272,10 @@ def _scan_move_name_from_memory(emu: EmulatorClient) -> str | None:
     from renegade_mcp.data import move_names
     known_moves = set(move_names().values())
 
-    raw_bytes = emu.read_memory_range(_scan_start(), size="byte", count=SCAN_SIZE)
-    if not raw_bytes:
+    data = emu.read_memory_block(_scan_start(), SCAN_SIZE)
+    if not data:
         return None
 
-    data = bytes(raw_bytes)
     results = _scan_for_new_text(data, _scan_start(), {})
 
     for _, text, _, _ in results:
@@ -295,8 +293,7 @@ def _advance_text(emu: EmulatorClient, presses: int = 1, wait: int = TEXT_ADVANC
 
 def _is_evolution_text_on_screen(emu: EmulatorClient) -> bool:
     """Check if evolution text is currently displayed (e.g. 'is evolving!')."""
-    raw = emu.read_memory_range(_scan_start(), size="byte", count=SCAN_SIZE)
-    data = bytes(raw)
+    data = emu.read_memory_block(_scan_start(), SCAN_SIZE)
     markers = _scan_markers(data, _scan_start())
     for text in markers.values():
         if "is evolving" in text.replace("\n", " "):
@@ -314,8 +311,8 @@ def _wait_for_evolution(emu: EmulatorClient, result: dict[str, Any]) -> dict[str
     # Dismiss "is evolving" text if still on screen
     if _is_evolution_text_on_screen(emu):
         # Capture the actual text for the log
-        raw = emu.read_memory_range(_scan_start(), size="byte", count=SCAN_SIZE)
-        markers = _scan_markers(bytes(raw), _scan_start())
+        data = emu.read_memory_block(_scan_start(), SCAN_SIZE)
+        markers = _scan_markers(data, _scan_start())
         for text in markers.values():
             if "is evolving" in text.replace("\n", " "):
                 result["log"].append({"text": text, "stop": "AUTO_ADVANCE"})
@@ -328,8 +325,8 @@ def _wait_for_evolution(emu: EmulatorClient, result: dict[str, Any]) -> dict[str
     for _ in range(EVOLUTION_MAX_CHUNKS):
         emu.advance_frames(EVOLUTION_ADVANCE)
 
-        raw = emu.read_memory_range(_scan_start(), size="byte", count=SCAN_SIZE)
-        markers = _scan_markers(bytes(raw), _scan_start())
+        data = emu.read_memory_block(_scan_start(), SCAN_SIZE)
+        markers = _scan_markers(data, _scan_start())
 
         for text in markers.values():
             clean = text.replace("\n", " ")
@@ -344,9 +341,9 @@ def _wait_for_evolution(emu: EmulatorClient, result: dict[str, Any]) -> dict[str
                 _advance_text(emu, presses=2, wait=180)
                 emu.advance_frames(300)
                 for _ in range(RECOVERY_PRESSES):
-                    raw2 = emu.read_memory_range(_scan_start(), size="byte", count=SCAN_SIZE)
-                    if raw2:
-                        markers2 = _scan_markers(bytes(raw2), _scan_start())
+                    data2 = emu.read_memory_block(_scan_start(), SCAN_SIZE)
+                    if data2:
+                        markers2 = _scan_markers(data2, _scan_start())
                         for t2 in markers2.values():
                             if "Should a move be deleted" in t2.replace("\n", " "):
                                 result["final_state"] = "MOVE_LEARN"
@@ -406,9 +403,8 @@ def _target_flow_with_retry(emu: EmulatorClient, target: int) -> None:
 
     # Only one alive: check if the tap registered by looking for new text
     emu.advance_frames(TAP_WAIT)
-    raw = emu.read_memory_range(_scan_start(), size="byte", count=SCAN_SIZE)
-    if raw:
-        data = bytes(raw)
+    data = emu.read_memory_block(_scan_start(), SCAN_SIZE)
+    if data:
         markers = _scan_markers(data, _scan_start())
         # If the action prompt ("What will X do?") is still the dominant text,
         # the target tap didn't work — retry on the other position.
@@ -454,9 +450,8 @@ def _wait_for_action_prompt(emu: EmulatorClient) -> dict[str, Any]:
     prev_text: str | None = None
 
     for _ in range(ACTION_PROMPT_MAX_POLLS):
-        raw_bytes = emu.read_memory_range(_scan_start(), size="byte", count=SCAN_SIZE)
-        if raw_bytes:
-            data = bytes(raw_bytes)
+        data = emu.read_memory_block(_scan_start(), SCAN_SIZE)
+        if data:
             results = _scan_for_new_text(data, _scan_start(), {})
 
             # Check every active marker for the action prompt stop type.
@@ -974,9 +969,9 @@ def _execute_action(
         if _is_evolution_text_on_screen(emu):
             result = _wait_for_evolution(emu, result)
         else:
-            raw_scan = emu.read_memory_range(_scan_start(), size="byte", count=SCAN_SIZE)
-            if raw_scan:
-                for t_scan in _scan_markers(bytes(raw_scan), _scan_start()).values():
+            data_scan = emu.read_memory_block(_scan_start(), SCAN_SIZE)
+            if data_scan:
+                for t_scan in _scan_markers(data_scan, _scan_start()).values():
                     if t_scan.strip().startswith("What?"):
                         emu.press_buttons(["b"], frames=8)
                         emu.advance_frames(60)

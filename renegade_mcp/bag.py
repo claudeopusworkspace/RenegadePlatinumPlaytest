@@ -34,8 +34,7 @@ def read_bag(emu: EmulatorClient) -> list[dict[str, Any]]:
     """Read all bag pockets from memory. Returns list of pocket dicts."""
     it_names = item_names()
     from renegade_mcp.addresses import addr
-    raw = emu.read_memory_range(addr("BAG_BASE"), size="byte", count=BAG_SIZE)
-    raw_bytes = bytes(raw)
+    raw_bytes = emu.read_memory_block(addr("BAG_BASE"), BAG_SIZE)
 
     result = []
     offset = 0

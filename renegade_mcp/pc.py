@@ -232,8 +232,7 @@ def read_box(emu: EmulatorClient, box: int = 1) -> dict[str, Any]:
     box_base = addr("BOX_DATA_BASE") + (box - 1) * SLOTS_PER_BOX * BOX_SLOT_SIZE
 
     # Read all 30 slots at once
-    raw = emu.read_memory_range(box_base, size="byte", count=SLOTS_PER_BOX * BOX_SLOT_SIZE)
-    data = bytes(raw)
+    data = emu.read_memory_block(box_base, SLOTS_PER_BOX * BOX_SLOT_SIZE)
 
     pokemon = []
     for i in range(SLOTS_PER_BOX):

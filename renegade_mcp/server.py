@@ -271,9 +271,8 @@ def create_server() -> FastMCP:
         from renegade_mcp.addresses import addr
         scan_start = addr("BATTLE_SCAN_START")
 
-        raw = emu.read_memory_range(scan_start, size="byte", count=SCAN_SIZE)
-        if raw:
-            data = bytes(raw)
+        data = emu.read_memory_block(scan_start, SCAN_SIZE)
+        if data:
             results = _scan_for_new_text(data, scan_start, {})
             for _, text, _, _ in results:
                 clean = text.replace("\n", " ")

@@ -149,11 +149,10 @@ def _scan_region(emu: EmulatorClient, region: tuple) -> dict[str, Any] | None:
     """Scan a memory region for active text. Returns result dict or None."""
     start_addr, size, label = region
 
-    raw_bytes = emu.read_memory_range(start_addr, size="byte", count=size)
-    if not raw_bytes:
+    data = emu.read_memory_block(start_addr, size)
+    if not data:
         return None
 
-    data = bytes(raw_bytes)
     slots = _find_active_slots(data, start_addr)
 
     if not slots:
@@ -223,11 +222,10 @@ def _find_script_manager(emu: EmulatorClient) -> int | None:
     # Scan heap region
     from renegade_mcp.addresses import addr as resolve_addr
     sm_scan_start = resolve_addr("SM_SCAN_START")
-    raw = emu.read_memory_range(sm_scan_start, size="byte", count=SM_SCAN_SIZE)
-    if not raw:
+    data = emu.read_memory_block(sm_scan_start, SM_SCAN_SIZE)
+    if not data:
         return None
 
-    data = bytes(raw)
     idx = 0
     while True:
         idx = data.find(magic_bytes, idx)
