@@ -570,3 +570,59 @@ Grind session on Route 205 to level Chimchar/Monferno via Exp. Share while Luxio
 - **Team**: Luxray Lv30, Grotle Lv24, Prinplup Lv25, Charmeleon Lv25, Machop Lv25, Monferno Lv25
 - **Location**: Eterna City Pokemon Center. Save state: `eterna_city_monferno_grind_complete`
 - **Next**: Gardenia rematch with full team.
+
+## Chapter 10: Gardenia Rematch — Forest Badge (2026-04-08)
+
+### Gardenia Rematch
+- Loaded `eterna_city_monferno_grind_complete`. Full team healed, Luxray Lv30 lead.
+- Navigated to Eterna Gym. All 3 gym trainers already defeated from scouting run.
+- **interact_with bug**: Navigated to Gardenia but didn't trigger dialogue. Manual A press + read_dialogue got us into the battle.
+- **Double level-up bug**: After Roserade KO, both Charmeleon (→Lv26) and Monferno (→Lv26) leveled up simultaneously. battle_turn got stuck after Charmeleon's move-learn prompt. Manual B presses needed to dismiss Monferno's level-up screen.
+
+#### Gardenia's Full Team (6 Pokemon, all Lv25 except Roserade Lv26)
+1. **Bellossom** Lv25 — Grass Knot / Teeter Dance / Dazzling Gleam / Stun Spore. Wide Lens, Chlorophyll.
+2. **Tangela** Lv25 — Grass Knot / Shock Wave / Ancient Power / Stun Spore. Coba Berry, Chlorophyll.
+3. **Roserade** Lv26 — Magical Leaf / Sludge / Dazzling Gleam / Extrasensory. Sitrus Berry, **Technician**.
+4. **Grotle** Lv25 — Seed Bomb / Protect / Leech Seed / Bulldoze. Leftovers, Overgrow.
+5. **Cherrim** Lv25 — Grass Knot / Sunny Day / Weather Ball / Morning Sun. Focus Sash, Flower Gift.
+6. **Breloom** Lv25 — Bullet Seed / Mach Punch / Thunder Punch / Spore. Muscle Band, **Technician**.
+
+#### Battle Play-by-Play
+- **Luxray vs Bellossom**: Howl turn 1, got Stun Spored (Guts activated! +50% Atk). Plan was brilliant but execution failed — Bellossom followed with Teeter Dance (confusion). Parafusion prevented Luxray from ever attacking again. Hit self twice (100→68→34), then Dazzling Gleam (Fairy SE vs Dark) finished it. **Luxray down 0 KOs.**
+- **Charmeleon vs Bellossom**: Free switch. Charcoal Fire Fang SE chunked Bellossom (79→37). Got Stun Spored. Fire Fang again through confusion — **Bellossom down.** Gardenia sends Tangela.
+- **Monferno vs Tangela** (free switch): **Taunt** blocked Tangela's Stun Spore — wasted its turn completely. Flame Wheel SE + **burn proc!** (10% chance). Tangela at 24 HP with burn. Gardenia used Super Potion, Flame Wheel + burn brought it back to 27. Flame Wheel finishes. **Tangela down without ever using Ancient Power.** Sweet revenge.
+- **Charmeleon vs Roserade** (free switch): Roserade's Sludge did 45 damage (72→27). Charmeleon's Charcoal Fire Fang SE **OHKO'd Roserade** through Sitrus Berry. Charmeleon leveled to 26, learned **Slash** (replaced Dragon Breath). Monferno also leveled to 26. **Roserade down.**
+- **Charmeleon vs Grotle**: Gardenia sends Grotle. Seed Bomb NVE but still 24 damage (Charmeleon at 3 HP). Fire Fang SE brought Grotle to 23. **Charmeleon down.**
+- **Monferno vs Grotle**: Grotle used Protect turn 1 (blocked Flame Wheel). Protect failed turn 2, Flame Wheel SE KO'd. **Grotle down.**
+- **Monferno vs Cherrim**: Cherrim set up Sunny Day (Flower Gift form). Monferno's sun-boosted Flame Wheel + SE left Cherrim at 1 HP (Focus Sash). Gardenia used 2nd Super Potion. Mach Punch would have priority-killed, but Gardenia healed it to 32. Flame Wheel finished. **Cherrim down.** Sun actually boosted our Fire moves too!
+- **Monferno vs Breloom**: Breloom's Technician Mach Punch (priority, STAB, Muscle Band) = absurd damage even NVE. **Monferno down** before acting (23 HP wasn't enough).
+- **Grotle vs Breloom**: Sent as a wall — resists all Breloom's attacks. Mach Punch still did 40 damage NVE (Technician+STAB+Muscle Band insanity). Bulldoze NVE chipped 7, dropped speed. Second Mach Punch KO'd. **Grotle down.**
+- **Machop vs Breloom** (30/72): Return (neutral) got a **CRITICAL HIT** — Breloom to 30. Breloom Mach Punched Machop to 25. Breloom Mach Punched again — **Machop down** before Return could fire.
+- **Prinplup vs Breloom** (30/72, last Pokemon): **Vital Spirit blocks Spore!** Breloom's best move is useless. Icy Wind (Ice SE vs Grass) — **ONE SHOT from 30 HP!** 
+
+**VICTORY!** Player defeated Leader Gardenia! Earned **Forest Badge** + **TM86 Grass Knot** + $3,120.
+
+#### Battle MVPs
+- **Monferno**: 3 KOs (Tangela, Grotle, Cherrim). Taunt denied Tangela's sweep potential. Flame Wheel burn proc was clutch.
+- **Charmeleon**: 2 KOs (Bellossom, Roserade). Charcoal Fire Fang was the team's highest damage output.
+- **Prinplup**: 1 KO (Breloom). The clutch closer — Vital Spirit immunity to Spore + SE Icy Wind for the win.
+
+### Post-Gym Team Restructure
+- Healed at Pokemon Center.
+- **Deposited Charmeleon** Lv26 to Box 1 (0 Def / 1 Spe IVs, redundant with Monferno's Fire coverage).
+- **Withdrew Swinub ✨** Lv20 (Timid, Thick Fat, 31 Atk IV) from Box 1.
+- Took Charcoal from Charmeleon → gave to **Monferno** (consolidates Fire role).
+- Took Exp. Share from Monferno → gave to **Swinub** (needs passive leveling, Lv20 is lowest).
+- **Team planning**: Monferno covers both Fire and Fighting (replacing Charmeleon + eventually Machop). When a good Flying type appears, Machop gets benched for it. Six unique types on the team.
+
+### Session Summary
+- **Badges**: 2 (Coal + **Forest**)
+- **Money**: ~$14,468
+- **Team**: Luxray Lv30, Grotle Lv24, Prinplup Lv25, Machop Lv25, Monferno Lv26 (Charcoal), Swinub ✨ Lv20 (Exp. Share)
+- **Location**: Eterna City Pokemon Center. Save state: `eterna_city_post_gardenia_team_updated`.
+- **New trainers defeated**: **Gym Leader Gardenia** (6-5 clutch victory)
+- **Evolutions**: Charmeleon → Lv26 (mid-battle level up)
+- **Moves learned**: Charmeleon — Slash (replaced Dragon Breath)
+- **Items obtained**: Forest Badge, TM86 Grass Knot, $3,120
+- **Bugs noted**: interact_with didn't trigger Gardenia dialogue (navigated but no A press), double level-up stuck after move-learn prompt (manual B needed)
+- **Next**: Team Galactic Eterna Building (requires Forest Badge). Shroomish on Route 203 wants Oran Berry (come back later). Keep an eye out for Flying types.

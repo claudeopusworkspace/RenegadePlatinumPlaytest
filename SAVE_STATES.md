@@ -17,6 +17,10 @@
 | `bug_auto_grind_torment_loop` | Route 205 mid-battle. Machop Lv22 vs Croagunk Lv16 (Torment). auto_grind stopped. |
 | `eterna_city_grind_complete_pre_gardenia` | Eterna City Pokemon Center. Main team at 25. Swinub still in party. Pre-Chimchar swap. |
 | `eterna_city_chimchar_ready_to_grind` | Eterna City Pokemon Center. Chimchar Lv12 in party (Exp. Share). Swinub deposited. Ready to grind Chimchar. |
+| `eterna_city_monferno_grind_complete` | Eterna City Pokemon Center. Luxray Lv30, Monferno Lv25, rest Lv24-25. Route 205 grind done. Pre-Gardenia. |
+| `pre_gardenia_rematch_v2` | Eterna City overworld, south of Pokemon Center. Full team healed. About to enter gym for Gardenia rematch. |
+| `post_gardenia_forest_badge` | Eterna Gym interior, post-Gardenia dialogue. Forest Badge + TM86 Grass Knot obtained. |
+| `eterna_city_post_gardenia_team_updated` | **CURRENT** — Eterna City Pokemon Center. 2 Badges (Coal + Forest). Charmeleon deposited, Swinub ✨ withdrawn. Monferno has Charcoal, Swinub has Exp. Share. |
 
 ## Debug & Testing
 
@@ -35,6 +39,7 @@
 | `debug_doubles_faint_switch_bug` | Route 211 double battle. Machop's turn, about to faint. battle_turn(switch_to=N) returns NO_ACTION_PROMPT after faint. |
 | `debug_heal_party_dialogue_stuck` | Eterna City PC, pre-heal. heal_party doesn't dismiss final "We hope to see you again!" text. |
 | `debug_deposit_extra_a_press` | Eterna City PC storage menu. deposit_pokemon presses extra A before navigating to target slot. |
+| `qol_battle_wipe_blackout_handling` | Post-wipe blackout state. Used for developing auto-blackout handling in battle_turn. |
 
 ## Test Suite
 
