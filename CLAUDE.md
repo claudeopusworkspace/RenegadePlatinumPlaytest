@@ -52,7 +52,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `tm_compatibility(tm_name)` | Check which party Pokemon can learn a given TM/HM. Pure ROM data lookup — no emulator interaction. Returns ABLE/UNABLE/ALREADY KNOWS per party slot. |
 | `type_matchup(attacking_type, defending_types, move_name)` | Type effectiveness check (like Pokemon Showdown's calc). Pass `attacking_type="Fire"` + `defending_types="Grass/Steel"`, or `move_name="Spark"` + `defending_types="Water/Flying"`. Returns multiplier + label. Gen 4 chart + Fairy type. |
 | `move_info(move_name)` | Move stats lookup: type, power, accuracy, PP, class (Physical/Special/Status), priority. Pure ROM data, no emulator needed. Also: `read_party` and `read_battle` now show move details inline (e.g. `Bullet Seed [Grass · Physical · 25 pwr · 100% acc]`). |
-| `auto_grind(move_index, cave, target_level, iterations, forget_move, target_species)` | Automated encounter loop: seek encounters + fight (spam a move) or run. Stops on target level, iterations, or target species. Returns encounter log with species + checkpoint IDs. See Auto Grind Workflow below. |
+| `auto_grind(move_index, cave, target_level, iterations, forget_move, target_species, backup_move, heal_x, heal_y, grind_x, grind_y, max_heal_trips, flee_ineffective)` | Automated encounter loop: seek encounters + fight (spam a move) or run. **Smart move selection**: swaps to `backup_move` when primary is NVE/immune; flees when both are ineffective (`flee_ineffective`). **Auto-heal loop**: when `heal_x/heal_y/grind_x/grind_y` are set, auto-heals at Pokemon Center on faint/PP depletion instead of stopping. See Auto Grind Workflow below. |
 | `reload_tools` | Reload all `renegade_mcp` implementation modules in-place via `importlib.reload()`. Call after editing any `renegade_mcp/*.py` file (except `server.py`) to pick up code changes without restarting the MCP server. Changes to `server.py` (new/removed tools, signature changes) still require a manual `/mcp` restart from the user. |
 
 The original Python scripts in `scripts/` still work for debugging but are no longer the primary interface.
@@ -158,6 +158,31 @@ auto_grind(move_index=0, target_species="Larvitar")  # grind, but stop if Larvit
 auto_grind(move_index=3, backup_move=2)     # alternate moves when Tormented/Disabled
 ```
 
+### Smart move selection
+When `backup_move` is set, checks type effectiveness per encounter:
+- Primary move effective (mult > 0.5) → use primary as normal
+- Primary NVE/immune, backup effective → use backup for that battle
+- Both NVE/immune + `flee_ineffective=True` → flee, continue to next encounter
+- Both NVE/immune + `flee_ineffective=False` → fight with primary anyway (default)
+
+```
+auto_grind(move_index=0, backup_move=2, flee_ineffective=true)  # smart selection + flee
+```
+
+### Auto-heal loop
+When `heal_x/heal_y/grind_x/grind_y` are all provided, auto-heals on faint or PP depletion
+instead of stopping. Navigates to town, heals at Pokemon Center, returns to grind area.
+
+- `heal_x, heal_y`: Tile on the city/town map to navigate to before healing. Must be
+  reachable from the grind area (same map or via warp). `heal_party` auto-finds the PC.
+- `grind_x, grind_y`: Tile to return to after healing. Must be reachable from the city map
+  (after exiting the PC).
+- `max_heal_trips`: Safety cap (default 10).
+
+```
+auto_grind(move_index=0, target_level=25, heal_x=15, heal_y=8, grind_x=42, grind_y=20)
+```
+
 ### Stop conditions (returned as `stop_reason`)
 | Reason | Meaning | What to do |
 |--------|---------|------------|
@@ -165,11 +190,13 @@ auto_grind(move_index=3, backup_move=2)     # alternate moves when Tormented/Dis
 | `shiny` | Wild shiny Pokemon encountered. At action prompt. | Catch it! Battle state included in response. Always triggers regardless of other params. |
 | `target_species` | Found the target species. At action prompt. | Fight, catch, or flee. Battle state included in response. |
 | `iterations` | Completed the requested number of encounters. | Review encounter log. |
-| `fainted` | Slot 0 fainted. | Heal, then grind again or switch lead. |
-| `pp_depleted` | Spam move has 0 PP mid-battle. | Handle manually: flee, use another move, or use an Ether. |
+| `fainted` | Slot 0 fainted (only when auto-heal is disabled). | Heal, then grind again or switch lead. |
+| `pp_depleted` | Spam move has 0 PP (only when auto-heal is disabled). | Handle manually: flee, use another move, or use an Ether. |
 | `move_learn` | Pokemon wants to learn a move but all 4 slots are full. | Call `auto_grind` again with `forget_move` to continue (see below). |
 | `move_blocked` | Primary move blocked by Torment/Disable/Encore/Taunt, no `backup_move` set. | Provide `backup_move` to auto-alternate, or handle manually. |
 | `turn_limit` | Battle exceeded 10 turns without ending (safety valve). | Likely move-lock or unexpectedly tanky opponent. |
+| `heal_failed` | Auto-heal navigation or healing failed. | Check position, navigate manually, retry. |
+| `max_heal_trips` | Reached the safety cap on heal cycles. | Increase `max_heal_trips` or investigate why healing is needed so often. |
 | `seek_failed` | `seek_encounter` didn't find a battle (cutscene, blocked path). | Investigate manually. |
 | `unexpected` | Unknown battle state. | Screenshot + `read_battle` to diagnose. |
 
@@ -250,13 +277,13 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 
 - **Character**: CLAUDE | **Rival**: WOJ
 - **Badges**: 1 (Coal Badge — Roark defeated)
-- **Location**: Eterna City Pokemon Center. Grind complete, ready for Gardenia after Chimchar leveling.
-- **Luxio** Lv25 — Jolly (+Spe/-SpA), Guts. Held: Scope Lens. Moves: Spark, Bite, Howl, **Ice Fang**. *(Learned all 3 fang moves at Lv23 — Renegade Platinum buff. Kept Ice Fang, skipped Thunder/Fire Fang.)*
+- **Location**: Eterna City Pokemon Center. Grind complete, ready for Gardenia rematch.
+- **Luxray** Lv30 — Jolly (+Spe/-SpA), Guts. Held: Scope Lens. Moves: Spark, Bite, Howl, **Ice Fang**. *(Evolved from Luxio during Route 205 grind. Skipped Roar.)*
 - **Grotle** Lv24 — Naughty (+Atk/-SpD), Overgrow. Held: Muscle Band. Moves: Bulldoze, Cut, Bullet Seed, Razor Leaf.
 - **Prinplup** Lv25 — Lax (+Def/-SpD), Vital Spirit. No held item. Moves: Metal Claw, Growl, Bubble Beam, Icy Wind.
 - **Charmeleon** Lv25 — Hardy, Blaze. Held: Charcoal. Moves: Bite, **Aerial Ace**, Fire Fang, Dragon Breath.
 - **Machop** Lv25 — Brave (+Atk/-Spe), No Guard. No held item. Moves: Low Kick, Brick Break, Return, Knock Off.
-- **Chimchar** Lv12 — Careful (+SpD/-SpA), Iron Fist. Held: **Exp. Share**. Moves: Scratch, Fury Swipes, Ember, Taunt. *(Withdrawn from box for Gardenia fight. Needs grinding to 25.)*
+- **Monferno** Lv25 — Careful (+SpD/-SpA), Iron Fist. Held: **Exp. Share**. Moves: Low Kick, **Mach Punch**, **Flame Wheel**, Taunt. *(Evolved from Chimchar at Lv14 during Route 205 grind. Learned Flame Wheel, Mach Punch, Low Kick. Skipped Fake Out.)*
 - **Box 1**: Bulbasaur Lv5 (Docile, Chlorophyll, Miracle Seed), Swinub Lv18 (Serious, Snow Cloak — catch #2), Squirtle Lv5 (Gentle, Mystic Water), Eevee Lv12 (Gentle, Run Away), Swinub Lv19 (Gentle, Thick Fat — former placeholder), Swinub Lv19 (Gentle, Thick Fat — original catch #1), **Swinub ✨ Lv20** (Timid, Thick Fat — Never-Melt Ice in bag, deposited for Gardenia).
 - **Key items**: Poke Ball x25, Antidote x3, Parlyz Heal x6, Super Potion x5, Awakening x3, Revival Herb x1, Honey x10, Repel x8, Charcoal (on Charmeleon), Silk Scarf, Magnet, Soothe Bell, Sun Stone, Never-Melt Ice (in bag), TM58 Endure, TM Stealth Rock, TM34 Shock Wave, TM65 Shadow Claw, TM46 Thief, TM69 Rock Polish, Fashion Case, Bicycle, Poke Radar, Town Map, Vs. Recorder, Poketch, Oval Stone, Fire Stone, HM01 Cut, HM Rock Smash.
 - **Defeated trainers**: Youngster Tristan (Route 202), Youngster Logan (Route 202), Reporter Kayla (Jubilife Pokemon Center), Rival WOJ (Route 203), Youngster D (Route 203 double battle), Youngster Sebastian (Route 203), Lass Kaitlin (Route 203), Lass Madeline (Route 203), Camper Curtis (Oreburgh Gate), Picnicker Diana (Oreburgh Gate), Youngster Jonathon (Oreburgh Gym), Youngster Darius (Oreburgh Gym), **Gym Leader Roark** (6-0 sweep), 2x Team Galactic Grunts (Jubilife tag battle with Dawn), Lass Sarah (Route 204), Aroma Lady Taylor (Route 204), Bug Catcher Brandon (Route 204), Twins Liv & Liz (Route 204), Camper Jacob (Route 205), Galactic Grunt (Windworks exterior), 2x Galactic Grunts (Floaroma Meadow double battle), 2x Galactic Grunts (Windworks interior), **Commander Mars**, Hiker Daniel (Route 205), Aroma Lady Elizabeth (Route 205), Camper Zackary (Route 205), Hiker Nicholas (Route 205), Battle Girl Kelsey (Route 205), Picnicker Karina (Route 205), **Cheryl** (Eterna Forest — pre-join battle), Bug Catcher Jack (Eterna Forest), Lass Briana (Eterna Forest), Psychic Lindsey (Eterna Forest), Psychic Elijah (Eterna Forest).
@@ -264,7 +291,7 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 - **Undefeated trainers (Route 216)**: Ace Trainer Garrett (Mr. Mime/Scyther/Nuzleaf — wiped us, come back later), Ace Trainer Snow M (near lodge), Ace Trainer Snow F (east side), Black Belt (across wall, inaccessible from current area).
 - **Gardenia scouting** (2 of 6 Pokemon seen): Bellossom Lv25 (Grass Knot/Teeter Dance/Dazzling Gleam/Stun Spore, Wide Lens, Chlorophyll), Tangela Lv25 (Grass Knot/Shock Wave/Ancient Power/Stun Spore, Coba Berry, Chlorophyll). Tangela is the biggest threat — Ancient Power can omniboost. Wiped on scouting run.
 - **Story progress**: Beat Roark → Coal Badge. Cleared Route 204 north. Arrived Floaroma Town. Cleared Valley Windworks storyline. Looker: Team Galactic hideout is in Eterna City. Completed Route 205 north (upper path). Entered Eterna Forest, defeated Cheryl to prove strength, she joined as tag battle partner. Traversed Eterna Forest with Cheryl. Cheryl gave TM27 (Return) at exit. Crossed Route 205 bridge to Eterna City. Team Galactic grunts spotted in Eterna City. Explored Eterna City: triggered WOJ+Cyrus statue cutscene, met Cynthia (got HM01 Cut), bought herbs at Herb Shop, explored Route 211 and Mt. Coronet tunnel. Gardenia is NOT at gym — went to Route 216 (Renegade Platinum change). Galactic building requires Forest Badge. Traversed Mt. Coronet (Route 211 entrance → map 218 → map 219 → map 217 → Route 216 exit). Reached Route 216. Defeated Ace Trainer Laura and Skier Edward. Found Snowbound Lodge. **Found Gardenia** at Snowbound Lodge — she's returning to Eterna Gym. **Caught shiny Swinub** (perfect Atk IV). Caught 3 Swinub total. Returned to Eterna City via Mt. Coronet (reverse route: map 217 → 219 → 218 → Route 211 west). **Swapped shiny Swinub into party** with Never-Melt Ice. **Defeated all 3 Eterna Gym trainers.** Scouted Gardenia — wiped to Tangela's double Ancient Power boost. Taught Aerial Ace to Charmeleon, Return to Machop. Bought Parlyz Heals/Super Potions/Awakenings. Swapped Exp. Share to Swinub for passive leveling.
-- **Next**: Dev session — enhance `auto_grind` with auto-heal loop (navigate to PC on faint, heal, return to grind area). Then grind Chimchar from Lv12→25 via Exp. Share on Route 205. Rematch Gardenia with full 6-mon team. After gym: Team Galactic Eterna Building. Shroomish on Route 203 wants an Oran Berry (come back later).
+- **Next**: Rematch Gardenia with full 6-mon team (Luxray Lv30 lead). After gym: Team Galactic Eterna Building. Shroomish on Route 203 wants an Oran Berry (come back later).
 
 See GAME_HISTORY.md for full chronological playthrough details.
 

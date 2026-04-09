@@ -1014,6 +1014,13 @@ def create_server() -> FastMCP:
         forget_move: int = -2,
         target_species: str = "",
         backup_move: int = -1,
+        heal_x: int = -1,
+        heal_y: int = -1,
+        grind_x: int = -1,
+        grind_y: int = -1,
+        max_heal_trips: int = 10,
+        flee_ineffective: bool = False,
+        target_slot: int = 0,
     ) -> dict[str, Any]:
         """Grind wild encounters automatically: seek → battle → repeat.
 
@@ -1025,18 +1032,27 @@ def create_server() -> FastMCP:
         When target_species is set, stops at the action prompt when that species
         appears — ready to fight or catch.
 
+        Smart move selection: when backup_move is set, checks type effectiveness
+        per encounter. If primary is NVE/immune but backup is effective, uses backup
+        for that battle. If both are ineffective and flee_ineffective=True, flees.
+
+        Auto-heal loop: when heal_x/heal_y/grind_x/grind_y are all provided,
+        automatically heals at the nearest Pokemon Center on faint or PP depletion
+        instead of stopping. Navigates to the town tile, heals, exits the PC, and
+        returns to the grind area.
+
         Stop conditions (returned as stop_reason):
-        - fainted: Slot 0 Pokemon fainted. Heal before continuing.
-        - pp_depleted: The spam move has 0 PP. Battle is still active — handle manually.
+        - fainted: Slot 0 Pokemon fainted (only when auto-heal is disabled).
+        - pp_depleted: The spam move has 0 PP (only when auto-heal is disabled).
         - target_level: Slot 0 reached the target level.
         - target_species: Found the target species. At action prompt.
         - iterations: Completed the requested number of encounters.
-        - seek_failed: Unexpected interruption while seeking encounters (cutscene, blocked path).
-        - move_learn: Pokemon wants to learn a new move but has no room. Call again with
-          forget_move to continue (0-3 = forget that slot, -1 = skip learning).
-        - move_blocked: Primary move was blocked by Torment/Disable/Encore/Taunt and no
-          backup_move was provided. Provide backup_move to auto-alternate.
+        - seek_failed: Unexpected interruption while seeking encounters.
+        - move_learn: Pokemon wants to learn a new move but has no room.
+        - move_blocked: Move blocked by Torment/Disable/Encore/Taunt with no backup.
         - turn_limit: Battle exceeded 10 turns without ending (safety valve).
+        - heal_failed: Auto-heal navigation or healing failed.
+        - max_heal_trips: Reached the safety cap on heal cycles.
         - unexpected: Unknown battle state — check game manually.
 
         Returns an `encounters` list: each entry has `species` (name) and
@@ -1050,9 +1066,17 @@ def create_server() -> FastMCP:
             forget_move: Resume from a move_learn stop. 0-3 = forget that move slot,
                         -1 = skip learning. -2 (default) = not resuming.
             target_species: Stop when this species is encountered. Case-insensitive.
-            backup_move: Fallback move slot (0-3) when primary is blocked by Torment/Disable/
-                        Encore/Taunt. Alternates with primary move. -1 = no backup (stops
-                        with move_blocked on first block).
+            backup_move: Fallback move slot (0-3) for Torment/Disable alternation AND
+                        smart effectiveness swapping. -1 = no backup.
+            heal_x: Town/city tile X to navigate to before healing. -1 = disabled.
+            heal_y: Town/city tile Y. -1 = disabled.
+            grind_x: Grind area tile X to return to after healing. -1 = disabled.
+            grind_y: Grind area tile Y. -1 = disabled.
+            max_heal_trips: Safety cap on auto-heal cycles. Default 10.
+            flee_ineffective: Flee encounters where both primary and backup moves are
+                            ineffective (NVE or immune). Default False.
+            target_slot: Party slot (0-5) to check for target_level. Default 0.
+                        Use to target an Exp. Share Pokemon in a non-lead slot.
         """
         from renegade_mcp.auto_grind import auto_grind as _auto_grind
 
@@ -1066,6 +1090,13 @@ def create_server() -> FastMCP:
             forget_move=forget_move,
             target_species=target_species,
             backup_move=backup_move,
+            heal_x=heal_x,
+            heal_y=heal_y,
+            grind_x=grind_x,
+            grind_y=grind_y,
+            max_heal_trips=max_heal_trips,
+            flee_ineffective=flee_ineffective,
+            target_slot=target_slot,
         )
 
     # ── Reload ──

@@ -557,3 +557,16 @@ Chronological playthrough archive. Current game status is in CLAUDE.md.
 - **Location**: Eterna City Pokemon Center. Save state: `eterna_city_chimchar_ready_to_grind`.
 - **Bugs found**: 2 new — move-learn skip stuck on "give up" prompt, wild faint switch "trainer battle" error. Plus use_item/use_medicine failure (undiagnosed).
 - **Next**: Dev session — auto_grind auto-heal loop enhancement. Then grind Chimchar to 25. Challenge Gardenia.
+
+### Session: Monferno Grind — Route 205 (2026-04-08g)
+
+Grind session on Route 205 to level Chimchar/Monferno via Exp. Share while Luxio fights.
+
+- **Chimchar evolved into Monferno** at Lv14 during first battle batch
+- Monferno learned **Flame Wheel** (replaced Ember), **Mach Punch** (replaced Fury Swipes), **Low Kick** (replaced Scratch). Skipped Fake Out.
+- **Luxio evolved into Luxray** at Lv30 during the grind. Skipped Roar.
+- ~80 wild encounters total across Route 205 grass (Slowpoke, Bidoof, Croagunk, Marill, Exeggcute, Volbeat, Illumise)
+- 3 auto-heal trips to Eterna City PC (PP depletion)
+- **Team**: Luxray Lv30, Grotle Lv24, Prinplup Lv25, Charmeleon Lv25, Machop Lv25, Monferno Lv25
+- **Location**: Eterna City Pokemon Center. Save state: `eterna_city_monferno_grind_complete`
+- **Next**: Gardenia rematch with full team.

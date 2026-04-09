@@ -1058,3 +1058,37 @@ The big one — previously only single-chunk maps (gyms, caves) had elevation-aw
 **Remaining open bugs with save states**: interact_with circular NPCs (2 saves), interact_with trainer approach (1 save), tag battle untested (1 save), NPC dialogue at warp (1 save), BFS blocks follower NPCs (2 saves).
 
 **Commits**: 5 this session — `aa09a42`, `8b5765a`, `93d7bc9`, `c52253d`, `6b37f7f`.
+
+## Dev Session: auto_grind Enhancements — Auto-Heal, Smart Moves, target_slot (2026-04-08g)
+
+### Features Implemented
+
+**1. Auto-heal loop** (`_heal_and_return` helper)
+- New params: `heal_x`, `heal_y`, `grind_x`, `grind_y`, `max_heal_trips` (default 10)
+- On faint or PP depletion: exits battle → navigates to town → heals at PC → exits PC via warp → navigates back to grind area → resumes
+- Three trigger points: faint mid-battle, PP depleted mid-battle, PP depleted between battles
+- New stop reasons: `heal_failed`, `max_heal_trips`
+- Successfully tested: 3 heal trips during Route 205 Monferno grind (PP depletion triggered each)
+
+**2. Smart move selection** (`_check_effectiveness` helper)
+- When `backup_move` is set, checks type effectiveness per encounter using battler dict data
+- If primary is NVE/immune but backup is effective → swaps for that battle
+- If both ineffective + `flee_ineffective=True` → flees and continues to next encounter
+- Uses `effectiveness()` from `type_chart.py`, reads type/class directly from battler dicts
+
+**3. `target_slot` parameter**
+- Default 0 (lead). Set to any party slot (0-5) for Exp. Share Pokemon
+- All `target_level` checks updated to use `target_slot` instead of hardcoded slot 0
+- Log-based level detection (immune to encryption issues) only used when `target_slot==0`
+- Successfully tested: `target_slot=5` stopped when Monferno hit Lv25
+
+### Bug Found (not fixed)
+- Post-evolution move-learn: when Chimchar evolved to Monferno and learned Mach Punch, `auto_grind` got stuck at the "learned move" screen and returned `seek_failed` on the next iteration. Manual B press recovered. Root cause: evolution + move-learn animation not fully dismissed by `battle_turn`.
+
+### Bug Fixed (mid-session)
+- `_heal_and_return` flee loop: `battle_turn(run=True)` can return state `"ACTION"` instead of `"WAIT_FOR_ACTION"`. Added `"ACTION"` to the accepted retry states.
+
+### Files Changed
+- `renegade_mcp/auto_grind.py` — 3 new helpers, 6 new params, heal loop integration
+- `renegade_mcp/server.py` — updated wrapper signature + docstring
+- `CLAUDE.md` — updated tool table + Auto Grind Workflow section
