@@ -2,6 +2,56 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Bicycle & Key Item Usage (2026-04-10e)
+
+### Goal
+Add key item usage (Bicycle mount/dismount), bicycle state detection, and bike-aware navigation timing.
+
+### What We Built
+
+**`use_key_item` tool** — new tool for Key Items pocket. Currently supports Bicycle:
+- Navigates pause menu → Bag → Key Items → item → USE/REGISTER submenu → USE
+- Verifies state change via `CYCLING_GEAR_ADDR` memory read
+- Indoor rejection: detects "Rowan's words echoed..." failure, cleans up all 5 menu layers
+- Returns `on_bicycle: true/false` and mount/dismount status
+
+**`CYCLING_GEAR_ADDR` discovery** — used snapshot/diff on live emulator:
+1. Confirmed `PLAYER_POS_BASE` is the start of `FieldOverworldState` (map_id + warp + x + z + facing match `Location` struct)
+2. Snapshot before bike → mount bike manually → snapshot after → diff 256 bytes
+3. Found `cyclingGear` (u16) at offset +0x90 from FieldOverworldState base
+4. Verified with decomp: `PlayerData { cyclingGear, runningShoes, form }` at `FieldOverworldState + 0x91` (struct alignment adjusted to +0x90)
+5. DeSmuME reference: `0x0227F4E0`, melonDS: `0x0227F4C0`
+
+**`read_trainer_status` updated** — now includes `on_bicycle` field and "Bicycle: ON" in formatted output.
+
+**Bike-aware navigation** — `_get_move_hold(emu)` reads cycling state:
+- `BIKE_HOLD_FRAMES = 4` (bike moves 1 tile per ~4 frames)
+- `HOLD_FRAMES = 16` (walking, unchanged)
+- Threaded through `_execute_path`, `seek_encounter`, `navigate_manual`, `navigate_to`, `interact_with`
+- Non-movement presses (NPC facing, door activation) remain at 16
+- Calibration: tested 4, 8, 16 frames on bike; 4 gives exact 1-tile-per-step precision
+
+### Bug Found & Fixed
+- `interact_with` was missing `hold_frames` local variable after the `_execute_path` parameter was added — caused `NameError` in 15 tests (interact_with, heal_party, buy_item, withdraw_pokemon). Fixed by adding `hold_frames = _get_move_hold(emu)` at function top.
+
+### Tests Added
+14 new tests in `test_bicycle.py`:
+- `TestUseKeyItemBicycle` (5): mount, dismount, indoor rejection, nonexistent item, unsupported item
+- `TestCyclingGearAddr` (2): walking=0, cycling=1
+- `TestTrainerStatusBicycle` (2): on_bicycle false/true
+- `TestBikeNavigation` (5): walk precise, bike precise, navigate_to 0 repaths, _get_move_hold walking/cycling
+
+**Total: 185 tests across 19 files, all passing (~6:17 runtime).**
+
+### Files Changed
+- `renegade_mcp/use_item.py` — `use_key_item()`, key item func constants, bicycle state verification
+- `renegade_mcp/addresses.py` — `CYCLING_GEAR_ADDR`
+- `renegade_mcp/trainer.py` — `on_bicycle` in `read_trainer_status`
+- `renegade_mcp/navigation.py` — `_get_move_hold()`, `BIKE_HOLD_FRAMES`, `hold_frames` param threading
+- `renegade_mcp/server.py` — `use_key_item` tool wrapper
+- `tests/test_bicycle.py` — 14 new tests
+- `CLAUDE.md` — tool docs, test count update
+
 ## Dev Session: Cross-Map Auto-Heal (2026-04-10d)
 
 ### Test Suite Fix
