@@ -291,6 +291,36 @@ def _advance_text(emu: EmulatorClient, presses: int = 1, wait: int = TEXT_ADVANC
         emu.advance_frames(wait)
 
 
+def _clear_overworld_move_learn_text(emu: EmulatorClient, prompt_log: list[dict]) -> None:
+    """Dismiss lingering overworld text after a post-evolution move learn/skip.
+
+    The move-learn flow produces 4-6 text pages ("1, 2, and... Poof!",
+    "forgot X", "And...", "learned Y!").  The fixed 5 B-presses in
+    _learn_move_overworld sometimes leave the final page on screen,
+    especially during sequential learns.  This function checks the
+    ScriptManager's is_msg_box_open flag and keeps pressing B until
+    all text is dismissed.
+    """
+    from renegade_mcp.dialogue import _find_script_manager, _read_script_state
+    for _ in range(10):  # safety cap
+        emu.advance_frames(60)
+        mgr = _find_script_manager(emu)
+        if mgr is None:
+            break
+        ss = _read_script_state(emu, mgr)
+        if not ss["is_msg_box_open"]:
+            break
+        # Check for the next move-learn prompt — don't dismiss it
+        data = emu.read_memory_block(_scan_start(), SCAN_SIZE)
+        if data:
+            markers = _scan_markers(data, _scan_start())
+            for t in markers.values():
+                if "Should a move be deleted" in t.replace("\n", " "):
+                    return  # Next sequential learn prompt — stop clearing
+        emu.press_buttons(["b"], frames=8)
+        emu.advance_frames(180)
+
+
 def _is_evolution_text_on_screen(emu: EmulatorClient) -> bool:
     """Check if evolution text is currently displayed (e.g. 'is evolving!')."""
     data = emu.read_memory_block(_scan_start(), SCAN_SIZE)
@@ -896,6 +926,13 @@ def battle_turn(
 
     # 6. Append trimmed battle state
     result["battle_state"] = battle_summary(read_battle(emu))
+
+    # 7. Fix up formatted field — the tracker's raw formatted string uses
+    # the poll state (often "TIMEOUT"), but final_state has been reclassified.
+    if "formatted" in result:
+        from renegade_mcp.battle_tracker import _format_log
+        result["formatted"] = _format_log(result.get("log", []), result["final_state"])
+
     return result
 
 
@@ -1099,6 +1136,21 @@ def _execute_move_learn(
             _skip_move_learn_overworld(emu)
         else:
             _learn_move_overworld(emu, forget_move)
+        # Dismiss any remaining text from the overworld move-learn flow.
+        # Sequential learns (e.g. evolution → Flame Wheel → Mach Punch) can
+        # stack text pages that the 5 B-presses in _learn_move_overworld don't
+        # fully clear.  Use the ScriptManager's is_msg_box_open flag as the
+        # authoritative signal, and also check for the next move-learn prompt.
+        _clear_overworld_move_learn_text(emu, prompt["log"])
+        result: dict[str, Any] = {"log": prompt["log"]}
+        # Check if another move-learn prompt appeared (sequential learns)
+        data = emu.read_memory_block(_scan_start(), SCAN_SIZE)
+        if data:
+            markers = _scan_markers(data, _scan_start())
+            for t in markers.values():
+                if "Should a move be deleted" in t.replace("\n", " "):
+                    result["final_state"] = "MOVE_LEARN"
+                    return result
         return _poll_after_action(emu, prompt["log"])
 
     # Detect whether we're at Prompt 1 ("forget another move") or Prompt 2
