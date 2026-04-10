@@ -2,6 +2,70 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Cycling Road Investigation & Navigation (2026-04-10g)
+
+### Goal
+Investigate Route 206 (Cycling Road) to determine if the downhill bike slide mechanic affects navigation tools, then implement support.
+
+### Investigation Findings
+
+Route 206 bridge body tiles (behavior 0x71) force southbound auto-sliding at ~4 frames/tile when on the bicycle. Key observations:
+- Bridge start tiles (0x70) don't auto-slide — they're just the entry point
+- The slide is passive on 0x71 tiles (no input needed) and continuous until hitting an obstacle
+- Going uphill (pressing UP) works but the first ~4 frames still slide south before UP takes over; net ~8f/tile north
+- Lateral movement (left/right) works but also slides south ~1 tile per lateral step
+- The cycling road flag (FLAG_ON_CYCLING_ROAD, flag 2453) is in save RAM VarsFlags but the runtime slide check uses `PlayerAvatar.unk_00` which isn't directly readable from save RAM. Detection uses tile behavior + cycling state + path scan between player and target instead.
+
+### BEHAVIORS Dict Corrections
+
+Our BEHAVIORS dict had 13 wrong terrain labels — 0x70/0x71 were labeled "deep_snow"/"snow" but are actually BRIDGE_START/BRIDGE per the pokeplatinum decomp `map_tile_behaviors.h`. Fixed labels:
+- 0x70/0x71: "deep_snow"/"snow" → BRIDGE_START/BRIDGE (bike slide tiles)
+- 0xA0: berry_patch (was missing or mislabeled)
+- 0xA1-0xA3, 0xA8-0xA9: snow tiles (corrected from wrong behavior codes)
+- 0xA4-0xA7: mud tiles (corrected)
+- 0xD7-0xDB: bike slope/ramp tiles (were missing)
+
+### Implementation
+
+**Cycling road detection** — `BIKE_BRIDGE_BEHAVIORS` frozenset and `is_on_cycling_road()`:
+- Checks tile behavior (0x71) + cycling state + scans path between player and target for bridge tiles
+- No false positives on regular bridges (requires bicycle + bridge tiles along the path)
+
+**`_navigate_cycling_road()` with position-tracking movement:**
+- South: passive auto-slide, poll position every 2 frames until target reached
+- North: continuous UP hold (~8f/tile, handles initial south drift before UP takes over)
+- Lateral: 4f press + poll, accepts south drift as expected behavior
+- Non-bridge tiles: normal bike steps (4f hold)
+- `_check_encounter_quick()` woven into every movement phase for wild encounter detection
+
+**Navigation dispatch:**
+- `navigate` (manual) refuses on cycling road with clear error explaining the auto-slide mechanic
+- `navigate_to` auto-dispatches to cycling road handler when `is_on_cycling_road()` returns True
+
+**ASCII rendering:** bridge tiles show as `n`, snow as `~`, bike slopes as `\` and `/`.
+
+### Tests Added (216 total, +18 this session)
+
+18 new integration tests in `test_cycling_road.py`:
+- Cycling road detection (tile behavior + cycling state)
+- Terrain label corrections (bridge, snow, mud, bike slope)
+- `navigate` manual blocking on cycling road
+- South movement (passive auto-slide)
+- North movement (uphill with drift handling)
+- Lateral movement (left/right with south drift)
+- Encounter detection during cycling road navigation
+
+**Total: 216 tests across 20 files, all passing (9:01 wall clock).**
+
+### Files Changed
+- `renegade_mcp/navigation.py` — `BIKE_BRIDGE_BEHAVIORS`, `is_on_cycling_road()`, `_navigate_cycling_road()`, `_check_encounter_quick()`, cycling road dispatch in `navigate_to`, blocking in `navigate`
+- `renegade_mcp/map_state.py` — BEHAVIORS dict corrections (13 labels), ASCII rendering for bridge/snow/bike slope tiles
+- `tests/test_cycling_road.py` — 18 new tests
+- `CLAUDE.md` — test count update
+
+### Commits
+`806ec8c`, `122f99d`, `3bce3fe`, `76a137b`, `cffc95c`
+
 ## Dev Session: Backlog Cleanup — sell_item, re-path, accuracy warning (2026-04-10f)
 
 ### Goal

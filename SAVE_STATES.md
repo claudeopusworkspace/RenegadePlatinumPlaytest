@@ -51,6 +51,7 @@
 | `test_npc_dialogue_active` | Eterna City at (301, 530). Mid-dialogue with Galactic Grunt: "Hey, you! Yeah, you, Trainer!" text on screen. |
 | `test_trainer_battle_action` | Route 211 west trainer battle at action prompt. Luxio Lv21 (lead) vs Bird Keeper Alexandra's Natu Lv20. 6 Pokemon party. Trainer has 2 Pokemon (Natu, Swablu). |
 | `test_move_learn_prompt` | Route 211 west trainer battle. At "Make it forget?" prompt — Prinplup wants to learn Icy Wind (knows Metal Claw/Growl/Bubble Beam/Peck). Mid-battle after KO'ing Swablu. |
+| `cycling_road_edge` | Route 206 at (304, 592). On bicycle, last ground tile before bridge body tiles (0x71) start. Used for cycling road navigation tests. |
 
 ---
 
