@@ -1475,6 +1475,155 @@ def seek_encounter(emu: EmulatorClient, cave: bool = False) -> dict[str, Any]:
             "position": _pos_with_map(final_x, final_y, final_map)}
 
 
+# ── Cycling road movement ──
+# Route 206 bridge body tiles (0x71) auto-slide the player south at ~4f/tile.
+# Timings from empirical testing (melonDS JIT):
+#   South: passive slide at ~4 frames/tile, no input needed
+#   North: ~8 frames/tile with UP held (first step slides south, then north takes over)
+#   East/West: ~4 frames/tile lateral, but each lateral step also slides 1 tile south
+CYCLING_ROAD_SLIDE_RATE = 4      # frames per tile when sliding south
+CYCLING_ROAD_UPHILL_HOLD = 12    # frames to hold UP per tile (padded for safety)
+CYCLING_ROAD_LATERAL_HOLD = 4    # frames to hold LEFT/RIGHT per tile
+CYCLING_ROAD_POLL_INTERVAL = 2   # frames between position checks
+CYCLING_ROAD_MAX_WAIT = 600      # max frames to wait for a slide to complete (~10 sec)
+
+
+def _get_current_tile_behavior(emu: EmulatorClient) -> int:
+    """Read the terrain behavior byte at the player's current tile."""
+    from renegade_mcp.map_state import get_map_state
+    state = get_map_state(emu)
+    if state is None:
+        return 0
+    terrain = state["terrain"]
+    lx, ly = state["local_px"], state["local_py"]
+    if 0 <= ly < len(terrain) and 0 <= lx < len(terrain[ly]):
+        return terrain[ly][lx] & 0x00FF
+    return 0
+
+
+def _navigate_cycling_road(
+    emu: EmulatorClient, target_x: int, target_y: int,
+) -> dict[str, Any]:
+    """Navigate on the cycling road where auto-slide is active.
+
+    Strategy — order matters because every action on bridge body tiles drifts south:
+      1. Normal bike steps until we reach bridge body tiles (0x71)
+      2. North (uphill): hold UP continuously, polling position
+      3. Lateral (east/west): hold direction, accept south drift per step
+      4. South: let auto-slide carry us (no input), or normal step on non-bridge
+    Final Y adjustment after lateral moves to correct south drift.
+    """
+    start_map, start_x, start_y = _read_position(emu)
+    cur_x, cur_y = start_x, start_y
+    steps_log: list[str] = []
+    total_frames = 0
+    max_iters = 200
+
+    for _ in range(max_iters):
+        if cur_x == target_x and cur_y == target_y:
+            break
+
+        dx = target_x - cur_x
+        dy = target_y - cur_y
+        behavior = _get_current_tile_behavior(emu)
+        on_bridge = (behavior == 0x71)
+
+        # ── Phase: Normal ground movement (not on bridge body) ──
+        if not on_bridge:
+            if dy > 0:
+                # Step south onto or toward bridge
+                emu.advance_frames(BIKE_HOLD_FRAMES, buttons=["down"])
+                emu.advance_frames(WAIT_FRAMES)
+                total_frames += BIKE_HOLD_FRAMES + WAIT_FRAMES
+            elif dy < 0:
+                emu.advance_frames(BIKE_HOLD_FRAMES, buttons=["up"])
+                emu.advance_frames(WAIT_FRAMES)
+                total_frames += BIKE_HOLD_FRAMES + WAIT_FRAMES
+            elif dx != 0:
+                btn = "left" if dx < 0 else "right"
+                emu.advance_frames(BIKE_HOLD_FRAMES, buttons=[btn])
+                emu.advance_frames(WAIT_FRAMES)
+                total_frames += BIKE_HOLD_FRAMES + WAIT_FRAMES
+            else:
+                break
+
+            _, new_x, new_y = _read_position(emu)
+            if (new_x, new_y) != (cur_x, cur_y):
+                steps_log.append(f"step ({cur_x},{cur_y})→({new_x},{new_y})")
+            cur_x, cur_y = new_x, new_y
+            continue
+
+        # ── Phase: On bridge body — uphill first (before lateral) ──
+        if dy < 0:
+            # Hold UP continuously until target Y or stall
+            wait = 0
+            while cur_y > target_y and wait < CYCLING_ROAD_MAX_WAIT:
+                emu.advance_frames(4, buttons=["up"])
+                wait += 4
+                total_frames += 4
+                _, new_x, new_y = _read_position(emu)
+                if new_y != cur_y:
+                    steps_log.append(f"up ({cur_x},{cur_y})→({new_x},{new_y})")
+                    cur_x, cur_y = new_x, new_y
+            continue
+
+        # ── Phase: On bridge body — lateral moves ──
+        if dx != 0:
+            # Press direction for exactly 4 frames (1 bike tile), then poll.
+            # Don't add idle settle frames — that causes south slide.
+            btn = "left" if dx < 0 else "right"
+            emu.advance_frames(4, buttons=[btn])
+            total_frames += 4
+            # Poll until lateral movement registers (may take a few frames)
+            for _ in range(8):
+                _, new_x, new_y = _read_position(emu)
+                if new_x != cur_x:
+                    break
+                emu.advance_frames(1, buttons=[btn])
+                total_frames += 1
+            _, new_x, new_y = _read_position(emu)
+            if (new_x, new_y) != (cur_x, cur_y):
+                steps_log.append(f"{btn} ({cur_x},{cur_y})→({new_x},{new_y})")
+            cur_x, cur_y = new_x, new_y
+            continue
+
+        # ── Phase: On bridge body — southbound (auto-slide) ──
+        if dy > 0:
+            wait = 0
+            while cur_y < target_y and wait < CYCLING_ROAD_MAX_WAIT:
+                emu.advance_frames(CYCLING_ROAD_POLL_INTERVAL)
+                wait += CYCLING_ROAD_POLL_INTERVAL
+                total_frames += CYCLING_ROAD_POLL_INTERVAL
+                _, new_x, new_y = _read_position(emu)
+                if new_y != cur_y:
+                    steps_log.append(f"slide ({cur_x},{cur_y})→({new_x},{new_y})")
+                    cur_x, cur_y = new_x, new_y
+                    if _get_current_tile_behavior(emu) != 0x71:
+                        break
+            continue
+
+        # Should not reach here
+        break
+
+    final_map, final_x, final_y = _read_position(emu)
+    reached = (final_x == target_x and final_y == target_y)
+
+    result: dict[str, Any] = {
+        "cycling_road": True,
+        "reached_target": reached,
+        "steps_log": steps_log,
+        "total_frames": total_frames,
+        "start": _pos_with_map(start_x, start_y, start_map),
+        "final": _pos_with_map(final_x, final_y, final_map),
+    }
+    if not reached:
+        result["note"] = (
+            f"Stopped at ({final_x},{final_y}), target was ({target_x},{target_y}). "
+            f"Possible obstacle (trainer NPC, wall, or end of bridge)."
+        )
+    return result
+
+
 # ── Path execution ──
 
 def _execute_path(
@@ -1938,17 +2087,9 @@ def _navigate_to_impl(
     if hold_frames is None:
         hold_frames = _get_move_hold(emu)
 
-    # Cycling road safety check — forced downhill slide makes navigation unreliable
-    if is_on_cycling_road(emu):
-        return {
-            "error": (
-                "Cannot navigate on Cycling Road (Route 206). The game forces "
-                "downhill sliding on the bicycle, which causes unpredictable "
-                "multi-tile movement per step. Navigation tools cannot reliably "
-                "control movement here. Dismount or leave the cycling road first."
-            ),
-            "cycling_road": True,
-        }
+    # Cycling road dispatch — forced downhill slide requires special movement
+    if is_on_cycling_road(emu, target_x, target_y):
+        return _navigate_cycling_road(emu, target_x, target_y)
 
     state = get_map_state(emu)
     if state is None:

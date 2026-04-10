@@ -89,13 +89,17 @@ BIKE_BRIDGE_BEHAVIORS = frozenset({0x70, 0x71, 0x76, 0x77, 0x78, 0x79,
 FLAG_ON_CYCLING_ROAD = 2453
 
 
-def is_on_cycling_road(emu: "EmulatorClient") -> bool:
-    """Check if player is on cycling road bridge tiles while on a bicycle.
+def is_on_cycling_road(emu: "EmulatorClient", target_x: int = -1, target_y: int = -1) -> bool:
+    """Check if player or target is on cycling road bridge tiles while cycling.
 
     The cycling road (Route 206) forces downhill sliding when the player is
     on the bicycle and standing on bridge tiles (behaviors 0x70/0x71). Detection
     uses tile behavior + cycling state rather than script flags, since the runtime
     flag (PlayerAvatar.unk_00) isn't in save RAM.
+
+    When target coordinates are provided, also checks if the path between player
+    and target would cross bridge body tiles (0x71) — catches the case where the
+    player is just above the bridge but the target is on it.
     """
     from renegade_mcp.addresses import addr
     cycling = emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")
@@ -108,9 +112,35 @@ def is_on_cycling_road(emu: "EmulatorClient") -> bool:
 
     terrain = state["terrain"]
     lx, ly = state["local_px"], state["local_py"]
+    ox = state.get("origin_x", 0)
+    oy = state.get("origin_y", 0)
+
+    # Check current tile
     if 0 <= ly < len(terrain) and 0 <= lx < len(terrain[ly]):
         behavior = terrain[ly][lx] & 0x00FF
-        return behavior in BIKE_BRIDGE_BEHAVIORS
+        if behavior in BIKE_BRIDGE_BEHAVIORS:
+            return True
+
+    # Check target tile if provided
+    if target_x >= 0 and target_y >= 0:
+        tlx = target_x - ox
+        tly = target_y - oy
+        if 0 <= tly < len(terrain) and 0 <= tlx < len(terrain[tly]):
+            t_behavior = terrain[tly][tlx] & 0x00FF
+            if t_behavior in BIKE_BRIDGE_BEHAVIORS:
+                return True
+
+        # Check if any tile in the Y range between player and target is a bridge
+        # body tile (0x71) at the player's X column — catches approaching from above
+        min_y = min(ly, tly)
+        max_y = max(ly, tly)
+        check_x = lx  # scan along player's column
+        for scan_y in range(min_y, max_y + 1):
+            if 0 <= scan_y < len(terrain) and 0 <= check_x < len(terrain[scan_y]):
+                scan_b = terrain[scan_y][check_x] & 0x00FF
+                if scan_b == 0x71:  # bridge body = auto-slide
+                    return True
+
     return False
 
 
