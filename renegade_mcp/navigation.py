@@ -2700,30 +2700,47 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
         nav_result["steps"] = steps_taken
         if stopped_early:
             encounter = _post_nav_check(emu)
+            if encounter and flee_encounters:
+                encounter, flee_entry = _try_flee_encounter(emu, encounter)
+                if flee_entry:
+                    nav_result.setdefault("flee_log", []).append(flee_entry)
+                    if flee_entry.get("fled"):
+                        nav_result["encounters_fled"] = nav_result.get("encounters_fled", 0) + 1
+                    elif flee_entry.get("reason"):
+                        reason = flee_entry["reason"]
+                        species = flee_entry.get("species", "unknown")
+                        if "fainted" in reason:
+                            nav_result["flee_failed"] = (
+                                f"Pokemon fainted while fleeing wild {species}. "
+                                f"Heal party before continuing."
+                            )
+                        else:
+                            nav_result["flee_failed"] = f"Flee failed against wild {species}: {reason}"
+                        nav_result["encounter"] = encounter
+                        nav_result["interrupted"] = True
+                        return nav_result
             if encounter:
-                if flee_encounters:
-                    encounter, flee_entry = _try_flee_encounter(emu, encounter)
-                    if flee_entry:
-                        nav_result["flee_log"] = [flee_entry]
-                        if flee_entry.get("fled"):
-                            nav_result["encounters_fled"] = 1
-                        elif flee_entry.get("reason"):
-                            reason = flee_entry["reason"]
-                            species = flee_entry.get("species", "unknown")
-                            if "fainted" in reason:
-                                nav_result["flee_failed"] = (
-                                    f"Pokemon fainted while fleeing wild {species}. "
-                                    f"Heal party before continuing."
-                                )
-                            else:
-                                nav_result["flee_failed"] = f"Flee failed against wild {species}: {reason}"
-                if encounter:
-                    nav_result["encounter"] = encounter
+                nav_result["encounter"] = encounter
+                nav_result["interrupted"] = True
+                return nav_result
+            if not nav_result.get("encounters_fled"):
+                # Stopped early but no encounter (door entry, wall, etc.)
+                nav_result["stopped_early"] = True
+                nav_result.update(nav_info)
+                return nav_result
+            # Wild encounter fled — re-navigate from current position
+            emu.advance_frames(POST_BATTLE_SETTLE)
+            dest_gx, dest_gy = dest_x + grid_ox, dest_y + grid_oy
+            retry = navigate_to(emu, dest_gx, dest_gy, flee_encounters=True)
+            if retry.get("flee_log"):
+                nav_result["flee_log"].extend(retry["flee_log"])
+                nav_result["encounters_fled"] += retry.get("encounters_fled", 0)
+            if retry.get("encounter") or retry.get("error") or retry.get("stopped_early"):
+                if retry.get("encounter"):
+                    nav_result["encounter"] = retry["encounter"]
                     nav_result["interrupted"] = True
                 return nav_result
-            nav_result["stopped_early"] = True
-            nav_result.update(nav_info)
-            return nav_result
+            # Re-path succeeded — fall through to face + interact
     else:
         nav_result["path"] = "adjacent"
         nav_result["steps"] = 0
