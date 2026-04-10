@@ -702,6 +702,28 @@ def create_server() -> FastMCP:
 
         return _buy_item(emu, item_name, quantity=quantity, badge_count=badge_count)
 
+    @mcp.tool()
+    @renegade_tool
+    def sell_item(item_name: str, quantity: int = 1) -> dict[str, Any]:
+        """Sell an item at a standard PokéMart.
+
+        Works from inside a PokéMart or from a city/town overworld (auto-navigates
+        to the mart). Talks to Cashier F, selects SELL, navigates the sell bag to
+        the target item, sells the specified quantity, and exits.
+
+        Sell price = buy price / 2 (standard Pokémon formula).
+
+        Cannot sell Key Items, TMs/HMs, or Mail.
+
+        Args:
+            item_name: Item to sell (e.g. "Potion", "Repel"). Case-insensitive.
+            quantity: How many to sell (default 1).
+        """
+        from renegade_mcp.shop import sell_item as _sell_item
+
+        emu = get_client()
+        return _sell_item(emu, item_name, quantity=quantity)
+
     # ── Item Use ──
 
     @mcp.tool()

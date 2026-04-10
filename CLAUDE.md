@@ -50,6 +50,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `read_trainer_status` | Read money, badges, and bicycle state from memory. No UI needed. Returns `on_bicycle: true/false`. |
 | `read_shop` | Read PokéMart inventory for current city. Badge-gated common items + city specialty items with ROM prices. Pure lookup, no UI. |
 | `buy_item(item_name, quantity)` | Buy from a standard PokéMart. Works from inside the mart (FS room) or city overworld (auto-navigates to mart via warp lookup). Finds correct cashier (common vs specialty), scrolls to item by ROM-calculated position, purchases, exits. Pre-checks money. Returns encounter data if interrupted during navigation. |
+| `sell_item(item_name, quantity)` | Sell an item at a standard PokéMart. Works from inside the mart or city overworld (auto-navigates). Talks to Cashier F, selects SELL, navigates sell bag to the item by pocket tab + scroll, sells quantity, exits. Sell price = buy price / 2. Cannot sell Key Items, TMs/HMs, or Mail. Pre-validates item exists in bag with sufficient quantity. Returns encounter data if interrupted during navigation. |
 | `teach_tm(tm_name, party_slot, forget_move)` | Teach a TM/HM to a party Pokemon. Accepts TM label ("HM06", "TM76") or move name ("Rock Smash"). Pre-validates ROM compatibility (personal.narc bitmasks) and badge+move availability. Handles both <4 moves (auto-learn) and 4 moves (forget prompt) flows. Pass `forget_move` (0-3) when Pokemon knows 4 moves, or -1 to cancel. |
 | `tm_compatibility(tm_name)` | Check which party Pokemon can learn a given TM/HM. Pure ROM data lookup — no emulator interaction. Returns ABLE/UNABLE/ALREADY KNOWS per party slot. |
 | `type_matchup(attacking_type, defending_types, move_name)` | Type effectiveness check (like Pokemon Showdown's calc). Pass `attacking_type="Fire"` + `defending_types="Grass/Steel"`, or `move_name="Spark"` + `defending_types="Water/Flying"`. Returns multiplier + label. Gen 4 chart + Fairy type. |
@@ -325,7 +326,7 @@ See GAME_HISTORY.md for full chronological playthrough details.
 
 ## Test Suite
 
-Integration tests live in `tests/` (185 tests across 19 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
+Integration tests live in `tests/` (191 tests across 19 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
 
 ```bash
 MelonMCP/.venv/bin/python -m pytest tests/ -v          # full suite (~24 min)

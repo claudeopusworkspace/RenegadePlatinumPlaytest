@@ -491,3 +491,267 @@ def buy_item(
 def _error(message: str) -> dict[str, Any]:
     """Return a standardized error result."""
     return {"success": False, "error": message, "formatted": f"Error: {message}"}
+
+
+# ── Sell Item ──
+
+# Pockets that cannot be sold (game rejects them)
+_UNSELLABLE_POCKETS = {"Key Items", "TMs & HMs", "Mail"}
+
+# Pocket touch-tab coords (bottom screen) — same layout as regular bag.
+# Only sellable pockets listed.
+_SELL_POCKET_COORDS: dict[str, tuple[int, int]] = {
+    "Items":        (27, 51),
+    "Medicine":     (35, 102),
+    "Poke Balls":   (59, 142),
+    "Berries":      (156, 165),
+    "Battle Items": (220, 102),
+}
+
+
+def sell_item(
+    emu: EmulatorClient,
+    item_name: str,
+    quantity: int = 1,
+) -> dict[str, Any]:
+    """Sell an item at the PokéMart.
+
+    Works from inside a mart or from a city/town overworld (auto-navigates).
+    Talks to Cashier F, selects SELL, navigates the sell bag to the item,
+    sets quantity, confirms the sale, and exits.
+
+    Sell price = buy price / 2 (standard Pokémon formula).
+
+    Args:
+        emu: Emulator client.
+        item_name: Item name (e.g. "Potion", "Repel"). Case-insensitive.
+        quantity: How many to sell (default 1).
+    """
+    from renegade_mcp.bag import read_bag
+    from renegade_mcp.bag_cursor import get_pocket_cursor
+    from renegade_mcp.map_state import get_map_state, read_player_state
+    from renegade_mcp.navigation import interact_with, navigate_to
+    from renegade_mcp.trainer import read_trainer_status
+
+    item_lower = item_name.lower()
+
+    # ── Find item in bag ──
+    bag = read_bag(emu)
+    found_pocket = None
+    found_index = None
+    found_entry = None
+    for pocket in bag:
+        if pocket["name"] in _UNSELLABLE_POCKETS:
+            continue
+        for i, item in enumerate(pocket["items"]):
+            if item["name"].lower() == item_lower:
+                found_pocket = pocket["name"]
+                found_index = i
+                found_entry = item
+                break
+        if found_entry is not None:
+            break
+
+    if found_entry is None:
+        # Check if item is in an unsellable pocket
+        for pocket in bag:
+            if pocket["name"] in _UNSELLABLE_POCKETS:
+                for item in pocket["items"]:
+                    if item["name"].lower() == item_lower:
+                        return _error(
+                            f"'{item['name']}' is in {pocket['name']} pocket "
+                            f"and cannot be sold."
+                        )
+        sellable = []
+        for pocket in bag:
+            if pocket["name"] not in _UNSELLABLE_POCKETS:
+                sellable.extend(it["name"] for it in pocket["items"])
+        return _error(
+            f"'{item_name}' not found in bag. "
+            f"Sellable items: {', '.join(sellable) if sellable else '(none)'}."
+        )
+
+    # ── Check quantity ──
+    if quantity < 1:
+        return _error("Quantity must be at least 1.")
+    if quantity > found_entry["qty"]:
+        return _error(
+            f"Not enough {found_entry['name']}. "
+            f"Have {found_entry['qty']}, want to sell {quantity}."
+        )
+
+    # ── Calculate sell price ──
+    prices = item_prices()
+    names = item_names()
+    display_name = found_entry["name"]
+    # Reverse-lookup item ID from name
+    item_id = found_entry.get("id")
+    if item_id is None:
+        for iid, iname in names.items():
+            if iname.lower() == item_lower:
+                item_id = iid
+                break
+    buy_price = prices.get(item_id, 0) if item_id else 0
+    sell_price = buy_price // 2
+    if sell_price == 0:
+        return _error(f"'{display_name}' has no sell value (buy price: ¥0).")
+    total_value = sell_price * quantity
+
+    # ── Navigate to mart ──
+    map_id, _x, _y, _facing = read_player_state(emu)
+    entry = map_table().get(map_id, {})
+    code = entry.get("code", "")
+
+    navigated_to_mart = False
+
+    if "FS" in code:
+        city_code = _city_code_from_map(map_id)
+        if city_code is None:
+            return _error(f"Cannot determine city from map code: {code}")
+    else:
+        city_code = _city_code_from_map(map_id)
+        if city_code is not None and code == city_code:
+            mart_warp = _find_mart_warp(emu, map_id, city_code)
+            if mart_warp is None:
+                loc = _city_name(city_code)
+                return _error(f"No PokéMart warp found in {loc}.")
+
+            nav_result = navigate_to(emu, mart_warp["x"], mart_warp["y"],
+                                     flee_encounters=True)
+
+            if nav_result.get("encounter"):
+                return {
+                    "success": False,
+                    "error": "Navigation to PokéMart interrupted by encounter.",
+                    "encounter": nav_result["encounter"],
+                    "formatted": (
+                        "Error: Navigation to PokéMart interrupted by encounter. "
+                        "Deal with the encounter and try again."
+                    ),
+                }
+
+            if nav_result.get("stopped_early") and not nav_result.get("door_entered"):
+                return _error(
+                    "Could not reach the PokéMart — path was blocked. "
+                    f"Path: {nav_result.get('path', 'unknown')}"
+                )
+
+            navigated_to_mart = True
+            map_id, _x, _y, _facing = read_player_state(emu)
+            entry = map_table().get(map_id, {})
+            code = entry.get("code", "")
+
+            if "FS" not in code:
+                return _error(
+                    f"Navigated to mart warp but didn't enter "
+                    f"(current code: {code})."
+                )
+        else:
+            loc = (_city_name(city_code) if city_code
+                   else entry.get("name", f"Map {map_id}"))
+            return _error(
+                f"Not inside a PokéMart or city overworld ({loc}, code: {code}). "
+                "Navigate to a town with a PokéMart first."
+            )
+
+    # ── Record money before ──
+    status = read_trainer_status(emu)
+    money_before = status.get("money", 0)
+
+    # ── Find Cashier F and interact ──
+    state = get_map_state(emu)
+    if state is None:
+        return _error("Could not read map state.")
+
+    cashier = next(
+        (obj for obj in state["objects"] if obj.get("name") == "Cashier F"),
+        None,
+    )
+    if cashier is None:
+        npc_names = [obj.get("name", "?") for obj in state["objects"]
+                     if obj["index"] != 0]
+        return _error(f"No Cashier F found. NPCs: {', '.join(npc_names)}")
+
+    nav_result = interact_with(emu, cashier["index"])
+
+    if nav_result.get("interrupted") or nav_result.get("encounter"):
+        return _error(f"Navigation to Cashier F interrupted: {nav_result}")
+    if nav_result.get("stopped_early"):
+        return _error("Could not reach Cashier F — path blocked.")
+
+    # interact_with auto-advances "Welcome! What do you need?" dialogue.
+    # We're now at the BUY/SELL/SEE YA menu with cursor on BUY.
+
+    # ── Select SELL (one down from BUY) ──
+    _press(emu, ["down"], wait=30)    # BUY → SELL
+    _press(emu, ["a"], _MENU_WAIT)    # open sell bag
+
+    # ── Navigate to correct pocket via touch tab ──
+    pocket_coords = _SELL_POCKET_COORDS.get(found_pocket)
+    if pocket_coords is None:
+        # Shouldn't happen — we filtered unsellable pockets above
+        _press(emu, ["b"], _MENU_WAIT)   # exit sell bag
+        _press(emu, ["down"], wait=30)    # → SEE YA
+        _press(emu, ["a"])                # select SEE YA
+        _press(emu, ["a"], _SETTLE_WAIT)  # dismiss farewell
+        return _error(f"Pocket '{found_pocket}' has no sell tab coordinates.")
+
+    px, py = pocket_coords
+    emu.tap_touch_screen(px, py, frames=8)
+    emu.advance_frames(_MENU_WAIT)
+
+    # ── Scroll to item ──
+    # Reset cursor to top first (sell bag may have its own cursor state)
+    scroll, index = get_pocket_cursor(emu, found_pocket)
+    for _ in range(scroll + index):
+        _press(emu, ["up"], wait=30)
+    for _ in range(found_index):
+        _press(emu, ["down"], wait=30)
+
+    # ── Select item ──
+    _press(emu, ["a"])                # "How many would you like to sell?"
+    _press(emu, ["a"])                # text finishes → quantity selector (x01)
+
+    # ── Set quantity (up to increase from 1) ──
+    for _ in range(quantity - 1):
+        _press(emu, ["up"], wait=15)
+
+    # ── Confirm sale ──
+    _press(emu, ["a"])                # confirm qty → "I can pay ¥X. Would that be OK?"
+    _press(emu, ["a"])                # text finishes → YES/NO prompt
+    _press(emu, ["a"])                # select YES → "Turned over [item] and received ¥X."
+
+    # ── Post-sale dialogue ──
+    _press(emu, ["a"])                # advance "Turned over..."
+    _press(emu, ["a"], _MENU_WAIT)    # dismiss → back to sell bag
+
+    # ── Exit sell bag + shop ──
+    _press(emu, ["b"], _MENU_WAIT)    # exit sell bag → BUY/SELL/SEE YA
+    _press(emu, ["down"], wait=30)    # → SELL (cursor returns to SELL)
+    _press(emu, ["down"], wait=30)    # → SEE YA!
+    _press(emu, ["a"])                # "Please come again!"
+    _press(emu, ["a"], _SETTLE_WAIT)  # dismiss farewell, back to overworld
+
+    # ── Verify sale ──
+    new_status = read_trainer_status(emu)
+    new_money = new_status.get("money", 0)
+    earned = new_money - money_before
+
+    result = {
+        "success": True,
+        "item": display_name,
+        "item_id": item_id,
+        "quantity": quantity,
+        "unit_sell_price": sell_price,
+        "total_value": total_value,
+        "money_before": money_before,
+        "money_after": new_money,
+        "money_earned": earned,
+        "formatted": (
+            f"Sold {display_name} x{quantity} for ¥{total_value:,}. "
+            f"Money: ¥{money_before:,} → ¥{new_money:,}"
+        ),
+    }
+    if navigated_to_mart:
+        result["navigated_to_mart"] = True
+    return result

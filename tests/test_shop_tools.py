@@ -1,4 +1,4 @@
-"""Tests for shop tools: buy_item.
+"""Tests for shop tools: buy_item, sell_item.
 
 State-changing UI interaction — retries for menu timing.
 """
@@ -72,3 +72,90 @@ class TestBuyItem:
                     potion_count_after = i["qty"]
 
         assert potion_count_after == potion_count_before + 1
+
+
+class TestSellItem:
+    """Sell items at PokeMart."""
+
+    @retry_on_rng("test_eterna_city_overworld")
+    def test_sell_potion(self, emu: EmulatorClient):
+        """Sell a Potion — completes without error."""
+        from renegade_mcp.shop import sell_item
+
+        result = sell_item(emu, "Potion", quantity=1)
+        assert "error" not in result, f"sell_item error: {result.get('error')}"
+        assert result["success"] is True
+
+    @retry_on_rng("test_eterna_city_overworld")
+    def test_sell_money_increases(self, emu: EmulatorClient):
+        """Selling an item increases money."""
+        from renegade_mcp.shop import sell_item
+        from renegade_mcp.trainer import read_trainer_status
+
+        money_before = read_trainer_status(emu)["money"]
+
+        result = sell_item(emu, "Potion", quantity=1)
+        assert "error" not in result, f"sell_item error: {result.get('error')}"
+
+        money_after = read_trainer_status(emu)["money"]
+        assert money_after > money_before, "Money should have increased"
+
+    @retry_on_rng("test_eterna_city_overworld")
+    def test_sell_bag_quantity_decreases(self, emu: EmulatorClient):
+        """Sold item quantity decreases in bag."""
+        from renegade_mcp.bag import read_bag
+        from renegade_mcp.shop import sell_item
+
+        bag_before = read_bag(emu)
+        potion_before = 0
+        for pocket in bag_before:
+            for item in pocket["items"]:
+                if item["name"] == "Potion":
+                    potion_before = item["qty"]
+
+        result = sell_item(emu, "Potion", quantity=1)
+        assert "error" not in result, f"sell_item error: {result.get('error')}"
+
+        bag_after = read_bag(emu)
+        potion_after = 0
+        for pocket in bag_after:
+            for item in pocket["items"]:
+                if item["name"] == "Potion":
+                    potion_after = item["qty"]
+
+        assert potion_after == potion_before - 1
+
+    @retry_on_rng("test_eterna_city_overworld")
+    def test_sell_quantity_multiple(self, emu: EmulatorClient):
+        """Sell 3x Antidote — money increases by 3x sell price."""
+        from renegade_mcp.shop import sell_item
+        from renegade_mcp.trainer import read_trainer_status
+
+        money_before = read_trainer_status(emu)["money"]
+
+        result = sell_item(emu, "Antidote", quantity=3)
+        assert "error" not in result, f"sell_item error: {result.get('error')}"
+
+        money_after = read_trainer_status(emu)["money"]
+        # Antidote buy price = 100, sell price = 50, 3x = 150
+        assert money_after == money_before + 150, (
+            f"Expected +150, got +{money_after - money_before}"
+        )
+
+    @retry_on_rng("test_eterna_city_overworld")
+    def test_sell_key_item_rejected(self, emu: EmulatorClient):
+        """Selling a Key Item returns an error."""
+        from renegade_mcp.shop import sell_item
+
+        result = sell_item(emu, "Bicycle")
+        assert result["success"] is False
+        assert "cannot be sold" in result["error"].lower()
+
+    @retry_on_rng("test_eterna_city_overworld")
+    def test_sell_nonexistent_item(self, emu: EmulatorClient):
+        """Selling an item not in bag returns an error."""
+        from renegade_mcp.shop import sell_item
+
+        result = sell_item(emu, "Master Ball")
+        assert result["success"] is False
+        assert "not found" in result["error"].lower()
