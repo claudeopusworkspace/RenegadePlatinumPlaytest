@@ -2547,6 +2547,7 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
     Object mode (object_index): looks up by index, pathfinds to adjacent tile.
     Coordinate mode (x, y): targets a specific tile directly (for PCs, bookshelves, etc.).
     """
+    hold_frames = _get_move_hold(emu)
     has_object = object_index >= 0
     has_coords = x >= 0 and y >= 0
     if not has_object and not has_coords:
