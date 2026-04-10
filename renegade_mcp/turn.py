@@ -935,6 +935,18 @@ def _execute_action(
     result["final_state"] = _classify_final_state(emu, result)
     result["log"] = prompt["log"] + result.get("log", [])
 
+    # Move-blocked recovery: Torment/Disable/Encore/Taunt reject the move at
+    # the UI level, leaving the game in the move selection submenu.  Press B to
+    # back out to the main action menu so the next battle_turn call starts clean.
+    # Double B-press: the first may land during the rejection text dismiss
+    # animation and get swallowed; the second reliably exits the move submenu.
+    if result["final_state"] == "MOVE_BLOCKED":
+        emu.press_buttons(["b"], frames=8)
+        emu.advance_frames(ACTION_SETTLE)
+        emu.press_buttons(["b"], frames=8)
+        emu.advance_frames(TAP_WAIT)
+        return result
+
     # In doubles, after first action the partner's prompt appears immediately
     # (no battle narration in between).  The poll often returns TIMEOUT or
     # NO_TEXT because no battle narration occurs — only the partner's prompt
@@ -1288,7 +1300,7 @@ def _classify_final_state(emu: EmulatorClient, result: dict[str, Any]) -> str:
         # so result["log"] here contains only poll entries.
         for entry in result.get("log", []):
             t = entry.get("text", "").replace("\n", " ").lower()
-            if "can't use" in t or "cannot use" in t:
+            if "can't use" in t or "cannot use" in t or "is disabled" in t:
                 return "MOVE_BLOCKED"
         return "WAIT_FOR_ACTION"
 

@@ -1,4 +1,4 @@
-"""Tests for MOVE_BLOCKED detection and auto_grind backup_move handling.
+"""Tests for MOVE_BLOCKED detection, cursor recovery, and auto_grind backup_move.
 
 Uses save state: bug_auto_grind_torment_loop
   - Machop Lv22 vs Croagunk Lv16 on Route 205
@@ -22,6 +22,8 @@ from helpers import (
     assert_log_contains,
     assert_final_state,
 )
+
+import pytest
 
 STATE = "bug_auto_grind_torment_loop"
 
@@ -51,6 +53,27 @@ class TestMoveBlocked:
         )
         assert_log_contains(result, "used")
         assert_log_contains(result, "Return")
+
+    def test_correct_move_selected_after_blocked(self, emu: EmulatorClient):
+        """BUG-006 regression: after MOVE_BLOCKED, next battle_turn selects
+        the correct move — not a stale cursor position.
+
+        Repro: Knock Off blocked by Torment → call battle_turn(move_index=1).
+        Before fix: game was still in move submenu, FIGHT tap landed on the
+        wrong grid cell, selecting the wrong move.
+        After fix: B-press backs out to main action menu, next call works clean.
+        """
+        load_state(emu, STATE)
+        from renegade_mcp.turn import battle_turn
+        # Trigger MOVE_BLOCKED on Knock Off (slot 3)
+        result = battle_turn(emu, move_index=3)
+        assert_final_state(result, "MOVE_BLOCKED")
+        # Now select Brick Break (slot 1) — should work correctly
+        result2 = battle_turn(emu, move_index=1)
+        assert result2["final_state"] in ("WAIT_FOR_ACTION", "BATTLE_ENDED"), (
+            f"Expected successful turn, got: {result2['final_state']}"
+        )
+        assert_log_contains(result2, "Brick Break")
 
 
 # ---------------------------------------------------------------------------
@@ -92,4 +115,34 @@ class TestAutoGrindMoveBlocked:
         # Should hit turn_limit (safety valve) or move_blocked (both blocked)
         assert result["stop_reason"] in ("turn_limit", "move_blocked"), (
             f"Expected turn_limit or move_blocked, got: {result['stop_reason']}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Disable text detection (BUG-005 regression)
+# ---------------------------------------------------------------------------
+
+class TestDisableDetection:
+    """BUG-005: 'is disabled!' text should trigger MOVE_BLOCKED, not WAIT_FOR_ACTION.
+
+    No save state with Disable available — test _classify_final_state directly
+    with synthetic log entries matching the Disable text pattern.
+    """
+
+    @pytest.mark.parametrize("text,expected", [
+        ("Machop can't use the same move\ntwice in a row due to the torment!", "MOVE_BLOCKED"),
+        ("Noctowl's Air Cutter is disabled!", "MOVE_BLOCKED"),
+        ("Grotle's Razor Leaf is disabled!", "MOVE_BLOCKED"),
+        ("Machop cannot use Brick Break\nafter the Encore!", "MOVE_BLOCKED"),
+        ("Machop used Brick Break!", "WAIT_FOR_ACTION"),
+    ])
+    def test_classify_blocked_text(self, emu: EmulatorClient, text: str, expected: str):
+        """_classify_final_state recognizes various move-block text patterns."""
+        from renegade_mcp.turn import _classify_final_state
+        result = {
+            "final_state": "WAIT_FOR_ACTION",
+            "log": [{"text": text}],
+        }
+        assert _classify_final_state(emu, result) == expected, (
+            f"Text '{text}' should classify as {expected}"
         )

@@ -436,21 +436,21 @@ def _fight_battle(
                     battle_log,
                     _extract_level_from_log(battle_log),
                 )
-            # After Torment rejection, the game stays in the move selection
-            # submenu. Tap the backup move directly — no FIGHT tap needed.
+            # battle_turn already pressed B to return to the main action menu
+            # after MOVE_BLOCKED. Just call battle_turn with the alternate move.
             alt_move = move_index if use_backup else backup_move
-            from renegade_mcp.turn import MOVE_XY
-            mx, my = MOVE_XY[alt_move]
-            emu.tap_touch_screen(mx, my, frames=8)
-            # Poll for the result via a fresh battle_turn(run=False) — but
-            # we can't use battle_turn here since it would re-tap FIGHT.
-            # Instead, use the tracker directly to poll battle narration.
-            from renegade_mcp.turn import _poll_after_action
-            poll_result = _poll_after_action(emu, result.get("log", []))
-            state2 = poll_result.get("final_state", "")
-            battle_log.append({"turn": turn, "state": state2, "log": _flatten_log(poll_result)})
+            result2 = _battle_turn(emu, move_index=alt_move)
+            state2 = result2.get("final_state", "")
+            battle_log.append({"turn": turn, "state": state2, "log": _flatten_log(result2)})
             turn += 1
             if state2 in _BATTLE_OVER:
+                if result2.get("blackout"):
+                    return (
+                        "fainted",
+                        "Full party wipe — blacked out to Pokemon Center.",
+                        battle_log,
+                        _extract_level_from_log(battle_log),
+                    )
                 return "", "", battle_log, _extract_level_from_log(battle_log)
             if state2 == "MOVE_BLOCKED":
                 # Both moves blocked — bail

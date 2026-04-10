@@ -1,4 +1,4 @@
-"""Tests for party management tools: reorder_party, heal_party.
+"""Tests for party tools: read_party, format_party, reorder_party, heal_party.
 
 State-changing UI interactions — retries for menu timing.
 """
@@ -11,6 +11,74 @@ if TYPE_CHECKING:
     from melonds_mcp.client import EmulatorClient
 
 from helpers import do_load_state as load_state, retry_on_rng
+
+
+# ---------------------------------------------------------------------------
+# read_party: fainted Pokemon HP (BUG-004 regression)
+# ---------------------------------------------------------------------------
+
+class TestFaintedPokemonHP:
+    """Fainted Pokemon should show hp=0, not hp=-1.
+
+    Regression: `decoded.get("ext_cur_hp", 0) or -1` treated 0 as falsy.
+    """
+
+    def test_format_party_fainted_shows_zero_hp(self, emu: EmulatorClient):
+        """format_party renders hp=0 as 'HP 0/66', not 'HP ?/?'."""
+        from renegade_mcp.party import format_party
+
+        fainted_party = [{
+            "slot": 0,
+            "name": "Prinplup",
+            "level": 22,
+            "hp": 0,
+            "max_hp": 66,
+            "shiny": False,
+            "nature": "Lax",
+            "ability": "Vital Spirit",
+            "status_conditions": [],
+            "moves": [{"name": "Bubble Beam", "pp": 15}],
+            "partial": False,
+        }]
+        output = format_party(fainted_party)
+        assert "HP 0/66" in output, f"Expected 'HP 0/66', got: {output}"
+        assert "HP ?/?" not in output, f"Should not show 'HP ?/?': {output}"
+
+    def test_format_party_fainted_shows_fainted_status(self, emu: EmulatorClient):
+        """format_party adds Fainted indicator when hp=0."""
+        from renegade_mcp.party import format_party
+
+        fainted_party = [{
+            "slot": 0,
+            "name": "Prinplup",
+            "level": 22,
+            "hp": 0,
+            "max_hp": 66,
+            "shiny": False,
+            "nature": "Lax",
+            "ability": "Vital Spirit",
+            "status_conditions": [],
+            "moves": [{"name": "Bubble Beam", "pp": 15}],
+            "partial": False,
+        }]
+        output = format_party(fainted_party)
+        assert "Fainted" in output, f"Expected 'Fainted' in output: {output}"
+
+    def test_read_party_hp_never_negative(self, emu: EmulatorClient):
+        """read_party should never return hp=-1 for any Pokemon."""
+        load_state(emu, "test_damaged_party_overworld")
+        from renegade_mcp.party import read_party
+        party = read_party(emu)
+        for mon in party:
+            assert mon["hp"] >= 0, (
+                f"{mon['name']} has hp={mon['hp']} — should never be negative"
+            )
+            assert mon["max_hp"] >= 0, (
+                f"{mon['name']} has max_hp={mon['max_hp']} — should never be negative"
+            )
+            assert mon["level"] >= 0, (
+                f"{mon['name']} has level={mon['level']} — should never be negative"
+            )
 
 
 # ---------------------------------------------------------------------------

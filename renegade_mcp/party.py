@@ -471,9 +471,9 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
 
         name = sp_names.get(species, f"Pokemon#{species}") if species > 0 else "???"
 
-        level = decoded.get("ext_level", 0) or -1
-        cur_hp = decoded.get("ext_cur_hp", 0) or -1
-        max_hp = decoded.get("ext_max_hp", 0) or -1
+        level = decoded.get("ext_level") if decoded.get("ext_level") is not None else -1
+        cur_hp = decoded.get("ext_cur_hp") if decoded.get("ext_cur_hp") is not None else -1
+        max_hp = decoded.get("ext_max_hp") if decoded.get("ext_max_hp") is not None else -1
 
         partial = decoded.get("partial", False)
         status_raw = decoded.get("ext_status", 0)
@@ -559,6 +559,8 @@ def format_party(party: list[dict[str, Any]]) -> str:
         shiny_tag = " *SHINY*" if p.get("shiny") else ""
         ability_str = f"  [{p['ability']}]" if p.get("ability") and p.get("ability") != "-" else ""
         status_conds = p.get("status_conditions", [])
+        if p["hp"] == 0 and p["max_hp"] > 0 and "Fainted" not in status_conds:
+            status_conds = ["Fainted"] + status_conds
         status_str = f"  ⚠ {', '.join(status_conds)}" if status_conds else ""
         partial_tag = " [stale data]" if p.get("partial") else ""
         lines.append(f"  {p['slot']}. {p['name']}{shiny_tag} {level_str}{nature_str}{ability_str}  {hp_str}{status_str}{partial_tag}")
