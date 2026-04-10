@@ -104,6 +104,12 @@ def auto_grind(
         state = result.get("final_state", "")
 
         if state in _BATTLE_OVER:
+            if result.get("blackout"):
+                return _finish(
+                    "fainted",
+                    "Full party wipe — blacked out to Pokemon Center.",
+                    battles, _read_party(emu),
+                )
             # Move learn resolved, battle ended — check level then continue grinding
             party = _read_party(emu)
             target_mon = party[target_slot] if len(party) > target_slot else None
@@ -411,6 +417,13 @@ def _fight_battle(
         turn += 1
 
         if state in _BATTLE_OVER:
+            if result.get("blackout"):
+                return (
+                    "fainted",
+                    "Full party wipe — blacked out to Pokemon Center.",
+                    battle_log,
+                    _extract_level_from_log(battle_log),
+                )
             # Normal end — no stop reason
             return "", "", battle_log, _extract_level_from_log(battle_log)
 
@@ -527,6 +540,13 @@ def _run_battle(
         turn += 1
 
         if state in _BATTLE_OVER:
+            if result.get("blackout"):
+                return (
+                    "fainted",
+                    "Full party wipe — blacked out to Pokemon Center.",
+                    battle_log,
+                    None,
+                )
             return "", "", battle_log, None
 
         if state == "WAIT_FOR_ACTION":

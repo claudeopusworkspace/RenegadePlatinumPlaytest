@@ -506,6 +506,13 @@ def _wait_for_action_prompt(emu: EmulatorClient) -> dict[str, Any]:
     # Timed out — check for forced switch (trainer faint, party grid showing).
     # In doubles, the fainted Pokemon may be slot 2 (partner), not slot 0.
     if not _is_battle_over(emu) and _any_player_fainted(emu):
+        # Distinguish wild (FAINT_SWITCH) from trainer (FAINT_FORCED).
+        # Wild faint shows "Use next Pokemon?" text; trainer faint shows
+        # the party grid with no text.  The text may have appeared in the
+        # log without being classified as WAIT_FOR_ACTION (wrong control
+        # code), so check the accumulated log entries.
+        if any("Use next" in e.get("text", "") for e in log):
+            return {"ready": True, "log": log, "prompt_type": "FAINT_SWITCH"}
         return {"ready": True, "log": log, "prompt_type": "FAINT_FORCED"}
 
     state = "BATTLE_ENDED" if _is_battle_over(emu) else "NO_ACTION_PROMPT"
@@ -569,18 +576,23 @@ def _decline_flow(emu: EmulatorClient) -> None:
     emu.tap_touch_screen(PROMPT_NO_XY[0], PROMPT_NO_XY[1], frames=8)
 
 
-def _skip_move_learn_flow(emu: EmulatorClient) -> bool:
-    """Skip learning the new move from Prompt 1 ('Make it forget another move?').
+def _skip_move_learn_flow(emu: EmulatorClient, at_prompt2: bool = False) -> bool:
+    """Skip learning the new move.
 
-    Flow: 'Keep old moves!' → Prompt 2 text scroll → 'Give up on [Move]!' → confirmation text.
+    When at_prompt2=False (default), starts from Prompt 1 ('Make it forget another move?').
+    When at_prompt2=True, starts from Prompt 2 ('Should this Pokemon give up on learning?').
+
+    Flow from Prompt 1: 'Keep old moves!' → Prompt 2 text scroll → 'Give up on [Move]!' → done.
+    Flow from Prompt 2: 'Give up on [Move]!' → done.
 
     Returns True if evolution text was detected (caller must handle via _wait_for_evolution).
     """
-    # Prompt 1: tap "Keep old moves!" (bottom) → triggers Prompt 2 text
-    emu.tap_touch_screen(KEEP_OLD_MOVES_XY[0], KEEP_OLD_MOVES_XY[1], frames=8)
-    # Prompt 2 text scrolls for ~600 frames; B presses speed it up
-    _advance_text(emu, presses=2, wait=120)
-    emu.advance_frames(300)  # Wait for touch buttons to appear
+    if not at_prompt2:
+        # Prompt 1: tap "Keep old moves!" (bottom) → triggers Prompt 2 text
+        emu.tap_touch_screen(KEEP_OLD_MOVES_XY[0], KEEP_OLD_MOVES_XY[1], frames=8)
+        # Prompt 2 text scrolls for ~600 frames; B presses speed it up
+        _advance_text(emu, presses=2, wait=120)
+        emu.advance_frames(300)  # Wait for touch buttons to appear
 
     # Prompt 2: tap "Give up on [Move]!" (top)
     emu.tap_touch_screen(GIVE_UP_XY[0], GIVE_UP_XY[1], frames=8)
@@ -1077,12 +1089,21 @@ def _execute_move_learn(
             _learn_move_overworld(emu, forget_move)
         return _poll_after_action(emu, prompt["log"])
 
+    # Detect whether we're at Prompt 1 ("forget another move") or Prompt 2
+    # ("give up on").  This matters when resuming from a save state or when
+    # multiple moves are learned simultaneously — the game may already be at
+    # Prompt 2 when battle_turn is called.
+    at_prompt2 = any(
+        "give up on" in e.get("text", "").replace("\n", " ").lower()
+        for e in prompt.get("log", [])
+    )
+
     # Wait for bottom-screen buttons to render (text detected in memory
     # before UI is interactive — same pattern as SWITCH_PROMPT).
     emu.advance_frames(PROMPT_SETTLE)
 
     if forget_move == -1:
-        evolving = _skip_move_learn_flow(emu)
+        evolving = _skip_move_learn_flow(emu, at_prompt2=at_prompt2)
     else:
         evolving = _learn_move_flow(emu, forget_move)
 
