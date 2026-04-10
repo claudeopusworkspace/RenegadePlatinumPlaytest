@@ -102,6 +102,8 @@ If `server.py` itself was changed (new tool added, tool removed, signature chang
 
 Multi-chunk maps (overworld, large caves) use a matrix/chunk system detected automatically by `view_map` and `navigate_to`. See MEMORY_MAP.md for collision data format, tile behaviors, and dynamic object details.
 
+**Cycling Road (Route 206)**: Bridge body tiles (0x71) force the player to slide south at ~4f/tile when on the bicycle. `navigate_to` auto-detects this (tile behavior + cycling state + path scan) and uses position-tracking instead of step-counting: south = passive slide, north = continuous UP hold (~8f/tile), lateral = 4f press with south drift. `navigate` (manual) refuses with a clear error. Encounter detection runs during all movement phases. The bridge renders as `n` in `view_map`.
+
 ## Game State Tools
 
 **Use these tools instead of navigating in-game menus** — faster, more reliable, no accidental inputs.
@@ -326,7 +328,7 @@ See GAME_HISTORY.md for full chronological playthrough details.
 
 ## Test Suite
 
-Integration tests live in `tests/` (198 tests across 19 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
+Integration tests live in `tests/` (216 tests across 20 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
 
 ```bash
 MelonMCP/.venv/bin/python -m pytest tests/ -v          # full suite (~24 min)
