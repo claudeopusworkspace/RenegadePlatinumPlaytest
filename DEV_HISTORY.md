@@ -2,6 +2,72 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Bug Sweep + QoL (2026-04-10c)
+
+Cleared 5 bugs and 1 QoL improvement from the QA backlog. Test count: 157 → 166 (9 new tests across 2 files).
+
+### Bug 1: read_party HP -1 for Fainted Pokemon (BUG-004)
+
+**Problem**: `read_party()` showed `hp: -1` and `status_conditions: []` for fainted Pokemon. Formatted output showed "HP ?/?".
+
+**Root cause**: `party.py:475` — `decoded.get("ext_cur_hp", 0) or -1`. Python's `0 or -1` evaluates to `-1`, treating fainted (HP=0) as a missing value.
+
+**Fix** (2 parts):
+- Data extraction: changed `or -1` to explicit `is not None` check on level, cur_hp, and max_hp lines.
+- Format display: `format_party` now injects "Fainted" into status_conditions when hp=0 and max_hp>0.
+
+**Tests** (3 new in `test_party_tools.py`):
+- `test_format_party_fainted_shows_zero_hp` — verifies "HP 0/66" not "HP ?/?"
+- `test_format_party_fainted_shows_fainted_status` — verifies "Fainted" indicator
+- `test_read_party_hp_never_negative` — integration: no party member should have negative HP
+
+### Bug 2: Disable Text Not Detected as MOVE_BLOCKED (BUG-005)
+
+**Problem**: `battle_turn` returned `WAIT_FOR_ACTION` instead of `MOVE_BLOCKED` when Disable blocked a move. The text "X's Move is disabled!" wasn't matched.
+
+**Root cause**: `_classify_final_state` only checked for "can't use" and "cannot use" text patterns. Disable uses "is disabled!" — a different pattern.
+
+**Fix**: Added `"is disabled"` to the text match in `_classify_final_state`.
+
+**Tests** (5 parametrized in `test_move_blocked.py::TestDisableDetection`): Torment, Disable, Encore text patterns + non-blocked text negative case.
+
+### Bug 3: Wrong Move Selected After Blocked Attempt (BUG-006)
+
+**Problem**: After Torment/Disable blocked a move, the next `battle_turn` call selected the wrong move. E.g., requesting Brick Break (slot 1) actually used Peck (slot 3).
+
+**Root cause**: After rejection, the game stays in the move selection submenu. The next `battle_turn` taps FIGHT (which hits the move grid instead of the FIGHT button), then taps the actual move — two taps on the move grid selects the wrong thing.
+
+**Fix**: After detecting MOVE_BLOCKED in `_execute_action`, double B-press backs out to the main action menu. First B may be swallowed during the rejection text dismiss animation; second reliably exits. Verified with timing experiments — single B + 60 frames was insufficient; double B + ACTION_SETTLE + TAP_WAIT works consistently.
+
+**Also simplified** `auto_grind`'s backup_move path: previously used direct tap workaround (knowing game was in move submenu); now uses standard `battle_turn` call since MOVE_BLOCKED guarantees clean state.
+
+**Tests** (1 new integration): `test_correct_move_selected_after_blocked` — triggers MOVE_BLOCKED, then verifies next move selection is correct.
+
+### Bug 4: Sequential Move-Learn Text Clearing (BUG-002)
+
+**Problem**: After evolution + sequential move learns (e.g., Chimchar→Monferno learns Flame Wheel then Mach Punch), the "learned X!" screen wasn't fully dismissed. `seek_encounter` then returned "blocked" because text was still on screen.
+
+**Root cause**: `_learn_move_overworld` used a fixed 5 B-presses to dismiss confirmation text, but sequential learns can stack more text pages than 5 presses can clear. The remaining text blocked all input.
+
+**Fix**: Added `_clear_overworld_move_learn_text()` — uses `ScriptManager.is_msg_box_open` flag (the authoritative signal for active overworld text) to keep pressing B until all text is dismissed. Also checks for the next "Should a move be deleted?" prompt before clearing, so it doesn't accidentally dismiss a sequential learn prompt.
+
+**No new test** — full repro requires grinding to trigger evolution + double learn, which isn't practical for CI. Existing move-learn tests (3) all pass.
+
+### QoL: Formatted State Shows Correct State (FR-008)
+
+**Problem**: The `formatted` field in `battle_turn` responses showed `State: TIMEOUT` even when `final_state` correctly reported `BATTLE_ENDED`, `MOVE_LEARN`, etc.
+
+**Root cause**: The tracker's `_format_log` built the formatted string with the raw poll state, but `_classify_final_state` and post-processing reclassified it afterward. The formatted field was never updated.
+
+**Fix**: Rebuild `formatted` at the end of `battle_turn` using the final `final_state` value.
+
+### Backlog Status After Session
+
+**Resolved**: BUG-002, BUG-004, BUG-005, BUG-006, FR-008 (5 bugs + 1 QoL)
+**Remaining**: BUG-003 (self-targeting doubles, low), FR-002 (interact re-path, low), FR-003 (cross-map heal, med), FR-004 (deep snow, low), FR-006 (accuracy awareness, low), specialty shop (deferred)
+
+---
+
 ## Dev Session: Three Bug Fixes (2026-04-10b)
 
 Fixed all 3 remaining open bugs from the backlog. All had repro save states ready from the QA session.

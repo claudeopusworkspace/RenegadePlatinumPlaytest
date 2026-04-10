@@ -130,7 +130,7 @@ Key ROM file indices: 0392=items, 0412=species, 0610=abilities, 0647=moves, 0433
    - `SWITCH_PROMPT` — trainer sending next Pokemon. Call `battle_turn(switch_to=N)` to swap, `battle_turn()` to keep battling, or `battle_turn(move_index=N)` to decline the switch and use that move in one call.
    - `FAINT_SWITCH` — your Pokemon fainted (wild battle). Call `battle_turn(switch_to=N)` to send replacement, or `battle_turn()` to flee.
    - `FAINT_FORCED` — your Pokemon fainted (trainer battle). Call `battle_turn(switch_to=N)` to send replacement (required).
-   - `MOVE_BLOCKED` — move was rejected by Torment, Disable, Encore, Taunt, or Choice item lock. No turn consumed, still at action prompt (in move selection submenu). Pick a different move or switch.
+   - `MOVE_BLOCKED` — move was rejected by Torment, Disable, Encore, Taunt, or Choice item lock. No turn consumed, automatically backs out to main action menu. Pick a different move or switch.
    - `BATTLE_ENDED` — back in overworld. **Auto-advances post-battle dialogue** (trainer defeat text, story triggers) if present — returned as `post_battle_dialogue` list. **Handles full party wipe**: auto-advances through blackout sequence + Nurse Joy dialogue, returns with `blackout: true` and player free in Pokemon Center. No manual `read_dialogue` needed.
    - `MOVE_LEARN` — Pokemon wants to learn a new move. Response includes `move_to_learn` (the new move name, read directly from memory) and `current_moves` with slot indices. Call `battle_turn(forget_move=N)` to forget move N (0-3) and learn the new move, or `battle_turn(forget_move=-1)` to skip. Works in both trainer and wild battles.
    - `NO_ACTION_PROMPT` — action prompt never appeared (~30 sec timeout). Game may need manual input.
@@ -319,7 +319,7 @@ See GAME_HISTORY.md for full chronological playthrough details.
 
 ## Test Suite
 
-Integration tests live in `tests/` (157 tests across 17 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
+Integration tests live in `tests/` (166 tests across 17 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
 
 ```bash
 MelonMCP/.venv/bin/python -m pytest tests/ -v          # full suite (~24 min)
