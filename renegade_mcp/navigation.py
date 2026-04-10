@@ -1488,6 +1488,31 @@ CYCLING_ROAD_POLL_INTERVAL = 2   # frames between position checks
 CYCLING_ROAD_MAX_WAIT = 600      # max frames to wait for a slide to complete (~10 sec)
 
 
+def _check_encounter_quick(emu: EmulatorClient) -> dict[str, Any] | None:
+    """Lightweight encounter check for use during cycling road movement.
+
+    Checks read_battle (trainer/wild) and dialogue (trainer spotted, sign, etc.).
+    Returns encounter dict if detected, None otherwise. Does NOT advance frames.
+    """
+    battlers = read_battle(emu)
+    if battlers:
+        return {"encounter": "battle_detected", "battlers": battlers}
+
+    dialogue = read_dialogue(emu, region="overworld")
+    if dialogue["region"] != "none":
+        mgr = _find_script_manager(emu)
+        if mgr is not None:
+            ss = _read_script_state(emu, mgr)
+            if ss["is_msg_box_open"]:
+                return {"encounter": "dialogue_detected", "dialogue": dialogue}
+            # Script running but msgBox not open yet — trainer approach animation
+            if ss["ctx0_ptr"]:
+                ctx0 = _read_context_state(emu, ss["ctx0_ptr"])
+                if ctx0["state"] in (CTX_RUNNING, CTX_WAITING):
+                    return {"encounter": "script_running"}
+    return None
+
+
 def _get_current_tile_behavior(emu: EmulatorClient) -> int:
     """Read the terrain behavior byte at the player's current tile."""
     from renegade_mcp.map_state import get_map_state
@@ -1511,12 +1536,15 @@ def _navigate_cycling_road(
       2. North (uphill): hold UP continuously, polling position
       3. Lateral (east/west): hold direction, accept south drift per step
       4. South: let auto-slide carry us (no input), or normal step on non-bridge
-    Final Y adjustment after lateral moves to correct south drift.
+
+    Encounter detection runs after every movement phase. Trainer battles (pre-battle
+    dialogue) and wild encounters are caught and returned immediately.
     """
     start_map, start_x, start_y = _read_position(emu)
     cur_x, cur_y = start_x, start_y
     steps_log: list[str] = []
     total_frames = 0
+    encounter: dict[str, Any] | None = None
     max_iters = 200
 
     for _ in range(max_iters):
@@ -1531,7 +1559,6 @@ def _navigate_cycling_road(
         # ── Phase: Normal ground movement (not on bridge body) ──
         if not on_bridge:
             if dy > 0:
-                # Step south onto or toward bridge
                 emu.advance_frames(BIKE_HOLD_FRAMES, buttons=["down"])
                 emu.advance_frames(WAIT_FRAMES)
                 total_frames += BIKE_HOLD_FRAMES + WAIT_FRAMES
@@ -1551,11 +1578,16 @@ def _navigate_cycling_road(
             if (new_x, new_y) != (cur_x, cur_y):
                 steps_log.append(f"step ({cur_x},{cur_y})→({new_x},{new_y})")
             cur_x, cur_y = new_x, new_y
+
+            # Encounter check after ground step
+            enc = _check_encounter_quick(emu)
+            if enc is not None:
+                encounter = _post_nav_check(emu)
+                break
             continue
 
         # ── Phase: On bridge body — uphill first (before lateral) ──
         if dy < 0:
-            # Hold UP continuously until target Y or stall
             wait = 0
             while cur_y > target_y and wait < CYCLING_ROAD_MAX_WAIT:
                 emu.advance_frames(4, buttons=["up"])
@@ -1565,16 +1597,20 @@ def _navigate_cycling_road(
                 if new_y != cur_y:
                     steps_log.append(f"up ({cur_x},{cur_y})→({new_x},{new_y})")
                     cur_x, cur_y = new_x, new_y
+                # Encounter check during uphill
+                enc = _check_encounter_quick(emu)
+                if enc is not None:
+                    encounter = _post_nav_check(emu)
+                    break
+            if encounter is not None:
+                break
             continue
 
         # ── Phase: On bridge body — lateral moves ──
         if dx != 0:
-            # Press direction for exactly 4 frames (1 bike tile), then poll.
-            # Don't add idle settle frames — that causes south slide.
             btn = "left" if dx < 0 else "right"
             emu.advance_frames(4, buttons=[btn])
             total_frames += 4
-            # Poll until lateral movement registers (may take a few frames)
             for _ in range(8):
                 _, new_x, new_y = _read_position(emu)
                 if new_x != cur_x:
@@ -1585,6 +1621,12 @@ def _navigate_cycling_road(
             if (new_x, new_y) != (cur_x, cur_y):
                 steps_log.append(f"{btn} ({cur_x},{cur_y})→({new_x},{new_y})")
             cur_x, cur_y = new_x, new_y
+
+            # Encounter check after lateral step
+            enc = _check_encounter_quick(emu)
+            if enc is not None:
+                encounter = _post_nav_check(emu)
+                break
             continue
 
         # ── Phase: On bridge body — southbound (auto-slide) ──
@@ -1600,6 +1642,14 @@ def _navigate_cycling_road(
                     cur_x, cur_y = new_x, new_y
                     if _get_current_tile_behavior(emu) != 0x71:
                         break
+                # Encounter check during slide — position may stall if trainer
+                # spotted us (approach animation freezes player movement)
+                enc = _check_encounter_quick(emu)
+                if enc is not None:
+                    encounter = _post_nav_check(emu)
+                    break
+            if encounter is not None:
+                break
             continue
 
         # Should not reach here
@@ -1616,7 +1666,9 @@ def _navigate_cycling_road(
         "start": _pos_with_map(start_x, start_y, start_map),
         "final": _pos_with_map(final_x, final_y, final_map),
     }
-    if not reached:
+    if encounter is not None:
+        result["encounter"] = encounter
+    if not reached and encounter is None:
         result["note"] = (
             f"Stopped at ({final_x},{final_y}), target was ({target_x},{target_y}). "
             f"Possible obstacle (trainer NPC, wall, or end of bridge)."
