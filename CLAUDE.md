@@ -171,14 +171,19 @@ auto_grind(move_index=0, backup_move=2, flee_ineffective=true)  # smart selectio
 ```
 
 ### Auto-heal loop
-When `heal_x/heal_y/grind_x/grind_y` are all provided, auto-heals on faint or PP depletion
-instead of stopping. Navigates to town, heals at Pokemon Center, returns to grind area.
+Two modes: **auto-detect** (preferred) or **coordinate-based** (legacy).
 
-- `heal_x, heal_y`: Tile on the city/town map to navigate to before healing. Must be
-  reachable from the grind area (same map or via warp). `heal_party` auto-finds the PC.
-- `grind_x, grind_y`: Tile to return to after healing. Must be reachable from the city map
-  (after exiting the PC).
-- `max_heal_trips`: Safety cap (default 10).
+**Auto-detect** (`auto_heal=True`): No coordinates needed. Scans the overworld matrix for
+the nearest Pokemon Center, navigates there (trying alternative cities if the nearest is
+blocked by terrain), heals, and returns to the grind spot. Works from routes and interior
+maps (exits via warps first). Handles the 5x5 chunk terrain cap with multi-hop navigation.
+
+```
+auto_grind(move_index=0, target_level=25, auto_heal=true)   # just works
+auto_grind(move_index=0, auto_heal=true, max_heal_trips=20) # raise safety cap
+```
+
+**Coordinate-based** (legacy): Provide `heal_x/heal_y/grind_x/grind_y` for same-map healing.
 
 ```
 auto_grind(move_index=0, target_level=25, heal_x=15, heal_y=8, grind_x=42, grind_y=20)
@@ -319,7 +324,7 @@ See GAME_HISTORY.md for full chronological playthrough details.
 
 ## Test Suite
 
-Integration tests live in `tests/` (166 tests across 17 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
+Integration tests live in `tests/` (171 tests across 18 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
 
 ```bash
 MelonMCP/.venv/bin/python -m pytest tests/ -v          # full suite (~24 min)

@@ -2,6 +2,39 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Cross-Map Auto-Heal (2026-04-10d)
+
+### Test Suite Fix
+- **conftest.py detect_shift false positive**: On a fresh ROM load (title screen), all heap memory is zeroed. `detect_shift` tried delta=0 first, and `party_count=0 / badge=0` passed the `0<=x<=6 / 0<=x<=8` validation — locking in the wrong offset for all 166 tests (90 failures). Fix: always load a known save state before calling `detect_shift` in the conftest, guaranteeing real game data in memory.
+
+### Feature: auto_grind auto_heal=True
+Cross-map auto-heal for `auto_grind` — no coordinates needed.
+
+**New functions in auto_grind.py:**
+- `_find_all_pcs(emu, map_id, px, py)` — scans all cities/towns with Pokemon Centers on the same overworld matrix, returns sorted by chunk distance.
+- `_auto_heal_and_return(emu, in_battle, fainted)` — full flow: exit battle → remember position → exit interior (if needed) → find nearest PC → navigate → heal → exit PC → return through warps → navigate back to grind spot.
+- `_navigate_multi_hop(emu, target_x, target_y)` — breaks long paths into ~3-chunk segments to stay within the 5x5 chunk terrain loading cap.
+- `_exit_to_overworld(emu)` / `_return_to_interior(emu, return_warps)` — warp chain recording and reversal for cave sub-floors not on the overworld matrix.
+- Retry logic: when nearest city is unreachable (terrain barriers), reverts via checkpoint and tries alternative cities by distance.
+
+**Key design decisions:**
+- Uses the overworld matrix (matrix 0) to locate all cities. Routes and cities share the same matrix, so `navigate_to` can path between them without explicit warps.
+- Interior maps (cave sub-floors) are not on any matrix — `_exit_to_overworld` follows warps outward until reaching matrix 0.
+- The 5x5 chunk cap in `_build_multi_chunk_terrain` limits single-call navigate_to range. `_navigate_multi_hop` works around this with intermediate waypoints.
+
+**Live test (Route 203):** 16 encounters, Mach Punch PP depleted after ~11, auto-heal navigated to Jubilife City PC (Oreburgh was blocked by mountains, retry found Jubilife), healed full party including reviving fainted Eevee, returned to grass, resumed grinding. Total wall clock ~117s for the full run.
+
+### Tests Added
+- `test_auto_heal.py`: 5 tests (3 unit for `_find_nearest_pc`, 2 integration for `_auto_heal_and_return`)
+- **Total: 171 tests across 18 files**, all passing (~7 min on melonDS)
+
+### Files Changed
+- `renegade_mcp/auto_grind.py` — 5 new functions, `auto_heal` parameter, dispatch in heal triggers
+- `renegade_mcp/server.py` — `auto_heal` parameter wired through
+- `tests/conftest.py` — always load state before detect_shift
+- `tests/test_auto_heal.py` — new test file
+- `CLAUDE.md` — updated auto-heal docs + test count
+
 ## Dev Session: Bug Sweep + QoL (2026-04-10c)
 
 Cleared 5 bugs and 1 QoL improvement from the QA backlog. Test count: 157 → 166 (9 new tests across 2 files).
