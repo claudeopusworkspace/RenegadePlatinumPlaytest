@@ -193,14 +193,14 @@ class TestReadBag:
         assert ball_name is not None, f"No Poke Ball found in bag. Items: {list(all_items.keys())}"
         assert all_items[ball_name] >= 20
 
-    def test_all_seven_pockets(self, emu: EmulatorClient):
-        """Bag has exactly 7 pockets."""
+    def test_all_eight_pockets(self, emu: EmulatorClient):
+        """Bag has all 8 pockets."""
         load_state(emu, "eterna_city_shiny_swinub_in_party")
         from renegade_mcp.bag import read_bag
         pockets = read_bag(emu)
-        # Gen 4 has: Items, Medicine, Poke Balls, TMs & HMs, Berries, Mail, Battle Items, Key Items
-        # (some may be empty but should still be listed)
-        assert len(pockets) >= 7
+        # Gen 4 has 8 pockets: Items, Key Items, TMs & HMs, Mail, Medicine,
+        # Berries, Poke Balls, Battle Items (memory order)
+        assert len(pockets) == 8
 
 
 # ---------------------------------------------------------------------------

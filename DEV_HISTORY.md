@@ -2,6 +2,68 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: use_battle_item Tool (2026-04-10)
+
+Built `use_battle_item` — the first tool for using items from the bag during battle. Navigates the battle bag UI (completely separate from the overworld bag) via touch inputs derived from the decomp's TouchScreenRect tables.
+
+### Backlog Review
+
+Started with a full backlog audit. Current state: 7 open bugs (mostly doubles/edge cases), 5 QoL feature requests, 1 upstream blocker. 30+ resolved issues across the project. `use_battle_item` was the highest-priority QoL item — it blocks any gym strategy requiring mid-fight healing.
+
+### ROM Data Research
+
+Deep dive into the decomp at `ref/pokeplatinum/src/battle_sub_menus/battle_bag.c`:
+- Battle bag has 4 pockets (HP/PP Recovery, Status Recovery, Poke Balls, Battle Items) — different from the 8 overworld pockets
+- Items filtered by `battlePocket` bitmask from ROM `pl_item_data.csv`
+- `battleUseFunc` field determines targeting: 0=stat booster (auto in singles), 1=ball, 2=healing (party target), 3=escape (auto-flee)
+- 6 items per page, touch-based 2-column grid layout
+- Battle bag cursor state persisted per pocket (page + position)
+
+### Bug Fix: Missing Poke Balls Pocket
+
+Discovered `bag.py` had 7 pockets but the decomp's `Bag` struct has 8 — a `pokeballs[15]` pocket sits between Berries and Battle Items. This shifted the Battle Items memory offset. Fixed by adding the pocket.
+
+### Implementation
+
+**New files:**
+- `scripts/extract_battle_data.py` — parses `pl_item_data.csv`, generates `data/item_battle_data.json` (67 battle-usable items with `battleUseFunc` + `battlePocket` bitmask)
+- `renegade_mcp/data.py` — added `item_battle_data()` lazy loader
+- `renegade_mcp/battle_bag.py` — reconstructs battle pocket item lists from overworld bag data, matching `BattleBag_Init`'s sequential pocket scan order
+- `renegade_mcp/use_battle_item.py` — main tool: BAG → pocket → page reset → item → USE → target → wait for action prompt
+
+**Touch coordinates** (from decomp `TouchScreenRect` tables, format `{y_top, y_bottom, x_left, x_right}`):
+- Pocket selection: 4 quadrants (HP/PP=top-left, Status=bottom-left, Balls=top-right, Battle=bottom-right)
+- Item slots: 2x3 grid, 6 per page
+- Navigation: Prev/Next page arrows, USE/Cancel buttons
+
+### Key Discovery: Stale Save Block During Battle
+
+First verification approach checked bag quantity via `read_bag` — always showed unchanged qty. Investigation revealed: **during battle, the game works with a `BattleSystem` copy of the bag data**. The overworld save block at `BAG_BASE` is NOT updated until the battle ends. Same issue affects `read_party` — party HP in the save block stays at pre-battle values.
+
+**Fix**: Verify healing via `read_battle` (live BattleMon data) instead of `read_bag`. For X items/escape items, trust the final state (can't easily verify stat boosts from memory).
+
+Second timing issue: naive `advance_frames(300) + B×3` wasn't enough to get through the item animation + enemy turn. Replaced with `_wait_for_action_prompt` for proper turn detection.
+
+### Testing
+
+9 integration tests across 3 classes:
+- `TestUseBattleItemHealing` — Potion on damaged Pokemon (HP verified), full-HP rejection, missing party_slot
+- `TestUseBattleItemValidation` — nonexistent item, Poke Ball rejection, invalid slot
+- `TestBattleBagPockets` — pocket mapping, item position lookup, missing item error
+
+Full suite: **155 tests, all passing in 6:37**.
+
+### Files Changed
+- `renegade_mcp/bag.py` — add Poke Balls pocket (15 slots)
+- `renegade_mcp/data.py` — add `item_battle_data()` loader
+- `renegade_mcp/battle_bag.py` — **new**: battle pocket list builder
+- `renegade_mcp/use_battle_item.py` — **new**: battle bag UI navigation + targeting
+- `renegade_mcp/server.py` — register `use_battle_item` tool
+- `scripts/extract_battle_data.py` — **new**: ROM data extraction
+- `data/item_battle_data.json` — **new**: generated ROM data
+- `tests/test_use_battle_item.py` — **new**: 9 integration tests
+- `CLAUDE.md` — updated tool reference table
+
 ## Dev Session: Eterna Gym Navigation Fixes (2026-04-08f)
 
 Resolved all remaining Eterna Gym bugs — 3D navigation and post-battle event text. Full gym now navigable end-to-end.
