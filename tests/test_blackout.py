@@ -1,4 +1,4 @@
-"""Tests for party-wipe blackout recovery in battle_turn.
+"""Tests for party-wipe blackout recovery in battle_turn and auto_grind.
 
 Uses save state: qol_battle_wipe_blackout_handling
   - Swinub (shiny, Lv19) is last alive Pokemon, at action prompt
@@ -60,4 +60,25 @@ class TestBlackoutRecovery:
         npc_names = [o.get("name", "") for o in state.get("objects", [])]
         assert any("Pokecenter Nurse" in n for n in npc_names), (
             f"Expected Pokecenter Nurse NPC, but objects are: {npc_names}"
+        )
+
+
+class TestAutoGrindBlackout:
+    """auto_grind stops with 'fainted' when a full party wipe occurs.
+
+    Regression test: _fight_battle only checked final_state (BATTLE_ENDED)
+    but not the blackout flag, so auto_grind continued looping from inside
+    the Pokemon Center after a whiteout.
+    """
+
+    def test_fight_battle_returns_fainted_on_blackout(self, emu: EmulatorClient):
+        """_fight_battle returns stop_reason='fainted' on full party wipe."""
+        load_state(emu, STATE)
+        from renegade_mcp.auto_grind import _fight_battle
+        stop_reason, stop_detail, battle_log, _ = _fight_battle(emu, move_index=1)
+        assert stop_reason == "fainted", (
+            f"Expected stop_reason='fainted', got: '{stop_reason}'"
+        )
+        assert "party wipe" in stop_detail.lower() or "blacked out" in stop_detail.lower(), (
+            f"Expected blackout detail, got: '{stop_detail}'"
         )

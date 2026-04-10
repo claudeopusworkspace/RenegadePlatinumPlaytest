@@ -305,6 +305,24 @@ class TestMoveLearn:
         assert "Icy Wind" in move_names, f"Icy Wind should be learned, got: {move_names}"
         assert "Peck" not in move_names, f"Peck should be forgotten, got: {move_names}"
 
+    def test_skip_move_learn_at_prompt2(self, emu: EmulatorClient):
+        """Skip learning when already at Prompt 2 ('give up on Fire Fang?').
+
+        Regression test: _skip_move_learn_flow assumed Prompt 1, so tapping
+        'Keep old moves!' at Prompt 2 hit 'Don't give up!' instead, looping
+        back to Prompt 1 infinitely. Fix detects Prompt 2 and taps 'Give up!'
+        directly.
+
+        Save state: Luxio Lv24 mid-battle, game at 'Should this Pokemon give
+        up on learning Fire Fang?' (Prompt 2 of Gen 4 two-step flow).
+        """
+        load_state(emu, "bug_move_learn_skip_fire_fang_stuck")
+        from renegade_mcp.turn import battle_turn
+        result = battle_turn(emu, forget_move=-1)
+        assert result["final_state"] == "BATTLE_ENDED", (
+            f"Expected BATTLE_ENDED after skipping Fire Fang, got: {result['final_state']}"
+        )
+
 
 class TestThrowBall:
     """Catching Pokemon."""
