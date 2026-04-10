@@ -2,6 +2,48 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Backlog Cleanup — sell_item, re-path, accuracy warning (2026-04-10f)
+
+### Goal
+Clear the remaining non-E4 QoL backlog: sell_item tool, interact_with flee re-path, battle_turn accuracy awareness, and Route 205 deep snow investigation.
+
+### What We Built
+
+**sell_item tool** (`shop.py`, `server.py`)
+- Full PokéMart selling: auto-navigates from city overworld, talks to Cashier F, selects SELL, navigates sell bag via pocket touch tabs + cursor scroll, quantity selector, confirms, exits.
+- Sell price = buy price / 2 (standard Pokémon formula).
+- Pre-validates: item in bag, sufficient quantity, sellable pocket (rejects Key Items, TMs/HMs, Mail), non-zero sell price.
+- Verifies money increase post-sale.
+- **Bug fix during live testing**: sell confirmation flow has one fewer A press than buy (quantity confirm goes straight to YES/NO — no intermediate text screen). Extra A cascaded into accidentally selling the next item. Also confirmed exit cursor returns to BUY (first option), same as buy_item.
+
+**interact_with flee re-path** (`navigation.py`)
+- Previously, `interact_with(flee_encounters=True)` would flee wild encounters during the walk but then return without completing the interaction.
+- Now re-navigates from current position to the destination tile using `navigate_to(flee_encounters=True)` after a successful flee, then falls through to the face + interact section.
+- Flee logs from both the initial walk and re-path are accumulated in the response.
+- Restructured the `stopped_early` block to cleanly handle three cases: encounter (return), flee+repath (fall through), non-encounter stop (return).
+
+**battle_turn accuracy-drop awareness** (`turn.py`)
+- When the active player Pokémon has Acc stages <= -2 and `final_state == "WAIT_FOR_ACTION"`, adds `accuracy_warning` to the response.
+- Shows current stage, hit rate percentage, and suggests switching or using a status move.
+- Hit rates: -2 = 60%, -3 = 50%, -4 = 43%, -5 = 38%, -6 = 33%.
+
+### Route 205 Deep Snow Investigation
+- Navigated to Route 205 north (map 349, snow area around coordinates 269-275, 530-535).
+- Tested 8+ `navigate_to` calls including 3-step paths, direction changes, and traversals through snow tiles.
+- **Cannot reproduce**: all paths completed successfully. The Route 216 `SLOW_TERRAIN_RETRIES` fix (3 extra 24-frame press cycles) covers Route 205 as well.
+- Saved `debug_route205_snow_area.mst` for future reference.
+- Closed QA FR-004.
+
+### Tests Added (198 total, +7 this session)
+- `TestAccuracyWarning` (4 tests): no warning at normal/Acc -1, warning with correct hit rate at Acc -2 (60%) and -3 (50%). Uses memory write to set BattleMon statBoosts directly.
+- `test_flee_encounters_completes_interaction`: verifies interact_with with `flee_encounters=True` completes dialogue on city overworld.
+- `test_sell_from_inside_mart`: sell from inside mart without auto-navigation.
+- `test_sell_insufficient_quantity`: quantity > owned returns error.
+- Plus 6 sell_item tests from the initial implementation (sell, money increase, bag decrease, multi-quantity, key item rejection, nonexistent item).
+
+### Backlog Status
+All non-E4 QoL items resolved. Remaining work is blocked on Elite 4 save file (10+ features: HM field moves, fishing, move relearner/deleter, E4 gauntlet, puzzles, tag battles, deferred tests).
+
 ## Dev Session: Bicycle & Key Item Usage (2026-04-10e)
 
 ### Goal
