@@ -220,6 +220,20 @@ class TestInteractWith:
         result = interact_with(emu, object_index=obj["index"], flee_encounters=True)
         assert "error" not in result, f"Interaction should succeed: {result.get('error')}"
 
+    @retry_on_rng("test_eterna_city_overworld")
+    def test_flee_encounters_completes_interaction(self, emu: EmulatorClient):
+        """flee_encounters=True still completes the interaction when no encounter."""
+        from renegade_mcp.navigation import interact_with
+        # Grunt M at object_index=5 — walk + interact on city overworld (no encounters)
+        result = interact_with(emu, object_index=5, flee_encounters=True)
+        assert "error" not in result, f"Should not error: {result.get('error')}"
+        assert "dialogue" in result, (
+            f"Should complete interaction with dialogue, got keys: {list(result.keys())}"
+        )
+        assert result["dialogue"]["status"] == "completed", (
+            f"Dialogue should be completed, got: {result['dialogue'].get('status')}"
+        )
+
     def test_cutscene_trigger(self, emu: EmulatorClient):
         """Pokeball interaction triggers Cynthia cutscene dialogue."""
         load_state(emu, "debug_pokeball_cutscene_interrupt")

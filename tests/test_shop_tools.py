@@ -159,3 +159,28 @@ class TestSellItem:
         result = sell_item(emu, "Master Ball")
         assert result["success"] is False
         assert "not found" in result["error"].lower()
+
+    @retry_on_rng("debug_sell_item_mart")
+    def test_sell_from_inside_mart(self, emu: EmulatorClient):
+        """Sell from inside the mart — no auto-navigation needed."""
+        from renegade_mcp.shop import sell_item
+        from renegade_mcp.trainer import read_trainer_status
+
+        money_before = read_trainer_status(emu)["money"]
+        result = sell_item(emu, "Parlyz Heal", quantity=1)
+        assert "error" not in result, f"sell_item error: {result.get('error')}"
+        assert result["success"] is True
+        assert "navigated_to_mart" not in result, (
+            "Should not navigate when already in mart"
+        )
+        money_after = read_trainer_status(emu)["money"]
+        assert money_after > money_before
+
+    @retry_on_rng("test_eterna_city_overworld")
+    def test_sell_insufficient_quantity(self, emu: EmulatorClient):
+        """Selling more than we have returns an error."""
+        from renegade_mcp.shop import sell_item
+
+        result = sell_item(emu, "Parlyz Heal", quantity=999)
+        assert result["success"] is False
+        assert "not enough" in result["error"].lower()

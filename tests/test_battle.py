@@ -131,6 +131,71 @@ class TestBattleTurn:
         ), f"Second action: unexpected state {result2['final_state']}"
 
 
+class TestAccuracyWarning:
+    """Accuracy-drop awareness in battle_turn responses."""
+
+    @retry_on_rng("test_wild_battle_action")
+    def test_no_warning_at_normal_accuracy(self, emu: EmulatorClient):
+        """No accuracy_warning when Acc stages are neutral."""
+        from renegade_mcp.turn import battle_turn
+        result = battle_turn(emu, move_index=0)
+        assert "accuracy_warning" not in result, (
+            f"Should not warn at normal accuracy, got: {result.get('accuracy_warning')}"
+        )
+
+    @retry_on_rng("test_wild_battle_action")
+    def test_warning_at_minus_2(self, emu: EmulatorClient):
+        """accuracy_warning appears when Acc stage is -2."""
+        from renegade_mcp.turn import battle_turn
+
+        # Write Acc stage to -2 (raw byte 4 = 6 - 2) on player slot 0
+        # BattleMon[0].statBoosts: OFF_STAGES=0x18, skip HP at +0,
+        # then Atk+1, Def+2, Spe+3, SpA+4, SpD+5, Acc+6
+        acc_addr = 0x022C5774 + 0x18 + 6  # BATTLE_BASE + OFF_STAGES + 6
+        emu.write_memory(acc_addr, 4, size="byte")  # raw 4 = stage -2
+
+        result = battle_turn(emu, move_index=0)
+        # Warning should appear if final_state is WAIT_FOR_ACTION
+        if result["final_state"] == "WAIT_FOR_ACTION":
+            assert "accuracy_warning" in result, (
+                "Expected accuracy_warning at Acc -2"
+            )
+            assert "60%" in result["accuracy_warning"], (
+                f"Expected 60% hit rate at -2, got: {result['accuracy_warning']}"
+            )
+
+    @retry_on_rng("test_wild_battle_action")
+    def test_warning_at_minus_3(self, emu: EmulatorClient):
+        """accuracy_warning shows correct hit rate at -3."""
+        from renegade_mcp.turn import battle_turn
+
+        acc_addr = 0x022C5774 + 0x18 + 6
+        emu.write_memory(acc_addr, 3, size="byte")  # raw 3 = stage -3
+
+        result = battle_turn(emu, move_index=0)
+        if result["final_state"] == "WAIT_FOR_ACTION":
+            assert "accuracy_warning" in result, (
+                "Expected accuracy_warning at Acc -3"
+            )
+            assert "50%" in result["accuracy_warning"], (
+                f"Expected 50% hit rate at -3, got: {result['accuracy_warning']}"
+            )
+
+    @retry_on_rng("test_wild_battle_action")
+    def test_no_warning_at_minus_1(self, emu: EmulatorClient):
+        """No warning at Acc -1 (only triggers at -2 or worse)."""
+        from renegade_mcp.turn import battle_turn
+
+        acc_addr = 0x022C5774 + 0x18 + 6
+        emu.write_memory(acc_addr, 5, size="byte")  # raw 5 = stage -1
+
+        result = battle_turn(emu, move_index=0)
+        if result["final_state"] == "WAIT_FOR_ACTION":
+            assert "accuracy_warning" not in result, (
+                f"Should not warn at -1, got: {result.get('accuracy_warning')}"
+            )
+
+
 # ---------------------------------------------------------------------------
 # throw_ball
 # ---------------------------------------------------------------------------
