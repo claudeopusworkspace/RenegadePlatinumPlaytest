@@ -310,6 +310,7 @@ def buy_item(
     """
     from renegade_mcp.map_state import get_map_state, read_player_state
     from renegade_mcp.navigation import interact_with, navigate_to
+    from renegade_mcp.phase_timer import phase
     from renegade_mcp.trainer import read_trainer_status
 
     map_id, _x, _y, _facing = read_player_state(emu)
@@ -333,7 +334,8 @@ def buy_item(
                 loc = _city_name(city_code)
                 return _error(f"No PokéMart warp found in {loc}.")
 
-            nav_result = navigate_to(emu, mart_warp["x"], mart_warp["y"], flee_encounters=True)
+            with phase("shop_navigate_to_mart"):
+                nav_result = navigate_to(emu, mart_warp["x"], mart_warp["y"], flee_encounters=True)
 
             if nav_result.get("encounter"):
                 return {
@@ -422,7 +424,8 @@ def buy_item(
         return _error(f"No {cashier_name} found. NPCs: {', '.join(npc_names)}")
 
     # ── Walk to cashier and interact ──
-    nav_result = interact_with(emu, cashier["index"])
+    with phase("shop_interact_cashier"):
+        nav_result = interact_with(emu, cashier["index"])
 
     if nav_result.get("interrupted") or nav_result.get("encounter"):
         return _error(f"Navigation to {cashier_name} interrupted: {nav_result}")
@@ -431,36 +434,37 @@ def buy_item(
 
     # interact_with auto-advances "Welcome! What do you need?" dialogue.
     # We're now at the BUY/SELL/SEE YA menu with cursor on BUY.
-    _press(emu, ["a"], _MENU_WAIT)   # select BUY → item list loads
+    with phase("shop_purchase_flow"):
+        _press(emu, ["a"], _MENU_WAIT)   # select BUY → item list loads
 
-    # ── Navigate item list to target item ──
-    for _ in range(menu_index):
-        _press(emu, ["down"], wait=30)
+        # ── Navigate item list to target item ──
+        for _ in range(menu_index):
+            _press(emu, ["down"], wait=30)
 
-    # ── Select item ──
-    _press(emu, ["a"])               # "Certainly. How many would you like?"
-    _press(emu, ["a"])               # text finishes → quantity selector (x01)
+        # ── Select item ──
+        _press(emu, ["a"])               # "Certainly. How many would you like?"
+        _press(emu, ["a"])               # text finishes → quantity selector (x01)
 
-    # ── Set quantity (up arrow to increase from 1) ──
-    for _ in range(quantity - 1):
-        _press(emu, ["up"], wait=15)
+        # ── Set quantity (up arrow to increase from 1) ──
+        for _ in range(quantity - 1):
+            _press(emu, ["up"], wait=15)
 
-    # ── Confirm quantity → YES/NO → purchase ──
-    _press(emu, ["a"])               # confirm qty → "That will be ¥X..." text
-    _press(emu, ["a"])               # text finishes → YES/NO prompt
-    _press(emu, ["a"])               # select YES → "Here you are! Thank you!"
+        # ── Confirm quantity → YES/NO → purchase ──
+        _press(emu, ["a"])               # confirm qty → "That will be ¥X..." text
+        _press(emu, ["a"])               # text finishes → YES/NO prompt
+        _press(emu, ["a"])               # select YES → "Here you are! Thank you!"
 
-    # ── Post-purchase dialogue ──
-    _press(emu, ["a"])               # advance "Here you are!"
-    _press(emu, ["a"])               # "You put away the [item] in the [pocket]."
-    _press(emu, ["a"], _MENU_WAIT)   # dismiss → back to item list
+        # ── Post-purchase dialogue ──
+        _press(emu, ["a"])               # advance "Here you are!"
+        _press(emu, ["a"])               # "You put away the [item] in the [pocket]."
+        _press(emu, ["a"], _MENU_WAIT)   # dismiss → back to item list
 
-    # ── Exit shop: B → See Ya ──
-    _press(emu, ["b"], _MENU_WAIT)   # back to Buy/Sell/See Ya
-    _press(emu, ["down"], wait=30)   # → SELL
-    _press(emu, ["down"], wait=30)   # → SEE YA!
-    _press(emu, ["a"])               # "Please come again!"
-    _press(emu, ["a"], _SETTLE_WAIT) # dismiss farewell, back to overworld
+        # ── Exit shop: B → See Ya ──
+        _press(emu, ["b"], _MENU_WAIT)   # back to Buy/Sell/See Ya
+        _press(emu, ["down"], wait=30)   # → SELL
+        _press(emu, ["down"], wait=30)   # → SEE YA!
+        _press(emu, ["a"])               # "Please come again!"
+        _press(emu, ["a"], _SETTLE_WAIT) # dismiss farewell, back to overworld
 
     # ── Verify purchase ──
     new_status = read_trainer_status(emu)

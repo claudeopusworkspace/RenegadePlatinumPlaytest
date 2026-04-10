@@ -716,18 +716,23 @@ def _learn_move_overworld(emu: EmulatorClient, forget_index: int) -> None:
 
 def _poll_after_action(emu: EmulatorClient, prompt_log: list[dict]) -> dict[str, Any]:
     """Re-init tracker and poll for the next battle state after an action."""
-    _tracker.init(emu)
-    result = _tracker.poll(emu, auto_press=True)
+    from renegade_mcp.phase_timer import phase
+
+    with phase("bt_tracker_init"):
+        _tracker.init(emu)
+    with phase("bt_tracker_poll"):
+        result = _tracker.poll(emu, auto_press=True)
     # Classify on poll-only log first (avoids stale prompt text contamination)
     result["final_state"] = _classify_final_state(emu, result)
 
     # If NO_TEXT but still in battle, the action prompt may already be on screen
     # (captured in baseline). Fall back to a fresh prompt scan.
     if result["final_state"] == "NO_TEXT" and not _is_battle_over(emu):
-        prompt = _wait_for_action_prompt(emu)
-        if prompt["ready"]:
-            result["log"].extend(prompt["log"])
-            result["final_state"] = prompt["prompt_type"]
+        with phase("bt_no_text_recovery"):
+            prompt = _wait_for_action_prompt(emu)
+            if prompt["ready"]:
+                result["log"].extend(prompt["log"])
+                result["final_state"] = prompt["prompt_type"]
 
     # Level-up recovery: another Pokemon (e.g. Exp Share holder) may level up
     # after a move-learn, switch, or faint flow. The "grew to" text may have
@@ -736,7 +741,8 @@ def _poll_after_action(emu: EmulatorClient, prompt_log: list[dict]) -> dict[str,
     # battle isn't over, try recovery regardless — pressing B through a stat
     # screen is safe even if it's not a level-up.
     if result["final_state"] == "TIMEOUT" and not _is_battle_over(emu):
-        result = _recover_from_level_up(emu, result)
+        with phase("bt_level_up_recovery"):
+            result = _recover_from_level_up(emu, result)
 
     # Then prepend prompt log for complete display
     result["log"] = prompt_log + result.get("log", [])
@@ -783,12 +789,15 @@ def battle_turn(
 
     Returns dict with: log, final_state, battle_state (trimmed summary).
     """
+    from renegade_mcp.phase_timer import phase
+
     has_move = move_index >= 0
     has_switch = switch_to >= 0
     has_forget = forget_move >= -1  # -1 = skip, 0-3 = forget slot
 
     # 1. Detect current game state
-    prompt = _wait_for_action_prompt(emu)
+    with phase("bt_wait_action_prompt"):
+        prompt = _wait_for_action_prompt(emu)
 
     if not prompt["ready"]:
         result: dict[str, Any] = {
@@ -847,23 +856,24 @@ def battle_turn(
             return {"error": f"forget_move must be -1 (skip) or 0-3, got {forget_move}"}
 
     # 3. Execute the appropriate flow
-    if pt == "ACTION" and run:
-        result = _execute_run(emu, prompt)
-    elif pt == "ACTION":
-        result = _execute_action(emu, prompt, move_index, switch_to, has_move, target)
-    elif pt == "FAINT_SWITCH":
-        result = _execute_faint_switch(emu, prompt, switch_to, has_switch)
-    elif pt == "FAINT_FORCED":
-        result = _execute_forced_switch(emu, prompt, switch_to)
-    elif pt == "SWITCH_PROMPT" and has_move:
-        # Decline the switch, then chain into the move action on the next prompt
-        result = _execute_switch_prompt_then_move(emu, prompt, move_index, target)
-    elif pt == "SWITCH_PROMPT":
-        result = _execute_switch_prompt(emu, prompt, switch_to, has_switch)
-    elif pt == "MOVE_LEARN":
-        result = _execute_move_learn(emu, prompt, forget_move, has_forget)
-    else:
-        result = {"log": prompt["log"], "final_state": "NO_ACTION_PROMPT"}
+    with phase("bt_execute_flow"):
+        if pt == "ACTION" and run:
+            result = _execute_run(emu, prompt)
+        elif pt == "ACTION":
+            result = _execute_action(emu, prompt, move_index, switch_to, has_move, target)
+        elif pt == "FAINT_SWITCH":
+            result = _execute_faint_switch(emu, prompt, switch_to, has_switch)
+        elif pt == "FAINT_FORCED":
+            result = _execute_forced_switch(emu, prompt, switch_to)
+        elif pt == "SWITCH_PROMPT" and has_move:
+            # Decline the switch, then chain into the move action on the next prompt
+            result = _execute_switch_prompt_then_move(emu, prompt, move_index, target)
+        elif pt == "SWITCH_PROMPT":
+            result = _execute_switch_prompt(emu, prompt, switch_to, has_switch)
+        elif pt == "MOVE_LEARN":
+            result = _execute_move_learn(emu, prompt, forget_move, has_forget)
+        else:
+            result = {"log": prompt["log"], "final_state": "NO_ACTION_PROMPT"}
 
     # 4. Enrich MOVE_LEARN results with move info
     if result["final_state"] == "MOVE_LEARN":
@@ -880,7 +890,8 @@ def battle_turn(
     #    so the caller gets back control with the player in the Pokemon Center.
     if result["final_state"] in ("BATTLE_ENDED", "TIMEOUT"):
         if _log_has(result.get("log", []), "is out of"):
-            blackout_dialogue = _handle_blackout(emu)
+            with phase("bt_blackout_recovery"):
+                blackout_dialogue = _handle_blackout(emu)
             result["blackout"] = True
             if blackout_dialogue:
                 result["post_battle_dialogue"] = blackout_dialogue
@@ -890,42 +901,44 @@ def battle_turn(
     if result["final_state"] in ("BATTLE_ENDED", "TIMEOUT") and not result.get("blackout"):
         from renegade_mcp.battle import read_battle as _rb
         if not _rb(emu):
-            # We're in the overworld — check for pending dialogue
-            emu.advance_frames(180)  # wait for overworld to settle
-            from renegade_mcp.dialogue import advance_dialogue
-            adv = advance_dialogue(emu)
-            if adv["status"] != "no_dialogue" and adv.get("conversation"):
-                result["post_battle_dialogue"] = adv["conversation"]
-                if result["final_state"] == "TIMEOUT":
-                    result["final_state"] = "BATTLE_ENDED"
+            with phase("bt_post_battle_dialogue"):
+                # We're in the overworld — check for pending dialogue
+                emu.advance_frames(180)  # wait for overworld to settle
+                from renegade_mcp.dialogue import advance_dialogue
+                adv = advance_dialogue(emu)
+                if adv["status"] != "no_dialogue" and adv.get("conversation"):
+                    result["post_battle_dialogue"] = adv["conversation"]
+                    if result["final_state"] == "TIMEOUT":
+                        result["final_state"] = "BATTLE_ENDED"
 
-            # 5c. Dismiss lingering event animation text (gym puzzle events).
-            #     These scripts show text without setting is_msg_box_open, so
-            #     advance_dialogue can't detect them. Press B through any remaining
-            #     event text until the script context stops running.
-            from renegade_mcp.dialogue import (
-                _find_script_manager, _read_script_state,
-                _read_context_state, CTX_RUNNING,
-            )
-            for _ in range(20):  # safety cap
-                emu.advance_frames(60)
-                mgr = _find_script_manager(emu)
-                if mgr is None:
-                    break
-                ss = _read_script_state(emu, mgr)
-                ctx_ptr = (ss["ctx1_ptr"]
-                           if ss["sub_ctx_active"] and ss["ctx1_ptr"]
-                           else ss["ctx0_ptr"])
-                if not ctx_ptr:
-                    break
-                ctx = _read_context_state(emu, ctx_ptr)
-                if ctx["state"] != CTX_RUNNING:
-                    break
-                emu.press_buttons(["b"], frames=8)
-                emu.advance_frames(30)
+                # 5c. Dismiss lingering event animation text (gym puzzle events).
+                #     These scripts show text without setting is_msg_box_open, so
+                #     advance_dialogue can't detect them. Press B through any remaining
+                #     event text until the script context stops running.
+                from renegade_mcp.dialogue import (
+                    _find_script_manager, _read_script_state,
+                    _read_context_state, CTX_RUNNING,
+                )
+                for _ in range(20):  # safety cap
+                    emu.advance_frames(60)
+                    mgr = _find_script_manager(emu)
+                    if mgr is None:
+                        break
+                    ss = _read_script_state(emu, mgr)
+                    ctx_ptr = (ss["ctx1_ptr"]
+                               if ss["sub_ctx_active"] and ss["ctx1_ptr"]
+                               else ss["ctx0_ptr"])
+                    if not ctx_ptr:
+                        break
+                    ctx = _read_context_state(emu, ctx_ptr)
+                    if ctx["state"] != CTX_RUNNING:
+                        break
+                    emu.press_buttons(["b"], frames=8)
+                    emu.advance_frames(30)
 
     # 6. Append trimmed battle state
-    result["battle_state"] = battle_summary(read_battle(emu))
+    with phase("bt_read_battle_state"):
+        result["battle_state"] = battle_summary(read_battle(emu))
 
     # 7. Accuracy-drop awareness: warn when active player Pokemon has Acc <= -2
     _ACC_STAGE_HIT_RATE = {0: 100, -1: 75, -2: 60, -3: 50, -4: 43, -5: 38, -6: 33}
@@ -969,19 +982,24 @@ def _execute_action(
     has_move: bool, target: int = -1,
 ) -> dict[str, Any]:
     """Normal turn: FIGHT + move (+ target in doubles) or POKEMON + switch."""
-    _tracker.init(emu)
-    emu.advance_frames(ACTION_SETTLE)
+    from renegade_mcp.phase_timer import phase
+
+    with phase("bt_action_init_settle"):
+        _tracker.init(emu)
+        emu.advance_frames(ACTION_SETTLE)
 
     is_double = _is_double_battle(emu)
 
-    if has_move:
-        _fight_flow(emu, move_index)
-        if is_double:
-            _target_flow_with_retry(emu, target)
-    else:
-        _switch_flow(emu, switch_to)
+    with phase("bt_action_input"):
+        if has_move:
+            _fight_flow(emu, move_index)
+            if is_double:
+                _target_flow_with_retry(emu, target)
+        else:
+            _switch_flow(emu, switch_to)
 
-    result = _tracker.poll(emu, auto_press=True)
+    with phase("bt_action_poll"):
+        result = _tracker.poll(emu, auto_press=True)
     # Classify on poll-only log (avoids stale prompt text contamination)
     result["final_state"] = _classify_final_state(emu, result)
     result["log"] = prompt["log"] + result.get("log", [])

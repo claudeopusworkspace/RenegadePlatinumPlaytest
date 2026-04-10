@@ -1393,7 +1393,10 @@ def seek_encounter(emu: EmulatorClient, cave: bool = False) -> dict[str, Any]:
 
     Returns dict with result type, steps taken, and encounter data if found.
     """
-    state = get_map_state(emu)
+    from renegade_mcp.phase_timer import phase
+
+    with phase("seek_setup"):
+        state = get_map_state(emu)
     if state is None:
         return {"error": "Could not read map state."}
 
@@ -2136,6 +2139,8 @@ def _navigate_to_impl(
     hold_frames: int | None = None,
 ) -> dict[str, Any]:
     """Core navigate_to logic. See navigate_to() for the public API."""
+    from renegade_mcp.phase_timer import phase
+
     if hold_frames is None:
         hold_frames = _get_move_hold(emu)
 
@@ -2143,7 +2148,8 @@ def _navigate_to_impl(
     if is_on_cycling_road(emu, target_x, target_y):
         return _navigate_cycling_road(emu, target_x, target_y)
 
-    state = get_map_state(emu)
+    with phase("nav_read_map_state"):
+        state = get_map_state(emu)
     if state is None:
         return {"error": "Could not read map state (chunk resolution failed)."}
 
@@ -2256,11 +2262,12 @@ def _navigate_to_impl(
 
         # ── 3D pathfinding (replaces dual BFS for elevated maps) ──
         combined_npc_set = npc_set | set(obstacle_map.keys())
-        path_3d = _bfs_pathfind_3d(
-            terrain_info, combined_npc_set, elevation,
-            bfs_sx, bfs_sy, bfs_tx, bfs_ty,
-            player_level, width=bfs_w, height=bfs_h,
-        )
+        with phase("nav_bfs_3d"):
+            path_3d = _bfs_pathfind_3d(
+                terrain_info, combined_npc_set, elevation,
+                bfs_sx, bfs_sy, bfs_tx, bfs_ty,
+                player_level, width=bfs_w, height=bfs_h,
+            )
 
         if path_3d is None:
             # 3D BFS failed — fall back to 2D BFS.  This handles:
@@ -2277,18 +2284,20 @@ def _navigate_to_impl(
         path = path_3d
     else:
         # ── Dual BFS: clean path vs obstacle path ──
-        clean_path = _bfs_pathfind(
-            terrain_info, npc_set | set(obstacle_map.keys()),
-            bfs_sx, bfs_sy, bfs_tx, bfs_ty, width=bfs_w, height=bfs_h,
-        )
+        with phase("nav_bfs_2d"):
+            clean_path = _bfs_pathfind(
+                terrain_info, npc_set | set(obstacle_map.keys()),
+                bfs_sx, bfs_sy, bfs_tx, bfs_ty, width=bfs_w, height=bfs_h,
+            )
 
         # Only run obstacle BFS if there are obstacles on the map or terrain obstacles
         field_moves = _get_field_move_availability(emu)
-        obs_path, obs_crossed = _bfs_pathfind_obstacles(
-            terrain_info, npc_set, obstacle_map,
-            bfs_sx, bfs_sy, bfs_tx, bfs_ty,
-            field_moves, width=bfs_w, height=bfs_h,
-        )
+        with phase("nav_bfs_obstacle"):
+            obs_path, obs_crossed = _bfs_pathfind_obstacles(
+                terrain_info, npc_set, obstacle_map,
+                bfs_sx, bfs_sy, bfs_tx, bfs_ty,
+                field_moves, width=bfs_w, height=bfs_h,
+            )
         obs_crossed = _dedupe_obstacles(obs_crossed)
 
         # ── Decide which path to use ──
@@ -2472,9 +2481,10 @@ def _navigate_to_impl(
             "final": start_pos,
         }
 
-    stopped_early, steps_taken, repaths_used, nav_info = _execute_path(
-        emu, path, repath_ctx=repath_ctx, hold_frames=hold_frames,
-    )
+    with phase("nav_execute_path"):
+        stopped_early, steps_taken, repaths_used, nav_info = _execute_path(
+            emu, path, repath_ctx=repath_ctx, hold_frames=hold_frames,
+        )
 
     path_str = _summarize_path(path)
 
@@ -2591,7 +2601,8 @@ def _navigate_to_impl(
                 break  # Only try one adjacent door
 
     # Standard post-nav check
-    encounter = _post_nav_check(emu)
+    with phase("nav_post_nav_check"):
+        encounter = _post_nav_check(emu)
     final_map, final_x, final_y = _read_position(emu)
 
     result = {

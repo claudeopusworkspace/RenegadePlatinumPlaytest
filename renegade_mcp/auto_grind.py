@@ -93,6 +93,7 @@ def auto_grind(
     from renegade_mcp.navigation import seek_encounter as _seek_encounter
     from renegade_mcp.party import read_party as _read_party
     from renegade_mcp.turn import battle_turn as _battle_turn
+    from renegade_mcp.phase_timer import phase
 
     fighting = move_index >= 0
     battles: list[dict[str, Any]] = []
@@ -201,7 +202,8 @@ def auto_grind(
             # Seek a wild encounter
             mode = "cave" if cave else "grass"
             emu.create_checkpoint(action=f"auto_grind:seek_encounter({mode})")
-            enc = _seek_encounter(emu, cave=cave)
+            with phase("ag_seek_encounter"):
+                enc = _seek_encounter(emu, cave=cave)
             enc_result = enc.get("result", "")
 
             if enc_result != "encounter":
@@ -284,12 +286,13 @@ def auto_grind(
                 continue
 
         # We have a battle — fight or run
-        if fighting:
-            stop_reason, stop_detail, battle_log, detected_level = _fight_battle(
-                emu, effective_move, backup_move=effective_backup,
-            )
-        else:
-            stop_reason, stop_detail, battle_log, detected_level = _run_battle(emu)
+        with phase("ag_battle"):
+            if fighting:
+                stop_reason, stop_detail, battle_log, detected_level = _fight_battle(
+                    emu, effective_move, backup_move=effective_backup,
+                )
+            else:
+                stop_reason, stop_detail, battle_log, detected_level = _run_battle(emu)
         battles.append({"turns": battle_log})
 
         # ── Auto-heal on faint or PP depletion (mid-battle) ──
@@ -299,15 +302,16 @@ def auto_grind(
                 stop_detail = f"Reached max heal trips ({max_heal_trips})."
                 break
             is_fainted = stop_reason == "fainted"
-            if auto_heal:
-                heal_result = _auto_heal_and_return(
-                    emu, in_battle=True, fainted=is_fainted,
-                )
-            else:
-                heal_result = _heal_and_return(
-                    emu, heal_x, heal_y, grind_x, grind_y,
-                    in_battle=True, fainted=is_fainted,
-                )
+            with phase("ag_heal_and_return"):
+                if auto_heal:
+                    heal_result = _auto_heal_and_return(
+                        emu, in_battle=True, fainted=is_fainted,
+                    )
+                else:
+                    heal_result = _heal_and_return(
+                        emu, heal_x, heal_y, grind_x, grind_y,
+                        in_battle=True, fainted=is_fainted,
+                    )
             heal_trips += 1
             if heal_result.get("success"):
                 stop_reason = ""

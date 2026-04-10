@@ -195,13 +195,16 @@ def heal_party(emu: EmulatorClient) -> dict[str, Any]:
     Encounter interruptions during overworld navigation are returned with
     an ``encounter`` key so the caller can handle them.
     """
+    from renegade_mcp.phase_timer import phase
+
     map_id, _x, _y, _facing = read_player_state(emu)
     entry = map_table().get(map_id, {})
     code = entry.get("code", "")
 
     # ── Case 1: already in a Pokemon Center ──
     if "PC" in code:
-        return _heal_at_nurse(emu)
+        with phase("heal_at_nurse"):
+            return _heal_at_nurse(emu)
 
     # ── Case 2: on a city/town overworld ──
     city_code = _city_code_from_map(map_id)
@@ -212,7 +215,8 @@ def heal_party(emu: EmulatorClient) -> dict[str, Any]:
                 f"No Pokemon Center warp found in {entry.get('name', city_code)}."
             )
 
-        nav_result = navigate_to(emu, pc_warp["x"], pc_warp["y"], flee_encounters=True)
+        with phase("heal_navigate_to_pc"):
+            nav_result = navigate_to(emu, pc_warp["x"], pc_warp["y"], flee_encounters=True)
 
         # Wild encounter or NPC event during navigation
         if nav_result.get("encounter"):
@@ -234,7 +238,8 @@ def heal_party(emu: EmulatorClient) -> dict[str, Any]:
             )
 
         # Should now be inside the Pokemon Center
-        result = _heal_at_nurse(emu)
+        with phase("heal_at_nurse"):
+            result = _heal_at_nurse(emu)
         if result.get("success"):
             result["navigated_to_pc"] = True
         return result

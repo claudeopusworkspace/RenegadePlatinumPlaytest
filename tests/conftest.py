@@ -23,6 +23,8 @@ from typing import Any
 
 import pytest
 
+from renegade_mcp.phase_timer import PhaseTimer, set_timer
+
 # Ensure both projects are importable
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # tests/ dir for helpers
 sys.path.insert(0, "/workspace/MelonMCP")
@@ -83,3 +85,107 @@ def emu() -> Any:
                 return client
 
     pytest.skip("No emulator bridge socket found — is an emulator running?")
+
+
+# ── Phase profiling ──
+# Activated by --benchmark flag or RENEGADE_BENCHMARK=1 env var.
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--benchmark", action="store_true", default=False,
+        help="Enable phase-level profiling and print timing breakdown per test.",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _phase_timer(request, emu):
+    """Auto-activate PhaseTimer when benchmarking is enabled."""
+    benchmark = (
+        request.config.getoption("--benchmark", default=False)
+        or os.environ.get("RENEGADE_BENCHMARK") == "1"
+    )
+    if not benchmark:
+        yield
+        return
+
+    import time as _time
+    timer = PhaseTimer(emu=emu)
+    set_timer(timer)
+    t_start = _time.perf_counter()
+    yield timer
+    wall_s = _time.perf_counter() - t_start
+    set_timer(None)
+
+    # Collect results directly into module-level list (fixture teardown
+    # runs after pytest_runtest_makereport for "call", so stashing on
+    # request.node doesn't work — the report hook fires too early).
+    summary = timer.summary()
+    if summary:
+        _benchmark_results.append({
+            "test": request.node.nodeid,
+            "wall_s": round(wall_s, 2),
+            "phases": summary,
+            "total_phase_ms": round(timer.total_ms(), 1),
+        })
+
+
+# ── Benchmark report collector ──
+
+_benchmark_results: list[dict] = []
+
+
+def pytest_terminal_summary(terminalreporter, exitstatus, config):
+    """Print benchmark results at the end of the test run."""
+    if not _benchmark_results:
+        return
+
+    terminalreporter.write_sep("=", "PHASE BENCHMARK RESULTS")
+
+    for entry in sorted(_benchmark_results, key=lambda e: -e["wall_s"]):
+        test_name = entry["test"].split("::")[-1]
+        terminalreporter.write_line(
+            f"\n{'─' * 70}"
+        )
+        terminalreporter.write_line(
+            f"  {entry['test']}  [{entry['wall_s']}s]"
+        )
+        terminalreporter.write_line(
+            f"{'─' * 70}"
+        )
+
+        phases = entry["phases"]
+        if not phases:
+            terminalreporter.write_line("    (no phases recorded)")
+            continue
+
+        # Column header
+        terminalreporter.write_line(
+            f"    {'Phase':<30} {'Wall ms':>10} {'Frames':>8} {'Count':>6} {'%':>6}"
+        )
+        terminalreporter.write_line(f"    {'─' * 62}")
+
+        for name, data in phases.items():
+            terminalreporter.write_line(
+                f"    {name:<30} {data['wall_ms']:>10.1f} {data['frames']:>8} {data['count']:>6} {data['pct']:>5.1f}%"
+            )
+
+        accounted = entry["total_phase_ms"]
+        total_wall = entry["wall_s"] * 1000
+        unaccounted = total_wall - accounted
+        if total_wall > 0:
+            terminalreporter.write_line(f"    {'─' * 62}")
+            terminalreporter.write_line(
+                f"    {'(instrumented total)':<30} {accounted:>10.1f}"
+            )
+            if unaccounted > 50:
+                terminalreporter.write_line(
+                    f"    {'(uninstrumented overhead)':<30} {unaccounted:>10.1f}"
+                )
+
+    # Write JSON results to file for programmatic analysis
+    results_path = Path(__file__).resolve().parent.parent / "logs" / "benchmark_results.json"
+    results_path.parent.mkdir(parents=True, exist_ok=True)
+    import json
+    with open(results_path, "w") as f:
+        json.dump(_benchmark_results, f, indent=2)
+    terminalreporter.write_line(f"\nResults saved to {results_path}")
