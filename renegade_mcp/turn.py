@@ -927,7 +927,21 @@ def battle_turn(
     # 6. Append trimmed battle state
     result["battle_state"] = battle_summary(read_battle(emu))
 
-    # 7. Fix up formatted field — the tracker's raw formatted string uses
+    # 7. Accuracy-drop awareness: warn when active player Pokemon has Acc <= -2
+    _ACC_STAGE_HIT_RATE = {0: 100, -1: 75, -2: 60, -3: 50, -4: 43, -5: 38, -6: 33}
+    if result.get("final_state") == "WAIT_FOR_ACTION":
+        for b in result.get("battle_state", []):
+            if b.get("side") == "player":
+                acc_stage = b.get("stages", {}).get("Acc", 0)
+                if acc_stage <= -2:
+                    hit_pct = _ACC_STAGE_HIT_RATE.get(acc_stage, 33)
+                    result["accuracy_warning"] = (
+                        f"Accuracy at {acc_stage:+d} ({hit_pct}% hit rate). "
+                        f"Consider switching or using a status move."
+                    )
+                break  # Only check the first player battler
+
+    # 8. Fix up formatted field — the tracker's raw formatted string uses
     # the poll state (often "TIMEOUT"), but final_state has been reclassified.
     if "formatted" in result:
         from renegade_mcp.battle_tracker import _format_log
