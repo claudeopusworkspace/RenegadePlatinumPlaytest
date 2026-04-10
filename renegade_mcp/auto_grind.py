@@ -46,6 +46,7 @@ def auto_grind(
     max_heal_trips: int = 10,
     flee_ineffective: bool = False,
     target_slot: int = 0,
+    auto_heal: bool = False,
 ) -> dict[str, Any]:
     """Grind wild encounters automatically.
 
@@ -78,6 +79,11 @@ def auto_grind(
                           moves are ineffective (mult <= 0.5). Default False.
         target_slot: Party slot (0-5) to check for target_level. Default 0.
                      Use to target an Exp. Share Pokemon in a non-lead slot.
+        auto_heal: If True, auto-detect the nearest Pokemon Center and heal
+                   there on faint/PP depletion. No coordinates needed — navigates
+                   across the overworld matrix and back. For interior maps
+                   (cave sub-floors), exits via warps to reach the overworld first.
+                   Overrides heal_x/heal_y/grind_x/grind_y if both are set.
 
     Returns:
         Dict with stop_reason, battles fought, encounters list (species + checkpoint),
@@ -93,7 +99,7 @@ def auto_grind(
     encounters: list[dict[str, str]] = []
     stop_reason = ""
     stop_detail = ""
-    heal_enabled = heal_x >= 0 and heal_y >= 0 and grind_x >= 0 and grind_y >= 0
+    heal_enabled = auto_heal or (heal_x >= 0 and heal_y >= 0 and grind_x >= 0 and grind_y >= 0)
     heal_trips = 0
     fled_ineffective: list[str] = []  # Species fled due to ineffective moves
 
@@ -293,10 +299,15 @@ def auto_grind(
                 stop_detail = f"Reached max heal trips ({max_heal_trips})."
                 break
             is_fainted = stop_reason == "fainted"
-            heal_result = _heal_and_return(
-                emu, heal_x, heal_y, grind_x, grind_y,
-                in_battle=True, fainted=is_fainted,
-            )
+            if auto_heal:
+                heal_result = _auto_heal_and_return(
+                    emu, in_battle=True, fainted=is_fainted,
+                )
+            else:
+                heal_result = _heal_and_return(
+                    emu, heal_x, heal_y, grind_x, grind_y,
+                    in_battle=True, fainted=is_fainted,
+                )
             heal_trips += 1
             if heal_result.get("success"):
                 stop_reason = ""
@@ -339,10 +350,15 @@ def auto_grind(
                     stop_reason = "max_heal_trips"
                     stop_detail = f"Reached max heal trips ({max_heal_trips})."
                     break
-                heal_result = _heal_and_return(
-                    emu, heal_x, heal_y, grind_x, grind_y,
-                    in_battle=False, fainted=False,
-                )
+                if auto_heal:
+                    heal_result = _auto_heal_and_return(
+                        emu, in_battle=False, fainted=False,
+                    )
+                else:
+                    heal_result = _heal_and_return(
+                        emu, heal_x, heal_y, grind_x, grind_y,
+                        in_battle=False, fainted=False,
+                    )
                 heal_trips += 1
                 if heal_result.get("success"):
                     continue
@@ -665,6 +681,374 @@ def _heal_and_return(
         return {"success": False, "error": f"Navigation back to grind area failed: {nav_result['error']}"}
     if nav_result.get("encounter") and nav_result["encounter"].get("dialogue"):
         return {"success": False, "error": "Trainer battle during navigation back to grind area.", "encounter": nav_result["encounter"]}
+
+    return {"success": True}
+
+
+# ── Cross-map auto-heal ──
+
+
+def _find_nearest_pc(emu: EmulatorClient, player_map: int, px: int, py: int) -> dict[str, Any] | None:
+    """Find the nearest Pokemon Center reachable from the player's position.
+
+    Searches all cities/towns with PCs on the same overworld matrix.
+    Returns {"city_map": int, "city_code": str, "pc_warp_x": int,
+             "pc_warp_y": int, "chunk_dist": int} or None.
+    """
+    candidates = _find_all_pcs(emu, player_map, px, py)
+    return candidates[0] if candidates else None
+
+
+def _find_all_pcs(
+    emu: EmulatorClient, player_map: int, px: int, py: int, max_results: int = 5,
+) -> list[dict[str, Any]]:
+    """Find all Pokemon Centers on the same matrix, sorted by chunk distance.
+
+    Returns up to max_results entries, each with:
+    {"city_map", "city_code", "city_name", "pc_warp_x", "pc_warp_y", "chunk_dist"}.
+    """
+    import re as _re
+    from renegade_mcp.data import map_table as _map_table
+    from renegade_mcp.map_state import find_matrix_for_map, read_warps_from_rom
+
+    table = _map_table()
+
+    # Find the player's matrix
+    player_matrix = find_matrix_for_map(player_map)
+    if player_matrix is None:
+        return []
+
+    p_matrix_id = player_matrix[0]
+    player_chunk_x = px // 32
+    player_chunk_y = py // 32
+
+    # Collect all city/town map IDs that have a Pokemon Center
+    city_codes = {}  # code -> map_id
+    for mid, entry in table.items():
+        code = entry.get("code", "")
+        if _re.match(r"^[CT]\d{2}$", code):
+            city_codes[code] = mid
+
+    # Filter to cities that actually have a PC (any map with code starting "{city}PC")
+    pc_codes = set()
+    for entry in table.values():
+        code = entry.get("code", "")
+        m = _re.match(r"^([CT]\d{2})PC", code)
+        if m:
+            pc_codes.add(m.group(1))
+
+    cities_with_pc = {code: mid for code, mid in city_codes.items() if code in pc_codes}
+
+    # For each city on the same matrix, compute distance
+    results = []
+    for code, city_mid in cities_with_pc.items():
+        city_matrix = find_matrix_for_map(city_mid)
+        if city_matrix is None:
+            continue
+        if city_matrix[0] != p_matrix_id:
+            continue
+
+        warps = read_warps_from_rom(emu, city_mid)
+        pc_warp = None
+        for w in warps:
+            dest_entry = table.get(w["dest_map"], {})
+            if dest_entry.get("code", "").startswith(f"{code}PC"):
+                pc_warp = w
+                break
+        if pc_warp is None:
+            continue
+
+        warp_chunk_x = pc_warp["x"] // 32
+        warp_chunk_y = pc_warp["y"] // 32
+        chunk_dist = abs(warp_chunk_x - player_chunk_x) + abs(warp_chunk_y - player_chunk_y)
+
+        results.append({
+            "city_map": city_mid,
+            "city_code": code,
+            "city_name": table.get(city_mid, {}).get("name", code),
+            "pc_warp_x": pc_warp["x"],
+            "pc_warp_y": pc_warp["y"],
+            "chunk_dist": chunk_dist,
+        })
+
+    results.sort(key=lambda r: r["chunk_dist"])
+    return results[:max_results]
+
+
+def _exit_to_overworld(emu: EmulatorClient) -> dict[str, Any] | None:
+    """If on an interior map (not on the overworld matrix), follow warps outward.
+
+    Returns {"success": True, "return_warps": [...]} with the warp chain
+    needed to return, or None if already on the overworld (no action needed).
+    Returns {"success": False, "error": "..."} on failure.
+    """
+    from renegade_mcp.map_state import find_matrix_for_map, read_player_state, read_warps_from_rom
+    from renegade_mcp.navigation import navigate_to as _navigate_to
+    from renegade_mcp.data import map_table as _map_table
+
+    map_id, px, py, _ = read_player_state(emu)
+    table = _map_table()
+
+    # Check if already on the overworld matrix (matrix 0)
+    matrix_info = find_matrix_for_map(map_id)
+    if matrix_info is not None and matrix_info[0] == 0:
+        return None  # Already on overworld
+
+    # Interior map — find a warp leading outward
+    return_warps = []
+    max_hops = 5
+
+    for _ in range(max_hops):
+        warps = read_warps_from_rom(emu, map_id)
+        if not warps:
+            return {"success": False, "error": f"No warps on map {map_id} — stuck in interior."}
+
+        # Prefer warps to overworld maps; otherwise take any warp leading outward
+        best_warp = None
+        for w in warps:
+            dest_matrix = find_matrix_for_map(w["dest_map"])
+            if dest_matrix is not None and dest_matrix[0] == 0:
+                best_warp = w
+                break  # Found a direct exit to overworld
+        if best_warp is None:
+            # Just take the first warp (heuristic: try to exit)
+            best_warp = warps[0]
+
+        # Record for return trip: on dest_map, warp at index dest_warp leads back
+        return_warps.append({
+            "source_map": map_id,
+            "dest_map": best_warp["dest_map"],
+            "dest_warp_idx": best_warp["dest_warp"],
+        })
+
+        # Navigate to the warp tile
+        nav = _navigate_to(emu, best_warp["x"], best_warp["y"])
+        if nav.get("error"):
+            return {"success": False, "error": f"Can't reach exit warp: {nav['error']}"}
+
+        # Wait for map transition
+        emu.advance_frames(120)
+
+        # Check new position
+        map_id, px, py, _ = read_player_state(emu)
+        matrix_info = find_matrix_for_map(map_id)
+        if matrix_info is not None and matrix_info[0] == 0:
+            return {"success": True, "return_warps": return_warps}
+
+    return {"success": False, "error": f"Could not reach overworld after {max_hops} warp hops."}
+
+
+def _return_to_interior(emu: EmulatorClient, return_warps: list[dict]) -> dict[str, Any]:
+    """Reverse a warp chain recorded by _exit_to_overworld to get back inside."""
+    from renegade_mcp.map_state import read_warps_from_rom, read_player_state
+    from renegade_mcp.navigation import navigate_to as _navigate_to
+
+    for step in reversed(return_warps):
+        # We need to go from step["dest_map"] back to step["source_map"]
+        # The warp at index step["dest_warp_idx"] on step["dest_map"] leads back
+        map_id, _, _, _ = read_player_state(emu)
+        warps = read_warps_from_rom(emu, map_id)
+
+        if step["dest_warp_idx"] >= len(warps):
+            return {"success": False, "error": f"Return warp index {step['dest_warp_idx']} out of range on map {map_id}."}
+
+        return_warp = warps[step["dest_warp_idx"]]
+        nav = _navigate_to(emu, return_warp["x"], return_warp["y"], flee_encounters=True)
+        if nav.get("error"):
+            return {"success": False, "error": f"Can't reach return warp: {nav['error']}"}
+
+        emu.advance_frames(120)
+
+    return {"success": True}
+
+
+def _navigate_multi_hop(
+    emu: EmulatorClient, target_x: int, target_y: int, max_hops: int = 20,
+) -> dict[str, Any]:
+    """Navigate to a distant target using multiple navigate_to calls.
+
+    Breaks long paths into ~3-chunk segments to stay within the 5x5
+    chunk terrain loading cap. Returns the final navigate_to result.
+    """
+    from renegade_mcp.map_state import read_player_state
+    from renegade_mcp.navigation import navigate_to as _navigate_to
+
+    for hop in range(max_hops):
+        map_id, px, py, _ = read_player_state(emu)
+
+        # Close enough — try a direct navigate_to
+        chunk_dx = abs(target_x // 32 - px // 32)
+        chunk_dy = abs(target_y // 32 - py // 32)
+
+        if chunk_dx <= 3 and chunk_dy <= 3:
+            # Within range for a single navigate_to
+            return _navigate_to(emu, target_x, target_y, flee_encounters=True)
+
+        # Too far — compute an intermediate waypoint ~3 chunks toward target
+        dx = target_x - px
+        dy = target_y - py
+        dist = max(abs(dx), abs(dy), 1)
+        step_tiles = 3 * 32  # ~3 chunks
+
+        # Scale the direction vector to ~3 chunks
+        if dist <= step_tiles:
+            wp_x, wp_y = target_x, target_y
+        else:
+            wp_x = px + int(dx * step_tiles / dist)
+            wp_y = py + int(dy * step_tiles / dist)
+
+        nav = _navigate_to(emu, wp_x, wp_y, flee_encounters=True)
+
+        # Check for blocking errors
+        if nav.get("error"):
+            # Path might be blocked at this waypoint — try adjusting
+            # If we didn't move at all, this is a real block
+            new_map, new_x, new_y, _ = read_player_state(emu)
+            if new_x == px and new_y == py:
+                return nav  # Truly stuck
+            # We moved some — continue from new position
+
+        if nav.get("encounter") and nav["encounter"].get("dialogue"):
+            return nav  # Trainer battle — can't auto-handle
+
+    return {"error": f"Could not reach ({target_x},{target_y}) after {max_hops} hops."}
+
+
+def _auto_heal_and_return(
+    emu: EmulatorClient,
+    in_battle: bool = False,
+    fainted: bool = False,
+) -> dict[str, Any]:
+    """Exit battle → navigate to nearest PC → heal → return to grind spot.
+
+    Works across map boundaries. For overworld maps (routes, cities), navigates
+    directly. For interior maps (cave sub-floors), exits via warps first.
+
+    Returns {"success": True} or {"success": False, "error": "..."}.
+    """
+    from renegade_mcp.turn import battle_turn as _battle_turn
+    from renegade_mcp.heal_party import heal_party as _heal_party
+    from renegade_mcp.navigation import navigate_to as _navigate_to
+    from renegade_mcp.map_state import read_player_state, read_warps_from_rom
+
+    # ── Step 1: Exit battle if still in one ──
+    if in_battle:
+        if fainted:
+            result = _battle_turn(emu)
+            state = result.get("final_state", "")
+            # Blackout — player already healed at a PC
+            if result.get("blackout"):
+                grind_map, grind_x, grind_y = 0, 0, 0
+                # Can't return to grind spot without knowing where we were.
+                # The blackout auto-warped us to a PC. This is a special case
+                # that the caller handles (stop_reason="fainted" with blackout).
+                pass
+            if state not in _BATTLE_OVER:
+                return {"success": False, "error": f"Failed to exit battle after faint. State: {state}"}
+        else:
+            max_flee = 5
+            for _ in range(max_flee):
+                result = _battle_turn(emu, run=True)
+                state = result.get("final_state", "")
+                if state in _BATTLE_OVER:
+                    break
+                if state in _FAINT:
+                    result2 = _battle_turn(emu)
+                    state2 = result2.get("final_state", "")
+                    if state2 not in _BATTLE_OVER:
+                        return {"success": False, "error": f"Fainted while fleeing and couldn't exit. State: {state2}"}
+                    break
+                if state not in ("WAIT_FOR_ACTION", "ACTION"):
+                    return {"success": False, "error": f"Unexpected state while fleeing: {state}"}
+            else:
+                return {"success": False, "error": f"Failed to flee after {max_flee} attempts."}
+        emu.advance_frames(120)
+
+    # ── Step 2: Remember grind position ──
+    grind_map, grind_x, grind_y, _ = read_player_state(emu)
+
+    # ── Step 3: Exit interior maps if needed ──
+    return_warps = None
+    exit_result = _exit_to_overworld(emu)
+    if exit_result is not None:
+        if not exit_result.get("success"):
+            return {"success": False, "error": exit_result.get("error", "Failed to exit interior.")}
+        return_warps = exit_result.get("return_warps", [])
+
+    # ── Step 4: Find nearest reachable PC ──
+    map_id, px, py, _ = read_player_state(emu)
+    pc_candidates = _find_all_pcs(emu, map_id, px, py)
+    if not pc_candidates:
+        return {"success": False, "error": "No Pokemon Center found on the overworld matrix."}
+
+    # Save state before navigation attempts so we can retry with different cities
+    retry_checkpoint = emu.create_checkpoint(action="auto_grind:auto_heal_pre_navigate")
+    retry_cp_id = retry_checkpoint.get("checkpoint_id", "")
+
+    # Try each candidate by distance until one is reachable
+    nav = None
+    pc_info = None
+    for i, candidate in enumerate(pc_candidates):
+        if candidate["chunk_dist"] <= 3:
+            nav = _navigate_to(emu, candidate["pc_warp_x"], candidate["pc_warp_y"], flee_encounters=True)
+        else:
+            nav = _navigate_multi_hop(emu, candidate["pc_warp_x"], candidate["pc_warp_y"])
+
+        if nav.get("encounter") and nav["encounter"].get("dialogue"):
+            return {"success": False, "error": f"Trainer battle during navigation to {candidate['city_name']}.", "encounter": nav["encounter"]}
+
+        if not nav.get("error"):
+            pc_info = candidate
+            break
+
+        # Path blocked — revert to pre-navigation state and try next city
+        if i < len(pc_candidates) - 1 and retry_cp_id:
+            emu.revert_to_checkpoint(retry_cp_id)
+            emu.advance_frames(60)
+
+    if pc_info is None:
+        tried = ", ".join(c["city_name"] for c in pc_candidates[:5])
+        return {"success": False, "error": f"No walkable path to any Pokemon Center. Tried: {tried}."}
+
+    # ── Step 6: Heal at Pokemon Center ──
+    # After navigating to the PC warp tile, we should be at or inside the PC.
+    # If navigate_to entered the door, we're inside. If not, heal_party handles it.
+    heal_result = _heal_party(emu)
+    if not heal_result.get("success"):
+        return {"success": False, "error": f"Healing failed: {heal_result.get('error', 'unknown')}"}
+
+    # ── Step 7: Exit the Pokemon Center ──
+    map_id, _, _, _ = read_player_state(emu)
+    warps = read_warps_from_rom(emu, map_id)
+    if not warps:
+        return {"success": False, "error": "No warps found in Pokemon Center — can't exit."}
+    exit_warp = max(warps, key=lambda w: w.get("y", 0))
+    nav = _navigate_to(emu, exit_warp["x"], exit_warp["y"])
+    if nav.get("error"):
+        return {"success": False, "error": f"Failed to exit Pokemon Center: {nav['error']}"}
+    emu.advance_frames(120)
+
+    # ── Step 8: Return to grind area ──
+    # Re-enter interior if we exited one
+    if return_warps:
+        ret = _return_to_interior(emu, return_warps)
+        if not ret.get("success"):
+            return {"success": False, "error": f"Failed to return to interior: {ret.get('error', 'unknown')}"}
+
+    # Navigate back to the grind position
+    emu.create_checkpoint(action=f"auto_grind:auto_heal_return(to={grind_x},{grind_y})")
+    map_id, px, py, _ = read_player_state(emu)
+    chunk_dx = abs(grind_x // 32 - px // 32)
+    chunk_dy = abs(grind_y // 32 - py // 32)
+    if chunk_dx <= 3 and chunk_dy <= 3:
+        nav = _navigate_to(emu, grind_x, grind_y, flee_encounters=True)
+    else:
+        nav = _navigate_multi_hop(emu, grind_x, grind_y)
+
+    if nav.get("error"):
+        return {"success": False, "error": f"Navigation back to grind area failed: {nav['error']}"}
+    if nav.get("encounter") and nav["encounter"].get("dialogue"):
+        return {"success": False, "error": "Trainer battle during return to grind area.", "encounter": nav["encounter"]}
 
     return {"success": True}
 

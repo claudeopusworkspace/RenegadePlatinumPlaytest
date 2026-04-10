@@ -1044,6 +1044,7 @@ def create_server() -> FastMCP:
         max_heal_trips: int = 10,
         flee_ineffective: bool = False,
         target_slot: int = 0,
+        auto_heal: bool = False,
     ) -> dict[str, Any]:
         """Grind wild encounters automatically: seek → battle → repeat.
 
@@ -1059,10 +1060,11 @@ def create_server() -> FastMCP:
         per encounter. If primary is NVE/immune but backup is effective, uses backup
         for that battle. If both are ineffective and flee_ineffective=True, flees.
 
-        Auto-heal loop: when heal_x/heal_y/grind_x/grind_y are all provided,
-        automatically heals at the nearest Pokemon Center on faint or PP depletion
-        instead of stopping. Navigates to the town tile, heals, exits the PC, and
-        returns to the grind area.
+        Auto-heal: two modes available.
+        1. Coordinate-based: provide heal_x/heal_y/grind_x/grind_y for same-map healing.
+        2. Auto-detect: set auto_heal=True for cross-map healing. No coordinates needed —
+           finds the nearest Pokemon Center, navigates there across the overworld, heals,
+           and returns to the grind spot. Works from routes and interior maps (caves).
 
         Stop conditions (returned as stop_reason):
         - fainted: Slot 0 Pokemon fainted (only when auto-heal is disabled).
@@ -1100,6 +1102,9 @@ def create_server() -> FastMCP:
                             ineffective (NVE or immune). Default False.
             target_slot: Party slot (0-5) to check for target_level. Default 0.
                         Use to target an Exp. Share Pokemon in a non-lead slot.
+            auto_heal: Auto-detect nearest Pokemon Center and heal on faint/PP depletion.
+                      No coordinates needed. Navigates across the overworld and back.
+                      Overrides heal_x/heal_y/grind_x/grind_y when True. Default False.
         """
         from renegade_mcp.auto_grind import auto_grind as _auto_grind
 
@@ -1120,6 +1125,7 @@ def create_server() -> FastMCP:
             max_heal_trips=max_heal_trips,
             flee_ineffective=flee_ineffective,
             target_slot=target_slot,
+            auto_heal=auto_heal,
         )
 
     # ── Reload ──

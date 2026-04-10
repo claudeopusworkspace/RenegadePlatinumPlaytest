@@ -73,13 +73,12 @@ def emu() -> Any:
                 # first so the party/badge canary values are present.
                 from renegade_mcp.addresses import detect_shift, get_delta
                 if get_delta() is None:
-                    try:
-                        detect_shift(client)
-                    except RuntimeError:
-                        # No valid game data — load a save state and retry
-                        from helpers import do_load_state
-                        do_load_state(client, "eterna_city_shiny_swinub_in_party")
-                        detect_shift(client)
+                    # Always load a known state first — on a fresh ROM
+                    # (title screen), heap memory is zeroed and detect_shift
+                    # can't distinguish delta=0 from delta=-0x20.
+                    from helpers import do_load_state
+                    do_load_state(client, "eterna_city_shiny_swinub_in_party")
+                    detect_shift(client)
 
                 return client
 
