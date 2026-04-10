@@ -54,8 +54,6 @@ BEHAVIORS = {
     0x00: "ground", 0x02: "tall_grass", 0x03: "very_tall_grass",
     0x08: "cave_floor", 0x10: "water", 0x13: "waterfall", 0x15: "sea",
     0x20: "ice", 0x21: "sand",
-    0x70: "deep_snow", 0x71: "snow", 0x75: "snow_covered",
-    0xA0: "snow_slope", 0xA1: "snow_path", 0xA2: "snow_bridge", 0xA8: "snow_grass",
     0x30: "block_E", 0x31: "block_W",
     0x38: "ledge_S", 0x39: "ledge_N", 0x3A: "ledge_W", 0x3B: "ledge_E",
     0x5E: "stairs_E", 0x5F: "stairs_W",
@@ -63,8 +61,58 @@ BEHAVIORS = {
     0x67: "warp_panel", 0x69: "door",
     0x6A: "escalator", 0x6B: "escalator",
     0x6C: "side_E", 0x6D: "side_W", 0x6E: "side_N", 0x6F: "side_S",
-    0x80: "counter", 0xA9: "tree_tile",
+    # Bridge tiles (0x70-0x7D) — from decomp map_tile_behaviors.h
+    0x70: "bridge_start", 0x71: "bridge",
+    0x72: "bridge_over_cave", 0x73: "bridge_over_water",
+    0x74: "bridge_over_sand", 0x75: "bridge_over_snow",
+    0x76: "bike_bridge_NS", 0x77: "bike_bridge_NS_enc",
+    0x78: "bike_bridge_NS_water", 0x79: "bike_bridge_NS_sand",
+    0x7A: "bike_bridge_EW", 0x7B: "bike_bridge_EW_enc",
+    0x7C: "bike_bridge_EW_water", 0x7D: "bike_bridge_EW_sand",
+    0x80: "counter",
+    # Snow/mud tiles (0xA0-0xA9) — from decomp map_tile_behaviors.h
+    0xA0: "berry_patch",
+    0xA1: "snow_deep", 0xA2: "snow_deeper", 0xA3: "snow_deepest",
+    0xA4: "mud", 0xA5: "mud_deep", 0xA6: "mud_grass", 0xA7: "mud_deep_grass",
+    0xA8: "snow_shallow", 0xA9: "snow_shadows",
+    # Bike slope/ramp tiles (0xD7-0xDB) — from decomp map_tile_behaviors.h
+    0xD7: "bike_ramp_E", 0xD8: "bike_ramp_W",
+    0xD9: "bike_slope_top", 0xDA: "bike_slope_bottom", 0xDB: "bike_parking",
 }
+
+# Behavior bytes that indicate cycling road bridge tiles (forced downhill slide
+# when FLAG_ON_CYCLING_ROAD is set). Used by navigation to detect/refuse sliding.
+BIKE_BRIDGE_BEHAVIORS = frozenset({0x70, 0x71, 0x76, 0x77, 0x78, 0x79,
+                                    0x7A, 0x7B, 0x7C, 0x7D})
+
+# Cycling road flag — set by gate scripts, forces bike + downhill slide
+FLAG_ON_CYCLING_ROAD = 2453
+
+
+def is_on_cycling_road(emu: "EmulatorClient") -> bool:
+    """Check if player is on cycling road bridge tiles while on a bicycle.
+
+    The cycling road (Route 206) forces downhill sliding when the player is
+    on the bicycle and standing on bridge tiles (behaviors 0x70/0x71). Detection
+    uses tile behavior + cycling state rather than script flags, since the runtime
+    flag (PlayerAvatar.unk_00) isn't in save RAM.
+    """
+    from renegade_mcp.addresses import addr
+    cycling = emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")
+    if not cycling:
+        return False
+
+    state = get_map_state(emu)
+    if state is None:
+        return False
+
+    terrain = state["terrain"]
+    lx, ly = state["local_px"], state["local_py"]
+    if 0 <= ly < len(terrain) and 0 <= lx < len(terrain[ly]):
+        behavior = terrain[ly][lx] & 0x00FF
+        return behavior in BIKE_BRIDGE_BEHAVIORS
+    return False
+
 
 # ── Object graphics name lookup ──
 GFX_DATA_FILE = Path("data/obj_event_gfx.txt")
@@ -894,7 +942,14 @@ def render_map(
         0x62: '+', 0x63: '+', 0x64: '+', 0x65: '+', 0x67: '+',  # warps
         0x6A: '%', 0x6B: '%',  # escalators
         0x6C: '|', 0x6D: '|', 0x6F: '-',  # sides
-        0x80: ':', 0xA9: 'T',  # counter, tree
+        0x70: 'n', 0x71: 'n',  # bridge start/body
+        0x72: 'n', 0x73: 'n', 0x74: 'n', 0x75: 'n',  # bridge-over variants
+        0x76: 'n', 0x77: 'n', 0x78: 'n', 0x79: 'n',  # bike bridge N-S
+        0x7A: 'n', 0x7B: 'n', 0x7C: 'n', 0x7D: 'n',  # bike bridge E-W
+        0x80: ':',  # counter
+        0xA1: '~', 0xA2: '~', 0xA3: '~',  # snow (deep/deeper/deepest)
+        0xA8: '~', 0xA9: '~',  # snow (shallow/shadows)
+        0xD9: '\\', 0xDA: '/',  # bike slope top/bottom
     }
 
     grid_h = len(terrain)

@@ -21,12 +21,14 @@ from renegade_mcp.map_names import lookup_map_name
 from renegade_mcp.party import read_party
 from renegade_mcp.trainer import read_trainer_status
 from renegade_mcp.map_state import (
+    BIKE_BRIDGE_BEHAVIORS,
     CHUNK_SIZE,
     SIGN_GFX_IDS,
     analyze_elevation,
     get_land_data_id,
     get_map_state,
     get_matrix_for_map,
+    is_on_cycling_road,
     load_terrain_from_rom,
     parse_bdhc,
     read_objects,
@@ -1661,6 +1663,18 @@ def navigate_manual(emu: EmulatorClient, directions_str: str, flee_encounters: b
     if not directions:
         return {"error": "No directions provided."}
 
+    # Cycling road safety check — forced downhill slide makes step counting unreliable
+    if is_on_cycling_road(emu):
+        return {
+            "error": (
+                "Cannot navigate on Cycling Road (Route 206). The game forces "
+                "downhill sliding on the bicycle, which causes unpredictable "
+                "multi-tile movement per step. Use navigate_to() instead — it "
+                "has cycling road awareness and can handle the slide."
+            ),
+            "cycling_road": True,
+        }
+
     # Pre-validate path against terrain before walking
     start_map, start_x, start_y = _read_position(emu)
     expected_transition = False
@@ -1923,6 +1937,19 @@ def _navigate_to_impl(
     """Core navigate_to logic. See navigate_to() for the public API."""
     if hold_frames is None:
         hold_frames = _get_move_hold(emu)
+
+    # Cycling road safety check — forced downhill slide makes navigation unreliable
+    if is_on_cycling_road(emu):
+        return {
+            "error": (
+                "Cannot navigate on Cycling Road (Route 206). The game forces "
+                "downhill sliding on the bicycle, which causes unpredictable "
+                "multi-tile movement per step. Navigation tools cannot reliably "
+                "control movement here. Dismount or leave the cycling road first."
+            ),
+            "cycling_road": True,
+        }
+
     state = get_map_state(emu)
     if state is None:
         return {"error": "Could not read map state (chunk resolution failed)."}
