@@ -42,10 +42,18 @@ if TYPE_CHECKING:
 # ── Memory addresses (resolved at runtime) ──
 
 # ── Movement timing ──
-HOLD_FRAMES = 16
+HOLD_FRAMES = 16       # walking: 1 tile per press
+BIKE_HOLD_FRAMES = 4   # cycling: bike moves 1 tile per ~4 frames
 WAIT_FRAMES = 8
 SETTLE_FRAMES = 120
 SLOW_TERRAIN_RETRIES = 3  # Re-press attempts on apparent block (deep snow, ice)
+
+
+def _get_move_hold(emu: EmulatorClient) -> int:
+    """Return the per-tile hold frames based on whether the player is cycling."""
+    from renegade_mcp.addresses import addr
+    cycling = emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")
+    return BIKE_HOLD_FRAMES if cycling else HOLD_FRAMES
 
 MAX_REPATHS = 15
 
@@ -1414,13 +1422,14 @@ def seek_encounter(emu: EmulatorClient, cave: bool = False) -> dict[str, Any]:
     tile_a, tile_b, dir_a_to_b, path_to_a = pair
     dir_b_to_a = OPPOSITE_DIR[dir_a_to_b]
     steps_taken = 0
+    hold = _get_move_hold(emu)
 
     # Walk to first pacing tile if needed
     for direction in path_to_a:
         if steps_taken >= SEEK_MAX_STEPS:
             break
         old_map, old_x, old_y = _read_position(emu)
-        emu.advance_frames(HOLD_FRAMES, buttons=[direction])
+        emu.advance_frames(hold, buttons=[direction])
         emu.advance_frames(WAIT_FRAMES)
         new_map, new_x, new_y = _read_position(emu)
         steps_taken += 1
@@ -1438,7 +1447,7 @@ def seek_encounter(emu: EmulatorClient, cave: bool = False) -> dict[str, Any]:
 
     while steps_taken < SEEK_MAX_STEPS:
         old_map, old_x, old_y = _read_position(emu)
-        emu.advance_frames(HOLD_FRAMES, buttons=[current_dir])
+        emu.advance_frames(hold, buttons=[current_dir])
         emu.advance_frames(WAIT_FRAMES)
         new_map, new_x, new_y = _read_position(emu)
         steps_taken += 1
@@ -1471,11 +1480,15 @@ def _execute_path(
     directions: list[str],
     track_npcs: bool = False,
     repath_ctx: dict | None = None,
+    hold_frames: int = HOLD_FRAMES,
 ) -> tuple[bool, int, int, dict]:
     """Execute directions, verifying each step.
 
     When repath_ctx is provided, tracks NPC positions and attempts BFS repath
     when NPCs block or move into the planned path.
+
+    Args:
+        hold_frames: Frames to hold per step (16 walking, 8 cycling).
 
     Returns (stopped_early, steps_taken, repaths_used, nav_info).
     nav_info contains compact summary data (map_change, blocked_at, npc_moves).
@@ -1495,7 +1508,7 @@ def _execute_path(
         direction = directions[i]
         old_map, old_x, old_y = _read_position(emu)
 
-        emu.advance_frames(HOLD_FRAMES, buttons=[direction])
+        emu.advance_frames(hold_frames, buttons=[direction])
         emu.advance_frames(WAIT_FRAMES)
 
         new_map, new_x, new_y = _read_position(emu)
@@ -1503,11 +1516,11 @@ def _execute_path(
         blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
         if blocked:
             # Slow terrain (deep snow, ice) may not complete a step within
-            # HOLD_FRAMES + WAIT_FRAMES. Retry with full press cycles —
+            # hold_frames + WAIT_FRAMES. Retry with full press cycles —
             # the first press may have only turned the character, or the
             # animation may still be in progress.
             for _ in range(SLOW_TERRAIN_RETRIES):
-                emu.advance_frames(HOLD_FRAMES, buttons=[direction])
+                emu.advance_frames(hold_frames, buttons=[direction])
                 emu.advance_frames(WAIT_FRAMES)
                 new_map, new_x, new_y = _read_position(emu)
                 blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
@@ -1689,9 +1702,10 @@ def navigate_manual(emu: EmulatorClient, directions_str: str, flee_encounters: b
     total_steps = 0
     flee_log: list[dict[str, Any]] = []
     remaining = directions
+    hold = _get_move_hold(emu)
 
     for _ in range(MAX_FLEE_ENCOUNTERS if flee_encounters else 1):
-        stopped_early, steps_taken, _, nav_info = _execute_path(emu, remaining, track_npcs=True)
+        stopped_early, steps_taken, _, nav_info = _execute_path(emu, remaining, track_npcs=True, hold_frames=hold)
         total_steps += steps_taken
 
         # Post-navigation: poll for encounter or dialogue (also serves as settle)
@@ -1835,12 +1849,13 @@ def navigate_to(
                      "clean" (take the obstacle-free path).
         flee_encounters: If True, auto-flee wild battles and resume navigation.
     """
+    hold = _get_move_hold(emu)
     if not flee_encounters:
-        return _navigate_to_impl(emu, target_x, target_y, path_choice=path_choice)
+        return _navigate_to_impl(emu, target_x, target_y, path_choice=path_choice, hold_frames=hold)
 
     flee_log: list[dict[str, Any]] = []
     for _ in range(MAX_FLEE_ENCOUNTERS):
-        result = _navigate_to_impl(emu, target_x, target_y, path_choice=path_choice)
+        result = _navigate_to_impl(emu, target_x, target_y, path_choice=path_choice, hold_frames=hold)
 
         # Only path_choice matters on the first call — after that we're repathing
         path_choice = None
@@ -1903,8 +1918,11 @@ def navigate_to(
 def _navigate_to_impl(
     emu: EmulatorClient, target_x: int, target_y: int,
     path_choice: str | None = None,
+    hold_frames: int | None = None,
 ) -> dict[str, Any]:
     """Core navigate_to logic. See navigate_to() for the public API."""
+    if hold_frames is None:
+        hold_frames = _get_move_hold(emu)
     state = get_map_state(emu)
     if state is None:
         return {"error": "Could not read map state (chunk resolution failed)."}
@@ -2235,7 +2253,7 @@ def _navigate_to_impl(
         }
 
     stopped_early, steps_taken, repaths_used, nav_info = _execute_path(
-        emu, path, repath_ctx=repath_ctx,
+        emu, path, repath_ctx=repath_ctx, hold_frames=hold_frames,
     )
 
     path_str = _summarize_path(path)
@@ -2325,7 +2343,7 @@ def _navigate_to_impl(
             is_walkin_door = adj_behavior in DOOR_ACTIVATION and DOOR_ACTIVATION[adj_behavior] is None
             is_dir_warp = adj_behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[adj_behavior] == direction
             if is_walkin_door or is_dir_warp:
-                emu.advance_frames(HOLD_FRAMES, buttons=[direction])
+                emu.advance_frames(hold_frames, buttons=[direction])
                 emu.advance_frames(WAIT_FRAMES)
                 door_result = _handle_door_transition(emu, adj_behavior, cur_map)
                 if door_result:
@@ -2675,7 +2693,7 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
             "grid_oy": grid_oy,
         }
         stopped_early, steps_taken, repaths_used, nav_info = _execute_path(
-            emu, best_path, repath_ctx=repath_ctx,
+            emu, best_path, repath_ctx=repath_ctx, hold_frames=hold_frames,
         )
         nav_result["path"] = _summarize_path(best_path)
         nav_result["steps"] = steps_taken
