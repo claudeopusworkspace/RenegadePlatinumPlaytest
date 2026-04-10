@@ -717,18 +717,19 @@ def sell_item(
         _press(emu, ["up"], wait=15)
 
     # ── Confirm sale ──
-    _press(emu, ["a"])                # confirm qty → "I can pay ¥X. Would that be OK?"
-    _press(emu, ["a"])                # text finishes → YES/NO prompt
+    # Confirm qty goes straight to YES/NO (no intermediate text screen).
+    _press(emu, ["a"])                # confirm qty → "I can pay ¥X. Would that be OK?" + YES/NO
     _press(emu, ["a"])                # select YES → "Turned over [item] and received ¥X."
 
     # ── Post-sale dialogue ──
-    _press(emu, ["a"])                # advance "Turned over..."
-    _press(emu, ["a"], _MENU_WAIT)    # dismiss → back to sell bag
+    _press(emu, ["a"])                # advance scrolling "Turned over..." text
+    _press(emu, ["a"], _MENU_WAIT)    # dismiss finished text → back to sell bag
 
     # ── Exit sell bag + shop ──
-    _press(emu, ["b"], _MENU_WAIT)    # exit sell bag → BUY/SELL/SEE YA
-    _press(emu, ["down"], wait=30)    # → SELL (cursor returns to SELL)
-    _press(emu, ["down"], wait=30)    # → SEE YA!
+    # After B, cursor returns to BUY (first option), not SELL.
+    _press(emu, ["b"], _MENU_WAIT)    # exit sell bag → BUY/SELL/SEE YA (cursor on BUY)
+    _press(emu, ["down"], wait=30)    # BUY → SELL
+    _press(emu, ["down"], wait=30)    # SELL → SEE YA!
     _press(emu, ["a"])                # "Please come again!"
     _press(emu, ["a"], _SETTLE_WAIT)  # dismiss farewell, back to overworld
 
