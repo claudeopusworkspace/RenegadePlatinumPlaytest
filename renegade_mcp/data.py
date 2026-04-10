@@ -31,6 +31,7 @@ _map_table: dict[int, dict] | None = None
 _tmhm_moves: list[int] | None = None
 _tm_compat: dict[int, list[int]] | None = None
 _item_field_use: dict[str, int] | None = None
+_item_battle_data: dict[int, dict] | None = None
 _move_data: dict[int, dict] | None = None
 
 
@@ -91,6 +92,23 @@ def move_type(move_id: int) -> str | None:
     """Look up a move's type by ID. Returns None if data unavailable."""
     entry = move_data().get(move_id)
     return entry["type"] if entry else None
+
+
+def item_battle_data() -> dict[int, dict]:
+    """Load item ID -> {battleUseFunc, battlePocket} mapping.
+
+    battleUseFunc: 0=stat booster/X item, 1=Poke Ball, 2=healing, 3=escape.
+    battlePocket: bitmask — bit0=Balls, bit1=Battle Items, bit2=HP, bit3=Status, bit4=PP.
+    Only includes items usable in battle (battlePocket > 0).
+    """
+    global _item_battle_data
+    if _item_battle_data is None:
+        path = DATA_DIR / "item_battle_data.json"
+        if not path.exists():
+            return {}
+        with open(path) as f:
+            _item_battle_data = {int(k): v for k, v in json.load(f).items()}
+    return _item_battle_data
 
 
 def item_field_use() -> dict[str, int]:

@@ -1,0 +1,270 @@
+{
+  "1": {
+    "battlePocket": 1,
+    "battleUseFunc": 1
+  },
+  "10": {
+    "battlePocket": 1,
+    "battleUseFunc": 1
+  },
+  "11": {
+    "battlePocket": 1,
+    "battleUseFunc": 1
+  },
+  "12": {
+    "battlePocket": 1,
+    "battleUseFunc": 1
+  },
+  "127": {
+    "battlePocket": 8,
+    "battleUseFunc": 0
+  },
+  "128": {
+    "battlePocket": 8,
+    "battleUseFunc": 0
+  },
+  "129": {
+    "battlePocket": 8,
+    "battleUseFunc": 0
+  },
+  "13": {
+    "battlePocket": 1,
+    "battleUseFunc": 1
+  },
+  "130": {
+    "battlePocket": 8,
+    "battleUseFunc": 0
+  },
+  "131": {
+    "battlePocket": 8,
+    "battleUseFunc": 0
+  },
+  "132": {
+    "battlePocket": 16,
+    "battleUseFunc": 0
+  },
+  "133": {
+    "battlePocket": 4,
+    "battleUseFunc": 0
+  },
+  "134": {
+    "battlePocket": 8,
+    "battleUseFunc": 0
+  },
+  "135": {
+    "battlePocket": 8,
+    "battleUseFunc": 0
+  },
+  "136": {
+    "battlePocket": 4,
+    "battleUseFunc": 0
+  },
+  "14": {
+    "battlePocket": 1,
+    "battleUseFunc": 1
+  },
+  "15": {
+    "battlePocket": 1,
+    "battleUseFunc": 1
+  },
+  "16": {
+    "battlePocket": 1,
+    "battleUseFunc": 1
+  },
+  "17": {
+    "battlePocket": 4,
+    "battleUseFunc": 2
+  },
+  "18": {
+    "battlePocket": 8,
+    "battleUseFunc": 2
+  },
+  "19": {
+    "battlePocket": 8,
+    "battleUseFunc": 2
+  },
+  "2": {
+    "battlePocket": 1,
+    "battleUseFunc": 1
+  },
+  "20": {
+    "battlePocket": 8,
+    "battleUseFunc": 2
+  },
+  "21": {
+    "battlePocket": 8,
+    "battleUseFunc": 2
+  },
+  "22": {
+    "battlePocket": 8,
+    "battleUseFunc": 2
+  },
+  "23": {
+    "battlePocket": 12,
+    "battleUseFunc": 2
+  },
+  "24": {
+    "battlePocket": 4,
+    "battleUseFunc": 2
+  },
+  "25": {
+    "battlePocket": 4,
+    "battleUseFunc": 2
+  },
+  "26": {
+    "battlePocket": 4,
+    "battleUseFunc": 2
+  },
+  "27": {
+    "battlePocket": 8,
+    "battleUseFunc": 2
+  },
+  "28": {
+    "battlePocket": 8,
+    "battleUseFunc": 2
+  },
+  "29": {
+    "battlePocket": 8,
+    "battleUseFunc": 2
+  },
+  "3": {
+    "battlePocket": 1,
+    "battleUseFunc": 1
+  },
+  "30": {
+    "battlePocket": 4,
+    "battleUseFunc": 2
+  },
+  "31": {
+    "battlePocket": 4,
+    "battleUseFunc": 2
+  },
+  "32": {
+    "battlePocket": 4,
+    "battleUseFunc": 2
+  },
+  "33": {
+    "battlePocket": 4,
+    "battleUseFunc": 2
+  },
+  "34": {
+    "battlePocket": 4,
+    "battleUseFunc": 2
+  },
+  "35": {
+    "battlePocket": 4,
+    "battleUseFunc": 2
+  },
+  "36": {
+    "battlePocket": 8,
+    "battleUseFunc": 2
+  },
+  "37": {
+    "battlePocket": 8,
+    "battleUseFunc": 2
+  },
+  "38": {
+    "battlePocket": 16,
+    "battleUseFunc": 2
+  },
+  "39": {
+    "battlePocket": 16,
+    "battleUseFunc": 2
+  },
+  "4": {
+    "battlePocket": 1,
+    "battleUseFunc": 1
+  },
+  "40": {
+    "battlePocket": 16,
+    "battleUseFunc": 2
+  },
+  "41": {
+    "battlePocket": 16,
+    "battleUseFunc": 2
+  },
+  "42": {
+    "battlePocket": 8,
+    "battleUseFunc": 2
+  },
+  "43": {
+    "battlePocket": 4,
+    "battleUseFunc": 2
+  },
+  "5": {
+    "battlePocket": 1,
+    "battleUseFunc": 1
+  },
+  "54": {
+    "battlePocket": 8,
+    "battleUseFunc": 2
+  },
+  "55": {
+    "battlePocket": 2,
+    "battleUseFunc": 0
+  },
+  "56": {
+    "battlePocket": 2,
+    "battleUseFunc": 0
+  },
+  "57": {
+    "battlePocket": 2,
+    "battleUseFunc": 0
+  },
+  "58": {
+    "battlePocket": 2,
+    "battleUseFunc": 0
+  },
+  "59": {
+    "battlePocket": 2,
+    "battleUseFunc": 0
+  },
+  "6": {
+    "battlePocket": 1,
+    "battleUseFunc": 1
+  },
+  "60": {
+    "battlePocket": 2,
+    "battleUseFunc": 0
+  },
+  "61": {
+    "battlePocket": 2,
+    "battleUseFunc": 0
+  },
+  "62": {
+    "battlePocket": 2,
+    "battleUseFunc": 0
+  },
+  "63": {
+    "battlePocket": 2,
+    "battleUseFunc": 3
+  },
+  "64": {
+    "battlePocket": 2,
+    "battleUseFunc": 3
+  },
+  "65": {
+    "battlePocket": 8,
+    "battleUseFunc": 0
+  },
+  "66": {
+    "battlePocket": 8,
+    "battleUseFunc": 0
+  },
+  "67": {
+    "battlePocket": 8,
+    "battleUseFunc": 0
+  },
+  "7": {
+    "battlePocket": 1,
+    "battleUseFunc": 1
+  },
+  "8": {
+    "battlePocket": 1,
+    "battleUseFunc": 1
+  },
+  "9": {
+    "battlePocket": 1,
+    "battleUseFunc": 1
+  }
+}

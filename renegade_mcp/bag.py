@@ -24,6 +24,7 @@ POCKETS = [
     ("Mail", 12),
     ("Medicine", 40),
     ("Berries", 64),
+    ("Poke Balls", 15),
     ("Battle Items", 30),
 ]
 

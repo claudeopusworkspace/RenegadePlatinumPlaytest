@@ -428,6 +428,30 @@ def create_server() -> FastMCP:
         emu = get_client()
         return _throw_ball(emu)
 
+    # ── Battle Item Use ──
+
+    @mcp.tool()
+    @renegade_tool
+    def use_battle_item(item_name: str, party_slot: int = -1, target: int = -1) -> dict[str, Any]:
+        """Use an item from the bag during battle.
+
+        Must be at the action prompt. Navigates BAG → pocket → item → USE → target.
+        Consumes the trainer's turn (item use replaces a move).
+
+        Item categories (auto-detected from ROM data):
+        - Healing items (Potion, Antidote, Revive, etc.): party_slot required (0-5).
+        - Stat boosters (X Attack, X Speed, Guard Spec, Dire Hit): auto-applies in singles.
+          In doubles, pass target (0=first active, 1=second active).
+        - Escape items (Poke Doll, Fluffy Tail): auto-flees, no target needed.
+        - Poke Balls: rejected — use throw_ball instead.
+
+        Returns success status, quantity change, and final_state (WAIT_FOR_ACTION or BATTLE_ENDED).
+        """
+        from renegade_mcp.use_battle_item import use_battle_item as _use_battle_item
+
+        emu = get_client()
+        return _use_battle_item(emu, item_name, party_slot, target)
+
     # ── ROM Message Decoding ──
 
     @mcp.tool()
