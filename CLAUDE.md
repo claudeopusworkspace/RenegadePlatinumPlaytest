@@ -37,7 +37,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `search_rom_messages(query)` | Search all 724 message files for text |
 | `use_item(item_name, party_slot)` | Use a Medicine item on a party Pokemon from overworld. Reads bag cursor state to handle remembered positions. |
 | `use_field_item(item_name)` | Use a no-target field item (Repel, Escape Rope, Honey, etc.) from the Items pocket. Pre-validates `fieldUseFunc` from ROM data — rejects hold-only items (Silk Scarf, etc.). Handles BAG_MESSAGE items (Repel/Flutes), Escape Rope (warp animation), and Honey. |
-| `use_key_item(item_name)` | Use a key item from the Key Items pocket. Currently supports: **Bicycle** (mount/dismount toggle). Verifies state change via `CYCLING_GEAR_ADDR` memory read. Indoor rejection detected and menus cleaned up automatically. **Note:** Navigation while on bicycle overshoots (HOLD_FRAMES calibrated for walking speed) — dismount before precise navigation. |
+| `use_key_item(item_name)` | Use a key item from the Key Items pocket. Currently supports: **Bicycle** (mount/dismount toggle). Verifies state change via `CYCLING_GEAR_ADDR` memory read. Indoor rejection detected and menus cleaned up automatically. |
 | `use_medicine(confirm, exclude_items, priority)` | Bulk heal party using Medicine pocket items. Dry-run by default — returns a plan showing which items will be used on which Pokemon. Call with `confirm=True` to execute. Uses lowest-tier potions first (saves better items for battle), prefers specific status cures over general ones (Antidote before Full Heal), uses Full Restore when a Pokemon needs both status cure + HP. Revives fainted Pokemon. Optional `exclude_items` list and `priority` slot order. |
 | `take_item(party_slot)` | Remove held item from a party Pokemon via pause menu (overworld only) |
 | `give_item(item_name, party_slot)` | Give a held item to a party Pokemon via pause menu (overworld only). Pokemon must not already hold an item. Reads bag cursor state to handle remembered positions. |
@@ -325,7 +325,7 @@ See GAME_HISTORY.md for full chronological playthrough details.
 
 ## Test Suite
 
-Integration tests live in `tests/` (171 tests across 18 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
+Integration tests live in `tests/` (185 tests across 19 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
 
 ```bash
 MelonMCP/.venv/bin/python -m pytest tests/ -v          # full suite (~24 min)
