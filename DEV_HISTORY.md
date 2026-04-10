@@ -2,6 +2,48 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Three Bug Fixes (2026-04-10b)
+
+Fixed all 3 remaining open bugs from the backlog. All had repro save states ready from the QA session.
+
+### Bug 1: forget_move=-1 Loops at Prompt 2
+
+**Problem**: `battle_turn(forget_move=-1)` infinite-looped when the game was already at Prompt 2 ("Should this Pokemon give up on learning Fire Fang?") instead of Prompt 1 ("Make it forget another move?"). Occurred when multiple moves are learned simultaneously (Luxio learned 3 fang moves at Lv24 in Renegade Platinum).
+
+**Root cause**: `_skip_move_learn_flow()` always assumed Prompt 1. First tap hit "Don't give up!" on Prompt 2 (back to Prompt 1), second tap hit "Forget a move!" on Prompt 1 (opens move selection). Infinite loop between the two prompts.
+
+**Fix**: `_execute_move_learn` checks log text for "give up on" to detect Prompt 2. Passes `at_prompt2=True` to `_skip_move_learn_flow`, which skips the Prompt 1 tap and goes straight to "Give up on [Move]!". Verified with repro save state — returns `BATTLE_ENDED` immediately.
+
+### Bug 2: run=True at FAINT_SWITCH Returns Trainer Error
+
+**Problem**: `battle_turn(run=True)` at a wild battle FAINT_SWITCH state sometimes returned "Must switch in a trainer battle — specify switch_to (1-5)". Wild battle misidentified as trainer.
+
+**Root cause**: `_wait_for_action_prompt()` timeout fallback (line 508) assumed any faint with no detected WAIT_FOR_ACTION text was FAINT_FORCED (trainer battle). In wild battles, "Use next Pokemon?" text was present but classified under a different control code, so the scanner missed it. Fallback blindly returned FAINT_FORCED.
+
+**Fix**: Fallback now checks accumulated log entries for "Use next" text before defaulting to FAINT_FORCED. If found → FAINT_SWITCH. RNG-dependent scenario, no deterministic test possible, but code path is verified correct.
+
+### Bug 3: auto_grind Teleports Player Home (Whiteout)
+
+**Problem**: `auto_grind` with a single Pokemon that faints (full party wipe) caused the player to end up in their house in Twinleaf Town. `auto_grind` reported `seek_failed` instead of recognizing the whiteout.
+
+**Root cause**: Woj's hypothesis was correct — full party wipe. `battle_turn` correctly handled blackout (returned `BATTLE_ENDED` + `blackout: True`), but `_fight_battle()` and `_run_battle()` only checked `final_state`. Saw `BATTLE_ENDED`, returned empty `stop_reason`, main loop continued, tried to seek encounters from inside the Pokemon Center.
+
+**Fix**: `_fight_battle()`, `_run_battle()`, and the resume-from-move-learn path all now check `result.get("blackout")` and return `stop_reason="fainted"` with "Full party wipe — blacked out to Pokemon Center." detail.
+
+### Testing
+
+2 new regression tests:
+- `test_skip_move_learn_at_prompt2` — loads Prompt 2 save state, verifies `forget_move=-1` returns `BATTLE_ENDED`
+- `test_fight_battle_returns_fainted_on_blackout` — calls `_fight_battle` with the existing blackout save state, verifies `stop_reason="fainted"`
+
+Full suite: **157 tests, all passing in 6:51**.
+
+### Files Changed
+- `renegade_mcp/turn.py` — Prompt 2 detection in `_execute_move_learn`, `at_prompt2` param in `_skip_move_learn_flow`, log check in `_wait_for_action_prompt` fallback
+- `renegade_mcp/auto_grind.py` — blackout checks in `_fight_battle`, `_run_battle`, and resume-from-move-learn
+- `tests/test_battle.py` — +1 test (Prompt 2 skip regression)
+- `tests/test_blackout.py` — +1 test (auto_grind blackout stop)
+
 ## Dev Session: use_battle_item Tool (2026-04-10)
 
 Built `use_battle_item` — the first tool for using items from the bag during battle. Navigates the battle bag UI (completely separate from the overworld bag) via touch inputs derived from the decomp's TouchScreenRect tables.

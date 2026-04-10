@@ -319,7 +319,7 @@ See GAME_HISTORY.md for full chronological playthrough details.
 
 ## Test Suite
 
-Integration tests live in `tests/` (146 tests across 16 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
+Integration tests live in `tests/` (157 tests across 17 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
 
 ```bash
 MelonMCP/.venv/bin/python -m pytest tests/ -v          # full suite (~24 min)
