@@ -37,6 +37,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `search_rom_messages(query)` | Search all 724 message files for text |
 | `use_item(item_name, party_slot)` | Use a Medicine item on a party Pokemon from overworld. Reads bag cursor state to handle remembered positions. |
 | `use_field_item(item_name)` | Use a no-target field item (Repel, Escape Rope, Honey, etc.) from the Items pocket. Pre-validates `fieldUseFunc` from ROM data — rejects hold-only items (Silk Scarf, etc.). Handles BAG_MESSAGE items (Repel/Flutes), Escape Rope (warp animation), and Honey. |
+| `use_key_item(item_name)` | Use a key item from the Key Items pocket. Currently supports: **Bicycle** (mount/dismount toggle). Verifies state change via `CYCLING_GEAR_ADDR` memory read. Indoor rejection detected and menus cleaned up automatically. **Note:** Navigation while on bicycle overshoots (HOLD_FRAMES calibrated for walking speed) — dismount before precise navigation. |
 | `use_medicine(confirm, exclude_items, priority)` | Bulk heal party using Medicine pocket items. Dry-run by default — returns a plan showing which items will be used on which Pokemon. Call with `confirm=True` to execute. Uses lowest-tier potions first (saves better items for battle), prefers specific status cures over general ones (Antidote before Full Heal), uses Full Restore when a Pokemon needs both status cure + HP. Revives fainted Pokemon. Optional `exclude_items` list and `priority` slot order. |
 | `take_item(party_slot)` | Remove held item from a party Pokemon via pause menu (overworld only) |
 | `give_item(item_name, party_slot)` | Give a held item to a party Pokemon via pause menu (overworld only). Pokemon must not already hold an item. Reads bag cursor state to handle remembered positions. |
@@ -46,7 +47,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `withdraw_pokemon(box_slots)` | Withdraw Pokemon from Box 1 to party. Takes list of 0-indexed box slots. Multi-withdraw supported. Must call open_pc first. |
 | `read_box(box=1)` | Read all Pokemon in a PC box from RAM. No UI needed — works anytime. Returns species, moves, nature, IVs, EVs, held item, **shiny** flag. |
 | `close_pc` | Exit the PC from storage menu and return to overworld. |
-| `read_trainer_status` | Read money and badges from memory. No UI needed. |
+| `read_trainer_status` | Read money, badges, and bicycle state from memory. No UI needed. Returns `on_bicycle: true/false`. |
 | `read_shop` | Read PokéMart inventory for current city. Badge-gated common items + city specialty items with ROM prices. Pure lookup, no UI. |
 | `buy_item(item_name, quantity)` | Buy from a standard PokéMart. Works from inside the mart (FS room) or city overworld (auto-navigates to mart via warp lookup). Finds correct cashier (common vs specialty), scrolls to item by ROM-calculated position, purchases, exits. Pre-checks money. Returns encounter data if interrupted during navigation. |
 | `teach_tm(tm_name, party_slot, forget_move)` | Teach a TM/HM to a party Pokemon. Accepts TM label ("HM06", "TM76") or move name ("Rock Smash"). Pre-validates ROM compatibility (personal.narc bitmasks) and badge+move availability. Handles both <4 moves (auto-learn) and 4 moves (forget prompt) flows. Pass `forget_move` (0-3) when Pokemon knows 4 moves, or -1 to cancel. |

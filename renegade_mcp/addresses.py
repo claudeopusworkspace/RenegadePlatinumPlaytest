@@ -39,6 +39,8 @@ _DESMUME: dict[str, int] = {
     "BAG_CURSOR_PTR_ADDR":   0x0229FA30,
     "PLAYER_FACING_ADDR":    0x022A1A60,
     "OBJ_ARRAY_FPX_BASE":   0x022A1AA8,
+    # PlayerData group (within FieldOverworldState, offset +0x90 from PLAYER_POS_BASE)
+    "CYCLING_GEAR_ADDR":     0x0227F4E0,  # u16: 0=walking, 1=cycling
     # BattleContext group
     "BATTLE_BASE":           0x022C5774,
     "BATTLE_END_FLAG_ADDR":  0x022C5B53,

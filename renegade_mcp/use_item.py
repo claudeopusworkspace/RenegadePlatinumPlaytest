@@ -353,6 +353,137 @@ def use_field_item(emu: EmulatorClient, item_name: str) -> dict[str, Any]:
         }
 
 
+# ── Key item field use func types ──
+FUNC_TOWN_MAP = 2        # Opens town map overlay
+FUNC_EXPLORER_KIT = 3    # Goes underground
+FUNC_BICYCLE = 4         # Toggles bicycle mount/dismount
+FUNC_OLD_ROD = 16        # Fishing — starts encounter
+FUNC_GOOD_ROD = 17       # Fishing — starts encounter
+FUNC_SUPER_ROD = 18      # Fishing — starts encounter
+
+# Key items that close menus automatically after USE (no manual dismiss needed)
+KEY_ITEM_AUTO_CLOSE = {FUNC_BICYCLE, FUNC_TOWN_MAP, FUNC_EXPLORER_KIT,
+                       FUNC_OLD_ROD, FUNC_GOOD_ROD, FUNC_SUPER_ROD}
+
+# Key items we currently support
+SUPPORTED_KEY_ITEMS = {FUNC_BICYCLE}
+
+
+def use_key_item(emu: EmulatorClient, item_name: str) -> dict[str, Any]:
+    """Use a key item from the Key Items pocket.
+
+    Currently supports: Bicycle (mount/dismount toggle).
+
+    Args:
+        emu: Emulator client.
+        item_name: Item name (e.g. "Bicycle"). Case-insensitive.
+
+    Returns dict with success status, details, and formatted message.
+    """
+    item_lower = item_name.lower()
+
+    # ── Pre-check: item exists in Key Items pocket ──
+    bag = read_bag(emu)
+    key_pocket = None
+    for pocket in bag:
+        if pocket["name"] == "Key Items":
+            key_pocket = pocket
+            break
+    if key_pocket is None:
+        return _error("Key Items pocket not found in bag data.")
+
+    item_index = None
+    item_entry = None
+    for i, item in enumerate(key_pocket["items"]):
+        if item["name"].lower() == item_lower:
+            item_index = i
+            item_entry = item
+            break
+    if item_entry is None:
+        available = [it["name"] for it in key_pocket["items"]]
+        return _error(f"'{item_name}' not found in Key Items pocket. Available: {available}")
+
+    # ── Pre-check: item is usable ──
+    field_use = item_field_use()
+    func = field_use.get(item_entry["name"], FUNC_NONE)
+    if func == FUNC_NONE:
+        return _error(f"'{item_entry['name']}' cannot be used from the field.")
+    if func not in SUPPORTED_KEY_ITEMS:
+        return _error(
+            f"'{item_entry['name']}' (fieldUseFunc={func}) is not yet supported. "
+            f"Currently supported: Bicycle."
+        )
+
+    # ── Step 1: Open pause menu ──
+    if not open_pause_menu(emu):
+        return _error("Could not open pause menu — player may not have control.")
+
+    # ── Step 2: Navigate to Bag ──
+    from renegade_mcp.addresses import addr
+    cursor = emu.read_memory(addr("PAUSE_CURSOR_ADDR"), size="byte")
+    steps = (BAG_INDEX - cursor) % MENU_SIZE
+    for _ in range(steps):
+        _press(emu, ["down"])
+    _press(emu, ["a"], wait=MENU_WAIT)
+
+    # ── Step 3: Tap Key Items pocket tab ──
+    kx, ky = POCKET_COORDS["Key Items"]
+    _tap(emu, kx, ky, wait=MENU_WAIT)
+
+    # ── Step 4: Select item ──
+    scroll, index = get_pocket_cursor(emu, "Key Items")
+    for _ in range(scroll + index):
+        _press(emu, ["up"])
+    for _ in range(item_index):
+        _press(emu, ["down"])
+
+    # Press A to select → opens USE/REGISTER submenu
+    _press(emu, ["a"], wait=MENU_WAIT)
+
+    # ── Step 5: Read pre-USE state, then press A for "USE" ──
+    if func == FUNC_BICYCLE:
+        was_cycling = bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short"))
+    _press(emu, ["a"], wait=MENU_WAIT)
+
+    # ── Step 6: Handle post-USE based on item type ──
+    if func == FUNC_BICYCLE:
+
+        # Bicycle closes menus automatically and toggles riding state.
+        # Wait for the mount/dismount animation to complete.
+        emu.advance_frames(MENU_WAIT)
+
+        is_cycling = bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short"))
+        action = "mounted" if is_cycling else "dismounted"
+
+        # Check if "Can't use that here" message appeared (indoors, etc.)
+        # If state didn't change, we're still in the bag — clean up menus.
+        # "Rowan's words echoed..." is multi-line, needs 2 B presses to dismiss.
+        if was_cycling == is_cycling:
+            _press(emu, ["b"], wait=DISMISS_WAIT)  # dismiss text page 1
+            _press(emu, ["b"], wait=DISMISS_WAIT)  # dismiss text page 2
+            _press(emu, ["b"], wait=MENU_WAIT)     # close submenu / item list
+            _press(emu, ["b"], wait=MENU_WAIT)     # close bag
+            _press(emu, ["b"], wait=MENU_WAIT)     # close pause menu
+            return _error(
+                f"Bicycle state didn't change (still {'cycling' if is_cycling else 'walking'}). "
+                "May not be usable here (indoors, etc.)."
+            )
+
+        return {
+            "success": True,
+            "item": item_entry["name"],
+            "on_bicycle": is_cycling,
+            "formatted": f"{action.capitalize()} Bicycle.",
+        }
+
+    # Fallback for future items — shouldn't reach here due to SUPPORTED check
+    return {
+        "success": True,
+        "item": item_entry["name"],
+        "formatted": f"Used {item_entry['name']}.",
+    }
+
+
 def _error(message: str) -> dict[str, Any]:
     """Return a standardized error result."""
     return {"success": False, "error": message, "formatted": f"Error: {message}"}

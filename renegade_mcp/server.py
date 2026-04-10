@@ -741,6 +741,23 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     @renegade_tool
+    def use_key_item(item_name: str) -> dict[str, Any]:
+        """Use a key item from the Key Items pocket.
+
+        Currently supports: Bicycle (mount/dismount toggle).
+        Opens pause menu → Bag → Key Items pocket → select item → USE.
+        Menu closes automatically after use.
+
+        Args:
+            item_name: Item name (e.g. "Bicycle"). Case-insensitive.
+        """
+        from renegade_mcp.use_item import use_key_item as _use_key_item
+
+        emu = get_client()
+        return _use_key_item(emu, item_name)
+
+    @mcp.tool()
+    @renegade_tool
     def use_medicine(
         confirm: bool = False,
         exclude_items: list[str] | None = None,

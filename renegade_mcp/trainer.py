@@ -75,6 +75,11 @@ def read_trainer_status(emu: EmulatorClient) -> dict[str, Any]:
     else:
         result["badges"] = "unknown (address unconfirmed)"
 
+    # Bicycle state: cyclingGear u16 in FieldOverworldState.PlayerData
+    cycling_gear = emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")
+    on_bicycle = bool(cycling_gear)
+    result["on_bicycle"] = on_bicycle
+
     result["formatted"] = f"Money: ${money:,}"
     if isinstance(result.get("badges"), int):
         result["formatted"] += f" | Badges: {result['badges']}/8"
@@ -82,5 +87,7 @@ def read_trainer_status(emu: EmulatorClient) -> dict[str, Any]:
             result["formatted"] += f" ({', '.join(result['badge_names'])})"
     else:
         result["formatted"] += " | Badges: TBD (will confirm at first gym)"
+    if on_bicycle:
+        result["formatted"] += " | Bicycle: ON"
 
     return result
