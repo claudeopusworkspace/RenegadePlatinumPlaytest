@@ -33,6 +33,7 @@ _tm_compat: dict[int, list[int]] | None = None
 _item_field_use: dict[str, int] | None = None
 _item_battle_data: dict[int, dict] | None = None
 _move_data: dict[int, dict] | None = None
+_level_up_moves: dict[int, list[list[int]]] | None = None
 
 
 def species_names() -> dict[int, str]:
@@ -47,6 +48,20 @@ def move_names() -> dict[int, str]:
     if _move_names is None:
         _move_names = _load_int_keyed_json("move_names.json")
     return _move_names
+
+
+def level_up_moves(species_id: int) -> list[tuple[int, int]]:
+    """Get level-up learnset for a species: list of (level, move_id) pairs.
+
+    Data extracted from ROM wotbl.narc (Renegade Platinum modified learnsets).
+    """
+    global _level_up_moves
+    if _level_up_moves is None:
+        path = DATA_DIR / "level_up_moves.json"
+        with open(path) as f:
+            _level_up_moves = {int(k): v for k, v in json.load(f).items()}
+    entries = _level_up_moves.get(species_id, [])
+    return [(e[0], e[1]) for e in entries]
 
 
 def item_names() -> dict[int, str]:

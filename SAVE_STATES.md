@@ -74,6 +74,10 @@ Fly (Garchomp), Surf (Swampert), Rock Smash (Nidoking), Strength (Nidoking), Roc
 | `route207_bike_slope_area` | Route 207 at (297, 720). Near bike slopes. E4 save (8 badges). Overview position. |
 | `route207_at_bike_slope_bottom` | Route 207 at (306, 720). On bicycle, 1 tile south of bike slope bottom (0xDA at 306,719). E4 save. **Best bike slope test location.** |
 
+### Move Services Test States
+| `move_relearner_pastoria` | Pastoria City at map 129 (C06R0401), inside the Move Relearner's house. E4 save (8 badges). NPC "Collector" is the relearner. |
+| `move_deleter_oreburgh` | Oreburgh City at map 58 (C03R0301), inside the Move Deleter's house. E4 save (8 badges). NPC "Old Man" is the deleter. |
+
 ### Still needed
 - **Cut (standalone)** — All cut trees have story flags; may need our playthrough save (2-badge, pre-Galactic) for Eterna City trees.
 - **Strength** — Oreburgh Mine B2F objects are Rock Smash, not Strength. Need cave with actual Strength boulders (gfx=85). Reliable ROM coords: Stark Mountain Room 3 (10, 13).

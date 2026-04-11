@@ -896,6 +896,50 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     @renegade_tool
+    def relearn_move(
+        move_name: str, party_slot: int = 0, forget_move: int | None = None
+    ) -> dict[str, Any]:
+        """Relearn a forgotten move via the Move Relearner in Pastoria City.
+
+        Must be in Pastoria City (outdoor or inside the relearner's house).
+        Auto-navigates to the NPC if on the city overworld. Free in Renegade
+        Platinum (no Heart Scale needed).
+
+        The relearnable move list is computed from ROM learnset data: all
+        level-up moves at or below the Pokemon's current level that it
+        doesn't currently know.
+
+        Args:
+            move_name: Name of the move to relearn (case-insensitive).
+            party_slot: Party index 0-5 (0 = first Pokemon).
+            forget_move: Move slot 0-3 to forget (required when Pokemon
+                         knows 4 moves). Pass -1 to cancel without learning.
+        """
+        from renegade_mcp.move_services import relearn_move as _relearn
+
+        emu = get_client()
+        return _relearn(emu, move_name, party_slot, forget_move)
+
+    @mcp.tool()
+    @renegade_tool
+    def delete_move(move_name: str, party_slot: int = 0) -> dict[str, Any]:
+        """Delete a move via the Move Deleter in Oreburgh City.
+
+        Must be in Oreburgh City (outdoor or inside the deleter's house).
+        Auto-navigates to the NPC if on the city overworld. Cannot delete
+        the last remaining move.
+
+        Args:
+            move_name: Name of the move to delete (case-insensitive).
+            party_slot: Party index 0-5 (0 = first Pokemon).
+        """
+        from renegade_mcp.move_services import delete_move as _delete
+
+        emu = get_client()
+        return _delete(emu, move_name, party_slot)
+
+    @mcp.tool()
+    @renegade_tool
     def use_fly(destination: str) -> dict[str, Any]:
         """Fly to a destination city or town from the overworld.
 
