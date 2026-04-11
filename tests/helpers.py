@@ -30,16 +30,15 @@ def _savestate_ext() -> str:
     return ".mst"
 
 
-def do_load_state(emu, name: str, redetect_shift: bool = False) -> None:
+def do_load_state(emu, name: str, redetect_shift: bool = True) -> None:
     """Load a named save state. Tries the active backend's extension first.
 
     Args:
         emu: Emulator client.
         name: Save state name (without extension).
-        redetect_shift: If True, clear the cached address delta and re-detect.
-            Required when loading a state from a different save file (e.g.
-            Wayne's E4 save vs our playthrough) because the heap layout delta
-            differs per save/boot.
+        redetect_shift: If True (default), clear the cached address delta and
+            re-detect. This is the safe default because the heap layout delta
+            varies between save files and even between boots of the same save.
     """
     ext = _savestate_ext()
     path = SAVESTATES_DIR / f"{name}{ext}"

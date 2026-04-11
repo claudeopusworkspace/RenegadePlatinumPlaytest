@@ -157,9 +157,22 @@ def detect_shift(emu: Any) -> int:
             "Verify the game is loaded and a save file is active."
         )
 
-    # Prefer candidate with highest badge count (most likely the real save data,
-    # not stale RAM). If tied, prefer smallest absolute delta (closest to baseline).
-    best = max(candidates, key=lambda c: (c[2], -abs(c[0])))
+    # Refine: validate ALL party species to eliminate false positives.
+    # The real delta will have valid species IDs for every party slot.
+    refined = []
+    for candidate, pc, badge_count, species in candidates:
+        valid_species = 1  # first already validated above
+        for i in range(1, pc):
+            sp = _read_canary(
+                emu, species_ref + candidate + i * SPECIES_ARRAY_STRIDE, "short"
+            )
+            if sp is not None and 1 <= sp <= 649:
+                valid_species += 1
+        refined.append((candidate, pc, badge_count, species, valid_species))
+
+    # Prefer: most valid party species (strongest signal), then highest badge
+    # count, then smallest absolute delta.
+    best = max(refined, key=lambda c: (c[4], c[2], -abs(c[0])))
     _delta = best[0]
     return best[0]
 
