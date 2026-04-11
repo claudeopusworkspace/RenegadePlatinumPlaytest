@@ -50,27 +50,33 @@ CURSOR_MAX_Z = 27
 _FLY_DESTINATIONS: list[dict[str, Any]] = [
     # Towns (1x1 or small shapes) — grid positions verified against decomp
     # sprite coords, with +1/+1 offset for cursor hit detection.
-    {"name": "Twinleaf Town",     "code": "T01", "map_id": 411, "grid": (4, 28)},
-    {"name": "Sandgem Town",      "code": "T02", "map_id": 418, "grid": (6, 27)},
-    {"name": "Floaroma Town",     "code": "T03", "map_id": 426, "grid": (6, 20)},
-    {"name": "Solaceon Town",     "code": "T04", "map_id": 433, "grid": (18, 21)},
-    {"name": "Celestic Town",     "code": "T05", "map_id": 442, "grid": (15, 17)},
-    {"name": "Survival Area",     "code": "T06", "map_id": 450, "grid": (21, 11)},
-    {"name": "Resort Area",       "code": "T07", "map_id": 457, "grid": (26, 15)},
+    # first_arrival: index into FIRST_ARRIVAL_TO_ZONE flags (base flag 2482).
+    # Derived from decomp sTownMapFlyLocationUnlockFlags (context.c:54-75)
+    # and first_arrival_to_zones.txt.
+    {"name": "Twinleaf Town",     "code": "T01", "map_id": 411, "grid": (4, 28),  "first_arrival": 0},
+    {"name": "Sandgem Town",      "code": "T02", "map_id": 418, "grid": (6, 27),  "first_arrival": 1},
+    {"name": "Floaroma Town",     "code": "T03", "map_id": 426, "grid": (6, 20),  "first_arrival": 2},
+    {"name": "Solaceon Town",     "code": "T04", "map_id": 433, "grid": (18, 21), "first_arrival": 3},
+    {"name": "Celestic Town",     "code": "T05", "map_id": 442, "grid": (15, 17), "first_arrival": 4},
+    {"name": "Survival Area",     "code": "T06", "map_id": 450, "grid": (21, 11), "first_arrival": 5},
+    {"name": "Resort Area",       "code": "T07", "map_id": 457, "grid": (26, 15), "first_arrival": 6},
     # Cities (2x2 or L-shaped)
-    {"name": "Jubilife City",     "code": "C01", "map_id":   3, "grid": (5, 24)},
-    {"name": "Canalave City",     "code": "C02", "map_id":  33, "grid": (2, 23)},
-    {"name": "Oreburgh City",     "code": "C03", "map_id":  45, "grid": (9, 24)},
-    {"name": "Eterna City",       "code": "C04", "map_id":  65, "grid": (10, 17)},
-    {"name": "Hearthome City",    "code": "C05", "map_id":  86, "grid": (15, 22)},
-    {"name": "Pastoria City",     "code": "C06", "map_id": 120, "grid": (19, 26)},
-    {"name": "Veilstone City",    "code": "C07", "map_id": 132, "grid": (22, 19)},
-    {"name": "Sunyshore City",    "code": "C08", "map_id": 150, "grid": (27, 24)},
-    {"name": "Snowpoint City",    "code": "C09", "map_id": 165, "grid": (12, 7)},
-    {"name": "Fight Area",        "code": "C11", "map_id": 188, "grid": (20, 14)},
+    {"name": "Jubilife City",     "code": "C01", "map_id":   3, "grid": (5, 24),  "first_arrival": 7},
+    {"name": "Canalave City",     "code": "C02", "map_id":  33, "grid": (2, 23),  "first_arrival": 8},
+    {"name": "Oreburgh City",     "code": "C03", "map_id":  45, "grid": (9, 24),  "first_arrival": 9},
+    {"name": "Eterna City",       "code": "C04", "map_id":  65, "grid": (10, 17), "first_arrival": 10},
+    {"name": "Hearthome City",    "code": "C05", "map_id":  86, "grid": (15, 22), "first_arrival": 11},
+    {"name": "Pastoria City",     "code": "C06", "map_id": 120, "grid": (19, 26), "first_arrival": 12},
+    {"name": "Veilstone City",    "code": "C07", "map_id": 132, "grid": (22, 19), "first_arrival": 13},
+    {"name": "Sunyshore City",    "code": "C08", "map_id": 150, "grid": (27, 24), "first_arrival": 14},
+    {"name": "Snowpoint City",    "code": "C09", "map_id": 165, "grid": (12, 7),  "first_arrival": 15},
+    {"name": "Fight Area",        "code": "C11", "map_id": 188, "grid": (20, 14), "first_arrival": 17},
     # Special locations
-    {"name": "Pal Park",          "code": "D11", "map_id": 252, "grid": (10, 27)},
-    {"name": "Pokemon League",    "code": "C10", "map_id": 172, "grid": (27, 18)},
+    # Pal Park uses FIRST_ARRIVAL_POKE_PARK_FRONT_GATE (index 67)
+    {"name": "Pal Park",          "code": "D11", "map_id": 252, "grid": (10, 27), "first_arrival": 67},
+    # Pokemon League has two fly spots on the town map: Victory Road (flag 16)
+    # and League building (flag 68). Either unlocks flying there.
+    {"name": "Pokemon League",    "code": "C10", "map_id": 172, "grid": (27, 18), "first_arrival": (16, 68)},
 ]
 
 # Lookup by name (case-insensitive) and by code
@@ -81,6 +87,37 @@ _BY_CODE = {d["code"]: d for d in _FLY_DESTINATIONS}
 _CODE_TO_FLY = {}
 for d in _FLY_DESTINATIONS:
     _CODE_TO_FLY[d["code"]] = d
+
+
+# ── First-arrival flags (decomp: SYSTEM_FLAGS_FIRST_ARRIVAL_TO_ZONE) ──
+# The generated vars_flags.txt has alias lines that share flag IDs, so the
+# file line number (2482) doesn't equal the true flag ID.  Verified
+# empirically: base = 2480 correctly reads all city flags in both the
+# 2-badge and 8-badge (E4) saves.
+FIRST_ARRIVAL_FLAG_BASE = 2480
+
+
+def _is_destination_unlocked(emu: EmulatorClient, dest: dict[str, Any]) -> bool:
+    """Check if a fly destination has been visited by reading first-arrival flags.
+
+    The game sets a flag in VarsFlags.flags[] when the player first enters a
+    city/town. The town map only shows destinations whose flag is set.
+    """
+    from renegade_mcp.addresses import addr
+
+    flags_array = addr("FLAGS_ARRAY")
+    first_arrival = dest["first_arrival"]
+    # Pokemon League has two flags (Victory Road + League); either unlocks it
+    indices = first_arrival if isinstance(first_arrival, tuple) else (first_arrival,)
+
+    for fa_index in indices:
+        flag_id = FIRST_ARRIVAL_FLAG_BASE + fa_index
+        byte_addr = flags_array + (flag_id // 8)
+        bit_mask = 1 << (flag_id % 8)
+        byte_val = emu.read_memory(byte_addr, size="byte")
+        if byte_val & bit_mask:
+            return True
+    return False
 
 
 def _resolve_destination(destination: str) -> dict[str, Any] | None:
@@ -177,6 +214,12 @@ def use_fly(emu: EmulatorClient, destination: str) -> dict[str, Any]:
         return _error("No party Pokemon knows Fly. Teach HM02 to a Pokemon first.")
 
     fly_user = party[fly_slot].get("name", f"slot {fly_slot}")
+
+    if not _is_destination_unlocked(emu, dest):
+        return _error(
+            f"{dest['name']} has not been visited yet — "
+            f"it won't appear on the Fly map. Visit it on foot first."
+        )
 
     # Record starting map to verify warp later
     start_map_id, _, _, _ = read_player_state(emu)

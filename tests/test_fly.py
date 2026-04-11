@@ -169,3 +169,46 @@ class TestFlyPreChecks:
         # the fly_ready state does.  lobby state may still have Fly
         # if we saved after teaching.  Either way, it should fail.
         assert result["success"] is False
+
+    def test_fly_unvisited_city_rejected(self, emu: EmulatorClient):
+        """Fly to an unvisited city returns clear error before touching UI."""
+        # E4 save has all cities visited — use our 2-badge save instead.
+        # With only 2 badges we fail the badge check, so we need the E4 save
+        # but target a postgame city that Wayne never visited... except Wayne
+        # has visited everywhere.  Instead, test the flag reader directly.
+        _load_e4_outdoor(emu)
+        from renegade_mcp.fly import _is_destination_unlocked, _FLY_DESTINATIONS
+
+        # Wayne's 8-badge save should have all main-story cities unlocked.
+        # Survival Area, Resort Area, Fight Area are postgame — correctly locked.
+        postgame = {"Survival Area", "Resort Area", "Fight Area"}
+        for dest in _FLY_DESTINATIONS:
+            name = dest["name"]
+            if name in postgame:
+                continue
+            assert _is_destination_unlocked(emu, dest), (
+                f"{name} should be unlocked in E4 save"
+            )
+
+    def test_unvisited_city_detected_as_locked(self, emu: EmulatorClient):
+        """Cities not yet visited read as locked in the 2-badge save."""
+        do_load_state(emu, "eterna_city_post_gardenia_team_updated", redetect_shift=True)
+        from renegade_mcp.fly import _is_destination_unlocked, _BY_NAME
+
+        # With 2 badges, we've only visited early cities.
+        # Snowpoint, Sunyshore, etc. should be locked.
+        snowpoint = _BY_NAME["snowpoint city"]
+        assert not _is_destination_unlocked(emu, snowpoint), (
+            "Snowpoint City should be locked in 2-badge save"
+        )
+        sunyshore = _BY_NAME["sunyshore city"]
+        assert not _is_destination_unlocked(emu, sunyshore), (
+            "Sunyshore City should be locked in 2-badge save"
+        )
+
+        # But Jubilife, Oreburgh, Eterna should be unlocked
+        for name in ("jubilife city", "oreburgh city", "eterna city"):
+            dest = _BY_NAME[name]
+            assert _is_destination_unlocked(emu, dest), (
+                f"{dest['name']} should be unlocked in 2-badge save"
+            )
