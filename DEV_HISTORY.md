@@ -2,6 +2,34 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Bike Slope Auto-Traversal (2026-04-11e)
+
+### Summary
+Implemented automatic bike slope traversal in `navigate_to`. Slopes (0xD9/0xDA) on Route 207+ are now auto-detected in BFS paths and traversed with a fast-gear running-start maneuver.
+
+### Implementation
+- Added `BIKE_SLOPE_BEHAVIORS`, `BIKE_SLOPE_TYPES` constants to navigation.py
+- Added `BIKE_GEAR_STATE_ADDR = 0x021BF6AC` to addresses.py (ARM9 BSS, no delta shift)
+- New `_traverse_bike_slope()` function: fast gear → 3-tile backup → continuous 2-frame-polled hold through slope → gear write + 120f settle
+- Path execution in `_execute_path` detects slope obstacles and dispatches to the traversal
+- `_navigate_to_impl` scans BFS paths for slope tiles and adds them to the obstacle tracking dict
+
+### Key Discoveries
+- **4th gear momentum**: Fast gear causes the bike to auto-roll forward even without input. After the continuous hold ends, the bike coasts 1-2 tiles. Writing the gear byte to slow (3rd) via memory immediately after the slope is cleared, then idling 120 frames, fully drains the internal momentum.
+- **B press causes speed surge**: Pressing B to toggle gear triggers a speed boost that moves the player 3+ extra tiles — must write the gear byte directly via memory instead.
+- **Post-nav drift**: `_post_nav_check` advances ~300 frames polling for encounters. Without momentum cancellation, the bike drifts during this period. The gear write + 120f settle prevents this.
+- **Coast is absorbed by remaining path**: When navigating to a target well past the slope (common case), the 2-tile coast is consumed by remaining path steps, giving an exact final position.
+
+### Tests Added
+9 new tests in `test_cycling_road.py` (2 classes: `TestBikeSlopeConstants`, `TestBikeSlopeTraversal`). Total cycling road tests: 27. All navigation tests (22) also pass.
+
+### Files Changed
+- `renegade_mcp/addresses.py` — added `BIKE_GEAR_STATE_ADDR`
+- `renegade_mcp/navigation.py` — slope constants, `_traverse_bike_slope()`, integration in `_execute_path` and `_navigate_to_impl`
+- `tests/test_cycling_road.py` — 9 new bike slope tests
+- `CLAUDE.md` — documented bike slope auto-traversal behavior
+- `DEV_HISTORY.md` — this entry
+
 ## Dev Session: Cycling Road Stuck Fix & Bike Slope Research (2026-04-11d)
 
 ### Summary

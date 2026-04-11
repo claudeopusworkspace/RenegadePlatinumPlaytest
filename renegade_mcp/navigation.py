@@ -69,6 +69,13 @@ LEDGE_DIRECTIONS = {
     0x38: "down", 0x39: "up", 0x3A: "left", 0x3B: "right",
 }
 
+# Bike slope tiles — passable in collision data but the game engine blocks
+# single-step entry.  Require fast gear (4th gear) + 3-tile running start.
+BIKE_SLOPE_BEHAVIORS = {0xD9, 0xDA}  # bike_slope_top, bike_slope_bottom
+BIKE_SLOPE_TYPES = {"bike_slope"}
+BIKE_SLOPE_BACKUP_TILES = 3  # tiles to back up before the running start
+BIKE_SLOPE_MAX_FRAMES = 600  # safety cap for the continuous hold phase
+
 # Water tiles — impassable until Surf is available
 WATER_BEHAVIORS = {0x10, 0x15}  # river, sea (surfable)
 WATERFALL_BEHAVIOR = 0x13
@@ -1720,6 +1727,91 @@ def _navigate_cycling_road(
     return result
 
 
+# ── Bike slope traversal ──
+
+_OPPOSITE_DIR = {"up": "down", "down": "up", "left": "right", "right": "left"}
+
+
+def _traverse_bike_slope(
+    emu: EmulatorClient,
+    direction: str,
+    old_x: int, old_y: int,
+    num_slope_tiles: int,
+) -> tuple[int, int, int]:
+    """Traverse bike slope tiles using fast gear and a running start.
+
+    The game engine blocks single-step entry onto slope tiles.  To cross:
+    1. Switch to fast gear (press B if in slow gear)
+    2. Back up 3 tiles (opposite direction) to build momentum space
+    3. Hold *direction* continuously until past all slope tiles
+    4. Restore original gear
+
+    Args:
+        direction: Direction of travel through the slope.
+        old_x, old_y: Player position immediately before the first slope tile.
+        num_slope_tiles: Consecutive slope tiles to cross (usually 2).
+
+    Returns:
+        (final_x, final_y, tiles_moved) where tiles_moved is the distance
+        from old_x/old_y to the final position (includes the slope tiles).
+    """
+    from renegade_mcp.addresses import BIKE_GEAR_STATE_ADDR
+
+    opp = _OPPOSITE_DIR[direction]
+    dx, dy = _DIR_DELTAS[direction]
+
+    # ── 1. Ensure fast gear ──
+    gear = emu.read_memory(BIKE_GEAR_STATE_ADDR, size="byte")
+    was_slow = gear != 0
+    if was_slow:
+        emu.press_buttons(["b"], frames=8)
+        emu.advance_frames(8)
+
+    # ── 2. Back up 3 tiles for running start ──
+    for _ in range(BIKE_SLOPE_BACKUP_TILES):
+        emu.advance_frames(BIKE_HOLD_FRAMES, buttons=[opp])
+        emu.advance_frames(WAIT_FRAMES)
+
+    # ── 3. Continuous hold through the slope ──
+    # Fine-grained 2-frame polling from the backed-up position all the way
+    # through the slope.  Fast gear moves ~2-3 f/tile, so coarser polling
+    # causes multi-tile overshoot.  Stop once we've moved past all slope
+    # tiles (fwd > num_slope_tiles, measured from old_x/old_y).
+    frames_used = 0
+    last_pos = None
+    stall_frames = 0
+    while frames_used < BIKE_SLOPE_MAX_FRAMES:
+        emu.advance_frames(2, buttons=[direction])
+        frames_used += 2
+        _, nx, ny = _read_position(emu)
+
+        fwd = (nx - old_x) * dx + (ny - old_y) * dy
+        if fwd > num_slope_tiles:
+            break  # just past the last slope tile
+
+        # Stuck detection: bail if position unchanged for 40+ frames
+        if (nx, ny) == last_pos:
+            stall_frames += 2
+            if stall_frames >= 40:
+                break
+        else:
+            stall_frames = 0
+        last_pos = (nx, ny)
+
+    # ── 3b. Cancel fast gear and drain momentum ──
+    # Write slow gear (3rd) immediately so the bike stops auto-advancing,
+    # then idle for 120 frames (~2 sec) to fully drain the game engine's
+    # internal momentum counter.  Shorter settle periods look stable but
+    # the bike resumes drifting when subsequent code advances frames
+    # (e.g. the 300-frame post-navigation encounter poll).
+    emu.write_memory(BIKE_GEAR_STATE_ADDR, value=1, size="byte")
+    emu.advance_frames(120)
+
+    _, final_x, final_y = _read_position(emu)
+    tiles_moved = abs(final_x - old_x) + abs(final_y - old_y)
+    return final_x, final_y, tiles_moved
+
+
 # ── HM obstacle clearing ──
 
 # Timing for the HM field move interaction sequence.
@@ -1841,7 +1933,43 @@ def _execute_path(
             dx, dy = _DIR_DELTAS.get(direction, (0, 0))
             obs_gx, obs_gy = old_x + dx, old_y + dy
             obs_info = obstacle_tiles.get((obs_gx, obs_gy))
-            if obs_info is not None:
+            if obs_info is not None and obs_info["type"] in BIKE_SLOPE_TYPES:
+                # Bike slope — needs fast gear + running start, not an HM
+                # interaction.  Count consecutive slope tiles ahead.
+                num_slopes = 0
+                cx, cy = old_x, old_y
+                for j in range(i, len(directions)):
+                    sdx, sdy = _DIR_DELTAS[directions[j]]
+                    cx, cy = cx + sdx, cy + sdy
+                    si = obstacle_tiles.get((cx, cy))
+                    if si and si["type"] in BIKE_SLOPE_TYPES:
+                        num_slopes += 1
+                    else:
+                        break
+
+                final_x, final_y, tiles_moved = _traverse_bike_slope(
+                    emu, direction, old_x, old_y, num_slopes,
+                )
+                new_x, new_y = final_x, final_y
+                blocked = (old_x, old_y) == (new_x, new_y)
+                if not blocked:
+                    # Remove traversed slope tiles from tracking
+                    sx, sy = old_x, old_y
+                    for step in range(1, tiles_moved + 1):
+                        t = (sx + dx * step, sy + dy * step)
+                        obstacle_tiles.pop(t, None)
+                    # Skip consumed path steps (current step + extras)
+                    extra = tiles_moved - 1
+                    if extra > 0:
+                        i += extra
+                        steps_taken += extra
+                    nav_info.setdefault("obstacles_cleared", []).append({
+                        "type": "bike_slope",
+                        "tiles": num_slopes,
+                        "x": obs_gx, "y": obs_gy,
+                    })
+
+            elif obs_info is not None:
                 is_surf = obs_info["type"] in SURF_TYPES
                 is_multi_tile = obs_info["type"] in MULTI_TILE_HM_TYPES
                 cleared = _clear_hm_obstacle(emu, direction, obs_info)
@@ -2716,6 +2844,25 @@ def _navigate_to_impl(
                     gy = ob["y"] + repath_oy
                 exec_obstacle_tiles[(gx, gy)] = ob
 
+    # Scan the chosen path for bike slope tiles and add them to the obstacle
+    # lookup so _execute_path can trigger the running-start traversal.
+    # Slopes are passable in collision data (BFS finds them fine) but the game
+    # engine blocks single-step entry — special movement handling is needed.
+    if path and terrain_info:
+        sx, sy = bfs_sx, bfs_sy
+        for step_dir in path:
+            sdx, sdy = _DIR_DELTAS.get(step_dir, (0, 0))
+            sx, sy = sx + sdx, sy + sdy
+            if 0 <= sy < len(terrain_info) and 0 <= sx < len(terrain_info[sy]):
+                _passable, beh = terrain_info[sy][sx]
+                if beh in BIKE_SLOPE_BEHAVIORS:
+                    gx, gy = sx + repath_ox, sy + repath_oy
+                    if (gx, gy) not in exec_obstacle_tiles:
+                        exec_obstacle_tiles[(gx, gy)] = {
+                            "type": "bike_slope",
+                            "behavior": beh,
+                        }
+
     # Provide field_moves + obstacle_map for repath during Surf navigation.
     # When surfing, _try_repath uses obstacle-aware BFS so water stays passable.
     repath_ctx["field_moves"] = field_moves
@@ -2726,7 +2873,6 @@ def _navigate_to_impl(
             emu, path, repath_ctx=repath_ctx, hold_frames=hold_frames,
             obstacle_tiles=exec_obstacle_tiles,
         )
-
     path_str = _summarize_path(path)
 
     # Door target but couldn't reach it — check for dialogue/battle that

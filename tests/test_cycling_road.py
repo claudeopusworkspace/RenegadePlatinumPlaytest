@@ -240,3 +240,103 @@ class TestCyclingRoadEncounter:
             f"Should reach target avoiding trainer, got: {result.get('note', result)}"
         )
         assert "encounter" not in result, "Should not encounter trainer on different column"
+
+
+# ---------------------------------------------------------------------------
+# Bike slope traversal (Route 207)
+# ---------------------------------------------------------------------------
+
+class TestBikeSlopeConstants:
+    """Bike slope constants and behaviors."""
+
+    def test_slope_behaviors_defined(self, emu: EmulatorClient):
+        """BIKE_SLOPE_BEHAVIORS contains both slope tiles."""
+        from renegade_mcp.navigation import BIKE_SLOPE_BEHAVIORS
+        assert 0xD9 in BIKE_SLOPE_BEHAVIORS  # bike_slope_top
+        assert 0xDA in BIKE_SLOPE_BEHAVIORS  # bike_slope_bottom
+
+    def test_slope_types_defined(self, emu: EmulatorClient):
+        """BIKE_SLOPE_TYPES contains the bike_slope type string."""
+        from renegade_mcp.navigation import BIKE_SLOPE_TYPES
+        assert "bike_slope" in BIKE_SLOPE_TYPES
+
+    def test_gear_address_valid(self, emu: EmulatorClient):
+        """BIKE_GEAR_STATE_ADDR is in the expected ARM9 BSS range."""
+        from renegade_mcp.addresses import BIKE_GEAR_STATE_ADDR
+        assert 0x02100000 < BIKE_GEAR_STATE_ADDR < 0x02200000
+
+
+class TestBikeSlopeTraversal:
+    """Bike slope navigation on Route 207.
+
+    Uses route207_at_bike_slope_bottom save state: (306, 720), on bicycle,
+    one tile south of the bike slope bottom.  E4 save (8 badges).
+    """
+
+    @retry_on_rng("route207_at_bike_slope_bottom")
+    def test_gear_toggle(self, emu: EmulatorClient):
+        """Gear address reads correctly and toggles with B press."""
+        from renegade_mcp.addresses import BIKE_GEAR_STATE_ADDR
+        gear = emu.read_memory(BIKE_GEAR_STATE_ADDR, size="byte")
+        assert gear == 1, f"Expected slow gear (1), got {gear}"
+        emu.press_buttons(["b"], frames=8)
+        emu.advance_frames(8)
+        gear = emu.read_memory(BIKE_GEAR_STATE_ADDR, size="byte")
+        assert gear == 0, f"Expected fast gear (0) after B press, got {gear}"
+
+    @retry_on_rng("route207_at_bike_slope_bottom")
+    def test_slope_in_path(self, emu: EmulatorClient):
+        """navigate_to detects slope tiles in the BFS path."""
+        from renegade_mcp.navigation import _navigate_to_impl
+        result = _navigate_to_impl(emu, 306, 710)
+        assert "obstacles_cleared" in result, "Expected obstacles_cleared in result"
+        slopes = [o for o in result["obstacles_cleared"] if o["type"] == "bike_slope"]
+        assert len(slopes) == 1, f"Expected 1 bike_slope obstacle, got {slopes}"
+        assert slopes[0]["tiles"] == 2, f"Expected 2 slope tiles, got {slopes[0]['tiles']}"
+
+    @retry_on_rng("route207_at_bike_slope_bottom")
+    def test_traverse_reaches_target(self, emu: EmulatorClient):
+        """navigate_to through slope reaches a target well past the slope."""
+        from renegade_mcp.navigation import _navigate_to_impl
+        result = _navigate_to_impl(emu, 306, 710)
+        assert result["final"]["y"] == 710, (
+            f"Expected y=710, got y={result['final']['y']}"
+        )
+        assert result["final"]["x"] == 306
+
+    @retry_on_rng("route207_at_bike_slope_bottom")
+    def test_traverse_no_drift(self, emu: EmulatorClient):
+        """Position is stable after slope traversal (no post-nav drift)."""
+        from renegade_mcp.navigation import _navigate_to_impl, _read_position
+        _navigate_to_impl(emu, 306, 710)
+        _, x1, y1 = _read_position(emu)
+        # Advance 600 more frames — position should not change
+        emu.advance_frames(600)
+        _, x2, y2 = _read_position(emu)
+        assert (x1, y1) == (x2, y2), (
+            f"Position drifted from ({x1},{y1}) to ({x2},{y2}) after 600 frames"
+        )
+
+    @retry_on_rng("route207_at_bike_slope_bottom")
+    def test_navigation_works_after_traverse(self, emu: EmulatorClient):
+        """Normal navigation continues working after slope traversal."""
+        from renegade_mcp.navigation import _navigate_to_impl
+        _navigate_to_impl(emu, 306, 710)
+        # Navigate further north — should work without errors
+        result = _navigate_to_impl(emu, 306, 707)
+        assert "error" not in result, f"Post-slope navigation failed: {result}"
+        assert result["final"]["y"] <= 707, (
+            f"Expected to reach y<=707, got y={result['final']['y']}"
+        )
+
+    @retry_on_rng("route207_at_bike_slope_bottom")
+    def test_close_target_overshoots_gracefully(self, emu: EmulatorClient):
+        """Navigating to a target just past the slope overshoots but reports correctly."""
+        from renegade_mcp.navigation import _navigate_to_impl
+        # Target y=718 is the slope top — bike momentum will carry past
+        result = _navigate_to_impl(emu, 306, 718)
+        # The player should be AT or PAST the target (lower y = further north)
+        assert result["final"]["y"] <= 718, (
+            f"Expected y <= 718 (at or past slope), got y={result['final']['y']}"
+        )
+        assert "obstacles_cleared" in result

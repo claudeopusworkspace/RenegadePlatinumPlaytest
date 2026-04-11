@@ -67,6 +67,11 @@ _DESMUME: dict[str, int] = {
 ZONE_HEADER_BASE = 0x020E601E
 ZONE_HEADER_STRIDE = 24
 
+# Bike gear state: byte at this address, 0 = fast gear (4th), 1 = slow gear (3rd).
+# Toggle by pressing B while on bicycle. Required for climbing bike slopes.
+# Located in ARM9 BSS region — no heap delta shift needed.
+BIKE_GEAR_STATE_ADDR = 0x021BF6AC
+
 # ── Struct-internal constants (no shift) ──
 
 ENCRYPTED_SLOT_SIZE = 236

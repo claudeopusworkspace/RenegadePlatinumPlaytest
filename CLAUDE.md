@@ -69,6 +69,8 @@ Multi-chunk maps (overworld, large caves) use a matrix/chunk system detected aut
 
 **Cycling Road (Route 206)**: Bridge body tiles (0x71) force the player to slide south at ~4f/tile when on the bicycle. `navigate_to` auto-detects this (tile behavior + cycling state + path scan) and uses position-tracking instead of step-counting: south = passive slide, north = continuous UP hold (~8f/tile), lateral = 4f press with south drift. `navigate` (manual) refuses with a clear error. Encounter detection runs during all movement phases. The bridge renders as `n` in `view_map`.
 
+**Bike Slopes (Route 207+)**: Slope tiles (0xD9 top, 0xDA bottom) are passable in collision data but the game engine blocks single-step entry. `navigate_to` auto-detects slope tiles in the BFS path and traverses them with: fast gear toggle → 3-tile backup → continuous hold through slope → gear reset via memory write + 120f settle. The bike's momentum causes ~2 tiles of coast past the slope exit; this is absorbed by remaining path steps when navigating to a distant target. Returns `obstacles_cleared` with `type: "bike_slope"`. Slopes render as `\` (top) and `/` (bottom) in `view_map`.
+
 ## Battle Workflow
 
 ### Automated (preferred)
