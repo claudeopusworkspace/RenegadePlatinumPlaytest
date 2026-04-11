@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 MENU_WAIT = 300
 NAV_WAIT = 60
 FLY_MAP_OPEN_WAIT = 600   # town map open animation
-FLY_WARP_WAIT = 1800      # fly animation + warp transition
+FLY_WARP_WAIT = 3600      # fly cut-in + night sky + landing animation (~60 sec game time)
 
 # ── Pause menu ──
 POKEMON_INDEX = 1
@@ -242,11 +242,14 @@ def use_fly(emu: EmulatorClient, destination: str) -> dict[str, Any]:
     emu.advance_frames(NAV_WAIT)  # settle on target
 
     # ── Step 6: Confirm selection ──
-    _press(emu, ["a"], wait=NAV_WAIT)
-    # Dismiss "Want to Fly?" confirmation if present (press A again)
+    # A on a valid fly destination starts the fly immediately (no confirmation prompt).
     _press(emu, ["a"], wait=FLY_WARP_WAIT)
 
     # ── Step 7: Verify arrival ──
+    # Advance a few extra frames to ensure the overworld is fully loaded
+    # and the renderer has caught up (melonDS skips rendering on fast-forwarded
+    # frames, so the last rendered frame may lag behind game state).
+    emu.advance_frames(300)
     new_map_id, _, _, _ = read_player_state(emu)
     new_info = lookup_map_name(new_map_id)
 
