@@ -53,6 +53,32 @@
 | `test_move_learn_prompt` | Route 211 west trainer battle. At "Make it forget?" prompt — Prinplup wants to learn Icy Wind (knows Metal Claw/Growl/Bubble Beam/Peck). Mid-battle after KO'ing Swablu. |
 | `cycling_road_edge` | Route 206 at (304, 592). On bicycle, last ground tile before bridge body tiles (0x71) start. Used for cycling road navigation tests. |
 
+## HM Field Move Testing (Wayne's E4 Save)
+
+All states use Wayne's 8-badge team with full HM coverage:
+Fly (Garchomp), Surf (Swampert), Rock Smash (Nidoking), Strength (Nidoking), Rock Climb (Nidoking), Cut (Gallade), Waterfall (Crawdaunt).
+
+| Name | Description |
+|------|-------------|
+| `e4_hm_base_all_moves` | Pokemon League lobby. Base state with all HMs taught. Dusknoir still in party (deposit failed). |
+| `hm_test_surf_canalave` | Canalave City at (51, 729). Adjacent to canal water tiles. Surf test. |
+| `hm_test_surf_waterfall_pokemon_league` | Pokemon League outdoor at (847, 560). Obstacle BFS confirms path south requires Surf + Waterfall. |
+| `hm_test_rock_smash_mt_coronet` | Mt. Coronet map 207 (Route 208 entrance) at (4, 8). 4 Rock Smash objects present (coords show 0,0 in view_map — runtime loading issue). |
+| `hm_test_rock_smash_oreburgh_mine_b2f` | Oreburgh Mine B2F at (18, 28). Standing between two Rock Smash rocks at (17, 28) and (19, 28). Best Rock Smash test location. |
+| `hm_test_cut_surf_route214` | Route 214 at (725, 678). Obstacle BFS detected Cut tree at (731, 648) + Surf tiles on path. Combined Cut + Surf test. |
+
+### Still needed
+- **Cut (standalone)** — All cut trees have story flags; may need our playthrough save (2-badge, pre-Galactic) for Eterna City trees.
+- **Strength** — Oreburgh Mine B2F objects are Rock Smash, not Strength. Need cave with actual Strength boulders (gfx=85). Reliable ROM coords: Stark Mountain Room 3 (10, 13).
+- **Rock Climb** — Route 217 and Mt. Coronet have walls (behaviors 0x4A/0x4B). Both require Surf or bike slopes to reach. Consider approaching from Acuity Lakefront.
+
+### ROM data reference
+Full HM obstacle scan in `romdata/zone_event/`. Key findings:
+- **Cut trees (gfx=87)**: 335 across 107 archives. All have story flags. Eterna City (327,516) and (317,558) gated behind Galactic flags.
+- **Rock Smash (gfx=86)**: 49 across 19 archives. Most have placeholder coords (0,0). Oreburgh Mine B2F has verified (17,28) and (19,28).
+- **Strength boulders (gfx=85)**: 111 across 21 archives. Most placeholder coords. Oreburgh Mine B2F (19,28)/(17,28) per ROM but show as Rock Smash in-game.
+- **Rock Climb (0x4A/0x4B)**: 34 land_data chunks. Most in Mt. Coronet, some Route 216/217.
+
 ---
 
 *DeSmuME-era save states (.dst) are documented in [LEGACY_SAVE_STATES.md](LEGACY_SAVE_STATES.md). These are not compatible with melonDS but preserved for reference.*
