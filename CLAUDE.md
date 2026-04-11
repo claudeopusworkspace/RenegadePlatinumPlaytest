@@ -60,7 +60,7 @@ Checkpoints share a unified ring buffer (300 slots) with the melonDS MCP's own c
 
 - **Use `view_map`** to get a full map with terrain, player, NPCs, and **warp destinations** — all read live from the emulator. The `warps` list shows every door/stair exit with its destination name and tile coordinates.
 - **Use warp coordinates from `view_map` with `navigate_to`** to enter buildings — the (x, y) from a warp entry can be passed directly to `navigate_to` for seamless transitions.
-- **Use `navigate` or `navigate_to`** to walk paths — they verify each step and stop on collision. `navigate` auto-trims paths at door/stair transitions. `navigate_to` auto-enters adjacent walk-into doors (0x69, 0x6E). **`navigate_to` auto-clears Rock Smash rocks, Cut trees, and Surfs across water** when the obstacle path is shorter — returns `obstacles_cleared` in the response. Surf requires the Fen Badge + a party Pokemon with Surf; movement speed auto-adjusts to 8f/tile while surfing.
+- **Use `navigate` or `navigate_to`** to walk paths — they verify each step and stop on collision. `navigate` auto-trims paths at door/stair transitions. `navigate_to` auto-enters adjacent walk-into doors (0x69, 0x6E). **`navigate_to` auto-clears Rock Smash rocks, Cut trees, Surfs across water, climbs Rock Climb walls, and descends/ascends Waterfalls** when the obstacle path is shorter — returns `obstacles_cleared` in the response. Surf requires the Fen Badge; Rock Climb requires the Icicle Badge; Waterfall requires the Beacon Badge (each + a party Pokemon with the move). Movement speed auto-adjusts to 8f/tile while surfing. Rock Climb and Waterfall traverse multiple tiles in one animation (path steps auto-consumed).
 - **When stuck navigating, ask Michael for visual help** rather than brute-forcing positions.
 - Screenshots are fine for reading dialogue, menus, and battle screens — just not for spatial navigation.
 - **Position dicts** (start/final in navigate responses) include full map name info (`map_id`, `name`, `display`, `code`, `room`) instead of a bare map ID. No need to call `map_name` separately.
@@ -273,7 +273,7 @@ See GAME_HISTORY.md for full details (defeated trainers, story progress, box con
 
 ## Test Suite
 
-Integration tests live in `tests/` (244 tests across 22 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
+Integration tests live in `tests/` (256 tests across 22 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
 
 ```bash
 MelonMCP/.venv/bin/python -m pytest tests/ -v          # full suite (~24 min)

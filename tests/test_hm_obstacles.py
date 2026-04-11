@@ -277,6 +277,287 @@ class TestSurfNavigation:
 
 
 # ---------------------------------------------------------------------------
+# Rock Climb auto-navigation
+# ---------------------------------------------------------------------------
+
+class TestRockClimbNavigation:
+    """navigate_to auto-uses Rock Climb to traverse cliff walls.
+
+    Uses Veilstone City save state — player at (691, 617) south of a
+    Rock Climb wall. The wall at (691, 615)/(691, 616) separates the
+    gym area (west) from the main city. Clean path around = 68 steps.
+    """
+
+    SAVE_STATE = "hm_test_rock_climb_veilstone"
+
+    def test_rock_climb_field_move_available(self, emu: EmulatorClient):
+        """Wayne's E4 save has Rock Climb available (party + Icicle Badge)."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.navigation import _get_field_move_availability
+
+        field_moves = _get_field_move_availability(emu)
+        assert field_moves["Rock Climb"] is True
+
+    def test_rock_climb_tiles_in_terrain(self, emu: EmulatorClient):
+        """Rock Climb tiles (0x4A/0x4B) are present in Veilstone terrain."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.map_state import get_map_state
+        from renegade_mcp.navigation import ROCK_CLIMB_BEHAVIORS
+
+        state = get_map_state(emu)
+        assert state is not None
+
+        rc_count = 0
+        for row in state["terrain"]:
+            for val in row:
+                behavior = val & 0x00FF
+                if behavior in ROCK_CLIMB_BEHAVIORS:
+                    rc_count += 1
+
+        assert rc_count > 0, "Expected Rock Climb tiles in Veilstone City"
+
+    def test_obstacle_bfs_finds_rock_climb_path(self, emu: EmulatorClient):
+        """Obstacle-aware BFS finds a path through Rock Climb wall."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.navigation import (
+            _bfs_pathfind,
+            _bfs_pathfind_obstacles,
+            _build_multi_chunk_terrain,
+            _classify_objects_for_grid,
+            _get_field_move_availability,
+            _read_position,
+        )
+        from renegade_mcp.map_state import get_map_state
+
+        _, px, py = _read_position(emu)
+        state = get_map_state(emu)
+        map_id = state["map_id"]
+        field_moves = _get_field_move_availability(emu)
+
+        # Target: other side of the Rock Climb wall
+        target_x, target_y = 691, 614
+        mc_result = _build_multi_chunk_terrain(emu, map_id, px, py, target_x, target_y)
+        assert mc_result is not None
+        terrain_info, grid_ox, grid_oy, grid_w, grid_h = mc_result
+        npc_set, obstacle_map = _classify_objects_for_grid(
+            state["objects"], grid_ox, grid_oy, grid_w, grid_h,
+        )
+
+        rel_px, rel_py = px - grid_ox, py - grid_oy
+        rel_tx, rel_ty = target_x - grid_ox, target_y - grid_oy
+
+        # Clean BFS should NOT find a path (wall blocks)
+        clean_path = _bfs_pathfind(
+            terrain_info, npc_set | set(obstacle_map.keys()),
+            rel_px, rel_py, rel_tx, rel_ty,
+            width=grid_w, height=grid_h,
+        )
+        assert clean_path is None, "Clean BFS should not cross Rock Climb wall"
+
+        # Obstacle BFS with Rock Climb SHOULD find a path
+        obs_path, obs_crossed = _bfs_pathfind_obstacles(
+            terrain_info, npc_set, obstacle_map,
+            rel_px, rel_py, rel_tx, rel_ty,
+            field_moves, width=grid_w, height=grid_h,
+        )
+        assert obs_path is not None, "Obstacle BFS should find a path through Rock Climb wall"
+        rc_obs = [ob for ob in obs_crossed if ob["type"] == "rock_climb"]
+        assert len(rc_obs) >= 1, "Path should include rock_climb obstacles"
+
+    def test_navigate_through_rock_climb_wall(self, emu: EmulatorClient):
+        """navigate_to traverses Rock Climb wall and reaches target."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.navigation import navigate_to
+
+        # Player at (691, 617), target at (691, 614) — 3 steps through wall
+        result = navigate_to(emu, 691, 614)
+
+        assert "error" not in result, f"navigate_to failed: {result.get('error')}"
+        assert "status" not in result, f"Got obstacle status: {result.get('message')}"
+        assert result["final"]["x"] == 691
+        assert result["final"]["y"] == 614
+        assert "obstacles_cleared" in result
+        rc_cleared = [c for c in result["obstacles_cleared"] if c["type"] == "rock_climb"]
+        assert len(rc_cleared) >= 1
+        assert rc_cleared[0]["move"] == "Rock Climb"
+
+    def test_navigate_continues_after_rock_climb(self, emu: EmulatorClient):
+        """After climbing, player can continue navigating to a further target."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.navigation import navigate_to
+
+        # First climb the wall to (691, 614)
+        result1 = navigate_to(emu, 691, 614)
+        assert "obstacles_cleared" in result1
+        assert result1["final"]["x"] == 691
+        assert result1["final"]["y"] == 614
+
+        # Now navigate further from the top — should work without issues
+        result2 = navigate_to(emu, 688, 612)
+        assert "error" not in result2, f"Post-climb nav failed: {result2.get('error')}"
+        assert result2["final"]["x"] == 688
+        assert result2["final"]["y"] == 612
+
+    def test_rock_climb_in_auto_navigate_types(self, emu: EmulatorClient):
+        """rock_climb is included in AUTO_NAVIGATE_TYPES."""
+        from renegade_mcp.navigation import (
+            AUTO_NAVIGATE_TYPES, ROCK_CLIMB_TYPES, MULTI_TILE_HM_TYPES,
+        )
+
+        assert "rock_climb" in AUTO_NAVIGATE_TYPES
+        assert "rock_climb" in ROCK_CLIMB_TYPES
+        assert "rock_climb" in MULTI_TILE_HM_TYPES
+
+    def test_rock_climb_not_available_without_badge(self, emu: EmulatorClient):
+        """BFS does not cross Rock Climb wall when move is unavailable."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.navigation import (
+            _bfs_pathfind_obstacles,
+            _build_multi_chunk_terrain,
+            _classify_objects_for_grid,
+            _read_position,
+        )
+        from renegade_mcp.map_state import get_map_state
+
+        _, px, py = _read_position(emu)
+        state = get_map_state(emu)
+        map_id = state["map_id"]
+
+        target_x, target_y = 691, 614
+        mc_result = _build_multi_chunk_terrain(emu, map_id, px, py, target_x, target_y)
+        assert mc_result is not None
+        terrain_info, grid_ox, grid_oy, grid_w, grid_h = mc_result
+        npc_set, obstacle_map = _classify_objects_for_grid(
+            state["objects"], grid_ox, grid_oy, grid_w, grid_h,
+        )
+
+        rel_px, rel_py = px - grid_ox, py - grid_oy
+        rel_tx, rel_ty = target_x - grid_ox, target_y - grid_oy
+
+        # Simulate no Rock Climb available
+        no_rc = {"Rock Smash": True, "Cut": True, "Surf": True,
+                 "Strength": False, "Waterfall": True, "Rock Climb": False}
+
+        obs_path, obs_crossed = _bfs_pathfind_obstacles(
+            terrain_info, npc_set, obstacle_map,
+            rel_px, rel_py, rel_tx, rel_ty,
+            no_rc, width=grid_w, height=grid_h,
+        )
+        rc_obs = [ob for ob in obs_crossed if ob["type"] == "rock_climb"]
+        assert len(rc_obs) == 0, "BFS should not cross Rock Climb wall without the move"
+
+
+# ---------------------------------------------------------------------------
+# Waterfall auto-navigation
+# ---------------------------------------------------------------------------
+
+class TestWaterfallNavigation:
+    """navigate_to auto-uses Waterfall to traverse waterfall tiles.
+
+    Uses Pokemon League outdoor save state — player at (847, 560),
+    path south requires Surf across water + Waterfall at a waterfall tile.
+    """
+
+    SAVE_STATE = "hm_test_surf_waterfall_pokemon_league"
+
+    def test_waterfall_field_move_available(self, emu: EmulatorClient):
+        """Wayne's E4 save has Waterfall available (party + Beacon Badge)."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.navigation import _get_field_move_availability
+
+        field_moves = _get_field_move_availability(emu)
+        assert field_moves["Waterfall"] is True
+
+    def test_waterfall_tiles_in_terrain(self, emu: EmulatorClient):
+        """Waterfall tiles (0x13) are present in the Pokemon League terrain."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.map_state import get_map_state
+        from renegade_mcp.navigation import WATERFALL_BEHAVIOR
+
+        state = get_map_state(emu)
+        assert state is not None
+
+        wf_count = 0
+        for row in state["terrain"]:
+            for val in row:
+                behavior = val & 0x00FF
+                if behavior == WATERFALL_BEHAVIOR:
+                    wf_count += 1
+
+        assert wf_count > 0, "Expected Waterfall tiles in Pokemon League area"
+
+    def test_obstacle_bfs_finds_waterfall_path(self, emu: EmulatorClient):
+        """Obstacle-aware BFS finds a path through Surf + Waterfall."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.navigation import (
+            _bfs_pathfind_obstacles,
+            _build_multi_chunk_terrain,
+            _classify_objects_for_grid,
+            _get_field_move_availability,
+            _read_position,
+        )
+        from renegade_mcp.map_state import get_map_state
+
+        _, px, py = _read_position(emu)
+        state = get_map_state(emu)
+        map_id = state["map_id"]
+        field_moves = _get_field_move_availability(emu)
+
+        # Target: south of waterfall
+        target_x, target_y = 847, 575
+        mc_result = _build_multi_chunk_terrain(emu, map_id, px, py, target_x, target_y)
+        assert mc_result is not None
+        terrain_info, grid_ox, grid_oy, grid_w, grid_h = mc_result
+        npc_set, obstacle_map = _classify_objects_for_grid(
+            state["objects"], grid_ox, grid_oy, grid_w, grid_h,
+        )
+
+        rel_px, rel_py = px - grid_ox, py - grid_oy
+        rel_tx, rel_ty = target_x - grid_ox, target_y - grid_oy
+
+        obs_path, obs_crossed = _bfs_pathfind_obstacles(
+            terrain_info, npc_set, obstacle_map,
+            rel_px, rel_py, rel_tx, rel_ty,
+            field_moves, width=grid_w, height=grid_h,
+        )
+        assert obs_path is not None, "Obstacle BFS should find path through water + waterfall"
+        wf_obs = [ob for ob in obs_crossed if ob["type"] == "waterfall"]
+        assert len(wf_obs) >= 1, "Path should include waterfall obstacle"
+        water_obs = [ob for ob in obs_crossed if ob["type"] == "water"]
+        assert len(water_obs) >= 1, "Path should also include water obstacles"
+
+    def test_navigate_through_waterfall(self, emu: EmulatorClient):
+        """navigate_to crosses water + waterfall and reaches target."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.navigation import navigate_to
+
+        # Player at (847, 560), target south past water and waterfall
+        result = navigate_to(emu, 847, 575)
+
+        assert "error" not in result, f"navigate_to failed: {result.get('error')}"
+        assert "status" not in result, f"Got obstacle status: {result.get('message')}"
+        assert result["final"]["x"] == 847
+        assert result["final"]["y"] == 575
+        assert "obstacles_cleared" in result
+        wf_cleared = [c for c in result["obstacles_cleared"] if c["type"] == "waterfall"]
+        assert len(wf_cleared) >= 1
+        assert wf_cleared[0]["move"] == "Waterfall"
+        # Should also include Surf obstacles
+        surf_cleared = [c for c in result["obstacles_cleared"] if c["type"] == "water"]
+        assert len(surf_cleared) >= 1
+
+    def test_waterfall_in_auto_navigate_types(self, emu: EmulatorClient):
+        """waterfall is included in AUTO_NAVIGATE_TYPES."""
+        from renegade_mcp.navigation import (
+            AUTO_NAVIGATE_TYPES, WATERFALL_TYPES, MULTI_TILE_HM_TYPES,
+        )
+
+        assert "waterfall" in AUTO_NAVIGATE_TYPES
+        assert "waterfall" in WATERFALL_TYPES
+        assert "waterfall" in MULTI_TILE_HM_TYPES
+
+
+# ---------------------------------------------------------------------------
 # GFX ID correctness
 # ---------------------------------------------------------------------------
 

@@ -68,11 +68,11 @@ Fly (Garchomp), Surf (Swampert), Rock Smash (Nidoking), Strength (Nidoking), Roc
 | `hm_test_rock_smash_mt_coronet` | Mt. Coronet map 207 (Route 208 entrance) at (4, 8). 4 Rock Smash objects present (coords show 0,0 in view_map — runtime loading issue). |
 | `hm_test_rock_smash_oreburgh_mine_b2f` | Oreburgh Mine B2F at (18, 28). Standing between two Rock Smash rocks at (17, 28) and (19, 28). Best Rock Smash test location. |
 | `hm_test_cut_surf_route214` | Route 214 at (725, 678). Obstacle BFS detected Cut tree at (731, 648) + Surf tiles on path. Combined Cut + Surf test. |
+| `hm_test_rock_climb_veilstone` | Veilstone City at (691, 617). South of a 2-tile Rock Climb wall at (691, 615-616). Navigate to (691, 614) = 3 steps through wall. 68-step clean path around. |
 
 ### Still needed
 - **Cut (standalone)** — All cut trees have story flags; may need our playthrough save (2-badge, pre-Galactic) for Eterna City trees.
 - **Strength** — Oreburgh Mine B2F objects are Rock Smash, not Strength. Need cave with actual Strength boulders (gfx=85). Reliable ROM coords: Stark Mountain Room 3 (10, 13).
-- **Rock Climb** — Route 217 and Mt. Coronet have walls (behaviors 0x4A/0x4B). Both require Surf or bike slopes to reach. Consider approaching from Acuity Lakefront.
 
 ### ROM data reference
 Full HM obstacle scan in `romdata/zone_event/`. Key findings:

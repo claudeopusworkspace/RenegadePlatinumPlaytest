@@ -2,6 +2,45 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Rock Climb & Waterfall Auto-Navigation (2026-04-11c)
+
+### Summary
+Implemented Rock Climb and Waterfall as auto-navigable HM field moves in `navigate_to`. Both are "multi-tile" obstacles — the animation moves the player through ALL obstacle tiles at once (unlike Surf which moves 1 tile, or Rock Smash/Cut which removes the obstacle). Added `MULTI_TILE_HM_TYPES` constant to categorize them.
+
+### Key Decisions & Findings
+- **Multi-tile traversal**: Rock Climb walls (2+ tiles) and Waterfall cascades are traversed in a single HM animation. After the animation, `_execute_path` reads the new position, calculates `tiles_moved`, and skips `tiles_moved - 1` extra path steps to avoid overshooting.
+- **Downstream waterfalls auto-slide**: Going DOWN a waterfall doesn't require the HM prompt — the game auto-slides the player. The A press in `_clear_hm_obstacle` triggers the slide but returns no dialogue (returns False). Fixed by adding position-change detection after the interaction attempt for multi-tile obstacles: if the player moved even without dialogue, treat as successful traversal.
+- **3D map limitation**: On maps with BDHC elevation data (like Veilstone City), the 3D BFS finds clean paths around obstacles, and the 2D obstacle BFS may fail to find a shortcut path due to elevation-related impassable tiles. The obstacle shortcut only works when the 2D obstacle BFS can find a path. This is the same limitation as Surf on 3D maps.
+- **Veilstone City Rock Climb wall**: Found a great test location by scanning all 666 land_data chunks for behaviors 0x4A/0x4B, mapping chunk IDs to game locations via matrix files. Veilstone has a 2-tile Rock Climb wall at (691, 615-616) separating the gym area from the main city. Flew there from E4 save state.
+- **Waterfall test reused existing state**: `hm_test_surf_waterfall_pokemon_league` at (847, 560) has a path south requiring Surf + Waterfall — worked perfectly for combined testing.
+
+### Test Save States Created
+- `hm_test_rock_climb_veilstone` — Veilstone City at (691, 617), south of Rock Climb wall. Navigate to (691, 614) = 3 steps through wall.
+
+### Tests Added (12 new, 256 total across 22 files)
+**Rock Climb (7):**
+- `test_rock_climb_field_move_available` — Icicle Badge + Rock Climb move detected
+- `test_rock_climb_tiles_in_terrain` — Rock Climb behaviors present in Veilstone terrain
+- `test_obstacle_bfs_finds_rock_climb_path` — obstacle BFS crosses wall; clean BFS does not
+- `test_navigate_through_rock_climb_wall` — full navigate_to from (691,617) to (691,614)
+- `test_navigate_continues_after_rock_climb` — climb wall then navigate further
+- `test_rock_climb_in_auto_navigate_types` — constant classification verification
+- `test_rock_climb_not_available_without_badge` — BFS rejects wall when Rock Climb unavailable
+
+**Waterfall (5):**
+- `test_waterfall_field_move_available` — Beacon Badge + Waterfall move detected
+- `test_waterfall_tiles_in_terrain` — Waterfall behaviors present in Pokemon League terrain
+- `test_obstacle_bfs_finds_waterfall_path` — obstacle BFS finds path through Surf + Waterfall
+- `test_navigate_through_waterfall` — full navigate_to from (847,560) to (847,575) across water + waterfall
+- `test_waterfall_in_auto_navigate_types` — constant classification verification
+
+### Files Changed
+- `renegade_mcp/navigation.py` — ROCK_CLIMB_TYPES, WATERFALL_TYPES, MULTI_TILE_HM_TYPES constants; multi-tile traversal in _execute_path with step-skip logic; downstream waterfall auto-slide detection; updated AUTO_NAVIGATE_TYPES and docstrings
+- `renegade_mcp/server.py` — updated navigate_to docstring
+- `tests/test_hm_obstacles.py` — 12 new tests in TestRockClimbNavigation and TestWaterfallNavigation classes
+- `CLAUDE.md` — updated navigation docs for Rock Climb and Waterfall, test count to 256
+- `SAVE_STATES.md` — added hm_test_rock_climb_veilstone, removed Rock Climb from "Still needed"
+
 ## Dev Session: Surf Auto-Navigation in navigate_to (2026-04-11b)
 
 ### Summary

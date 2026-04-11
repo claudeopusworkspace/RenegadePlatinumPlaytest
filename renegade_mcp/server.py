@@ -178,13 +178,13 @@ def create_server() -> FastMCP:
         to a specific tile — it reads the terrain, avoids walls and NPCs, and
         finds the shortest path. Use view_map to find target coordinates.
 
-        HM obstacle auto-clear: when Rock Smash rocks, Cut trees, or water
-        tiles block the shortest path and the party has the required move + badge,
-        automatically clears/surfs them during navigation. Returns obstacles_cleared
-        list in response. Surf auto-adjusts movement speed (8f/tile vs 16f walking).
-        Terrain obstacles (Waterfall/Rock Climb) still return "obstacle_choice"
-        or "obstacle_required" for manual handling. Strength boulders are never
-        auto-cleared (puzzle-dependent).
+        HM obstacle auto-clear: when Rock Smash rocks, Cut trees, water (Surf),
+        Rock Climb walls, or Waterfall tiles block the shortest path and the party
+        has the required move + badge, automatically clears/traverses them during
+        navigation. Returns obstacles_cleared list in response. Surf auto-adjusts
+        movement speed (8f/tile vs 16f walking). Rock Climb and Waterfall traverse
+        multiple tiles in one animation (path steps auto-consumed). Strength
+        boulders are never auto-cleared (puzzle-dependent).
 
         Sign-aware: reads sign positions from ROM zone_event data and blocks the
         activation tile (one south of each sign) to prevent auto-trigger dialogue.

@@ -91,8 +91,13 @@ CLEARABLE_OBSTACLES = {85, 86}  # rock_smash, cut_tree
 CLEARABLE_TYPES = {"rock_smash", "cut_tree"}
 # Terrain obstacle types handled by entering Surf mode (player moves onto water)
 SURF_TYPES = {"water"}
+# Terrain obstacles that move the player through multiple tiles in one animation
+ROCK_CLIMB_TYPES = {"rock_climb"}
+WATERFALL_TYPES = {"waterfall"}
+# Types where the HM animation traverses all obstacle tiles at once
+MULTI_TILE_HM_TYPES = ROCK_CLIMB_TYPES | WATERFALL_TYPES
 # All types that navigate_to auto-executes (no caller confirmation needed)
-AUTO_NAVIGATE_TYPES = CLEARABLE_TYPES | SURF_TYPES
+AUTO_NAVIGATE_TYPES = CLEARABLE_TYPES | SURF_TYPES | ROCK_CLIMB_TYPES | WATERFALL_TYPES
 # Obstacles that are never auto-handled (puzzle-dependent)
 PUZZLE_OBSTACLES = {84}  # strength_boulder
 
@@ -1714,11 +1719,12 @@ def _clear_hm_obstacle(
     direction: str,
     obstacle_info: dict,
 ) -> bool:
-    """Execute the HM field move interaction to clear a Rock Smash/Cut obstacle.
+    """Execute the HM field move interaction to clear/traverse an obstacle.
 
+    Handles Rock Smash, Cut, Surf, Rock Climb, and Waterfall.
     Assumes the player is adjacent to the obstacle and facing the right direction
     (the initial movement press turned the player to face the obstacle).
-    Returns True if the obstacle was cleared, False if the interaction didn't trigger.
+    Returns True if the obstacle was cleared/traversed, False if the interaction didn't trigger.
     """
     # Ensure player is fully facing the obstacle before interacting.
     # The directional press that caused the block may have only started
@@ -1820,7 +1826,18 @@ def _execute_path(
             obs_info = obstacle_tiles.get((obs_gx, obs_gy))
             if obs_info is not None:
                 is_surf = obs_info["type"] in SURF_TYPES
+                is_multi_tile = obs_info["type"] in MULTI_TILE_HM_TYPES
                 cleared = _clear_hm_obstacle(emu, direction, obs_info)
+
+                # For multi-tile HMs (Rock Climb, Waterfall), check position
+                # even if dialogue wasn't detected — downstream waterfalls
+                # auto-slide the player without an HM prompt, and the A press
+                # in _clear_hm_obstacle may have triggered that slide.
+                if not cleared and is_multi_tile:
+                    new_map, new_x, new_y = _read_position(emu)
+                    if (old_x, old_y) != (new_x, new_y) or old_map != new_map:
+                        cleared = True  # player moved via auto-slide
+
                 if cleared:
                     obstacle_tiles.pop((obs_gx, obs_gy), None)
                     nav_info.setdefault("obstacles_cleared", []).append({
@@ -1840,6 +1857,29 @@ def _execute_path(
                             active_hold = SURF_HOLD_FRAMES
                             if repath_ctx is not None:
                                 repath_ctx["surfing"] = True
+                    elif is_multi_tile:
+                        # Rock Climb / Waterfall: animation moves the player
+                        # through ALL obstacle tiles at once. Read new position
+                        # and skip consumed path steps.
+                        new_map, new_x, new_y = _read_position(emu)
+                        blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
+                        if not blocked:
+                            # Count how many tiles the animation traversed
+                            tiles_moved = abs(new_x - old_x) + abs(new_y - old_y)
+                            # Current step (i) consumed 1 tile; skip additional
+                            extra = tiles_moved - 1
+                            if extra > 0:
+                                i += extra
+                                steps_taken += extra
+                            # Remove all traversed obstacle tiles from tracking
+                            for step in range(1, tiles_moved + 1):
+                                t = (old_x + dx * step, old_y + dy * step)
+                                obstacle_tiles.pop(t, None)
+                            # Waterfall: player stays surfing at surf speed
+                            if obs_info["type"] in WATERFALL_TYPES:
+                                active_hold = SURF_HOLD_FRAMES
+                                if repath_ctx is not None:
+                                    repath_ctx["surfing"] = True
                     else:
                         # Rock Smash / Cut: obstacle removed, player stays.
                         # Retry the step — tile should now be passable.
@@ -2179,10 +2219,12 @@ def navigate_to(
 ) -> dict[str, Any]:
     """Pathfind to target tile using BFS. Obstacle-aware with dual pathfinding.
 
-    When obstacles (Rock Smash rocks, Cut trees, water, etc.) block or shorten
-    the path, returns an obstacle_choice/obstacle_required status instead of
-    moving, letting the caller decide. Call again with path_choice="obstacle"
-    or path_choice="clean" to execute.
+    Auto-navigates Rock Smash rocks, Cut trees, water (Surf), Rock Climb walls,
+    and Waterfall tiles when the obstacle path is shorter than the clean path
+    and the party has the required move + badge.
+
+    For obstacles not in AUTO_NAVIGATE_TYPES (Strength boulders), returns
+    obstacle_choice/obstacle_required status for manual handling.
 
     When flee_encounters=True, automatically flees wild encounters and resumes
     navigation. Trainer battles (detected by pre-battle dialogue) are still
@@ -2463,8 +2505,8 @@ def _navigate_to_impl(
                     skills_available = False
                     break
 
-        # Classify obstacles: auto-navigable (Rock Smash/Cut/Surf — auto-execute)
-        # vs manual terrain (Waterfall/Rock Climb — require caller confirmation)
+        # Classify obstacles: auto-navigable (Rock Smash/Cut/Surf/Rock Climb/
+        # Waterfall — auto-execute) vs manual (Strength — require caller confirmation)
         auto_obs = [ob for ob in obs_crossed if ob["type"] in AUTO_NAVIGATE_TYPES]
         manual_obs = [ob for ob in obs_crossed if ob["type"] not in AUTO_NAVIGATE_TYPES]
         all_auto = len(manual_obs) == 0 and len(auto_obs) > 0
@@ -2484,10 +2526,10 @@ def _navigate_to_impl(
                         "start": _pos_with_map(px, py, map_id)}
             path = clean_path
         elif has_obs and obs_shorter and skills_available and all_auto and path_choice is None:
-            # All obstacles are auto-navigable (Rock Smash/Cut/Surf) — auto-take
+            # All obstacles are auto-navigable — auto-take
             path = obs_path
         elif has_obs and obs_shorter and skills_available and not all_auto and path_choice is None:
-            # Manual terrain obstacles (Waterfall/Rock Climb) — ask the caller
+            # Manual obstacles (Strength boulders) — ask the caller
             start_pos = _pos_with_map(px, py, map_id)
             status = "obstacle_choice" if has_clean else "obstacle_required"
             obstacle_info = [{
@@ -2642,9 +2684,10 @@ def _navigate_to_impl(
 
     # Build obstacle tile lookup for _execute_path (auto-navigable obstacles).
     # Maps global (x, y) → obstacle info so the executor can auto-handle them.
-    # Includes Rock Smash/Cut (object removed) and Surf (enter water mode).
+    # Includes Rock Smash/Cut (object removed), Surf (enter water mode),
+    # Rock Climb (climb wall), and Waterfall (ascend/descend waterfall).
     # Object obstacles have "global_x"/"global_y" from zone_event data.
-    # Terrain obstacles (water) have grid-relative "x"/"y" — convert to global.
+    # Terrain obstacles (water, waterfall, rock_climb) have grid-relative "x"/"y" — convert to global.
     exec_obstacle_tiles: dict[tuple[int, int], dict] = {}
     if obs_crossed and path is obs_path:
         for ob in obs_crossed:
