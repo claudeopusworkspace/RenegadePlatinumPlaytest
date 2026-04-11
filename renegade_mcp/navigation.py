@@ -1573,10 +1573,21 @@ def _navigate_cycling_road(
     total_frames = 0
     encounter: dict[str, Any] | None = None
     max_iters = 200
+    no_progress = 0
+    last_pos = (cur_x, cur_y)
 
     for _ in range(max_iters):
         if cur_x == target_x and cur_y == target_y:
             break
+
+        # General stuck detection: bail after 3 consecutive no-progress iterations
+        if (cur_x, cur_y) == last_pos:
+            no_progress += 1
+            if no_progress >= 3:
+                break
+        else:
+            no_progress = 0
+        last_pos = (cur_x, cur_y)
 
         dx = target_x - cur_x
         dy = target_y - cur_y
@@ -1616,6 +1627,7 @@ def _navigate_cycling_road(
         # ── Phase: On bridge body — uphill first (before lateral) ──
         if dy < 0:
             wait = 0
+            phase_start_y = cur_y
             while cur_y > target_y and wait < CYCLING_ROAD_MAX_WAIT:
                 emu.advance_frames(4, buttons=["up"])
                 wait += 4
@@ -1631,6 +1643,8 @@ def _navigate_cycling_road(
                     break
             if encounter is not None:
                 break
+            if cur_y == phase_start_y:
+                break  # No uphill progress — stuck (NPC or wall blocking)
             continue
 
         # ── Phase: On bridge body — lateral moves ──
@@ -1659,6 +1673,7 @@ def _navigate_cycling_road(
         # ── Phase: On bridge body — southbound (auto-slide) ──
         if dy > 0:
             wait = 0
+            phase_start_y = cur_y
             while cur_y < target_y and wait < CYCLING_ROAD_MAX_WAIT:
                 emu.advance_frames(CYCLING_ROAD_POLL_INTERVAL)
                 wait += CYCLING_ROAD_POLL_INTERVAL
@@ -1677,6 +1692,8 @@ def _navigate_cycling_road(
                     break
             if encounter is not None:
                 break
+            if cur_y == phase_start_y:
+                break  # No slide progress — stuck (NPC or wall blocking)
             continue
 
         # Should not reach here
