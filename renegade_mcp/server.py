@@ -832,6 +832,27 @@ def create_server() -> FastMCP:
         return _teach_tm(emu, tm_name, party_slot, forget_move)
 
     @mcp.tool()
+    @renegade_tool
+    def use_fly(destination: str) -> dict[str, Any]:
+        """Fly to a destination city or town from the overworld.
+
+        Uses HM02 Fly: opens Pokemon menu, selects a Fly user, navigates
+        the town map cursor to the destination, and warps there.
+
+        Requires: Cobble Badge (3rd), a party Pokemon that knows Fly,
+        and a location that allows Fly (outdoors, no partner).
+
+        Args:
+            destination: City/town name (e.g. "Jubilife City", "Eterna City")
+                         or code (e.g. "C01", "T03"). Case-insensitive,
+                         partial match supported (e.g. "jubilife").
+        """
+        from renegade_mcp.fly import use_fly as _use_fly
+
+        emu = get_client()
+        return _use_fly(emu, destination)
+
+    @mcp.tool()
     def tm_compatibility(tm_name: str) -> dict[str, Any]:
         """Check which party Pokemon can learn a given TM/HM.
 
