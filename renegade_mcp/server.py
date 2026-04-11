@@ -24,9 +24,11 @@ def create_server() -> FastMCP:
     def read_party() -> dict[str, Any]:
         """Read party Pokemon from memory.
 
-        Returns species, level, HP, moves with PP, nature, IVs, EVs for each party member.
-        Works in overworld and battle — checks encryption-state flags on each slot,
-        so reads are reliable whether the game has data encrypted or in a decryption context.
+        Returns species, level, HP, moves with PP, nature, IVs, EVs, and shiny flag
+        for each party member. Shiny detection: (TID ^ SID ^ PID_hi ^ PID_lo) < 128
+        (Renegade Platinum 1/512 rate). Works in overworld and battle — checks
+        encryption-state flags on each slot, so reads are reliable whether the game
+        has data encrypted or in a decryption context.
         """
         from renegade_mcp.party import format_party, read_party as _read_party
 
@@ -45,7 +47,8 @@ def create_server() -> FastMCP:
         """Read live battle state from memory.
 
         Returns all active battlers with species, stats, moves, PP, HP, ability,
-        types, status conditions, held items, and stat stage changes.
+        types, status conditions, held items, stat stage changes, and shiny flag
+        (from BattleMon isShiny bit).
         Slot 0 = player active, Slot 1 = enemy active, Slots 2-3 = doubles partners.
         Returns empty if not in battle.
         """
@@ -89,11 +92,24 @@ def create_server() -> FastMCP:
     def view_map(level: int = -1) -> dict[str, Any]:
         """Show ASCII map of current area with terrain, player position, and NPCs.
 
-        Handles indoor maps (from RAM) and overworld multi-chunk maps (from ROM).
-        Player shown as ^v<> (facing), NPCs as A-Z. Includes terrain behaviors.
+        Player-centered viewport: 32x32 grid centered on the player, loading
+        adjacent chunks as needed on overworld maps. Indoor/small maps use compact
+        content-fitted rendering (no void padding).
+
+        Header includes origin:(x,y) WxH — the global coordinate of the top-left
+        grid corner and viewport dimensions. Convert grid position to global coords:
+        global = origin + grid_pos. Player dict includes grid_x/grid_y.
+
+        Warp coordinates from the warps list can be passed directly to navigate_to.
+
+        Objects/NPCs sorted by Manhattan distance from player (nearest first).
+        Trainer NPCs show [defeated] in label, plus trainer_id and defeated fields
+        (reads VarsFlags bitfield from save RAM). Works for regular trainers; gym
+        leaders/rivals use separate story flags.
 
         On 3D maps, shows elevation levels (0-9), ramps (/ \\), bridges (n*),
         and directional blocks (] [). Pass level=N to isolate a single level.
+        Uses BDHC data from ROM land_data files.
 
         Args:
             level: Show only this elevation level (-1 = show all levels).
@@ -137,12 +153,16 @@ def create_server() -> FastMCP:
 
         Pre-validates the entire path against terrain before moving. If any step
         would hit an impassable tile, returns an error without moving at all.
+        Auto-trims at door/stair/warp transitions — if the path crosses a warp,
+        movement stops there and returns remaining directions.
+
+        Returns an `encounter` key if a wild battle or dialogue is detected.
 
         Args:
             directions: Space-separated directions: up/down/left/right (or u/d/l/r)
                        with optional repeat counts (e.g. "l20 u5 r3").
             flee_encounters: If True, auto-flee wild battles encountered during the walk.
-                Trainer battles still halt for the caller.
+                Trainer battles and cutscenes still halt for the caller.
         """
         from renegade_mcp.navigation import navigate_manual
 
@@ -162,6 +182,24 @@ def create_server() -> FastMCP:
         water tiles block or shorten the path, returns status "obstacle_choice"
         or "obstacle_required" with path info instead of moving. Call again
         with path_choice to proceed. Strength boulders are never auto-cleared.
+
+        Sign-aware: reads sign positions from ROM zone_event data and blocks the
+        activation tile (one south of each sign) to prevent auto-trigger dialogue.
+
+        Elevation-aware: on 3D maps (gyms, caves, overworld routes with bridges),
+        uses hierarchical BFS — constrains to current elevation level and
+        brute-forces ramp transitions when the target is on a different level.
+        Depth-capped (5 transitions) with 5-minute timeout. Falls through to 2D
+        BFS for flat maps.
+
+        Adjacent target: when the target tile is occupied by an NPC/entity, stops
+        one tile away and returns adjacent_to_target: true with target coordinates.
+
+        Failure diagnostics: on "no path found", returns a 9x9 ASCII diagram
+        centered on the target plus nearest_reachable with global coords/distance.
+
+        Returns encounter key if wild battle or dialogue detected. With
+        flee_encounters, returns flee_log with species/attempts.
 
         Only fall back to navigate(directions) when you need precise directional
         control (e.g., activating warps, single-tile nudges, or specific sequences).
@@ -193,7 +231,15 @@ def create_server() -> FastMCP:
         - **Coordinate mode**: Pass x and y to target a static tile (PCs, bookshelves, etc.).
 
         Pathfinds to the nearest adjacent tile, faces the target, presses A,
-        and returns any dialogue produced.
+        and auto-advances through full multi-page dialogue (chains into
+        advance_dialogue). Detects trainer-spotted interruptions and checks
+        for battle transitions post-dialogue.
+
+        Sign overlay support: signpost text (board messages that bypass msgBox)
+        is captured and dismissed automatically — returns sign_overlay: true.
+
+        With flee_encounters, auto-flees wild battles during the walk to the
+        target, then re-navigates from current position to complete the interaction.
 
         Args:
             object_index: The object's index from the view_map objects list. Default -1 (unused).
@@ -384,12 +430,21 @@ def create_server() -> FastMCP:
           -1 (default) auto-targets the first enemy. Only used when move_index is set.
         - force (bool): Skip the type effectiveness warning and execute anyway.
 
+        Accuracy awareness: when active Pokemon has Acc stages <= -2, returns
+        accuracy_warning with hit rate % and suggestion to switch.
+
+        Returns battle log + trimmed battle summary (species, level, hp, types,
+        status, stages, moves+pp; enemy includes ability+item).
+
         States returned:
         - WAIT_FOR_ACTION: next turn ready, select another move
         - WAIT_FOR_PARTNER_ACTION: double battle — first Pokemon acted, select action for second
         - SWITCH_PROMPT: trainer sending next Pokemon, switch or keep battling
+        - FAINT_SWITCH: your Pokemon fainted (wild battle) — switch_to or flee
+        - FAINT_FORCED: your Pokemon fainted (trainer battle) — switch_to required
         - MOVE_LEARN: move learning prompt — includes move_to_learn and current_moves
-        - EFFECTIVENESS_WARNING: move is immune or not very effective — call again with force=True to proceed
+        - MOVE_BLOCKED: move rejected by Torment/Disable/Encore/Taunt/Choice lock — pick another
+        - EFFECTIVENESS_WARNING: move is immune or not very effective — call with force=True
         - BATTLE_ENDED: battle over, back in overworld
         - TIMEOUT: poll limit reached, check game state manually
         - NO_TEXT: action may not have registered
@@ -639,10 +694,10 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     def read_trainer_status() -> dict[str, Any]:
-        """Read trainer money and badge count from memory.
+        """Read trainer money, badge count, and bicycle state from memory.
 
         Pure memory read — works anytime, no UI interaction.
-        Returns current money and badge count (badges TBD until first gym).
+        Returns current money, badge count, and on_bicycle (true/false).
         """
         from renegade_mcp.trainer import read_trainer_status as _read_status
 
@@ -1023,6 +1078,8 @@ def create_server() -> FastMCP:
 
         No UI interaction needed — reads encrypted box data from RAM
         and decrypts it. Works anytime (overworld, in PC, during menus).
+        Returns species, level, moves, nature, IVs, EVs, held item, and
+        shiny flag for each occupied slot.
 
         Args:
             box: Box number 1-18 (default: Box 1).
@@ -1127,6 +1184,7 @@ def create_server() -> FastMCP:
            and returns to the grind spot. Works from routes and interior maps (caves).
 
         Stop conditions (returned as stop_reason):
+        - shiny: Wild shiny Pokemon encountered. At action prompt. Always triggers.
         - fainted: Slot 0 Pokemon fainted (only when auto-heal is disabled).
         - pp_depleted: The spam move has 0 PP (only when auto-heal is disabled).
         - target_level: Slot 0 reached the target level.
