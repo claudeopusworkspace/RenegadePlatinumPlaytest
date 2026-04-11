@@ -1451,3 +1451,63 @@ The big one — previously only single-chunk maps (gyms, caves) had elevation-aw
 - `renegade_mcp/auto_grind.py` — 3 new helpers, 6 new params, heal loop integration
 - `renegade_mcp/server.py` — updated wrapper signature + docstring
 - `CLAUDE.md` — updated tool table + Auto Grind Workflow section
+
+---
+
+## Session: 2026-04-10 Evening — E4 Save Import, Delta Scanner, Fly Tool
+
+### Context
+Woj received Wayne's endgame save file (8 badges, Pokemon League). Goal: import it, build late-game tools against it (starting with Fly), and confirm cross-save stability.
+
+### Infrastructure Fixes
+
+**1. Directory permissions** — Docker Desktop imports set the project dir to root ownership, breaking socket creation. Fixed with `chown`.
+
+**2. Bridge socket path resolution** — renegade MCP couldn't find melonDS socket across directories. Added `../MelonMCP/` and absolute `/workspace/MelonMCP/` paths to connection.py.
+
+**3. Heap delta scanner** (major fix) — `detect_shift()` used a hardcoded list of 3 known deltas. Discovered the delta varies per boot, not just per save/emulator. Observed -0x20, -0x48, -0x5C across sessions with different saves. **Replaced with range scan** (-0x200 to +0x200, step 4) validated by 3 canary values (party count 1-6, badge popcount 0-8, species ID 1-649). Tie-breaks by highest badge count then smallest absolute delta.
+
+### E4 Save Import
+
+**Problem**: Confusing file state from previous session — saves were mislabeled, stale RAM from save states masked the real battery save data.
+
+**Resolution**:
+- `Pokemon - Platinum Version (USA) (Rev 1).sav` was the E4 save all along (8 badges, $148K, Wayne's team)
+- `our_playthrough_backup.sav` is an unknown save (slot1 erased, slot2 has 1 badge) — NOT our playthrough
+- Our playthrough lives entirely in save states; battery save doesn't matter
+- After `backup_save_import`, must `load_rom` fresh — loading save states reads stale RAM, not the new battery save
+- Created read-only backup at `saves/e4_wayne.sav`
+
+**Save states created**:
+- `e4_pokemon_league_lobby` — inside PC (indoors, pre-Fly)
+- `e4_pokemon_league_fly_ready` — inside PC, Garchomp taught Fly
+- `e4_pokemon_league_outdoor` — outside Pokemon League, Fly ready
+
+### Fly Tool
+
+**New file**: `renegade_mcp/fly.py` — 20 fly destinations with calibrated grid coordinates.
+
+**UI flow**: pause menu → Pokemon → select Fly user → submenu (SUMMARY is first, Fly is second) → town map → cursor navigation → A to confirm → warp animation → verify.
+
+**Cursor strategy**: "Reset to corner" — press left 26x + up 26x to guarantee cursor at (2,7), then navigate relative to target. Reliable regardless of starting position.
+
+**Key discoveries**:
+- Grid coordinates needed +1/+1 offset from decomp sprite positions for cursor hit detection
+- Submenu starts on SUMMARY (index 0), Fly is at index 1
+- Fly animation takes ~3600 frames; map ID changes mid-animation
+- Added 300-frame settle after warp for renderer catch-up (melonDS skips rendering during fast-forward)
+
+**Test helper update**: `do_load_state(emu, name, redetect_shift=True)` — clears cached delta and re-detects when loading states from different save files.
+
+**Tests**: 12 new tests in `test_fly.py` (228 total across 21 files):
+- 6 successful flights (Jubilife, Eterna, Snowpoint, Twinleaf, Veilstone, round-trip)
+- 3 destination resolution (partial match, code match, invalid)
+- 3 pre-checks (indoors, no badge, no Fly user)
+
+### Files Changed
+- `renegade_mcp/addresses.py` — scan-based detect_shift replacing hardcoded candidates
+- `renegade_mcp/connection.py` — expanded socket search paths
+- `renegade_mcp/fly.py` — new Fly tool implementation
+- `renegade_mcp/server.py` — registered use_fly tool
+- `tests/helpers.py` — redetect_shift parameter for cross-save state loading
+- `tests/test_fly.py` — 12 integration tests

@@ -13,6 +13,24 @@ You are playtesting the melonDS MCP server by playing Pokemon Renegade Platinum 
 
 See [SAVE_STATES.md](SAVE_STATES.md) for the full save state table (60+ entries).
 
+## Battery Save Files (.sav)
+
+melonDS associates battery saves with the ROM filename. `RenegadePlatinum.sav` is the active battery save used when the game boots cold (no save state loaded).
+
+**Multiple save files**: We have two save files:
+- **Our playthrough** — lives entirely in save states (`.mst`). The battery save on disk doesn't matter for it.
+- **Wayne's E4 save** (8 badges, endgame) — backed up read-only at `saves/e4_wayne.sav`. Three save states created from it: `e4_pokemon_league_lobby`, `e4_pokemon_league_fly_ready`, `e4_pokemon_league_outdoor`.
+
+**Importing a different .sav**: `backup_save_import` writes the file to disk, but the emulator must be told to reload it:
+1. Call `backup_save_import(path)`
+2. Call `load_rom` to force a fresh boot from the new battery save
+3. Advance through the title screen + adventure log (~8000+ frames, press A/Start to skip)
+4. **Do NOT just load a save state after import** — save states contain the full RAM from when they were created, so they'll use the old data regardless of what battery save is on disk.
+
+**Heap address delta**: Different save files (and even different boots of the same save) produce different heap address deltas. `detect_shift()` scans a range automatically. When switching between save states from different saves, call `addresses.reset()` + `detect_shift(emu)` to re-detect. In tests, use `do_load_state(emu, name, redetect_shift=True)`.
+
+**Protecting external saves**: Store imported saves in `saves/` (gitignored) and `chmod 444` them. The emulator only writes to `RenegadePlatinum.sav`, so files in `saves/` won't be overwritten.
+
 ## Renegade MCP Tools
 
 Game-specific tools are provided by the `renegade` MCP server (defined in `renegade_mcp/`). These run alongside the generic `melonds` MCP server. All tools connect to the emulator via the bridge socket — if the emulator isn't initialized yet, they return a clear error.
@@ -38,6 +56,7 @@ Game-specific tools are provided by the `renegade` MCP server (defined in `reneg
 | `use_item(item_name, party_slot)` | Use a Medicine item on a party Pokemon from overworld. Reads bag cursor state to handle remembered positions. |
 | `use_field_item(item_name)` | Use a no-target field item (Repel, Escape Rope, Honey, etc.) from the Items pocket. Pre-validates `fieldUseFunc` from ROM data — rejects hold-only items (Silk Scarf, etc.). Handles BAG_MESSAGE items (Repel/Flutes), Escape Rope (warp animation), and Honey. |
 | `use_key_item(item_name)` | Use a key item from the Key Items pocket. Currently supports: **Bicycle** (mount/dismount toggle). Verifies state change via `CYCLING_GEAR_ADDR` memory read. Indoor rejection detected and menus cleaned up automatically. |
+| `use_fly(destination)` | Fly to a city/town from the overworld. Opens Pokemon menu → selects Fly user → navigates town map cursor → warps. Accepts city name ("Jubilife City"), code ("C04"), or partial match ("jubilife"). 20 destinations. Pre-checks: Cobble Badge, party Fly user, outdoor location. Uses "reset to corner" cursor strategy for reliability. |
 | `use_medicine(confirm, exclude_items, priority)` | Bulk heal party using Medicine pocket items. Dry-run by default — returns a plan showing which items will be used on which Pokemon. Call with `confirm=True` to execute. Uses lowest-tier potions first (saves better items for battle), prefers specific status cures over general ones (Antidote before Full Heal), uses Full Restore when a Pokemon needs both status cure + HP. Revives fainted Pokemon. Optional `exclude_items` list and `priority` slot order. |
 | `take_item(party_slot)` | Remove held item from a party Pokemon via pause menu (overworld only) |
 | `give_item(item_name, party_slot)` | Give a held item to a party Pokemon via pause menu (overworld only). Pokemon must not already hold an item. Reads bag cursor state to handle remembered positions. |
@@ -328,7 +347,7 @@ See GAME_HISTORY.md for full chronological playthrough details.
 
 ## Test Suite
 
-Integration tests live in `tests/` (216 tests across 20 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
+Integration tests live in `tests/` (228 tests across 21 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
 
 ```bash
 MelonMCP/.venv/bin/python -m pytest tests/ -v          # full suite (~24 min)
