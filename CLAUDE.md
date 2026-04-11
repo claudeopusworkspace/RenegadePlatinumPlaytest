@@ -96,6 +96,22 @@ Multi-chunk maps (overworld, large caves) use a matrix/chunk system detected aut
 
 Note: `battle_turn` includes `read_battle` data in every response — no separate call needed.
 
+## Fishing
+
+`seek_encounter` supports fishing via the optional `rod` parameter.
+
+```
+seek_encounter(rod="Old Rod")     # fish with Old Rod
+seek_encounter(rod="Good Rod")    # fish with Good Rod
+seek_encounter(rod="Super Rod")   # fish with Super Rod
+```
+
+**How it works**: validates the rod is in the bag, auto-navigates to a tile adjacent to water (or turns to face water if already surfing), opens the menu to USE the rod, detects the bite via the player's MapObject animation state (offset 0xA0 == 2), presses A within the hook window, and advances through to the battle action prompt. Retries automatically on "Not even a nibble..." and "The Pokémon got away..." (up to 20 casts).
+
+**Hook timing windows** (from decomp): Old Rod 45f, Good Rod 30f, Super Rod 15f. We poll every frame, so we always catch it.
+
+**Error handling**: returns clear messages for unknown rod names, rods not in bag (lists available rods), and no water tiles nearby.
+
 ## Auto Grind Workflow
 
 `auto_grind` automates wild encounter loops. Stand in a grass/cave area.
@@ -275,11 +291,11 @@ See GAME_HISTORY.md for full details (defeated trainers, story progress, box con
 
 ## Test Suite
 
-Integration tests live in `tests/` (265 tests across 22 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
+Integration tests live in `tests/` (271 tests across 23 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
 
 ```bash
-MelonMCP/.venv/bin/python -m pytest tests/ -v          # full suite (~24 min)
-MelonMCP/.venv/bin/python -m pytest tests/test_X.py -v  # single file
+.venv/bin/python -m pytest tests/ -v          # full suite (~24 min)
+.venv/bin/python -m pytest tests/test_X.py -v  # single file
 ```
 
 Tests load save states, call implementation functions directly (bypassing MCP protocol), and assert on `final_state`, log contents, and party data. Each test resets via `load_state` so they're independent.

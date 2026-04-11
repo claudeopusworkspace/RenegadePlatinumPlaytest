@@ -258,22 +258,27 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     @renegade_tool
-    def seek_encounter(cave: bool = False) -> dict[str, Any]:
-        """Walk back and forth in grass until a wild encounter triggers.
+    def seek_encounter(cave: bool = False, rod: str = "") -> dict[str, Any]:
+        """Walk in grass/cave or fish until a wild encounter triggers.
 
-        Finds the nearest pair of adjacent grass tiles, navigates there if
-        needed, then paces between them until an encounter or 200 steps.
-        When a battle triggers, advances through the transition to the first
-        action prompt and returns full battle state — ready for battle_turn.
+        Without rod: finds nearest grass tiles, navigates there, paces between
+        them until an encounter or 200 steps.
+
+        With rod: validates rod is in bag, positions near water (or turns to
+        face water if surfing), uses the rod, and detects the bite via the
+        player's animation state. Retries on "not even a nibble" and "the
+        Pokémon got away". Caps at 20 casts.
 
         Args:
             cave: If True, pace between any walkable tiles instead of grass.
                   Use in caves or other areas with encounters on normal ground.
+            rod: Fishing rod name (e.g. "Old Rod", "Good Rod", "Super Rod").
+                 Empty string = no fishing (default grass/cave mode).
         """
         from renegade_mcp.navigation import seek_encounter as _seek_encounter
 
         emu = get_client()
-        return _seek_encounter(emu, cave=cave)
+        return _seek_encounter(emu, cave=cave, rod=rod)
 
     # ── Dialogue ──
 

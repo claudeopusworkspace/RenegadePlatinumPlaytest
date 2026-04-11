@@ -366,20 +366,35 @@ KEY_ITEM_AUTO_CLOSE = {FUNC_BICYCLE, FUNC_TOWN_MAP, FUNC_EXPLORER_KIT,
                        FUNC_OLD_ROD, FUNC_GOOD_ROD, FUNC_SUPER_ROD}
 
 # Key items we currently support
-SUPPORTED_KEY_ITEMS = {FUNC_BICYCLE}
+SUPPORTED_KEY_ITEMS = {FUNC_BICYCLE, FUNC_OLD_ROD, FUNC_GOOD_ROD, FUNC_SUPER_ROD}
+
+# Fishing rod func types
+FISHING_FUNCS = {FUNC_OLD_ROD, FUNC_GOOD_ROD, FUNC_SUPER_ROD}
 
 
-def use_key_item(emu: EmulatorClient, item_name: str) -> dict[str, Any]:
-    """Use a key item from the Key Items pocket.
+def activate_key_item(emu: EmulatorClient, item_name: str,
+                      allowed_funcs: set[int] | None = None,
+                      ) -> dict[str, Any]:
+    """Navigate the menu UI to USE a key item. Returns after pressing USE.
 
-    Currently supports: Bicycle (mount/dismount toggle).
+    This is the shared menu flow for use_key_item and seek_encounter (fishing).
+    After this returns successfully, the menu is closing and the item's field
+    effect is starting. The caller handles the post-USE behaviour.
 
     Args:
         emu: Emulator client.
-        item_name: Item name (e.g. "Bicycle"). Case-insensitive.
+        item_name: Item name (e.g. "Old Rod"). Case-insensitive.
+        allowed_funcs: If set, only allow items with these fieldUseFunc values.
+            Defaults to SUPPORTED_KEY_ITEMS.
 
-    Returns dict with success status, details, and formatted message.
+    Returns dict with keys:
+        success: True if USE was pressed.
+        item: Item dict (name, id, qty).
+        func: The fieldUseFunc int for the item.
+        error: (only on failure) Error message string.
     """
+    if allowed_funcs is None:
+        allowed_funcs = SUPPORTED_KEY_ITEMS
     item_lower = item_name.lower()
 
     # ── Pre-check: item exists in Key Items pocket ──
@@ -408,10 +423,9 @@ def use_key_item(emu: EmulatorClient, item_name: str) -> dict[str, Any]:
     func = field_use.get(item_entry["name"], FUNC_NONE)
     if func == FUNC_NONE:
         return _error(f"'{item_entry['name']}' cannot be used from the field.")
-    if func not in SUPPORTED_KEY_ITEMS:
+    if func not in allowed_funcs:
         return _error(
-            f"'{item_entry['name']}' (fieldUseFunc={func}) is not yet supported. "
-            f"Currently supported: Bicycle."
+            f"'{item_entry['name']}' (fieldUseFunc={func}) is not supported here."
         )
 
     # ── Step 1: Open pause menu ──
@@ -440,12 +454,42 @@ def use_key_item(emu: EmulatorClient, item_name: str) -> dict[str, Any]:
     # Press A to select → opens USE/REGISTER submenu
     _press(emu, ["a"], wait=MENU_WAIT)
 
-    # ── Step 5: Read pre-USE state, then press A for "USE" ──
-    if func == FUNC_BICYCLE:
-        was_cycling = bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short"))
+    # ── Step 5: Press A for "USE" ──
     _press(emu, ["a"], wait=MENU_WAIT)
 
-    # ── Step 6: Handle post-USE based on item type ──
+    return {"success": True, "item": item_entry, "func": func}
+
+
+def use_key_item(emu: EmulatorClient, item_name: str) -> dict[str, Any]:
+    """Use a key item from the Key Items pocket.
+
+    Currently supports: Bicycle (mount/dismount toggle).
+    Fishing rods are supported via seek_encounter(rod=...) instead.
+
+    Args:
+        emu: Emulator client.
+        item_name: Item name (e.g. "Bicycle"). Case-insensitive.
+
+    Returns dict with success status, details, and formatted message.
+    """
+    from renegade_mcp.addresses import addr
+
+    # For Bicycle, read pre-USE state before activating
+    func_check = item_field_use().get(item_name.strip(), FUNC_NONE)
+    if item_name.lower().strip() == "bicycle" or func_check == FUNC_BICYCLE:
+        was_cycling = bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short"))
+    else:
+        was_cycling = None
+
+    # Rods should go through seek_encounter, not use_key_item directly
+    result = activate_key_item(emu, item_name, allowed_funcs={FUNC_BICYCLE})
+    if not result.get("success"):
+        return result
+
+    func = result["func"]
+    item_entry = result["item"]
+
+    # ── Handle post-USE based on item type ──
     if func == FUNC_BICYCLE:
 
         # Bicycle closes menus automatically and toggles riding state.

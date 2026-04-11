@@ -41,3 +41,4 @@ desmume_mcp.log*
 # Python
 __pycache__/
 *.pyc
+.venv/
