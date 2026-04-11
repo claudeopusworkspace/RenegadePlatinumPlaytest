@@ -2,6 +2,39 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Surf Auto-Navigation in navigate_to (2026-04-11b)
+
+### Summary
+Implemented Surf as an auto-navigable HM field move in `navigate_to`. When the BFS obstacle path through water is shorter than the clean path and the player has the Fen Badge + a party Pokemon with Surf, navigate_to automatically triggers the Surf dialogue and crosses the water. This follows the Rock Smash/Cut pattern from the previous session but with key behavioral differences unique to Surf.
+
+### Key Decisions & Findings
+- **Surf moves the player onto water** (unlike Rock Smash/Cut where the obstacle is removed and the player stays). `_execute_path` skips the retry step after Surf activation.
+- **Surfing speed is 2x walking** — 8 frames/tile vs 16. Discovered via manual testing on Route 218 (hold=12f and hold=16f both caused 2-tile overshoot). Added `SURF_HOLD_FRAMES = 8` constant and `active_hold` variable in `_execute_path` that switches after Surf activation.
+- **Terrain obstacle coordinates were grid-relative, not global** — the BFS returns `"x"/"y"` as grid-relative coords, but `_execute_path` looks up obstacle tiles by global `(old_x + dx, old_y + dy)`. Fixed by converting via `repath_ox/repath_oy` when `"global_x"` key is absent. This bug would have affected any future terrain obstacle auto-handling (Waterfall, Rock Climb) too.
+- **Canalave City canal is walled off** — the `hm_test_surf_canalave` save state is not suitable for Surf testing (canal has `#` walls on both sides). Created new save states on Route 218 which has direct land→water access.
+- **Repath while surfing** needs obstacle-aware BFS — added `surfing` flag to `repath_ctx`, plus `field_moves` and `obstacle_map` references so `_try_repath` can use `_bfs_pathfind_obstacles` while on water.
+- **Classification refactor**: `CLEARABLE_TYPES` (Rock Smash/Cut objects) + `SURF_TYPES` (water terrain) = `AUTO_NAVIGATE_TYPES`. Waterfall/Rock Climb remain as manual confirmation (`obstacle_choice`/`obstacle_required`). Strength is never auto-handled.
+
+### Test Save States Created
+- `hm_test_surf_route218` — Route 218 at (121, 758), east side gate entrance
+- `hm_test_surf_route218_at_water` — Route 218 at (112, 754), adjacent to water edge. **Primary Surf test state.**
+
+### Tests Added (7 new, 244 total across 22 files)
+- `test_surf_field_move_available` — Fen Badge + Surf move detected
+- `test_water_tiles_in_terrain` — water behaviors present in Route 218 terrain
+- `test_obstacle_bfs_finds_surf_path` — obstacle BFS crosses water; clean BFS does not
+- `test_navigate_across_water` — full navigate_to from (112,754) to (100,756), exact coords
+- `test_navigate_back_via_bridge` — return trip uses bridge (clean path preferred over Surf)
+- `test_surf_not_available_without_badge` — BFS rejects water when Surf unavailable
+- `test_surf_auto_navigate_types` — constant classification verification
+
+### Files Changed
+- `renegade_mcp/navigation.py` — SURF_TYPES, AUTO_NAVIGATE_TYPES, SURF_HOLD_FRAMES constants; _execute_path surf handling with active_hold; decision logic auto-take for water; _try_repath surf-aware BFS; terrain obstacle coord fix
+- `renegade_mcp/server.py` — updated navigate_to docstring
+- `tests/test_hm_obstacles.py` — 7 new Surf tests in TestSurfNavigation class
+- `CLAUDE.md` — updated navigation docs for Surf
+- `SAVE_STATES.md` — added Route 218 save states, updated Canalave note
+
 ## Dev Session: HM Obstacle Auto-Clear — Rock Smash & Cut (2026-04-11a)
 
 ### Goal
