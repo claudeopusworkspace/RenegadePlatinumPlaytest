@@ -143,6 +143,7 @@ def parse_move_entry(entry: bytes) -> dict:
     type_id = entry[4]
     accuracy = entry[5]
     pp = entry[6]
+    move_range = struct.unpack_from("<H", entry, 8)[0]
     priority = struct.unpack_from("<b", entry, 10)[0]
 
     return {
@@ -152,6 +153,7 @@ def parse_move_entry(entry: bytes) -> dict:
         "pp": pp,
         "class": CLASS_NAMES.get(move_class, f"#{move_class}"),
         "priority": priority,
+        "range": move_range,
     }
 
 

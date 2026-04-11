@@ -41,6 +41,9 @@ TARGET_XY = [
     (70, 50),    # 1: second enemy (slot 3) — left position on target screen
     (100, 130),  # 2: bottom — self or ally
 ]
+# Self-targeting moves (range=16) show a separate confirmation screen with
+# only the user's Pokemon visible in the bottom-right. Tapping here confirms.
+SELF_TARGET_XY = (195, 120)
 
 # Move selection screen (bottom screen, after tapping FIGHT)
 MOVE_XY = [
@@ -97,6 +100,9 @@ def _scan_start() -> int:
 # Offsets within heap-allocated BattleScriptTaskData.tmpData[]
 TASK_DATA_MOVE_OFF = 0x40      # tmpData[4] = GET_EXP_MOVE (move ID being learned)
 TASK_DATA_SLOT_OFF = 0x48      # tmpData[6] = GET_EXP_PARTY_SLOT (lower bound search index)
+
+# Move range values (from ROM waza_tbl struct, u16 at offset 8)
+MOVE_RANGE_USER = 16  # Self-targeting moves (Swords Dance, Teleport, etc.)
 
 # Post-timeout recovery: press B to advance through stat screens / text
 RECOVERY_PRESSES = 8
@@ -407,6 +413,43 @@ def _alive_enemy_count(emu: EmulatorClient) -> int:
     """Count alive enemies in a double battle."""
     battlers = read_battle(emu)
     return sum(1 for b in battlers if b.get("side") == "enemy" and b.get("hp", 0) > 0)
+
+
+def _is_self_targeting_move(emu: EmulatorClient, move_index: int,
+                            chooser_name: str | None = None) -> bool:
+    """Check if the chosen move targets the user (range=16).
+
+    Reads the battler's move ID from battle state, then checks
+    the ROM move data for the range field. Uses chooser_name (from the
+    action prompt "What will X do?") to identify which battler is choosing.
+    Falls back to slot 0 if name matching fails.
+    """
+    from renegade_mcp.data import move_data
+    battlers = read_battle(emu)
+    player = [b for b in battlers if b.get("side") == "player"]
+
+    # Try to match by name from the action prompt
+    battler = None
+    if chooser_name:
+        for b in player:
+            nick = b.get("nickname", b.get("species", ""))
+            if nick.lower() == chooser_name.lower():
+                battler = b
+                break
+
+    # Fall back to slot 0 (first player battler)
+    if battler is None and player:
+        battler = player[0]
+
+    if battler is None:
+        return False
+
+    moves = battler.get("moves", [])
+    if move_index < len(moves):
+        move_id = moves[move_index].get("id", 0)
+        mv = move_data().get(move_id, {})
+        return mv.get("range", 0) == MOVE_RANGE_USER
+    return False
 
 
 def _target_flow_with_retry(emu: EmulatorClient, target: int) -> None:
@@ -977,6 +1020,18 @@ def _execute_run(emu: EmulatorClient, prompt: dict) -> dict[str, Any]:
     return _poll_after_action(emu, prompt["log"])
 
 
+def _chooser_name_from_prompt(prompt: dict) -> str | None:
+    """Extract the Pokemon name from "What will X do?" in the prompt log."""
+    for entry in reversed(prompt.get("log", [])):
+        text = entry.get("text", "")
+        if "What will" in text and "do?" in text:
+            # "What will Abra do?" → "Abra"
+            start = text.index("What will") + len("What will ")
+            end = text.index(" do?")
+            return text[start:end].strip()
+    return None
+
+
 def _execute_action(
     emu: EmulatorClient, prompt: dict, move_index: int, switch_to: int,
     has_move: bool, target: int = -1,
@@ -994,7 +1049,15 @@ def _execute_action(
         if has_move:
             _fight_flow(emu, move_index)
             if is_double:
-                _target_flow_with_retry(emu, target)
+                chooser = _chooser_name_from_prompt(prompt)
+                if _is_self_targeting_move(emu, move_index, chooser):
+                    # Self-targeting moves (Swords Dance, Teleport, etc.)
+                    # show a confirmation screen with the user's Pokemon in
+                    # the bottom-right. Tap it to confirm.
+                    emu.advance_frames(TAP_WAIT)
+                    emu.tap_touch_screen(*SELF_TARGET_XY, frames=8)
+                else:
+                    _target_flow_with_retry(emu, target)
         else:
             _switch_flow(emu, switch_to)
 

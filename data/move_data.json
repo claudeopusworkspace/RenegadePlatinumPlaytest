@@ -6,6 +6,7 @@
     "pp": 0,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "-"
   },
   "1": {
@@ -15,6 +16,7 @@
     "pp": 35,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Pound"
   },
   "2": {
@@ -24,6 +26,7 @@
     "pp": 25,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Karate Chop"
   },
   "3": {
@@ -33,6 +36,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Double Slap"
   },
   "4": {
@@ -42,6 +46,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Comet Punch"
   },
   "5": {
@@ -51,6 +56,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Mega Punch"
   },
   "6": {
@@ -60,6 +66,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Pay Day"
   },
   "7": {
@@ -69,6 +76,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Fire Punch"
   },
   "8": {
@@ -78,6 +86,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Ice Punch"
   },
   "9": {
@@ -87,6 +96,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Thunder Punch"
   },
   "10": {
@@ -96,6 +106,7 @@
     "pp": 35,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Scratch"
   },
   "11": {
@@ -105,6 +116,7 @@
     "pp": 30,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Vice Grip"
   },
   "12": {
@@ -114,6 +126,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Guillotine"
   },
   "13": {
@@ -123,6 +136,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 4,
     "name": "Razor Wind"
   },
   "14": {
@@ -132,6 +146,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Swords Dance"
   },
   "15": {
@@ -141,6 +156,7 @@
     "pp": 25,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Cut"
   },
   "16": {
@@ -150,6 +166,7 @@
     "pp": 35,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Gust"
   },
   "17": {
@@ -159,6 +176,7 @@
     "pp": 35,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Wing Attack"
   },
   "18": {
@@ -168,6 +186,7 @@
     "pp": 20,
     "class": "Status",
     "priority": -6,
+    "range": 0,
     "name": "Whirlwind"
   },
   "19": {
@@ -177,6 +196,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Fly"
   },
   "20": {
@@ -186,6 +206,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Bind"
   },
   "21": {
@@ -195,6 +216,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Slam"
   },
   "22": {
@@ -204,6 +226,7 @@
     "pp": 25,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Vine Whip"
   },
   "23": {
@@ -213,6 +236,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Stomp"
   },
   "24": {
@@ -222,6 +246,7 @@
     "pp": 30,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Double Kick"
   },
   "25": {
@@ -231,6 +256,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Mega Kick"
   },
   "26": {
@@ -240,6 +266,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Jump Kick"
   },
   "27": {
@@ -249,6 +276,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Rolling Kick"
   },
   "28": {
@@ -258,6 +286,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Sand Attack"
   },
   "29": {
@@ -267,6 +296,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Headbutt"
   },
   "30": {
@@ -276,6 +306,7 @@
     "pp": 25,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Horn Attack"
   },
   "31": {
@@ -285,6 +316,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Fury Attack"
   },
   "32": {
@@ -294,6 +326,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Drill Run"
   },
   "33": {
@@ -303,6 +336,7 @@
     "pp": 35,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Tackle"
   },
   "34": {
@@ -312,6 +346,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Body Slam"
   },
   "35": {
@@ -321,6 +356,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Wrap"
   },
   "36": {
@@ -330,6 +366,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Take Down"
   },
   "37": {
@@ -339,6 +376,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 2,
     "name": "Thrash"
   },
   "38": {
@@ -348,6 +386,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Double-Edge"
   },
   "39": {
@@ -357,6 +396,7 @@
     "pp": 30,
     "class": "Status",
     "priority": 0,
+    "range": 4,
     "name": "Tail Whip"
   },
   "40": {
@@ -366,6 +406,7 @@
     "pp": 35,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Poison Sting"
   },
   "41": {
@@ -375,6 +416,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Twineedle"
   },
   "42": {
@@ -384,6 +426,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Pin Missile"
   },
   "43": {
@@ -393,6 +436,7 @@
     "pp": 30,
     "class": "Status",
     "priority": 0,
+    "range": 4,
     "name": "Leer"
   },
   "44": {
@@ -402,6 +446,7 @@
     "pp": 25,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Bite"
   },
   "45": {
@@ -411,6 +456,7 @@
     "pp": 40,
     "class": "Status",
     "priority": 0,
+    "range": 4,
     "name": "Growl"
   },
   "46": {
@@ -420,6 +466,7 @@
     "pp": 20,
     "class": "Status",
     "priority": -6,
+    "range": 0,
     "name": "Roar"
   },
   "47": {
@@ -429,6 +476,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Sing"
   },
   "48": {
@@ -438,6 +486,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Supersonic"
   },
   "49": {
@@ -447,6 +496,7 @@
     "pp": 20,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Sonic Boom"
   },
   "50": {
@@ -456,6 +506,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Disable"
   },
   "51": {
@@ -465,6 +516,7 @@
     "pp": 30,
     "class": "Special",
     "priority": 0,
+    "range": 4,
     "name": "Acid"
   },
   "52": {
@@ -474,6 +526,7 @@
     "pp": 25,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Ember"
   },
   "53": {
@@ -483,6 +536,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Flamethrower"
   },
   "54": {
@@ -492,6 +546,7 @@
     "pp": 30,
     "class": "Status",
     "priority": 0,
+    "range": 32,
     "name": "Mist"
   },
   "55": {
@@ -501,6 +556,7 @@
     "pp": 25,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Water Gun"
   },
   "56": {
@@ -510,6 +566,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Hydro Pump"
   },
   "57": {
@@ -519,6 +576,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 8,
     "name": "Surf"
   },
   "58": {
@@ -528,6 +586,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Ice Beam"
   },
   "59": {
@@ -537,6 +596,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 4,
     "name": "Blizzard"
   },
   "60": {
@@ -546,6 +606,7 @@
     "pp": 20,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Psybeam"
   },
   "61": {
@@ -555,6 +616,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Bubble Beam"
   },
   "62": {
@@ -564,6 +626,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Aurora Beam"
   },
   "63": {
@@ -573,6 +636,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Hyper Beam"
   },
   "64": {
@@ -582,6 +646,7 @@
     "pp": 35,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Peck"
   },
   "65": {
@@ -591,6 +656,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Drill Peck"
   },
   "66": {
@@ -600,6 +666,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Play Rough"
   },
   "67": {
@@ -609,6 +676,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Low Kick"
   },
   "68": {
@@ -618,6 +686,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": -5,
+    "range": 1,
     "name": "Counter"
   },
   "69": {
@@ -627,6 +696,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Seismic Toss"
   },
   "70": {
@@ -636,6 +706,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Strength"
   },
   "71": {
@@ -645,6 +716,7 @@
     "pp": 25,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Absorb"
   },
   "72": {
@@ -654,6 +726,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Mega Drain"
   },
   "73": {
@@ -663,6 +736,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Leech Seed"
   },
   "74": {
@@ -672,6 +746,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Growth"
   },
   "75": {
@@ -681,6 +756,7 @@
     "pp": 25,
     "class": "Physical",
     "priority": 0,
+    "range": 4,
     "name": "Razor Leaf"
   },
   "76": {
@@ -690,6 +766,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Solar Beam"
   },
   "77": {
@@ -699,6 +776,7 @@
     "pp": 35,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Poison Powder"
   },
   "78": {
@@ -708,6 +786,7 @@
     "pp": 30,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Stun Spore"
   },
   "79": {
@@ -717,6 +796,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Sleep Powder"
   },
   "80": {
@@ -726,6 +806,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 2,
     "name": "Petal Dance"
   },
   "81": {
@@ -735,6 +816,7 @@
     "pp": 40,
     "class": "Status",
     "priority": 0,
+    "range": 4,
     "name": "String Shot"
   },
   "82": {
@@ -744,6 +826,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Dragon Rage"
   },
   "83": {
@@ -753,6 +836,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Fire Spin"
   },
   "84": {
@@ -762,6 +846,7 @@
     "pp": 30,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Thunder Shock"
   },
   "85": {
@@ -771,6 +856,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Thunderbolt"
   },
   "86": {
@@ -780,6 +866,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Thunder Wave"
   },
   "87": {
@@ -789,6 +876,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Thunder"
   },
   "88": {
@@ -798,6 +886,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Rock Throw"
   },
   "89": {
@@ -807,6 +896,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 8,
     "name": "Earthquake"
   },
   "90": {
@@ -816,6 +906,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Fissure"
   },
   "91": {
@@ -825,6 +916,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Dig"
   },
   "92": {
@@ -834,6 +926,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Toxic"
   },
   "93": {
@@ -843,6 +936,7 @@
     "pp": 25,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Confusion"
   },
   "94": {
@@ -852,6 +946,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Psychic"
   },
   "95": {
@@ -861,6 +956,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Hypnosis"
   },
   "96": {
@@ -870,6 +966,7 @@
     "pp": 40,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Meditate"
   },
   "97": {
@@ -879,6 +976,7 @@
     "pp": 30,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Agility"
   },
   "98": {
@@ -888,6 +986,7 @@
     "pp": 30,
     "class": "Physical",
     "priority": 1,
+    "range": 0,
     "name": "Quick Attack"
   },
   "99": {
@@ -897,6 +996,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Rage"
   },
   "100": {
@@ -906,6 +1006,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Teleport"
   },
   "101": {
@@ -915,6 +1016,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Night Shade"
   },
   "102": {
@@ -924,6 +1026,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Mimic"
   },
   "103": {
@@ -933,6 +1036,7 @@
     "pp": 40,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Screech"
   },
   "104": {
@@ -942,6 +1046,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Double Team"
   },
   "105": {
@@ -951,6 +1056,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Recover"
   },
   "106": {
@@ -960,6 +1066,7 @@
     "pp": 30,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Harden"
   },
   "107": {
@@ -969,6 +1076,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Minimize"
   },
   "108": {
@@ -978,6 +1086,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Smokescreen"
   },
   "109": {
@@ -987,6 +1096,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Confuse Ray"
   },
   "110": {
@@ -996,6 +1106,7 @@
     "pp": 40,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Withdraw"
   },
   "111": {
@@ -1005,6 +1116,7 @@
     "pp": 40,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Defense Curl"
   },
   "112": {
@@ -1014,6 +1126,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Barrier"
   },
   "113": {
@@ -1023,6 +1136,7 @@
     "pp": 30,
     "class": "Status",
     "priority": 0,
+    "range": 32,
     "name": "Light Screen"
   },
   "114": {
@@ -1032,6 +1146,7 @@
     "pp": 30,
     "class": "Status",
     "priority": 0,
+    "range": 64,
     "name": "Haze"
   },
   "115": {
@@ -1041,6 +1156,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 32,
     "name": "Reflect"
   },
   "116": {
@@ -1050,6 +1166,7 @@
     "pp": 30,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Focus Energy"
   },
   "117": {
@@ -1059,6 +1176,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 1,
+    "range": 16,
     "name": "Bide"
   },
   "118": {
@@ -1068,6 +1186,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 1,
     "name": "Metronome"
   },
   "119": {
@@ -1077,6 +1196,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 1,
     "name": "Mirror Move"
   },
   "120": {
@@ -1086,6 +1206,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 8,
     "name": "Self-Destruct"
   },
   "121": {
@@ -1095,6 +1216,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Egg Bomb"
   },
   "122": {
@@ -1104,6 +1226,7 @@
     "pp": 30,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Lick"
   },
   "123": {
@@ -1113,6 +1236,7 @@
     "pp": 20,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Smog"
   },
   "124": {
@@ -1122,6 +1246,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Sludge"
   },
   "125": {
@@ -1131,6 +1256,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Bone Club"
   },
   "126": {
@@ -1140,6 +1266,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Fire Blast"
   },
   "127": {
@@ -1149,6 +1276,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Waterfall"
   },
   "128": {
@@ -1158,6 +1286,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Clamp"
   },
   "129": {
@@ -1167,6 +1296,7 @@
     "pp": 20,
     "class": "Special",
     "priority": 0,
+    "range": 4,
     "name": "Swift"
   },
   "130": {
@@ -1176,6 +1306,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Skull Bash"
   },
   "131": {
@@ -1185,6 +1316,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Spike Cannon"
   },
   "132": {
@@ -1194,6 +1326,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Icicle Crash"
   },
   "133": {
@@ -1203,6 +1336,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Amnesia"
   },
   "134": {
@@ -1212,6 +1346,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Kinesis"
   },
   "135": {
@@ -1221,6 +1356,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Soft-Boiled"
   },
   "136": {
@@ -1230,6 +1366,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "High Jump Kick"
   },
   "137": {
@@ -1239,6 +1376,7 @@
     "pp": 30,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Glare"
   },
   "138": {
@@ -1248,6 +1386,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Dream Eater"
   },
   "139": {
@@ -1257,6 +1396,7 @@
     "pp": 40,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Poison Gas"
   },
   "140": {
@@ -1266,6 +1406,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Draining Kiss"
   },
   "141": {
@@ -1275,6 +1416,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Leech Life"
   },
   "142": {
@@ -1284,6 +1426,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Lovely Kiss"
   },
   "143": {
@@ -1293,6 +1436,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Sky Attack"
   },
   "144": {
@@ -1302,6 +1446,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Transform"
   },
   "145": {
@@ -1311,6 +1456,7 @@
     "pp": 30,
     "class": "Special",
     "priority": 0,
+    "range": 4,
     "name": "Bubble"
   },
   "146": {
@@ -1320,6 +1466,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Dizzy Punch"
   },
   "147": {
@@ -1329,6 +1476,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Spore"
   },
   "148": {
@@ -1338,6 +1486,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Flash"
   },
   "149": {
@@ -1347,6 +1496,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Psywave"
   },
   "150": {
@@ -1356,6 +1506,7 @@
     "pp": 40,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Splash"
   },
   "151": {
@@ -1365,6 +1516,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Acid Armor"
   },
   "152": {
@@ -1374,6 +1526,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Crabhammer"
   },
   "153": {
@@ -1383,6 +1536,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 8,
     "name": "Explosion"
   },
   "154": {
@@ -1392,6 +1546,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Fury Swipes"
   },
   "155": {
@@ -1401,6 +1556,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Bonemerang"
   },
   "156": {
@@ -1410,6 +1566,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Rest"
   },
   "157": {
@@ -1419,6 +1576,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 4,
     "name": "Rock Slide"
   },
   "158": {
@@ -1428,6 +1586,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Hyper Fang"
   },
   "159": {
@@ -1437,6 +1596,7 @@
     "pp": 30,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Sharpen"
   },
   "160": {
@@ -1446,6 +1606,7 @@
     "pp": 30,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Conversion"
   },
   "161": {
@@ -1455,6 +1616,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Tri Attack"
   },
   "162": {
@@ -1464,6 +1626,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Super Fang"
   },
   "163": {
@@ -1473,6 +1636,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Slash"
   },
   "164": {
@@ -1482,6 +1646,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Substitute"
   },
   "165": {
@@ -1491,6 +1656,7 @@
     "pp": 1,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Struggle"
   },
   "166": {
@@ -1500,6 +1666,7 @@
     "pp": 1,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Sketch"
   },
   "167": {
@@ -1509,6 +1676,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Triple Kick"
   },
   "168": {
@@ -1518,6 +1686,7 @@
     "pp": 25,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Thief"
   },
   "169": {
@@ -1527,6 +1696,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Spider Web"
   },
   "170": {
@@ -1536,6 +1706,7 @@
     "pp": 5,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Mind Reader"
   },
   "171": {
@@ -1545,6 +1716,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Nightmare"
   },
   "172": {
@@ -1554,6 +1726,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Flame Wheel"
   },
   "173": {
@@ -1563,6 +1736,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Snore"
   },
   "174": {
@@ -1572,6 +1746,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Curse"
   },
   "175": {
@@ -1581,6 +1756,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Flail"
   },
   "176": {
@@ -1590,6 +1766,7 @@
     "pp": 30,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Conversion 2"
   },
   "177": {
@@ -1599,6 +1776,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Aeroblast"
   },
   "178": {
@@ -1608,6 +1786,7 @@
     "pp": 40,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Cotton Spore"
   },
   "179": {
@@ -1617,6 +1796,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Reversal"
   },
   "180": {
@@ -1626,6 +1806,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Spite"
   },
   "181": {
@@ -1635,6 +1816,7 @@
     "pp": 25,
     "class": "Special",
     "priority": 0,
+    "range": 4,
     "name": "Powder Snow"
   },
   "182": {
@@ -1644,6 +1826,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 4,
+    "range": 16,
     "name": "Protect"
   },
   "183": {
@@ -1653,6 +1836,7 @@
     "pp": 30,
     "class": "Physical",
     "priority": 1,
+    "range": 0,
     "name": "Mach Punch"
   },
   "184": {
@@ -1662,6 +1846,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Scary Face"
   },
   "185": {
@@ -1671,6 +1856,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Feint Attack"
   },
   "186": {
@@ -1680,6 +1866,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Sweet Kiss"
   },
   "187": {
@@ -1689,6 +1876,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Belly Drum"
   },
   "188": {
@@ -1698,6 +1886,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Sludge Bomb"
   },
   "189": {
@@ -1707,6 +1896,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Mud-Slap"
   },
   "190": {
@@ -1716,6 +1906,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Octazooka"
   },
   "191": {
@@ -1725,6 +1916,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 128,
     "name": "Spikes"
   },
   "192": {
@@ -1734,6 +1926,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Zap Cannon"
   },
   "193": {
@@ -1743,6 +1936,7 @@
     "pp": 40,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Foresight"
   },
   "194": {
@@ -1752,6 +1946,7 @@
     "pp": 5,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Destiny Bond"
   },
   "195": {
@@ -1761,6 +1956,7 @@
     "pp": 5,
     "class": "Status",
     "priority": 0,
+    "range": 64,
     "name": "Perish Song"
   },
   "196": {
@@ -1770,6 +1966,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 4,
     "name": "Icy Wind"
   },
   "197": {
@@ -1779,6 +1976,7 @@
     "pp": 5,
     "class": "Status",
     "priority": 4,
+    "range": 16,
     "name": "Detect"
   },
   "198": {
@@ -1788,6 +1986,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Bone Rush"
   },
   "199": {
@@ -1797,6 +1996,7 @@
     "pp": 5,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Lock-On"
   },
   "200": {
@@ -1806,6 +2006,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 2,
     "name": "Outrage"
   },
   "201": {
@@ -1815,6 +2016,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 64,
     "name": "Sandstorm"
   },
   "202": {
@@ -1824,6 +2026,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Giga Drain"
   },
   "203": {
@@ -1833,6 +2036,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 4,
+    "range": 16,
     "name": "Endure"
   },
   "204": {
@@ -1842,6 +2046,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Charm"
   },
   "205": {
@@ -1851,6 +2056,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Rollout"
   },
   "206": {
@@ -1860,6 +2066,7 @@
     "pp": 40,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "False Swipe"
   },
   "207": {
@@ -1869,6 +2076,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Swagger"
   },
   "208": {
@@ -1878,6 +2086,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Milk Drink"
   },
   "209": {
@@ -1887,6 +2096,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Spark"
   },
   "210": {
@@ -1896,6 +2106,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Fury Cutter"
   },
   "211": {
@@ -1905,6 +2116,7 @@
     "pp": 25,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Steel Wing"
   },
   "212": {
@@ -1914,6 +2126,7 @@
     "pp": 5,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Mean Look"
   },
   "213": {
@@ -1923,6 +2136,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Attract"
   },
   "214": {
@@ -1932,6 +2146,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 1,
     "name": "Sleep Talk"
   },
   "215": {
@@ -1941,6 +2156,7 @@
     "pp": 5,
     "class": "Status",
     "priority": 0,
+    "range": 32,
     "name": "Heal Bell"
   },
   "216": {
@@ -1950,6 +2166,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Return"
   },
   "217": {
@@ -1959,6 +2176,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Present"
   },
   "218": {
@@ -1968,6 +2186,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Frustration"
   },
   "219": {
@@ -1977,6 +2196,7 @@
     "pp": 25,
     "class": "Status",
     "priority": 0,
+    "range": 32,
     "name": "Safeguard"
   },
   "220": {
@@ -1986,6 +2206,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Pain Split"
   },
   "221": {
@@ -1995,6 +2216,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Sacred Fire"
   },
   "222": {
@@ -2004,6 +2226,7 @@
     "pp": 30,
     "class": "Physical",
     "priority": 0,
+    "range": 8,
     "name": "Magnitude"
   },
   "223": {
@@ -2013,6 +2236,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Dynamic Punch"
   },
   "224": {
@@ -2022,6 +2246,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Megahorn"
   },
   "225": {
@@ -2031,6 +2256,7 @@
     "pp": 20,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Dragon Breath"
   },
   "226": {
@@ -2040,6 +2266,7 @@
     "pp": 40,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Baton Pass"
   },
   "227": {
@@ -2049,6 +2276,7 @@
     "pp": 5,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Encore"
   },
   "228": {
@@ -2058,6 +2286,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Pursuit"
   },
   "229": {
@@ -2067,6 +2296,7 @@
     "pp": 40,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Rapid Spin"
   },
   "230": {
@@ -2076,6 +2306,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 4,
     "name": "Sweet Scent"
   },
   "231": {
@@ -2085,6 +2316,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Iron Tail"
   },
   "232": {
@@ -2094,6 +2326,7 @@
     "pp": 35,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Metal Claw"
   },
   "233": {
@@ -2103,6 +2336,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": -1,
+    "range": 0,
     "name": "Vital Throw"
   },
   "234": {
@@ -2112,6 +2346,7 @@
     "pp": 5,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Morning Sun"
   },
   "235": {
@@ -2121,6 +2356,7 @@
     "pp": 5,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Synthesis"
   },
   "236": {
@@ -2130,6 +2366,7 @@
     "pp": 5,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Moonlight"
   },
   "237": {
@@ -2139,6 +2376,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Hidden Power"
   },
   "238": {
@@ -2148,6 +2386,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Cross Chop"
   },
   "239": {
@@ -2157,6 +2396,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Hurricane"
   },
   "240": {
@@ -2166,6 +2406,7 @@
     "pp": 5,
     "class": "Status",
     "priority": 0,
+    "range": 64,
     "name": "Rain Dance"
   },
   "241": {
@@ -2175,6 +2416,7 @@
     "pp": 5,
     "class": "Status",
     "priority": 0,
+    "range": 64,
     "name": "Sunny Day"
   },
   "242": {
@@ -2184,6 +2426,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Crunch"
   },
   "243": {
@@ -2193,6 +2436,7 @@
     "pp": 20,
     "class": "Special",
     "priority": -5,
+    "range": 1,
     "name": "Mirror Coat"
   },
   "244": {
@@ -2202,6 +2446,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Psych Up"
   },
   "245": {
@@ -2211,6 +2456,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 2,
+    "range": 0,
     "name": "Extreme Speed"
   },
   "246": {
@@ -2220,6 +2466,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Ancient Power"
   },
   "247": {
@@ -2229,6 +2476,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Shadow Ball"
   },
   "248": {
@@ -2238,6 +2486,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Future Sight"
   },
   "249": {
@@ -2247,6 +2496,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Rock Smash"
   },
   "250": {
@@ -2256,6 +2506,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Whirlpool"
   },
   "251": {
@@ -2265,6 +2516,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Beat Up"
   },
   "252": {
@@ -2274,6 +2526,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 3,
+    "range": 0,
     "name": "Fake Out"
   },
   "253": {
@@ -2283,6 +2536,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 2,
     "name": "Uproar"
   },
   "254": {
@@ -2292,6 +2546,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Stockpile"
   },
   "255": {
@@ -2301,6 +2556,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Spit Up"
   },
   "256": {
@@ -2310,6 +2566,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Swallow"
   },
   "257": {
@@ -2319,6 +2576,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 4,
     "name": "Heat Wave"
   },
   "258": {
@@ -2328,6 +2586,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 64,
     "name": "Hail"
   },
   "259": {
@@ -2337,6 +2596,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Torment"
   },
   "260": {
@@ -2346,6 +2606,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Flatter"
   },
   "261": {
@@ -2355,6 +2616,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Will-O-Wisp"
   },
   "262": {
@@ -2364,6 +2626,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Memento"
   },
   "263": {
@@ -2373,6 +2636,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Facade"
   },
   "264": {
@@ -2382,6 +2646,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": -3,
+    "range": 0,
     "name": "Focus Punch"
   },
   "265": {
@@ -2391,6 +2656,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Smelling Salts"
   },
   "266": {
@@ -2400,6 +2666,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 3,
+    "range": 16,
     "name": "Follow Me"
   },
   "267": {
@@ -2409,6 +2676,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 1,
     "name": "Nature Power"
   },
   "268": {
@@ -2418,6 +2686,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Charge"
   },
   "269": {
@@ -2427,6 +2696,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Taunt"
   },
   "270": {
@@ -2436,6 +2706,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 5,
+    "range": 256,
     "name": "Helping Hand"
   },
   "271": {
@@ -2445,6 +2716,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Trick"
   },
   "272": {
@@ -2454,6 +2726,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Role Play"
   },
   "273": {
@@ -2463,6 +2736,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Wish"
   },
   "274": {
@@ -2472,6 +2746,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 1,
     "name": "Assist"
   },
   "275": {
@@ -2481,6 +2756,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Ingrain"
   },
   "276": {
@@ -2490,6 +2766,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Superpower"
   },
   "277": {
@@ -2499,6 +2776,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 4,
+    "range": 1,
     "name": "Magic Coat"
   },
   "278": {
@@ -2508,6 +2786,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Recycle"
   },
   "279": {
@@ -2517,6 +2796,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": -4,
+    "range": 0,
     "name": "Revenge"
   },
   "280": {
@@ -2526,6 +2806,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Brick Break"
   },
   "281": {
@@ -2535,6 +2816,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Yawn"
   },
   "282": {
@@ -2544,6 +2826,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Knock Off"
   },
   "283": {
@@ -2553,6 +2836,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Endeavor"
   },
   "284": {
@@ -2562,6 +2846,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 4,
     "name": "Eruption"
   },
   "285": {
@@ -2571,6 +2856,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Skill Swap"
   },
   "286": {
@@ -2580,6 +2866,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Imprison"
   },
   "287": {
@@ -2589,6 +2876,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Refresh"
   },
   "288": {
@@ -2598,6 +2886,7 @@
     "pp": 5,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Grudge"
   },
   "289": {
@@ -2607,6 +2896,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 4,
+    "range": 1,
     "name": "Snatch"
   },
   "290": {
@@ -2616,6 +2906,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Secret Power"
   },
   "291": {
@@ -2625,6 +2916,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Dive"
   },
   "292": {
@@ -2634,6 +2926,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Arm Thrust"
   },
   "293": {
@@ -2643,6 +2936,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Camouflage"
   },
   "294": {
@@ -2652,6 +2946,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Tail Glow"
   },
   "295": {
@@ -2661,6 +2956,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 4,
     "name": "Dazzling Gleam"
   },
   "296": {
@@ -2670,6 +2966,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 4,
     "name": "Disarming Voice"
   },
   "297": {
@@ -2679,6 +2976,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Feather Dance"
   },
   "298": {
@@ -2688,6 +2986,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 8,
     "name": "Teeter Dance"
   },
   "299": {
@@ -2697,6 +2996,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Blaze Kick"
   },
   "300": {
@@ -2706,6 +3006,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 64,
     "name": "Mud Sport"
   },
   "301": {
@@ -2715,6 +3016,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Ice Ball"
   },
   "302": {
@@ -2724,6 +3026,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Needle Arm"
   },
   "303": {
@@ -2733,6 +3036,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Slack Off"
   },
   "304": {
@@ -2742,6 +3046,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 4,
     "name": "Hyper Voice"
   },
   "305": {
@@ -2751,6 +3056,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Poison Fang"
   },
   "306": {
@@ -2760,6 +3066,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Crush Claw"
   },
   "307": {
@@ -2769,6 +3076,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Blast Burn"
   },
   "308": {
@@ -2778,6 +3086,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Hydro Cannon"
   },
   "309": {
@@ -2787,6 +3096,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Meteor Mash"
   },
   "310": {
@@ -2796,6 +3106,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Astonish"
   },
   "311": {
@@ -2805,6 +3116,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Weather Ball"
   },
   "312": {
@@ -2814,6 +3126,7 @@
     "pp": 5,
     "class": "Status",
     "priority": 0,
+    "range": 32,
     "name": "Aromatherapy"
   },
   "313": {
@@ -2823,6 +3136,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Fake Tears"
   },
   "314": {
@@ -2832,6 +3146,7 @@
     "pp": 25,
     "class": "Special",
     "priority": 0,
+    "range": 4,
     "name": "Air Cutter"
   },
   "315": {
@@ -2841,6 +3156,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Overheat"
   },
   "316": {
@@ -2850,6 +3166,7 @@
     "pp": 40,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Odor Sleuth"
   },
   "317": {
@@ -2859,6 +3176,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Rock Tomb"
   },
   "318": {
@@ -2868,6 +3186,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Silver Wind"
   },
   "319": {
@@ -2877,6 +3196,7 @@
     "pp": 40,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Metal Sound"
   },
   "320": {
@@ -2886,6 +3206,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Grass Whistle"
   },
   "321": {
@@ -2895,6 +3216,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Tickle"
   },
   "322": {
@@ -2904,6 +3226,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Cosmic Power"
   },
   "323": {
@@ -2913,6 +3236,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 4,
     "name": "Water Spout"
   },
   "324": {
@@ -2922,6 +3246,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Signal Beam"
   },
   "325": {
@@ -2931,6 +3256,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Shadow Punch"
   },
   "326": {
@@ -2940,6 +3266,7 @@
     "pp": 20,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Extrasensory"
   },
   "327": {
@@ -2949,6 +3276,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Sky Uppercut"
   },
   "328": {
@@ -2958,6 +3286,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 8,
     "name": "Bulldoze"
   },
   "329": {
@@ -2967,6 +3296,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Sheer Cold"
   },
   "330": {
@@ -2976,6 +3306,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 4,
     "name": "Muddy Water"
   },
   "331": {
@@ -2985,6 +3316,7 @@
     "pp": 30,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Bullet Seed"
   },
   "332": {
@@ -2994,6 +3326,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Aerial Ace"
   },
   "333": {
@@ -3003,6 +3336,7 @@
     "pp": 30,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Icicle Spear"
   },
   "334": {
@@ -3012,6 +3346,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Iron Defense"
   },
   "335": {
@@ -3021,6 +3356,7 @@
     "pp": 5,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Block"
   },
   "336": {
@@ -3030,6 +3366,7 @@
     "pp": 40,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Howl"
   },
   "337": {
@@ -3039,6 +3376,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Dragon Claw"
   },
   "338": {
@@ -3048,6 +3386,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Frenzy Plant"
   },
   "339": {
@@ -3057,6 +3396,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Bulk Up"
   },
   "340": {
@@ -3066,6 +3406,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Bounce"
   },
   "341": {
@@ -3075,6 +3416,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Mud Shot"
   },
   "342": {
@@ -3084,6 +3426,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Poison Tail"
   },
   "343": {
@@ -3093,6 +3436,7 @@
     "pp": 25,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Covet"
   },
   "344": {
@@ -3102,6 +3446,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Wild Charge"
   },
   "345": {
@@ -3111,6 +3456,7 @@
     "pp": 20,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Magical Leaf"
   },
   "346": {
@@ -3120,6 +3466,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 64,
     "name": "Water Sport"
   },
   "347": {
@@ -3129,6 +3476,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Calm Mind"
   },
   "348": {
@@ -3138,6 +3486,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Leaf Blade"
   },
   "349": {
@@ -3147,6 +3496,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Dragon Dance"
   },
   "350": {
@@ -3156,6 +3506,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Rock Blast"
   },
   "351": {
@@ -3165,6 +3516,7 @@
     "pp": 20,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Shock Wave"
   },
   "352": {
@@ -3174,6 +3526,7 @@
     "pp": 20,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Water Pulse"
   },
   "353": {
@@ -3183,6 +3536,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Doom Desire"
   },
   "354": {
@@ -3192,6 +3546,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Psycho Boost"
   },
   "355": {
@@ -3201,6 +3556,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Roost"
   },
   "356": {
@@ -3210,6 +3566,7 @@
     "pp": 5,
     "class": "Status",
     "priority": 0,
+    "range": 64,
     "name": "Gravity"
   },
   "357": {
@@ -3219,6 +3576,7 @@
     "pp": 40,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Miracle Eye"
   },
   "358": {
@@ -3228,6 +3586,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Wake-Up Slap"
   },
   "359": {
@@ -3237,6 +3596,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Hammer Arm"
   },
   "360": {
@@ -3246,6 +3606,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Gyro Ball"
   },
   "361": {
@@ -3255,6 +3616,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Healing Wish"
   },
   "362": {
@@ -3264,6 +3626,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Scald"
   },
   "363": {
@@ -3273,6 +3636,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Natural Gift"
   },
   "364": {
@@ -3282,6 +3646,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 2,
+    "range": 0,
     "name": "Feint"
   },
   "365": {
@@ -3291,6 +3656,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Pluck"
   },
   "366": {
@@ -3300,6 +3666,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 32,
     "name": "Tailwind"
   },
   "367": {
@@ -3309,6 +3676,7 @@
     "pp": 30,
     "class": "Status",
     "priority": 0,
+    "range": 512,
     "name": "Acupressure"
   },
   "368": {
@@ -3318,6 +3686,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 1,
     "name": "Metal Burst"
   },
   "369": {
@@ -3327,6 +3696,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "U-turn"
   },
   "370": {
@@ -3336,6 +3706,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Close Combat"
   },
   "371": {
@@ -3345,6 +3716,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Payback"
   },
   "372": {
@@ -3354,6 +3726,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Assurance"
   },
   "373": {
@@ -3363,6 +3736,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Embargo"
   },
   "374": {
@@ -3372,6 +3746,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Fling"
   },
   "375": {
@@ -3381,6 +3756,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Psycho Shift"
   },
   "376": {
@@ -3390,6 +3766,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Trump Card"
   },
   "377": {
@@ -3399,6 +3776,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 4,
     "name": "Heal Block"
   },
   "378": {
@@ -3408,6 +3786,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Wring Out"
   },
   "379": {
@@ -3417,6 +3796,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Power Trick"
   },
   "380": {
@@ -3426,6 +3806,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Gastro Acid"
   },
   "381": {
@@ -3435,6 +3816,7 @@
     "pp": 30,
     "class": "Status",
     "priority": 0,
+    "range": 32,
     "name": "Lucky Chant"
   },
   "382": {
@@ -3444,6 +3826,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 1024,
     "name": "Me First"
   },
   "383": {
@@ -3453,6 +3836,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 1,
     "name": "Copycat"
   },
   "384": {
@@ -3462,6 +3846,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Power Swap"
   },
   "385": {
@@ -3471,6 +3856,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Guard Swap"
   },
   "386": {
@@ -3480,6 +3866,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Punishment"
   },
   "387": {
@@ -3489,6 +3876,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Last Resort"
   },
   "388": {
@@ -3498,6 +3886,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Worry Seed"
   },
   "389": {
@@ -3507,6 +3896,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 1,
+    "range": 0,
     "name": "Sucker Punch"
   },
   "390": {
@@ -3516,6 +3906,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 128,
     "name": "Toxic Spikes"
   },
   "391": {
@@ -3525,6 +3916,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Heart Swap"
   },
   "392": {
@@ -3534,6 +3926,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Aqua Ring"
   },
   "393": {
@@ -3543,6 +3936,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Magnet Rise"
   },
   "394": {
@@ -3552,6 +3946,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Flare Blitz"
   },
   "395": {
@@ -3561,6 +3956,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Force Palm"
   },
   "396": {
@@ -3570,6 +3966,7 @@
     "pp": 20,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Aura Sphere"
   },
   "397": {
@@ -3579,6 +3976,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Rock Polish"
   },
   "398": {
@@ -3588,6 +3986,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Poison Jab"
   },
   "399": {
@@ -3597,6 +3996,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Dark Pulse"
   },
   "400": {
@@ -3606,6 +4006,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Night Slash"
   },
   "401": {
@@ -3615,6 +4016,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Aqua Tail"
   },
   "402": {
@@ -3624,6 +4026,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Seed Bomb"
   },
   "403": {
@@ -3633,6 +4036,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Air Slash"
   },
   "404": {
@@ -3642,6 +4046,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "X-Scissor"
   },
   "405": {
@@ -3651,6 +4056,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Bug Buzz"
   },
   "406": {
@@ -3660,6 +4066,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Dragon Pulse"
   },
   "407": {
@@ -3669,6 +4076,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Dragon Rush"
   },
   "408": {
@@ -3678,6 +4086,7 @@
     "pp": 20,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Power Gem"
   },
   "409": {
@@ -3687,6 +4096,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Drain Punch"
   },
   "410": {
@@ -3696,6 +4106,7 @@
     "pp": 30,
     "class": "Special",
     "priority": 1,
+    "range": 0,
     "name": "Vacuum Wave"
   },
   "411": {
@@ -3705,6 +4116,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Focus Blast"
   },
   "412": {
@@ -3714,6 +4126,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Energy Ball"
   },
   "413": {
@@ -3723,6 +4136,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Brave Bird"
   },
   "414": {
@@ -3732,6 +4146,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Earth Power"
   },
   "415": {
@@ -3741,6 +4156,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Switcheroo"
   },
   "416": {
@@ -3750,6 +4166,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Giga Impact"
   },
   "417": {
@@ -3759,6 +4176,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Nasty Plot"
   },
   "418": {
@@ -3768,6 +4186,7 @@
     "pp": 30,
     "class": "Physical",
     "priority": 1,
+    "range": 0,
     "name": "Bullet Punch"
   },
   "419": {
@@ -3777,6 +4196,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": -4,
+    "range": 0,
     "name": "Avalanche"
   },
   "420": {
@@ -3786,6 +4206,7 @@
     "pp": 30,
     "class": "Physical",
     "priority": 1,
+    "range": 0,
     "name": "Ice Shard"
   },
   "421": {
@@ -3795,6 +4216,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Shadow Claw"
   },
   "422": {
@@ -3804,6 +4226,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Thunder Fang"
   },
   "423": {
@@ -3813,6 +4236,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Ice Fang"
   },
   "424": {
@@ -3822,6 +4246,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Fire Fang"
   },
   "425": {
@@ -3831,6 +4256,7 @@
     "pp": 30,
     "class": "Physical",
     "priority": 1,
+    "range": 0,
     "name": "Shadow Sneak"
   },
   "426": {
@@ -3840,6 +4266,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Mud Bomb"
   },
   "427": {
@@ -3849,6 +4276,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Psycho Cut"
   },
   "428": {
@@ -3858,6 +4286,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Zen Headbutt"
   },
   "429": {
@@ -3867,6 +4296,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Mirror Shot"
   },
   "430": {
@@ -3876,6 +4306,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Flash Cannon"
   },
   "431": {
@@ -3885,6 +4316,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Rock Climb"
   },
   "432": {
@@ -3894,6 +4326,7 @@
     "pp": 15,
     "class": "Status",
     "priority": 0,
+    "range": 0,
     "name": "Defog"
   },
   "433": {
@@ -3903,6 +4336,7 @@
     "pp": 5,
     "class": "Status",
     "priority": -7,
+    "range": 64,
     "name": "Trick Room"
   },
   "434": {
@@ -3912,6 +4346,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Draco Meteor"
   },
   "435": {
@@ -3921,6 +4356,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 8,
     "name": "Discharge"
   },
   "436": {
@@ -3930,6 +4366,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 8,
     "name": "Lava Plume"
   },
   "437": {
@@ -3939,6 +4376,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Leaf Storm"
   },
   "438": {
@@ -3948,6 +4386,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Power Whip"
   },
   "439": {
@@ -3957,6 +4396,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Rock Wrecker"
   },
   "440": {
@@ -3966,6 +4406,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Cross Poison"
   },
   "441": {
@@ -3975,6 +4416,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Gunk Shot"
   },
   "442": {
@@ -3984,6 +4426,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Iron Head"
   },
   "443": {
@@ -3993,6 +4436,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Magnet Bomb"
   },
   "444": {
@@ -4002,6 +4446,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Stone Edge"
   },
   "445": {
@@ -4011,6 +4456,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 4,
     "name": "Captivate"
   },
   "446": {
@@ -4020,6 +4466,7 @@
     "pp": 20,
     "class": "Status",
     "priority": 0,
+    "range": 128,
     "name": "Stealth Rock"
   },
   "447": {
@@ -4029,6 +4476,7 @@
     "pp": 20,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Grass Knot"
   },
   "448": {
@@ -4038,6 +4486,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Chatter"
   },
   "449": {
@@ -4047,6 +4496,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Judgment"
   },
   "450": {
@@ -4056,6 +4506,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Bug Bite"
   },
   "451": {
@@ -4065,6 +4516,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Charge Beam"
   },
   "452": {
@@ -4074,6 +4526,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Wood Hammer"
   },
   "453": {
@@ -4083,6 +4536,7 @@
     "pp": 20,
     "class": "Physical",
     "priority": 1,
+    "range": 0,
     "name": "Aqua Jet"
   },
   "454": {
@@ -4092,6 +4546,7 @@
     "pp": 15,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Attack Order"
   },
   "455": {
@@ -4101,6 +4556,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Defend Order"
   },
   "456": {
@@ -4110,6 +4566,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 16,
     "name": "Heal Order"
   },
   "457": {
@@ -4119,6 +4576,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Head Smash"
   },
   "458": {
@@ -4128,6 +4586,7 @@
     "pp": 10,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Double Hit"
   },
   "459": {
@@ -4137,6 +4596,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Roar of Time"
   },
   "460": {
@@ -4146,6 +4606,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Spacial Rend"
   },
   "461": {
@@ -4155,6 +4616,7 @@
     "pp": 15,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Moonblast"
   },
   "462": {
@@ -4164,6 +4626,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Crush Grip"
   },
   "463": {
@@ -4173,6 +4636,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Magma Storm"
   },
   "464": {
@@ -4182,6 +4646,7 @@
     "pp": 10,
     "class": "Status",
     "priority": 0,
+    "range": 4,
     "name": "Dark Void"
   },
   "465": {
@@ -4191,6 +4656,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Seed Flare"
   },
   "466": {
@@ -4200,6 +4666,7 @@
     "pp": 5,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Ominous Wind"
   },
   "467": {
@@ -4209,6 +4676,7 @@
     "pp": 5,
     "class": "Physical",
     "priority": 0,
+    "range": 0,
     "name": "Shadow Force"
   },
   "468": {
@@ -4218,6 +4686,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Move #468"
   },
   "469": {
@@ -4227,6 +4696,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Move #469"
   },
   "470": {
@@ -4236,6 +4706,7 @@
     "pp": 10,
     "class": "Special",
     "priority": 0,
+    "range": 0,
     "name": "Move #470"
   }
 }
