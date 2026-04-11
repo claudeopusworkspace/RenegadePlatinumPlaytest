@@ -1,14 +1,18 @@
 """Runtime address resolution for multi-emulator support.
 
-All heap-allocated RAM addresses shift by a uniform delta between emulators:
+All heap-allocated RAM addresses shift by a uniform delta between emulators
+and save files. The delta depends on heap allocation order at boot time,
+which varies by emulator, save file, and even across boots of the same save.
+
+Known ranges observed:
   - DeSmuME: delta = 0 (reference addresses)
-  - melonDS: delta = -0x20
+  - melonDS: delta ~ -0x20 to -0x5C (varies per boot)
 
-ARM9 addresses (0x02000000-0x02110000) are fixed across both emulators.
+ARM9 addresses (0x02000000-0x02110000) are fixed across all configurations.
 
-Detection strategy: read the party count at the DeSmuME reference address.
-If it's a valid value (1-6), delta=0. Otherwise try -0x20. Cross-validate
-with badge count (0-8) to avoid false positives.
+Detection strategy: scan a range of candidate deltas, validating each with
+multiple canary values (party count 1-6, badge popcount 0-8, and at least
+one species ID in a valid range) to avoid false positives.
 """
 
 from __future__ import annotations
@@ -19,8 +23,10 @@ from typing import Any
 
 _delta: int | None = None
 
-# Known shift candidates (DeSmuME=0, melonDS=-0x20, melonDS+alt save=-0x5C)
-_KNOWN_DELTAS = [0, -0x20, -0x5C]
+# Scan range for delta detection (covers all observed values with margin)
+_SCAN_MIN = -0x200
+_SCAN_MAX = 0x200
+_SCAN_STEP = 4
 
 # ── DeSmuME reference addresses (delta=0 baseline) ──
 
@@ -85,17 +91,33 @@ SM_SCAN_SIZE = 0x11000
 
 # ── Public API ──
 
-def detect_shift(emu: Any) -> int:
-    """Detect the heap address shift by reading canary values.
+def _read_canary(emu: Any, addr: int, size: str = "long") -> int | None:
+    """Read a single memory value, handling both bridge and MCP response formats."""
+    try:
+        val = emu.read_memory(addr, size=size)
+    except Exception:
+        return None
+    if isinstance(val, dict):
+        # MCP format: {"values": [x]} or bridge format: {"value": x}
+        if "value" in val:
+            return val["value"]
+        return val.get("values", [None])[0]
+    return val
 
-    Tries each known delta: reads party count and badge count at the
-    shifted address. If both are valid, caches and returns the delta.
+
+def detect_shift(emu: Any) -> int:
+    """Detect the heap address shift by scanning candidate deltas.
+
+    Scans a range of deltas and validates each with multiple canary values:
+    party count (1-6), badge popcount (0-8), and first species ID (1-649).
+    This handles the fact that the delta varies between boots, emulators,
+    and save files.
 
     Args:
         emu: Connected EmulatorClient instance.
 
     Returns:
-        The detected delta (0 for DeSmuME, -0x20 for melonDS).
+        The detected delta.
 
     Raises:
         RuntimeError: If no valid delta is found.
@@ -103,34 +125,43 @@ def detect_shift(emu: Any) -> int:
     global _delta
 
     party_count_ref = _DESMUME["ENCRYPTED_PARTY_COUNT"]
-    # Badge byte is at SAVE_BLOCK_BASE + 0x82
     badge_ref = _DESMUME["SAVE_BLOCK_BASE"] + 0x82
+    species_ref = _DESMUME["SPECIES_ARRAY_BASE"]
 
-    for candidate in _KNOWN_DELTAS:
-        pc_addr = party_count_ref + candidate
-        badge_addr = badge_ref + candidate
+    candidates = []
 
-        try:
-            pc = emu.read_memory(pc_addr, size="long")
-            badge = emu.read_memory(badge_addr, size="byte")
-        except Exception:
+    for candidate in range(_SCAN_MIN, _SCAN_MAX + 1, _SCAN_STEP):
+        pc = _read_canary(emu, party_count_ref + candidate)
+        if pc is None or not (1 <= pc <= 6):
             continue
 
-        if isinstance(pc, dict):
-            pc = pc.get("values", [0])[0]
-        if isinstance(badge, dict):
-            badge = badge.get("values", [0])[0]
+        badge = _read_canary(emu, badge_ref + candidate, "byte")
+        if badge is None:
+            continue
+        badge_count = bin(badge).count("1")
+        if not (0 <= badge_count <= 8):
+            continue
 
-        badge_count = bin(badge).count("1") if badge else 0
-        if 0 <= pc <= 6 and 0 <= badge_count <= 8:
-            _delta = candidate
-            return candidate
+        # Third canary: first species ID must be a valid Pokemon (1-649)
+        species = _read_canary(emu, species_ref + candidate, "short")
+        if species is None or not (1 <= species <= 649):
+            continue
 
-    raise RuntimeError(
-        "Could not detect emulator heap layout. Tried deltas "
-        f"{_KNOWN_DELTAS} but no valid party count (0-6) + badge count (0-8) found. "
-        "Verify the game is loaded and a save file is active."
-    )
+        candidates.append((candidate, pc, badge_count, species))
+
+    if not candidates:
+        raise RuntimeError(
+            f"Could not detect emulator heap layout. Scanned deltas "
+            f"{_SCAN_MIN} to {_SCAN_MAX} (step {_SCAN_STEP}) but no valid "
+            "party count (1-6) + badge count (0-8) + species ID (1-649) found. "
+            "Verify the game is loaded and a save file is active."
+        )
+
+    # Prefer candidate with highest badge count (most likely the real save data,
+    # not stale RAM). If tied, prefer smallest absolute delta (closest to baseline).
+    best = max(candidates, key=lambda c: (c[2], -abs(c[0])))
+    _delta = best[0]
+    return best[0]
 
 
 def addr(name: str) -> int:

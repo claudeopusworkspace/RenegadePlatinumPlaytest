@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 # Backend configs: (socket search paths, client import module)
 _BACKENDS = {
     "melonds": {
-        "sockets": [".melonds_bridge.sock", "MelonMCP/.melonds_bridge.sock"],
+        "sockets": [".melonds_bridge.sock", "MelonMCP/.melonds_bridge.sock", "../MelonMCP/.melonds_bridge.sock", "/workspace/MelonMCP/.melonds_bridge.sock"],
         "env_var": "MELONDS_BRIDGE_SOCK",
         "import": "melonds_mcp.client",
     },
