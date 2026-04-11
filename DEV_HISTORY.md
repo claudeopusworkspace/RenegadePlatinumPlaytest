@@ -2,6 +2,47 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Fishing + Project Venv (2026-04-11f)
+
+### Summary
+Integrated fishing rods into `seek_encounter` via a `rod` parameter. Also set up a project-local `.venv` (was previously borrowing MelonMCP's venv).
+
+### Fishing Implementation
+- Added `rod` parameter to `seek_encounter` (Old Rod, Good Rod, Super Rod)
+- Auto-navigates to a walkable tile adjacent to water using BFS (`_find_fishing_spot`)
+- Handles surfing case: turns to face a water tile if already on water
+- Uses rod through menu via new `activate_key_item()` shared helper (extracted from `use_key_item`)
+- Detects bite via MapObject[0] animation state at offset `0xA0` (value 2 = bite)
+- Presses A within hook window, advances through "Landed a Pokémon!" text into battle
+- Retries on "Not even a nibble..." / "The Pokémon got away..." (up to 20 casts)
+
+### Key Discovery: Fishing Text Not in Dialogue Buffer
+The fishing UI text ("Oh! A bite!", "Not even a nibble...") is rendered by the fishing FieldTask's own MessageLoader/Window — NOT through the ScriptManager text system that `read_dialogue` scans. Empirical testing confirmed: `read_dialogue` never detects fishing text, and raw overworld text buffer scans find no D2EC B6F8 headers during fishing.
+
+The reliable detection signal is the player MapObject animation state byte (`OBJ_ARRAY_FPX_BASE - 0x70 + 0xA0`), discovered by cross-referencing empirical memory monitoring with the pret/pokeplatinum decomp (`overlay005/fishing.c`). The state machine: 0=idle → 1=casting → 2=bite (press A!) → 3=reeling. Hook timing windows: Old Rod 45f, Good Rod 30f, Super Rod 15f — but we poll every frame, so rod type doesn't matter.
+
+### Project Venv Setup
+- Created `.venv` in project root (was using `/workspace/MelonMCP/.venv/`)
+- Added `.pth` files for `melonds_mcp` and `renegade_mcp` imports
+- Added `requirements.txt` with pinned dependencies
+- Updated `.gitignore` with `.venv/`
+- Updated CLAUDE.md test commands to use `.venv/bin/python`
+
+### Tests Added
+6 tests in `test_fishing.py`: Old Rod encounter, Good Rod encounter, invalid rod name, missing rod (lists available), no water nearby, auto-navigation from spawn. Total: 271 tests across 23 files.
+
+### Files Changed
+- `renegade_mcp/navigation.py` — `_fish_once()`, `_find_fishing_spot()`, `_seek_fishing()`, fishing constants
+- `renegade_mcp/use_item.py` — extracted `activate_key_item()`, added `FISHING_FUNCS`
+- `renegade_mcp/server.py` — `rod` parameter on `seek_encounter`
+- `tests/test_fishing.py` — 6 integration tests
+- `.gitignore` — added `.venv/`
+- `requirements.txt` — new file
+- `CLAUDE.md` — fishing docs, test count, venv paths
+
+### Save States Created
+- `fishing_test_near_water` — (842, 563) Pokemon League map 172, adjacent to water. E4 save (Old Rod + Good Rod in bag).
+
 ## Dev Session: Bike Slope Auto-Traversal (2026-04-11e)
 
 ### Summary
