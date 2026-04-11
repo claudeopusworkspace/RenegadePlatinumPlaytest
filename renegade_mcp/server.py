@@ -178,10 +178,12 @@ def create_server() -> FastMCP:
         to a specific tile — it reads the terrain, avoids walls and NPCs, and
         finds the shortest path. Use view_map to find target coordinates.
 
-        Obstacle-aware: when HM obstacles (Rock Smash rocks, Cut trees) or
-        water tiles block or shorten the path, returns status "obstacle_choice"
-        or "obstacle_required" with path info instead of moving. Call again
-        with path_choice to proceed. Strength boulders are never auto-cleared.
+        HM obstacle auto-clear: when Rock Smash rocks or Cut trees block the
+        shortest path and the party has the required move + badge, automatically
+        clears them during navigation. Returns obstacles_cleared list in response.
+        Terrain obstacles (Surf/Waterfall/Rock Climb) still return "obstacle_choice"
+        or "obstacle_required" for manual handling. Strength boulders are never
+        auto-cleared (puzzle-dependent).
 
         Sign-aware: reads sign positions from ROM zone_event data and blocks the
         activation tile (one south of each sign) to prevent auto-trigger dialogue.
@@ -210,9 +212,9 @@ def create_server() -> FastMCP:
         Args:
             x: Target X coordinate (local or global). Use view_map to find these.
             y: Target Y coordinate (local or global).
-            path_choice: None (default — ask if obstacles involved),
-                         "obstacle" (take the path through obstacles, auto-clearing them),
-                         "clean" (take the obstacle-free path).
+            path_choice: None (default — auto-clear Rock Smash/Cut; ask for terrain),
+                         "obstacle" (force the obstacle path),
+                         "clean" (force the obstacle-free path).
             flee_encounters: If True, auto-flee wild battles and resume navigation.
                 Trainer battles (detected by pre-battle dialogue) still halt for the caller.
         """

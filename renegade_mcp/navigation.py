@@ -79,15 +79,17 @@ TERRAIN_OBSTACLES = WATER_BEHAVIORS | {WATERFALL_BEHAVIOR} | ROCK_CLIMB_BEHAVIOR
 # ── HM obstacle objects (identified by graphics_id in zone_event data) ──
 # These are map objects (like NPCs) that can be cleared with field moves.
 HM_OBSTACLES: dict[int, dict[str, str]] = {
-    85: {"type": "strength_boulder", "move": "Strength",   "badge": "Mine"},
-    86: {"type": "rock_smash",       "move": "Rock Smash", "badge": "Coal"},
-    87: {"type": "cut_tree",         "move": "Cut",        "badge": "Forest"},
+    84: {"type": "strength_boulder", "move": "Strength",   "badge": "Mine"},
+    85: {"type": "rock_smash",       "move": "Rock Smash", "badge": "Coal"},
+    86: {"type": "cut_tree",         "move": "Cut",        "badge": "Forest"},
 }
 
 # Obstacles that can be auto-cleared (interact → yes → gone)
-CLEARABLE_OBSTACLES = {86, 87}  # rock_smash, cut_tree
+CLEARABLE_OBSTACLES = {85, 86}  # rock_smash, cut_tree
+# Obstacle type strings that are auto-clearable during path execution
+CLEARABLE_TYPES = {"rock_smash", "cut_tree"}
 # Obstacles that are never auto-handled (puzzle-dependent)
-PUZZLE_OBSTACLES = {85}  # strength_boulder
+PUZZLE_OBSTACLES = {84}  # strength_boulder
 
 # Badge name → bit index in the badge bitmask
 BADGE_BITS: dict[str, int] = {
@@ -1679,6 +1681,70 @@ def _navigate_cycling_road(
     return result
 
 
+# ── HM obstacle clearing ──
+
+# Timing for the HM field move interaction sequence.
+# Flow: face obstacle → A (interact) → wait for "Would you like to use X?" →
+#       A (confirm Yes, selected by default) → wait for "[Mon] used X!" text →
+#       wait for text to auto-dismiss + animation to finish → back in overworld.
+HM_INTERACT_WAIT = 120   # frames after A press for text scroll + Yes/No prompt
+HM_POST_CONFIRM_WAIT = 300  # frames after Yes for text + animation to complete
+HM_SETTLE_WAIT = 120     # frames to settle back into overworld after animation
+
+
+def _clear_hm_obstacle(
+    emu: EmulatorClient,
+    direction: str,
+    obstacle_info: dict,
+) -> bool:
+    """Execute the HM field move interaction to clear a Rock Smash/Cut obstacle.
+
+    Assumes the player is adjacent to the obstacle and facing the right direction
+    (the initial movement press turned the player to face the obstacle).
+    Returns True if the obstacle was cleared, False if the interaction didn't trigger.
+    """
+    # Ensure player is fully facing the obstacle before interacting.
+    # The directional press that caused the block may have only started
+    # the turn animation — settle before pressing A.
+    emu.advance_frames(WAIT_FRAMES)
+
+    # Press A to interact with the obstacle
+    emu.press_buttons(["a"], frames=8)
+    emu.advance_frames(HM_INTERACT_WAIT)
+
+    # Check if dialogue appeared ("Would you like to use X?")
+    dialogue = read_dialogue(emu, region="overworld")
+    if dialogue["region"] == "none":
+        # No dialogue — maybe not facing correctly. Try waiting longer.
+        emu.advance_frames(HM_INTERACT_WAIT)
+        dialogue = read_dialogue(emu, region="overworld")
+        if dialogue["region"] == "none":
+            return False
+
+    # Press A to confirm "Yes" (selected by default on the top-screen prompt)
+    emu.press_buttons(["a"], frames=8)
+
+    # Wait for "[Mon] used X!" text to appear, auto-dismiss, and animation to play.
+    emu.advance_frames(HM_POST_CONFIRM_WAIT)
+
+    # Dismiss any remaining text (some HM animations leave a text box open)
+    emu.press_buttons(["b"], frames=8)
+    emu.advance_frames(HM_SETTLE_WAIT)
+
+    # Verify we're back in overworld by checking no dialogue is active
+    dialogue = read_dialogue(emu, region="overworld")
+    if dialogue["region"] != "none":
+        # Still showing text — press B a few more times to clear it
+        for _ in range(3):
+            emu.press_buttons(["b"], frames=8)
+            emu.advance_frames(60)
+            dialogue = read_dialogue(emu, region="overworld")
+            if dialogue["region"] == "none":
+                break
+
+    return True
+
+
 # ── Path execution ──
 
 def _execute_path(
@@ -1687,6 +1753,7 @@ def _execute_path(
     track_npcs: bool = False,
     repath_ctx: dict | None = None,
     hold_frames: int = HOLD_FRAMES,
+    obstacle_tiles: dict | None = None,
 ) -> tuple[bool, int, int, dict]:
     """Execute directions, verifying each step.
 
@@ -1695,12 +1762,17 @@ def _execute_path(
 
     Args:
         hold_frames: Frames to hold per step (16 walking, 8 cycling).
+        obstacle_tiles: Dict mapping global (x, y) → obstacle info for
+            clearable HM obstacles on the path. When a step is blocked at one
+            of these tiles, the field move interaction is triggered to clear it.
 
     Returns (stopped_early, steps_taken, repaths_used, nav_info).
     nav_info contains compact summary data (map_change, blocked_at, npc_moves).
     """
     if repath_ctx is not None:
         track_npcs = True
+    if obstacle_tiles is None:
+        obstacle_tiles = {}
 
     steps_taken = 0
     repaths_used = 0
@@ -1720,6 +1792,29 @@ def _execute_path(
         new_map, new_x, new_y = _read_position(emu)
 
         blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
+
+        if blocked:
+            # Check if blocked by a clearable HM obstacle BEFORE slow terrain
+            # retries — extra directional presses would interfere with the
+            # Rock Smash / Cut interaction dialogue.
+            dx, dy = _DIR_DELTAS.get(direction, (0, 0))
+            obs_gx, obs_gy = old_x + dx, old_y + dy
+            obs_info = obstacle_tiles.get((obs_gx, obs_gy))
+            if obs_info is not None:
+                cleared = _clear_hm_obstacle(emu, direction, obs_info)
+                if cleared:
+                    obstacle_tiles.pop((obs_gx, obs_gy), None)
+                    nav_info.setdefault("obstacles_cleared", []).append({
+                        "type": obs_info["type"],
+                        "move": obs_info["move"],
+                        "x": obs_gx, "y": obs_gy,
+                    })
+                    # Retry the step — obstacle is gone, tile should be passable
+                    emu.advance_frames(hold_frames, buttons=[direction])
+                    emu.advance_frames(WAIT_FRAMES)
+                    new_map, new_x, new_y = _read_position(emu)
+                    blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
+
         if blocked:
             # Slow terrain (deep snow, ice) may not complete a step within
             # hold_frames + WAIT_FRAMES. Retry with full press cycles —
@@ -2280,8 +2375,30 @@ def _navigate_to_impl(
             repath_ctx.pop("elevation", None)
             repath_ctx.pop("emu", None)
 
+    # Defaults for 2D BFS variables (may not be set in 3D path)
+    obs_path = None
+    obs_crossed: list[dict] = []
+
     if is_3d:
         path = path_3d
+        # Even on 3D maps, check if a shorter path exists through clearable
+        # obstacles (Rock Smash/Cut). The 3D BFS treats them as impassable.
+        if obstacle_map and path is not None:
+            field_moves = _get_field_move_availability(emu)
+            obs_path_3d, obs_crossed_3d = _bfs_pathfind_obstacles(
+                terrain_info, npc_set, obstacle_map,
+                bfs_sx, bfs_sy, bfs_tx, bfs_ty,
+                field_moves, width=bfs_w, height=bfs_h,
+            )
+            obs_crossed_3d = _dedupe_obstacles(obs_crossed_3d)
+            clearable_only = all(ob["type"] in CLEARABLE_TYPES for ob in obs_crossed_3d)
+            if (obs_path_3d is not None and obs_crossed_3d
+                    and len(obs_path_3d) < len(path) and clearable_only):
+                skills_ok = all(field_moves.get(ob["move"], False) for ob in obs_crossed_3d)
+                if skills_ok:
+                    path = obs_path_3d
+                    obs_path = obs_path_3d
+                    obs_crossed = obs_crossed_3d
     else:
         # ── Dual BFS: clean path vs obstacle path ──
         with phase("nav_bfs_2d"):
@@ -2313,6 +2430,12 @@ def _navigate_to_impl(
                     skills_available = False
                     break
 
+        # Classify obstacles: clearable (Rock Smash/Cut — auto-clear) vs
+        # terrain (Surf/Waterfall/Rock Climb — require mode change, ask caller)
+        clearable_obs = [ob for ob in obs_crossed if ob["type"] in CLEARABLE_TYPES]
+        terrain_obs = [ob for ob in obs_crossed if ob["type"] not in CLEARABLE_TYPES]
+        all_clearable = len(terrain_obs) == 0 and len(clearable_obs) > 0
+
         # Determine which path to use
         if path_choice == "obstacle":
             if not has_obs:
@@ -2327,8 +2450,11 @@ def _navigate_to_impl(
                 return {"error": "No clean (obstacle-free) path available.",
                         "start": _pos_with_map(px, py, map_id)}
             path = clean_path
-        elif has_obs and obs_shorter and skills_available and path_choice is None:
-            # Obstacle path is shorter and skills available — ask the caller
+        elif has_obs and obs_shorter and skills_available and all_clearable and path_choice is None:
+            # All obstacles are clearable (Rock Smash/Cut) — auto-take obstacle path
+            path = obs_path
+        elif has_obs and obs_shorter and skills_available and not all_clearable and path_choice is None:
+            # Terrain obstacles (Surf/Waterfall/Rock Climb) — still ask the caller
             start_pos = _pos_with_map(px, py, map_id)
             status = "obstacle_choice" if has_clean else "obstacle_required"
             obstacle_info = [{
@@ -2481,9 +2607,20 @@ def _navigate_to_impl(
             "final": start_pos,
         }
 
+    # Build obstacle tile lookup for _execute_path (clearable obstacles only).
+    # Maps global (x, y) → obstacle info so the executor can auto-clear them.
+    exec_obstacle_tiles: dict[tuple[int, int], dict] = {}
+    if obs_crossed and path is obs_path:
+        for ob in obs_crossed:
+            if ob["type"] in CLEARABLE_TYPES:
+                gx = ob.get("global_x", ob.get("x", 0))
+                gy = ob.get("global_y", ob.get("y", 0))
+                exec_obstacle_tiles[(gx, gy)] = ob
+
     with phase("nav_execute_path"):
         stopped_early, steps_taken, repaths_used, nav_info = _execute_path(
             emu, path, repath_ctx=repath_ctx, hold_frames=hold_frames,
+            obstacle_tiles=exec_obstacle_tiles,
         )
 
     path_str = _summarize_path(path)
@@ -2611,6 +2748,10 @@ def _navigate_to_impl(
         "start": start_pos,
         "final": _pos_with_map(final_x, final_y, final_map),
     }
+
+    # Include HM obstacles cleared during path execution
+    if nav_info.get("obstacles_cleared"):
+        result["obstacles_cleared"] = nav_info["obstacles_cleared"]
 
     if stopped_early:
         # Check if we stopped adjacent to the target (Manhattan distance 1).
