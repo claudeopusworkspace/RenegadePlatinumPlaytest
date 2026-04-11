@@ -61,7 +61,9 @@ Fly (Garchomp), Surf (Swampert), Rock Smash (Nidoking), Strength (Nidoking), Roc
 | Name | Description |
 |------|-------------|
 | `e4_hm_base_all_moves` | Pokemon League lobby. Base state with all HMs taught. Dusknoir still in party (deposit failed). |
-| `hm_test_surf_canalave` | Canalave City at (51, 729). Adjacent to canal water tiles. Surf test. |
+| `hm_test_surf_canalave` | Canalave City at (51, 729). Canal water walled off — not suitable for direct Surf testing. |
+| `hm_test_surf_route218` | Route 218 at (121, 758). East side of canal, gate entrance. |
+| `hm_test_surf_route218_at_water` | Route 218 at (112, 754). Adjacent to water edge. **Best Surf test location** — navigate west to (100, 756) crosses water. |
 | `hm_test_surf_waterfall_pokemon_league` | Pokemon League outdoor at (847, 560). Obstacle BFS confirms path south requires Surf + Waterfall. |
 | `hm_test_rock_smash_mt_coronet` | Mt. Coronet map 207 (Route 208 entrance) at (4, 8). 4 Rock Smash objects present (coords show 0,0 in view_map — runtime loading issue). |
 | `hm_test_rock_smash_oreburgh_mine_b2f` | Oreburgh Mine B2F at (18, 28). Standing between two Rock Smash rocks at (17, 28) and (19, 28). Best Rock Smash test location. |

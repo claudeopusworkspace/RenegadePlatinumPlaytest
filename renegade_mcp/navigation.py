@@ -46,6 +46,7 @@ if TYPE_CHECKING:
 # ── Movement timing ──
 HOLD_FRAMES = 16       # walking: 1 tile per press
 BIKE_HOLD_FRAMES = 4   # cycling: bike moves 1 tile per ~4 frames
+SURF_HOLD_FRAMES = 8   # surfing: 1 tile per ~8 frames (2x walk speed)
 WAIT_FRAMES = 8
 SETTLE_FRAMES = 120
 SLOW_TERRAIN_RETRIES = 3  # Re-press attempts on apparent block (deep snow, ice)
@@ -88,6 +89,10 @@ HM_OBSTACLES: dict[int, dict[str, str]] = {
 CLEARABLE_OBSTACLES = {85, 86}  # rock_smash, cut_tree
 # Obstacle type strings that are auto-clearable during path execution
 CLEARABLE_TYPES = {"rock_smash", "cut_tree"}
+# Terrain obstacle types handled by entering Surf mode (player moves onto water)
+SURF_TYPES = {"water"}
+# All types that navigate_to auto-executes (no caller confirmation needed)
+AUTO_NAVIGATE_TYPES = CLEARABLE_TYPES | SURF_TYPES
 # Obstacles that are never auto-handled (puzzle-dependent)
 PUZZLE_OBSTACLES = {84}  # strength_boulder
 
@@ -1095,6 +1100,18 @@ def _try_repath(
                 return path_3d
             # 3D BFS failed (disconnected level, dynamic terrain) — fall through to 2D
 
+    # When surfing, use obstacle-aware BFS so water tiles remain passable
+    if ctx.get("surfing"):
+        field_moves = ctx.get("field_moves", {})
+        obstacle_map = ctx.get("obstacle_map", {})
+        obs_path, _ = _bfs_pathfind_obstacles(
+            ctx["terrain_info"], npc_set, obstacle_map,
+            sx, sy, ctx["goal_x"], ctx["goal_y"],
+            field_moves, width=w, height=h,
+        )
+        if obs_path is not None:
+            return obs_path
+
     return _bfs_pathfind(
         ctx["terrain_info"], npc_set,
         sx, sy, ctx["goal_x"], ctx["goal_y"],
@@ -1780,13 +1797,14 @@ def _execute_path(
     map_changed = False
     prev_npcs = _read_npc_positions(emu) if track_npcs else {}
     nav_info: dict = {}
+    active_hold = hold_frames  # may change to SURF_HOLD_FRAMES after Surf activation
 
     i = 0
     while i < len(directions):
         direction = directions[i]
         old_map, old_x, old_y = _read_position(emu)
 
-        emu.advance_frames(hold_frames, buttons=[direction])
+        emu.advance_frames(active_hold, buttons=[direction])
         emu.advance_frames(WAIT_FRAMES)
 
         new_map, new_x, new_y = _read_position(emu)
@@ -1796,11 +1814,12 @@ def _execute_path(
         if blocked:
             # Check if blocked by a clearable HM obstacle BEFORE slow terrain
             # retries — extra directional presses would interfere with the
-            # Rock Smash / Cut interaction dialogue.
+            # Rock Smash / Cut / Surf interaction dialogue.
             dx, dy = _DIR_DELTAS.get(direction, (0, 0))
             obs_gx, obs_gy = old_x + dx, old_y + dy
             obs_info = obstacle_tiles.get((obs_gx, obs_gy))
             if obs_info is not None:
+                is_surf = obs_info["type"] in SURF_TYPES
                 cleared = _clear_hm_obstacle(emu, direction, obs_info)
                 if cleared:
                     obstacle_tiles.pop((obs_gx, obs_gy), None)
@@ -1809,19 +1828,33 @@ def _execute_path(
                         "move": obs_info["move"],
                         "x": obs_gx, "y": obs_gy,
                     })
-                    # Retry the step — obstacle is gone, tile should be passable
-                    emu.advance_frames(hold_frames, buttons=[direction])
-                    emu.advance_frames(WAIT_FRAMES)
-                    new_map, new_x, new_y = _read_position(emu)
-                    blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
+                    if is_surf:
+                        # Surf moves the player ONTO the water tile (unlike
+                        # Rock Smash/Cut where the obstacle is removed and the
+                        # player stays in place). Don't retry the step.
+                        new_map, new_x, new_y = _read_position(emu)
+                        blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
+                        # Mark surfing state so repath uses water-aware BFS,
+                        # and switch to surf hold frames (2x walk speed).
+                        if not blocked:
+                            active_hold = SURF_HOLD_FRAMES
+                            if repath_ctx is not None:
+                                repath_ctx["surfing"] = True
+                    else:
+                        # Rock Smash / Cut: obstacle removed, player stays.
+                        # Retry the step — tile should now be passable.
+                        emu.advance_frames(active_hold, buttons=[direction])
+                        emu.advance_frames(WAIT_FRAMES)
+                        new_map, new_x, new_y = _read_position(emu)
+                        blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
 
         if blocked:
             # Slow terrain (deep snow, ice) may not complete a step within
-            # hold_frames + WAIT_FRAMES. Retry with full press cycles —
+            # active_hold + WAIT_FRAMES. Retry with full press cycles —
             # the first press may have only turned the character, or the
             # animation may still be in progress.
             for _ in range(SLOW_TERRAIN_RETRIES):
-                emu.advance_frames(hold_frames, buttons=[direction])
+                emu.advance_frames(active_hold, buttons=[direction])
                 emu.advance_frames(WAIT_FRAMES)
                 new_map, new_x, new_y = _read_position(emu)
                 blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
@@ -2381,19 +2414,19 @@ def _navigate_to_impl(
 
     if is_3d:
         path = path_3d
-        # Even on 3D maps, check if a shorter path exists through clearable
-        # obstacles (Rock Smash/Cut). The 3D BFS treats them as impassable.
-        if obstacle_map and path is not None:
-            field_moves = _get_field_move_availability(emu)
+        # Even on 3D maps, check if a shorter path exists through auto-navigable
+        # obstacles (Rock Smash/Cut/Surf). The 3D BFS treats them as impassable.
+        field_moves = _get_field_move_availability(emu)
+        if path is not None:
             obs_path_3d, obs_crossed_3d = _bfs_pathfind_obstacles(
                 terrain_info, npc_set, obstacle_map,
                 bfs_sx, bfs_sy, bfs_tx, bfs_ty,
                 field_moves, width=bfs_w, height=bfs_h,
             )
             obs_crossed_3d = _dedupe_obstacles(obs_crossed_3d)
-            clearable_only = all(ob["type"] in CLEARABLE_TYPES for ob in obs_crossed_3d)
+            all_auto = all(ob["type"] in AUTO_NAVIGATE_TYPES for ob in obs_crossed_3d)
             if (obs_path_3d is not None and obs_crossed_3d
-                    and len(obs_path_3d) < len(path) and clearable_only):
+                    and len(obs_path_3d) < len(path) and all_auto):
                 skills_ok = all(field_moves.get(ob["move"], False) for ob in obs_crossed_3d)
                 if skills_ok:
                     path = obs_path_3d
@@ -2430,11 +2463,11 @@ def _navigate_to_impl(
                     skills_available = False
                     break
 
-        # Classify obstacles: clearable (Rock Smash/Cut — auto-clear) vs
-        # terrain (Surf/Waterfall/Rock Climb — require mode change, ask caller)
-        clearable_obs = [ob for ob in obs_crossed if ob["type"] in CLEARABLE_TYPES]
-        terrain_obs = [ob for ob in obs_crossed if ob["type"] not in CLEARABLE_TYPES]
-        all_clearable = len(terrain_obs) == 0 and len(clearable_obs) > 0
+        # Classify obstacles: auto-navigable (Rock Smash/Cut/Surf — auto-execute)
+        # vs manual terrain (Waterfall/Rock Climb — require caller confirmation)
+        auto_obs = [ob for ob in obs_crossed if ob["type"] in AUTO_NAVIGATE_TYPES]
+        manual_obs = [ob for ob in obs_crossed if ob["type"] not in AUTO_NAVIGATE_TYPES]
+        all_auto = len(manual_obs) == 0 and len(auto_obs) > 0
 
         # Determine which path to use
         if path_choice == "obstacle":
@@ -2450,11 +2483,11 @@ def _navigate_to_impl(
                 return {"error": "No clean (obstacle-free) path available.",
                         "start": _pos_with_map(px, py, map_id)}
             path = clean_path
-        elif has_obs and obs_shorter and skills_available and all_clearable and path_choice is None:
-            # All obstacles are clearable (Rock Smash/Cut) — auto-take obstacle path
+        elif has_obs and obs_shorter and skills_available and all_auto and path_choice is None:
+            # All obstacles are auto-navigable (Rock Smash/Cut/Surf) — auto-take
             path = obs_path
-        elif has_obs and obs_shorter and skills_available and not all_clearable and path_choice is None:
-            # Terrain obstacles (Surf/Waterfall/Rock Climb) — still ask the caller
+        elif has_obs and obs_shorter and skills_available and not all_auto and path_choice is None:
+            # Manual terrain obstacles (Waterfall/Rock Climb) — ask the caller
             start_pos = _pos_with_map(px, py, map_id)
             status = "obstacle_choice" if has_clean else "obstacle_required"
             obstacle_info = [{
@@ -2607,15 +2640,26 @@ def _navigate_to_impl(
             "final": start_pos,
         }
 
-    # Build obstacle tile lookup for _execute_path (clearable obstacles only).
-    # Maps global (x, y) → obstacle info so the executor can auto-clear them.
+    # Build obstacle tile lookup for _execute_path (auto-navigable obstacles).
+    # Maps global (x, y) → obstacle info so the executor can auto-handle them.
+    # Includes Rock Smash/Cut (object removed) and Surf (enter water mode).
+    # Object obstacles have "global_x"/"global_y" from zone_event data.
+    # Terrain obstacles (water) have grid-relative "x"/"y" — convert to global.
     exec_obstacle_tiles: dict[tuple[int, int], dict] = {}
     if obs_crossed and path is obs_path:
         for ob in obs_crossed:
-            if ob["type"] in CLEARABLE_TYPES:
-                gx = ob.get("global_x", ob.get("x", 0))
-                gy = ob.get("global_y", ob.get("y", 0))
+            if ob["type"] in AUTO_NAVIGATE_TYPES:
+                if "global_x" in ob:
+                    gx, gy = ob["global_x"], ob["global_y"]
+                else:
+                    gx = ob["x"] + repath_ox
+                    gy = ob["y"] + repath_oy
                 exec_obstacle_tiles[(gx, gy)] = ob
+
+    # Provide field_moves + obstacle_map for repath during Surf navigation.
+    # When surfing, _try_repath uses obstacle-aware BFS so water stays passable.
+    repath_ctx["field_moves"] = field_moves
+    repath_ctx["obstacle_map"] = obstacle_map
 
     with phase("nav_execute_path"):
         stopped_early, steps_taken, repaths_used, nav_info = _execute_path(

@@ -110,6 +110,173 @@ class TestRockSmashAutoClear:
 
 
 # ---------------------------------------------------------------------------
+# Surf auto-navigation
+# ---------------------------------------------------------------------------
+
+class TestSurfNavigation:
+    """navigate_to auto-uses Surf to cross water when available.
+
+    Uses Route 218 save state — player at (112, 754) on the east land strip,
+    water canal to the west, land on far west side around x=98-103.
+    """
+
+    SAVE_STATE = "hm_test_surf_route218_at_water"
+
+    def test_surf_field_move_available(self, emu: EmulatorClient):
+        """Wayne's E4 save has Surf available (party + Fen Badge)."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.navigation import _get_field_move_availability
+
+        field_moves = _get_field_move_availability(emu)
+        assert field_moves["Surf"] is True
+
+    def test_water_tiles_in_terrain(self, emu: EmulatorClient):
+        """Water tiles are present in Route 218 terrain data."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.map_state import get_map_state
+        from renegade_mcp.navigation import WATER_BEHAVIORS
+
+        state = get_map_state(emu)
+        assert state is not None
+
+        water_count = 0
+        for row in state["terrain"]:
+            for val in row:
+                behavior = val & 0x00FF
+                if behavior in WATER_BEHAVIORS:
+                    water_count += 1
+
+        assert water_count > 0, "Expected water tiles in Route 218"
+
+    def test_obstacle_bfs_finds_surf_path(self, emu: EmulatorClient):
+        """Obstacle-aware BFS finds a path through water when Surf is available."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.navigation import (
+            _bfs_pathfind,
+            _bfs_pathfind_obstacles,
+            _build_multi_chunk_terrain,
+            _classify_objects_for_grid,
+            _get_field_move_availability,
+            _read_position,
+        )
+        from renegade_mcp.map_state import get_map_state
+
+        _, px, py = _read_position(emu)
+        state = get_map_state(emu)
+        map_id = state["map_id"]
+        field_moves = _get_field_move_availability(emu)
+
+        # Target: west side of canal at (100, 756)
+        mc_result = _build_multi_chunk_terrain(emu, map_id, px, py, 100, 756)
+        assert mc_result is not None
+        terrain_info, grid_ox, grid_oy, grid_w, grid_h = mc_result
+        npc_set, obstacle_map = _classify_objects_for_grid(
+            state["objects"], grid_ox, grid_oy, grid_w, grid_h,
+        )
+
+        rel_px, rel_py = px - grid_ox, py - grid_oy
+        rel_tx, rel_ty = 100 - grid_ox, 756 - grid_oy
+
+        # Clean BFS should NOT find a path (water blocks)
+        clean_path = _bfs_pathfind(
+            terrain_info, npc_set | set(obstacle_map.keys()),
+            rel_px, rel_py, rel_tx, rel_ty,
+            width=grid_w, height=grid_h,
+        )
+        assert clean_path is None, "Clean BFS should not cross water"
+
+        # Obstacle BFS with Surf SHOULD find a path
+        obs_path, obs_crossed = _bfs_pathfind_obstacles(
+            terrain_info, npc_set, obstacle_map,
+            rel_px, rel_py, rel_tx, rel_ty,
+            field_moves, width=grid_w, height=grid_h,
+        )
+        assert obs_path is not None, "Obstacle BFS should find a path through water"
+        water_obs = [ob for ob in obs_crossed if ob["type"] == "water"]
+        assert len(water_obs) > 0, "Path should include water obstacles"
+
+    def test_navigate_across_water(self, emu: EmulatorClient):
+        """navigate_to crosses water via Surf and reaches target on far side."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.navigation import navigate_to
+
+        # Player at (112, 754) on east side, target on west side of canal.
+        result = navigate_to(emu, 100, 756)
+
+        assert "error" not in result, f"navigate_to failed: {result.get('error')}"
+        assert "status" not in result, f"Got obstacle_choice: {result.get('message')}"
+        assert result["final"]["x"] == 100
+        assert result["final"]["y"] == 756
+        assert "obstacles_cleared" in result
+        surf_cleared = [c for c in result["obstacles_cleared"] if c["type"] == "water"]
+        assert len(surf_cleared) >= 1
+        assert surf_cleared[0]["move"] == "Surf"
+
+    def test_navigate_back_via_bridge(self, emu: EmulatorClient):
+        """After surfing west, navigating east uses the bridge (clean path)."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.navigation import navigate_to
+
+        # First: cross water to the west
+        result1 = navigate_to(emu, 100, 756)
+        assert "obstacles_cleared" in result1
+
+        # Now navigate back east — bridge provides a clean path, no Surf needed
+        result2 = navigate_to(emu, 118, 756)
+        assert "error" not in result2, f"Return trip failed: {result2.get('error')}"
+        assert "obstacles_cleared" not in result2, "Bridge path should not need Surf"
+
+    def test_surf_not_available_without_badge(self, emu: EmulatorClient):
+        """BFS does not cross water when Surf is unavailable."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.navigation import (
+            _bfs_pathfind_obstacles,
+            _build_multi_chunk_terrain,
+            _classify_objects_for_grid,
+            _read_position,
+        )
+        from renegade_mcp.map_state import get_map_state
+
+        _, px, py = _read_position(emu)
+        state = get_map_state(emu)
+        map_id = state["map_id"]
+
+        mc_result = _build_multi_chunk_terrain(emu, map_id, px, py, 100, 756)
+        assert mc_result is not None
+        terrain_info, grid_ox, grid_oy, grid_w, grid_h = mc_result
+        npc_set, obstacle_map = _classify_objects_for_grid(
+            state["objects"], grid_ox, grid_oy, grid_w, grid_h,
+        )
+
+        rel_px, rel_py = px - grid_ox, py - grid_oy
+        rel_tx, rel_ty = 100 - grid_ox, 756 - grid_oy
+
+        # Simulate no Surf available
+        no_surf = {"Rock Smash": True, "Cut": True, "Surf": False,
+                   "Strength": False, "Waterfall": False, "Rock Climb": False}
+
+        obs_path, obs_crossed = _bfs_pathfind_obstacles(
+            terrain_info, npc_set, obstacle_map,
+            rel_px, rel_py, rel_tx, rel_ty,
+            no_surf, width=grid_w, height=grid_h,
+        )
+        water_obs = [ob for ob in obs_crossed if ob["type"] == "water"]
+        assert len(water_obs) == 0, "BFS should not cross water without Surf"
+
+    def test_surf_auto_navigate_types(self, emu: EmulatorClient):
+        """Water type is included in AUTO_NAVIGATE_TYPES alongside Rock Smash/Cut."""
+        from renegade_mcp.navigation import (
+            AUTO_NAVIGATE_TYPES, CLEARABLE_TYPES, SURF_TYPES,
+        )
+
+        assert "water" in AUTO_NAVIGATE_TYPES
+        assert "water" in SURF_TYPES
+        assert "water" not in CLEARABLE_TYPES
+        assert "rock_smash" in AUTO_NAVIGATE_TYPES
+        assert "cut_tree" in AUTO_NAVIGATE_TYPES
+
+
+# ---------------------------------------------------------------------------
 # GFX ID correctness
 # ---------------------------------------------------------------------------
 
