@@ -2,6 +2,58 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Cycling Road Stuck Fix & Bike Slope Research (2026-04-11d)
+
+### Summary
+Fixed an infinite-loop bug in `_navigate_cycling_road` and fully researched the bike slope mechanics on Route 207 in preparation for implementing auto-slope-traversal in `navigate_to`.
+
+### Cycling Road Stuck Fix
+When a trainer NPC (defeated but still standing) blocked the player on the Cycling Road bridge, the southbound auto-slide phase would loop for 120,000 frames (~160 seconds) before giving up. The inner while loop (600-frame timeout) would exhaust without position change, then `continue` back to the outer loop, repeating 200 times.
+
+**Fix**: Three layers of stuck detection:
+- **General**: `no_progress` counter at outer loop — bail after 3 consecutive iterations with no position change (catches ground-phase blockages cheaply)
+- **Uphill phase**: track `phase_start_y`, break if inner wait exhausted with no Y progress
+- **Southbound slide phase**: same `phase_start_y` check — break immediately on first timeout with no movement
+
+Verified: scenario that took 120k frames now bails in ~1,200 frames with a clear diagnostic.
+
+### Bike Slope Mechanics Research
+Navigated from Eterna City through Cycling Road (fighting trainers along the way) to Route 207 using Wayne's E4 save state. Found and characterized the bike slopes at (306, 718-719).
+
+**Terrain data:**
+- `bike_slope_top` (0xD9) at (306, 718): `val=0x00D9`, collision bit = 0
+- `bike_slope_bottom` (0xDA) at (306, 719): `val=0x00DA`, collision bit = 0
+- BFS correctly treats these as passable — the issue is game-engine movement blocking
+
+**Movement requirements (empirically tested):**
+- Must be on bicycle
+- Must be in **fast gear** (4th gear) — toggled by pressing B while on bike
+- Must have **3+ tiles of continuous running start** — holding direction from adjacent fails
+- Step-by-step navigation always fails — game blocks single-step entry onto slope tiles
+
+**Gear state memory:**
+- Address `0x021BF6AC` (byte): 0 = fast gear (can climb slopes), 1 = slow gear (blocked)
+- Found via snapshot/diff: B press toggles this value cleanly (1→0→1)
+- `CYCLING_GEAR_ADDR` (0x0227F4E0) is only the on/off bicycle flag, NOT the gear
+
+### Cycling Road Gatehouse Discovery
+Route 206's south gatehouse is blocked by 5 NPC "dancing Pokemon Breeders" — likely a Renegade Platinum story gate that clears after defeating Team Galactic in Eterna Building. Used E4 save + Fly to reach Route 207 from Oreburgh City instead.
+
+### Save States Created
+- `route207_bike_slope_area` — Route 207 at (297, 720), overview position, E4 save
+- `route207_at_bike_slope_bottom` — Route 207 at (306, 720), on bicycle, 1 tile south of slope bottom. **Best test location.**
+
+### Next Steps
+Implement bike slope traversal in `navigate_to`:
+1. Detect slope tiles (0xD9/0xDA) in BFS path
+2. When execution reaches a slope: press B (gear shift), back up 3 tiles, hold direction continuously through slope, poll position
+3. After crossing: press B to restore gear, continue normal navigation
+4. Handle both uphill and downhill slopes
+
+### Files Changed
+- `renegade_mcp/navigation.py` — stuck detection in `_navigate_cycling_road` (3 new checks)
+- `SAVE_STATES.md` — added Route 207 bike slope test states
+
 ## Dev Session: Rock Climb & Waterfall Auto-Navigation (2026-04-11c)
 
 ### Summary
