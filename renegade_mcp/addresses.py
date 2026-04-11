@@ -19,8 +19,8 @@ from typing import Any
 
 _delta: int | None = None
 
-# Known shift candidates (DeSmuME=0, melonDS=-0x20)
-_KNOWN_DELTAS = [0, -0x20]
+# Known shift candidates (DeSmuME=0, melonDS=-0x20, melonDS+alt save=-0x5C)
+_KNOWN_DELTAS = [0, -0x20, -0x5C]
 
 # ── DeSmuME reference addresses (delta=0 baseline) ──
 
@@ -121,7 +121,8 @@ def detect_shift(emu: Any) -> int:
         if isinstance(badge, dict):
             badge = badge.get("values", [0])[0]
 
-        if 0 <= pc <= 6 and 0 <= badge <= 8:
+        badge_count = bin(badge).count("1") if badge else 0
+        if 0 <= pc <= 6 and 0 <= badge_count <= 8:
             _delta = candidate
             return candidate
 
