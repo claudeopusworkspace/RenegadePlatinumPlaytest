@@ -2,6 +2,46 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Move Relearner & Move Deleter (2026-04-11g)
+
+### Summary
+Implemented `relearn_move` and `delete_move` tools for NPC-based move management. Both are town-service tools that interact with specific NPCs, navigate game menus, and modify party movesets. Extracted ROM learnset data (`wotbl.narc`) for the relearner's scrollable move list.
+
+### Key Renegade Platinum Discoveries
+- **Move Relearner relocated**: Still Pastoria City, but moved to map 129 (C06R0401, warp 611,835) — NPC sprite is "Collector". The vanilla East House (map 130, C06R0501) now has different NPCs (Lapras gift, Great Marsh tips). **Free** — no Heart Scale cost.
+- **Move Deleter relocated**: Moved from Canalave City to **Oreburgh City** (map 58, C03R0301, warp 293,752). NPC sprite is "Old Man". Available much earlier in the game.
+- Confirmed via web research + empirical verification against E4 save.
+
+### Move Relearner Flow (verified empirically)
+1. Interact with NPC → auto-advances into "Which Pokemon needs tutoring?" → party select screen
+2. Party select: A button (D-pad navigates 2-column grid)
+3. Scrollable move list on top screen: D-pad up/down, 7 visible items, CANCEL at bottom
+4. If 4 moves: "can't learn more than 4" → "Delete existing?" YES/NO → forget UI → "Is it OK?" YES/NO → "1, 2, and... Poof!" → learned
+5. Exit: "That'll do it." → overworld
+
+### Move Deleter Flow (verified empirically)
+1. Interact with NPC → Yes/No: "forget some moves?"
+2. Party select → "Which move should be forgotten?" → current 4 moves + CANCEL
+3. Select move → "Should that move be forgotten?" YES/NO → "It worked perfectly!" → "forgotten completely" → overworld
+
+### Implementation
+- **`move_services.py`**: Single module for both tools. Shared helpers: `_navigate_to_npc_building` (location validation + auto-navigate from city overworld), `_find_npc` (GFX name lookup), `_select_party_member` (2-column grid navigation).
+- **Relearner list navigation**: Pre-computes the move list from ROM learnset data (same algorithm as the game's `MoveReminderData_GetMoves`: level-up moves at/below current level, minus currently known, deduplicated). Navigates by index — O(n) down presses.
+- **ROM data extraction**: Extracted `poketool/personal/wotbl.narc` → parsed 507 species entries (format: `(level << 9) | move_id` as u16, terminated by 0xFFFF) → cached as `data/level_up_moves.json` (77KB). Added `level_up_moves(species_id)` to `data.py`.
+- **server.py**: Registered both tools with `@renegade_tool` decorator (lazy imports).
+
+### Backlog Cleanup
+- Removed "Battle Gauntlet / E4 Support" from backlog — E4 strategy is gameplay, not tooling. Existing movement/interaction/dialogue tools handle it.
+
+### Save States Created
+- `move_relearner_pastoria` — inside relearner's house, map 129, E4 save
+- `move_deleter_oreburgh` — inside deleter's house, map 58, E4 save
+
+### Tests
+15 tests in `test_move_services.py` (286 total across 24 files):
+- Relearner: forget slot 0, forget slot 3, cancel (-1), different party slot, already-knows, missing forget_move, invalid slot, move-not-in-learnset, wrong city
+- Deleter: delete first, delete last, different party slot, move-not-known, invalid slot, wrong city
+
 ## Dev Session: Fishing + Project Venv (2026-04-11f)
 
 ### Summary
