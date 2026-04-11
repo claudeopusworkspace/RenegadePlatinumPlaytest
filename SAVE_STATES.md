@@ -70,6 +70,10 @@ Fly (Garchomp), Surf (Swampert), Rock Smash (Nidoking), Strength (Nidoking), Roc
 | `hm_test_cut_surf_route214` | Route 214 at (725, 678). Obstacle BFS detected Cut tree at (731, 648) + Surf tiles on path. Combined Cut + Surf test. |
 | `hm_test_rock_climb_veilstone` | Veilstone City at (691, 617). South of a 2-tile Rock Climb wall at (691, 615-616). Navigate to (691, 614) = 3 steps through wall. 68-step clean path around. |
 
+### Bike Slope Test States
+| `route207_bike_slope_area` | Route 207 at (297, 720). Near bike slopes. E4 save (8 badges). Overview position. |
+| `route207_at_bike_slope_bottom` | Route 207 at (306, 720). On bicycle, 1 tile south of bike slope bottom (0xDA at 306,719). E4 save. **Best bike slope test location.** |
+
 ### Still needed
 - **Cut (standalone)** — All cut trees have story flags; may need our playthrough save (2-badge, pre-Galactic) for Eterna City trees.
 - **Strength** — Oreburgh Mine B2F objects are Rock Smash, not Strength. Need cave with actual Strength boulders (gfx=85). Reliable ROM coords: Stark Mountain Room 3 (10, 13).
