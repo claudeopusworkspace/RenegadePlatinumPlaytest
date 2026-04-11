@@ -30,8 +30,17 @@ def _savestate_ext() -> str:
     return ".mst"
 
 
-def do_load_state(emu, name: str) -> None:
-    """Load a named save state. Tries the active backend's extension first."""
+def do_load_state(emu, name: str, redetect_shift: bool = False) -> None:
+    """Load a named save state. Tries the active backend's extension first.
+
+    Args:
+        emu: Emulator client.
+        name: Save state name (without extension).
+        redetect_shift: If True, clear the cached address delta and re-detect.
+            Required when loading a state from a different save file (e.g.
+            Wayne's E4 save vs our playthrough) because the heap layout delta
+            differs per save/boot.
+    """
     ext = _savestate_ext()
     path = SAVESTATES_DIR / f"{name}{ext}"
     if not path.exists():
@@ -44,6 +53,11 @@ def do_load_state(emu, name: str) -> None:
     assert result, f"Failed to load save state: {name}"
     # Give the emulator a moment to settle after state load
     emu.advance_frames(60)
+
+    if redetect_shift:
+        from renegade_mcp.addresses import reset, detect_shift
+        reset()
+        detect_shift(emu)
 
 
 def _log_to_str(log) -> str:
