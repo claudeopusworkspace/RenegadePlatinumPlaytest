@@ -2,6 +2,56 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Self-Targeting Moves in Doubles — BUG-003 (2026-04-11h)
+
+### Summary
+Fixed the last open QA bug: self-targeting moves (Swords Dance, Dragon Dance, Calm Mind, etc.) broke the doubles UI navigation in `battle_turn`. The tool would loop on "What will X do?" instead of progressing the turn. Also extracted the move `range` field from ROM data and added 6 integration tests.
+
+### Root Cause Investigation
+- In Gen 4 doubles, after selecting a move, the game shows a **target selection screen** where you tap which Pokemon to target.
+- For self-targeting moves (ROM `range=16`, 61 moves total), the game shows a **different confirmation screen** with only the user's Pokemon visible in the bottom-right area.
+- The old code always called `_target_flow_with_retry` which tapped enemy positions `TARGET_XY[0]=(190,50)` — this hit an inactive area on the self-target screen, causing the move selection to silently cancel and return to the action prompt.
+- The `_tracker.poll` then found "What will X do?" again → classified as `WAIT_FOR_PARTNER_ACTION` → infinite loop.
+
+### Debugging Journey
+1. **Reproduced** with `route203_trainers_cleared` save state — swapped Abra (Teleport only) into slot 1 for double battle.
+2. **Discovered Teleport is a special case**: the game engine rejects flee-moves (Teleport) at the UI level in trainer doubles — the move bounces back regardless of target handling.
+3. **Pivoted to Swords Dance**: used `write_memory` to patch Abra's BattleMon move slot from Teleport (ID 100) to Swords Dance (ID 14) in live battle RAM. This let us test with a move the game actually accepts.
+4. **Manually stepped through UI**: tapped FIGHT → Swords Dance → observed the self-target confirmation screen → tapped Abra at (195, 120) → "Monferno used Mach Punch! Abra used Swords Dance! Abra's Attack sharply rose!" — turn executed correctly.
+5. **Retry logic added**: for the partner Pokemon's self-target, if the first tap at `SELF_TARGET_XY` doesn't register, tries the mirrored position `(256-x, y)` to cover slot 0 vs slot 2 positioning differences.
+
+### ROM Data Enhancement
+- **`scripts/extract_move_data.py`**: Added extraction of `u16 range` field at offset 8 in the 16-byte `MoveTable` struct from `pl_waza_tbl.narc`.
+- **`data/move_data.json`**: Re-extracted with `range` field for all 471 moves.
+- Range value catalogue:
+  - `0` (337 moves): single target — Tackle, Flamethrower, etc.
+  - `4` (25 moves): both opponents — Leer, Growl, etc.
+  - `8` (9 moves): all adjacent — Surf, Earthquake, etc.
+  - `16` (61 moves): **user/self** — Swords Dance, Teleport, Calm Mind, Dragon Dance, etc.
+  - `32` (8 moves): user's side — Light Screen, Reflect, etc.
+  - `64` (10 moves): both sides — Haze, Sandstorm, weather, etc.
+  - `128` (3 moves): enemy's side — Spikes, Stealth Rock, etc.
+
+### Implementation
+- **`turn.py`**: Added `MOVE_RANGE_USER=16`, `SELF_TARGET_XY=(195,120)`, `_is_self_targeting_move()` (reads battle state → ROM move data → checks range), `_chooser_name_from_prompt()` (parses "What will X do?" text to identify which battler is choosing), retry tap at mirrored position.
+- **Detection flow**: After `_fight_flow` selects the move, checks if the move's ROM range is 16. If so, taps `SELF_TARGET_XY` instead of running `_target_flow_with_retry`.
+
+### Tests Added (6 new, 292 total across 24 files)
+- `test_chooser_name_extraction` — unit test for prompt text parsing
+- `test_is_self_targeting_howl` — Howl detected as self-targeting via ROM data
+- `test_is_self_targeting_focus_energy` — Focus Energy detected, Low Kick not
+- `test_self_target_first_action` — first action with Howl → WAIT_FOR_PARTNER_ACTION
+- `test_self_target_both_actions` — both actions self-targeting → turn resolves
+- `test_normal_then_self_target` — normal + self-targeting → turn resolves
+
+All tests use existing `debug_doubles_target_swapped` save state (Luxio has Howl, Machop has Focus Energy).
+
+### Files Changed
+- `scripts/extract_move_data.py` — range field extraction
+- `data/move_data.json` — re-extracted with range
+- `renegade_mcp/turn.py` — self-targeting detection + confirmation tap
+- `tests/test_battle.py` — 6 new tests in TestSelfTargetingDoubles
+
 ## Dev Session: Move Relearner & Move Deleter (2026-04-11g)
 
 ### Summary
