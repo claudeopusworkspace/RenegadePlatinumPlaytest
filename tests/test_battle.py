@@ -131,6 +131,86 @@ class TestBattleTurn:
         ), f"Second action: unexpected state {result2['final_state']}"
 
 
+class TestSelfTargetingDoubles:
+    """Self-targeting moves (range=16) in double battles (BUG-003).
+
+    Uses debug_doubles_target_swapped save state where:
+    - Slot 0 (player) Luxio: Spark, Bite, Howl (self-targeting), Quick Attack
+    - Slot 2 (player) Machop: Low Kick, Brick Break, Focus Energy (self-targeting), Knock Off
+    """
+
+    def test_chooser_name_extraction(self, emu: EmulatorClient):
+        """_chooser_name_from_prompt extracts Pokemon name from action prompt."""
+        from renegade_mcp.turn import _chooser_name_from_prompt
+        prompt = {"log": [{"text": "What will Luxio do?[FFFE][0200]", "stop": "WAIT_FOR_ACTION"}]}
+        assert _chooser_name_from_prompt(prompt) == "Luxio"
+        prompt2 = {"log": [{"text": "What will Machop do?[FFFE][0200]", "stop": "WAIT_FOR_ACTION"}]}
+        assert _chooser_name_from_prompt(prompt2) == "Machop"
+        assert _chooser_name_from_prompt({"log": []}) is None
+
+    def test_is_self_targeting_howl(self, emu: EmulatorClient):
+        """Howl (move index 2 on Luxio) is detected as self-targeting."""
+        load_state(emu, "debug_doubles_target_swapped")
+        from renegade_mcp.turn import _is_self_targeting_move
+        # Luxio's Howl (index 2) = self-targeting
+        assert _is_self_targeting_move(emu, 2, "Luxio") is True
+        # Luxio's Spark (index 0) = NOT self-targeting
+        assert _is_self_targeting_move(emu, 0, "Luxio") is False
+
+    def test_is_self_targeting_focus_energy(self, emu: EmulatorClient):
+        """Focus Energy (move index 2 on Machop) is detected as self-targeting."""
+        load_state(emu, "debug_doubles_target_swapped")
+        from renegade_mcp.turn import _is_self_targeting_move
+        # Machop's Focus Energy (index 2) = self-targeting
+        assert _is_self_targeting_move(emu, 2, "Machop") is True
+        # Machop's Low Kick (index 0) = NOT self-targeting
+        assert _is_self_targeting_move(emu, 0, "Machop") is False
+
+    def test_self_target_first_action(self, emu: EmulatorClient):
+        """Using a self-targeting move as first action returns WAIT_FOR_PARTNER_ACTION."""
+        load_state(emu, "debug_doubles_target_swapped")
+        from renegade_mcp.turn import battle_turn
+        # Luxio uses Howl (self-targeting, index 2)
+        result = battle_turn(emu, move_index=2)
+        assert result["final_state"] == "WAIT_FOR_PARTNER_ACTION", (
+            f"Expected WAIT_FOR_PARTNER_ACTION, got: {result['final_state']}"
+        )
+
+    @retry_on_rng("debug_doubles_target_swapped")
+    def test_self_target_both_actions(self, emu: EmulatorClient):
+        """Both Pokemon use self-targeting moves — turn resolves."""
+        from renegade_mcp.turn import battle_turn
+        # First: Luxio uses Howl (self-targeting, index 2)
+        result1 = battle_turn(emu, move_index=2)
+        assert result1["final_state"] == "WAIT_FOR_PARTNER_ACTION"
+        # Second: Machop uses Focus Energy (self-targeting, index 2)
+        result2 = battle_turn(emu, move_index=2)
+        # Turn resolves — any valid post-turn state is acceptable.
+        # Machop may faint from super-effective attacks before Focus Energy fires.
+        assert result2["final_state"] in (
+            "WAIT_FOR_ACTION", "BATTLE_ENDED", "SWITCH_PROMPT",
+            "FAINT_SWITCH", "FAINT_FORCED", "MOVE_LEARN",
+        ), f"Both self-target: unexpected state {result2['final_state']}"
+        # Howl should always appear (Luxio is faster and bulkier)
+        assert_log_contains(result2, "Howl")
+
+    @retry_on_rng("debug_doubles_target_swapped")
+    def test_normal_then_self_target(self, emu: EmulatorClient):
+        """Normal move first, self-targeting second — turn resolves."""
+        from renegade_mcp.turn import battle_turn
+        # Luxio uses Bite (normal, targets enemy)
+        result1 = battle_turn(emu, move_index=1, target=0)
+        assert result1["final_state"] == "WAIT_FOR_PARTNER_ACTION"
+        # Machop uses Focus Energy (self-targeting)
+        result2 = battle_turn(emu, move_index=2)
+        assert result2["final_state"] in (
+            "WAIT_FOR_ACTION", "BATTLE_ENDED", "SWITCH_PROMPT",
+            "FAINT_SWITCH", "FAINT_FORCED", "MOVE_LEARN",
+        )
+        # Bite should always appear; Focus Energy may not if Machop fainted first
+        assert_log_contains(result2, "Bite")
+
+
 class TestAccuracyWarning:
     """Accuracy-drop awareness in battle_turn responses."""
 

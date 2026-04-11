@@ -1052,10 +1052,25 @@ def _execute_action(
                 chooser = _chooser_name_from_prompt(prompt)
                 if _is_self_targeting_move(emu, move_index, chooser):
                     # Self-targeting moves (Swords Dance, Teleport, etc.)
-                    # show a confirmation screen with the user's Pokemon in
-                    # the bottom-right. Tap it to confirm.
+                    # show a confirmation screen with the user's Pokemon.
+                    # Tap the user's position to confirm. The position may
+                    # vary (bottom-right for slot 2, bottom-left for slot 0),
+                    # so try both if the first tap doesn't register.
                     emu.advance_frames(TAP_WAIT)
                     emu.tap_touch_screen(*SELF_TARGET_XY, frames=8)
+                    # Check if tap registered — if action prompt reappeared,
+                    # try the alternate position (mirrored horizontally).
+                    emu.advance_frames(TAP_WAIT)
+                    data = emu.read_memory_block(_scan_start(), SCAN_SIZE)
+                    if data:
+                        markers = _scan_markers(data, _scan_start())
+                        still_at_prompt = any(
+                            "What will" in t and "do?" in t
+                            for t in markers.values()
+                        )
+                        if still_at_prompt:
+                            alt_x = 256 - SELF_TARGET_XY[0]  # mirror
+                            emu.tap_touch_screen(alt_x, SELF_TARGET_XY[1], frames=8)
                 else:
                     _target_flow_with_retry(emu, target)
         else:
