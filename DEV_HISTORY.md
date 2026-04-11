@@ -2,6 +2,72 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: HM Obstacle Auto-Clear — Rock Smash & Cut (2026-04-11a)
+
+### Goal
+Integrate Rock Smash and Cut field moves into `navigate_to` so obstacles are cleared automatically during pathfinding, rather than requiring manual intervention or path_choice round-trips.
+
+### Bug Found: HM Obstacle GFX IDs Off By One
+The `HM_OBSTACLES` dict had wrong graphics_id values — 85/86/87 instead of 84/85/86. Cross-referenced with `data/obj_event_gfx.txt`:
+- 84 = `OBJ_EVENT_GFX_STRENGTH_BOULDER`
+- 85 = `OBJ_EVENT_GFX_ROCK_SMASH`
+- 86 = `OBJ_EVENT_GFX_CUT_TREE`
+
+This meant `obstacle_map` was never populated — Rock Smash rocks were misclassified as Strength boulders (into `npc_set` instead of `obstacle_map`). Fixed `HM_OBSTACLES`, `CLEARABLE_OBSTACLES` ({85, 86}), and `PUZZLE_OBSTACLES` ({84}).
+
+### Investigation: Rock Smash Interaction Flow
+Manually tested on `hm_test_rock_smash_oreburgh_mine_b2f` (Oreburgh Mine B2F, player at (18,28), rocks at (17,28) and (19,28)):
+1. Face rock → press A → "This rock appears to be breakable. Would you like to use Rock Smash?"
+2. Wait ~120 frames for text scroll + Yes/No prompt (Yes selected by default, top screen)
+3. Press A → "Nidoking used Rock Smash!" → break animation
+4. Wait ~300 frames for animation, press B to dismiss leftover text
+5. Rock gone, overworld restored
+
+**Key timing discovery:** 60f wait after initial A was too short — the A press landed during text scroll and advanced the dialogue instead of confirming Yes. Increased to 120f for reliable Yes/No prompt appearance.
+
+### Implementation
+
+**`_clear_hm_obstacle()`** — new helper in navigation.py:
+- Settle (WAIT_FRAMES) → A (interact, 8f hold) → wait 120f → A (confirm Yes) → wait 300f → B (dismiss) → settle 120f
+- Checks `read_dialogue(region="overworld")` to verify interaction triggered
+- Loops B presses if text remains after animation
+- Returns True/False for success
+
+**`_execute_path` obstacle detection** — obstacle check runs BEFORE slow terrain retries (critical — extra directional presses would interfere with HM dialogue). When blocked at a known clearable obstacle tile:
+1. Call `_clear_hm_obstacle()` 
+2. Pop the tile from `obstacle_tiles` dict
+3. Append to `nav_info["obstacles_cleared"]`
+4. Retry the step — tile is now passable
+
+**Auto-path selection in `_navigate_to_impl`:**
+- New module constant `CLEARABLE_TYPES = {"rock_smash", "cut_tree"}`
+- When all obstacles on the shorter path are clearable and skills are available, auto-takes obstacle path (no `obstacle_choice` round-trip)
+- Terrain obstacles (Surf/Waterfall/Rock Climb) still return `obstacle_choice`/`obstacle_required` for caller confirmation
+- 3D maps also check for shorter clearable obstacle paths via 2D obstacle BFS fallback
+
+**Result propagation fix:** `nav_info["obstacles_cleared"]` was only included in the response when `stopped_early=True`. Added explicit check to always include `obstacles_cleared` in the success result.
+
+### Tests (7 in test_hm_obstacles.py)
+All use `hm_test_rock_smash_oreburgh_mine_b2f` with `redetect_shift=True` (Wayne's E4 save):
+- `test_navigate_through_rock` — 3-step path through rock, verify cleared list
+- `test_clean_path_preferred_when_shorter` — 1-step south, no obstacles needed
+- `test_obstacle_path_only_when_required` — 2-step path through rock vs 4-step around
+- `test_multiple_rocks_same_path` — navigate through left rock at (17,28)
+- `test_field_move_availability_checked` — party has Rock Smash + badges
+- `test_obstacle_map_populated` — rocks in obstacle_map, not npc_set
+- `test_gfx_id_mapping` — GFX IDs 84/85/86 match correct types
+
+Cut trees not testable live — Eterna City trees hidden by E4 save story flags, our playthrough (2 badges) lacks Cut. Same code path as Rock Smash; GFX ID mapping verified.
+
+### Files Changed
+- `renegade_mcp/navigation.py` — _clear_hm_obstacle, _execute_path obstacle handling, auto-path selection, GFX ID fix
+- `renegade_mcp/server.py` — updated navigate_to docstring
+- `tests/test_hm_obstacles.py` — 7 new tests
+- `CLAUDE.md` — navigation docs updated
+
+### What's Next
+Surf, Waterfall, and Rock Climb are fundamentally different (terrain mode change, not object clearing). They require new mechanics in `_execute_path` — entering water tiles, riding mode transitions, etc. Save states exist for all three.
+
 ## Dev Session: Cycling Road Investigation & Navigation (2026-04-10g)
 
 ### Goal
