@@ -1326,20 +1326,24 @@ def _handle_door_transition(
         emu.advance_frames(HOLD_FRAMES, buttons=[activation])
         emu.advance_frames(WAIT_FRAMES)
 
-    # Poll for map transition — map_id should change
-    for _ in range(DOOR_TRANSITION_POLLS):
-        new_map, new_x, new_y = _read_position(emu)
-        if new_map != original_map:
-            # Transition happened — settle and return new position
-            emu.advance_frames(SETTLE_FRAMES)
-            final_map, final_x, final_y = _read_position(emu)
-            return {
-                "door_entered": True,
-                "door_behavior": f"0x{behavior:02X}",
-                "new_map": final_map,
-                "new_position": _pos_with_map(final_x, final_y, final_map),
-            }
-        emu.advance_frames(DOOR_POLL_FRAMES)
+    # Wait for map transition — map_id should change
+    from renegade_mcp.addresses import addr as _addr
+    pos_base = _addr("PLAYER_POS_BASE")
+    result = emu.advance_frames_until(
+        max_frames=DOOR_TRANSITION_POLLS * DOOR_POLL_FRAMES,
+        conditions=[{"type": "changed", "address": pos_base, "size": "long"}],
+        poll_interval=DOOR_POLL_FRAMES,
+    )
+    if result["triggered"]:
+        # Transition happened — settle and return new position
+        emu.advance_frames(SETTLE_FRAMES)
+        final_map, final_x, final_y = _read_position(emu)
+        return {
+            "door_entered": True,
+            "door_behavior": f"0x{behavior:02X}",
+            "new_map": final_map,
+            "new_position": _pos_with_map(final_x, final_y, final_map),
+        }
 
     return None
 
@@ -1453,47 +1457,63 @@ def _fish_once(emu: EmulatorClient, rod_name: str) -> dict[str, Any]:
     obj_base = addr("OBJ_ARRAY_FPX_BASE") - 0x70  # MapObject[0] true start
     anim_addr = obj_base + _FISH_ANIM_OFFSET
 
-    saw_cast = False
-    for _ in range(_FISH_MAX_POLL):
-        emu.advance_frames(1)
-        anim = emu.read_memory(anim_addr, size="long")
+    # Phase 1: Wait for cast animation to start (anim 0 → 1).
+    cast_result = emu.advance_frames_until(
+        max_frames=120,
+        conditions=[{"type": "value", "address": anim_addr, "size": "long",
+                     "operator": "==", "value": 1}],
+    )
+    if not cast_result["triggered"]:
+        # Cast never started — dismiss any leftover text and bail.
+        emu.press_buttons(["b"], frames=8)
+        emu.advance_frames(60)
+        return {"result": "got_away"}
 
-        if anim == 1:
-            saw_cast = True
-        elif anim == _FISH_ANIM_BITE:
-            # Bite! Press A immediately to hook the fish.
-            emu.press_buttons(["a"], frames=8)
+    # Phase 2: Wait for bite (anim == 2) or return to idle (anim == 0 = no bite).
+    bite_result = emu.advance_frames_until(
+        max_frames=_FISH_MAX_POLL,
+        conditions=[
+            {"type": "value", "address": anim_addr, "size": "long",
+             "operator": "==", "value": _FISH_ANIM_BITE},   # condition 0: bite
+            {"type": "value", "address": anim_addr, "size": "long",
+             "operator": "==", "value": 0},                  # condition 1: no bite
+        ],
+    )
 
-            # Reeling animation plays (~15 frames), then "Landed a Pokémon!"
-            # text appears. Wait for the text, then dismiss with A/B.
-            emu.advance_frames(120)
-            emu.press_buttons(["b"], frames=8)
-            emu.advance_frames(120)
-            emu.press_buttons(["b"], frames=8)
-            emu.advance_frames(120)
+    if bite_result["triggered"] and bite_result["condition_index"] == 0:
+        # Bite! Press A immediately to hook the fish.
+        emu.press_buttons(["a"], frames=8)
 
-            # Battle transition now. Use _post_nav_check which polls up to
-            # 300 frames for battle detection and advances through intro.
-            encounter = _post_nav_check(emu)
-            if encounter is not None:
-                return {"result": "encounter", "encounter": encounter}
+        # Reeling animation plays (~15 frames), then "Landed a Pokémon!"
+        # text appears. Wait for the text, then dismiss with A/B.
+        emu.advance_frames(120)
+        emu.press_buttons(["b"], frames=8)
+        emu.advance_frames(120)
+        emu.press_buttons(["b"], frames=8)
+        emu.advance_frames(120)
 
-            # Fallback: advance more and re-check
-            emu.advance_frames(600)
-            encounter = _post_nav_check(emu)
-            if encounter is not None:
-                return {"result": "encounter", "encounter": encounter}
+        # Battle transition now. Use _post_nav_check which polls up to
+        # 300 frames for battle detection and advances through intro.
+        encounter = _post_nav_check(emu)
+        if encounter is not None:
+            return {"result": "encounter", "encounter": encounter}
 
-            return {"result": "error", "error": "Bite detected but battle did not start."}
+        # Fallback: advance more and re-check
+        emu.advance_frames(600)
+        encounter = _post_nav_check(emu)
+        if encounter is not None:
+            return {"result": "encounter", "encounter": encounter}
 
-        elif saw_cast and anim == 0:
-            # Animation returned to idle after casting = "Not even a nibble..."
-            # Dismiss the text with B and return.
-            emu.press_buttons(["b"], frames=8)
-            emu.advance_frames(120)
-            emu.press_buttons(["b"], frames=8)
-            emu.advance_frames(60)
-            return {"result": "no_bite"}
+        return {"result": "error", "error": "Bite detected but battle did not start."}
+
+    elif bite_result["triggered"] and bite_result["condition_index"] == 1:
+        # Animation returned to idle after casting = "Not even a nibble..."
+        # Dismiss the text with B and return.
+        emu.press_buttons(["b"], frames=8)
+        emu.advance_frames(120)
+        emu.press_buttons(["b"], frames=8)
+        emu.advance_frames(60)
+        return {"result": "no_bite"}
 
     # Timeout — might be "The Pokémon got away..." or stuck.
     # Dismiss any text and return.

@@ -71,7 +71,7 @@ class TestUseKeyItemBicycle:
         result = use_key_item(emu, "Town Map")
         assert result.get("success") is False
         assert "error" in result
-        assert "not yet supported" in result["error"].lower()
+        assert "not supported" in result["error"].lower()
 
 
 # ---------------------------------------------------------------------------
