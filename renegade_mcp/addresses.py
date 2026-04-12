@@ -56,7 +56,7 @@ _DESMUME: dict[str, int] = {
     # TextPrinter + scan regions
     "TP_BASE":               0x02271534,
     "OVERWORLD_SCAN_START":  0x022A7000,
-    "BATTLE_SCAN_START":     0x0228A000,
+    "BATTLE_SCAN_START":     0x022F0000,
     "SM_SCAN_START":         0x0229F000,
     # Terrain (RAM fallback, unreliable but included for completeness)
     "TERRAIN_ADDR":          0x0231D1E4,
@@ -90,7 +90,7 @@ NUM_BOXES = 18
 
 # Scan region sizes (constant, not shifted)
 OVERWORLD_SCAN_SIZE = 0x2800
-BATTLE_SCAN_SIZE = 0x180000
+BATTLE_SCAN_SIZE = 0x20000
 SM_SCAN_SIZE = 0x11000
 
 
