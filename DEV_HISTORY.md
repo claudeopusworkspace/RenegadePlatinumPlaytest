@@ -2,6 +2,47 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Performance — advance_frames_until + Scan Narrowing (2026-04-11i)
+
+### Summary
+Integrated MelonMCP's new `advance_frames_until` conditional frame advance primitive and narrowed the battle text scan region from 1.5MB to 128KB. Combined result: **292 tests pass, suite time 756.88s → 704.02s (-7.0%)**, with individual battle tests improving 10-29%.
+
+### MelonMCP Issue & Implementation
+- Filed claudeopusworkspace/MelonMCP#3 proposing `advance_frames_until` — advances up to N frames internally, returning early when a memory condition (value comparison, changed detection, or byte pattern scan) is met. Eliminates MCP round-trip overhead for polling loops.
+- Implementation was completed in MelonMCP (`5ac4e14`). Added client wrapper method to `EmulatorClient` (`1644b8e`).
+
+### advance_frames_until Integrations
+1. **Fishing bite detection** (`navigation.py::_fish_once`): Replaced 600 frame-by-frame polls (1,200 bridge calls) with 2 `advance_frames_until` calls — phase 1 waits for cast animation (anim==1), phase 2 waits for bite (anim==2) or idle (anim==0).
+2. **Door/warp transitions** (`navigation.py::_handle_door_transition`): Replaced 30-iteration map ID polling loop with a single `changed` condition on `PLAYER_POS_BASE`.
+3. **Dialogue animation wait** (`dialogue.py::_wait_for_msgbox_or_script_end`): Replaced 200-iteration loop (checking script magic, msgbox flag, TextPrinter state) with 3 value conditions in one call.
+4. **Dialogue CTX_RUNNING wait** (`dialogue.py`): Replaced 200-iteration animation wait (checking script end, msgbox close, context state change) with 3 conditions.
+5. **Yes/No prompt verification** (`dialogue.py`): Replaced 30-iteration multi-check loop (6 separate memory reads per iteration) with 6 conditions in one call.
+
+### Battle Scan Narrowing (the big win)
+**Problem**: `BATTLE_SCAN_SIZE` was 0x180000 (1.5MB) — a conservative blanket from early development when text marker locations were unknown. Every `read_memory_block` in battle text scanning, action prompt detection, and evolution waiting read 1.5MB per iteration. A single battle could transfer ~290MB of memory reads.
+
+**Investigation**: Empirically scanned memory across 4 different save states (wild battle, trainer, doubles, E4 save). Text markers consistently appeared at 0x023017F4–0x02301BC0 — a ~1KB span within a 1.5MB scan region.
+
+**Fix**: Moved `BATTLE_SCAN_START` from 0x0228A000 to 0x022F0000 and shrunk `BATTLE_SCAN_SIZE` from 0x180000 to 0x20000 (128KB). The new range covers all observed markers with generous padding.
+
+### Where advance_frames_until Doesn't Help (Yet)
+Battle text polling (`battle_tracker.py::poll`) and action prompt detection (`turn.py::_wait_for_action_prompt`) need to read memory blocks and classify text content in Python each iteration. The round-trip overhead isn't just the frame advance — it's the `read_memory_block` + Python text scanning. These can't be replaced by simple conditions. The scan narrowing (1.5MB → 128KB) was the effective optimization for these paths.
+
+### Test Timing Highlights (Baseline → After)
+| Test | Before | After | Improvement |
+|------|--------|-------|-------------|
+| test_double_battle_both_actions | 6.34s | 4.52s | -29% |
+| test_self_target_both_actions | 6.55s | 4.64s | -29% |
+| test_target_species (auto_grind) | 15.66s | 11.25s | -28% |
+| test_iterations_multiple (auto_grind) | 13.15s | 9.51s | -28% |
+| test_use_move | 3.85s | 3.29s | -15% |
+| test_trainer_full_battle | 12.62s | 11.33s | -10% |
+| test_player_free_after_gym_event | 9.56s | 7.88s | -18% |
+| **Full suite (292 tests)** | **756.88s** | **704.02s** | **-7.0%** |
+
+### Other
+- Fixed stale assertion in `test_unsupported_key_item_rejected` — error message changed from "not yet supported" to "not supported here" during an earlier refactor.
+
 ## Dev Session: Self-Targeting Moves in Doubles — BUG-003 (2026-04-11h)
 
 ### Summary
