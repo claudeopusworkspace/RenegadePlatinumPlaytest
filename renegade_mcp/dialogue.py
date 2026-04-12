@@ -354,18 +354,30 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
         Also detects event animation text (TextPrinter active without message
         box — e.g., gym puzzle "The fountain's water level dropped!").
         """
-        for _ in range(MAX_ANIM_POLLS):
-            emu.advance_frames(ANIM_POLL)
-            if not _script_still_alive():
-                return "completed"
-            ss2 = _read_script_state(emu, mgr)
-            if ss2["is_msg_box_open"]:
-                return None  # text came back — continue advancing
-            # Event text: TextPrinter rendering without message box flag
-            tp = _read_tp_state(emu)
-            if tp["active"] and tp["state"] >= 1:
-                return None  # event text visible — let main loop dismiss it
-        return "completed"  # script alive but no text after long wait
+        from renegade_mcp.addresses import addr as _resolve
+        tp_base = _resolve("TP_BASE")
+        result = emu.advance_frames_until(
+            max_frames=MAX_ANIM_POLLS * ANIM_POLL,
+            conditions=[
+                # Condition 0: script ended (magic word gone)
+                {"type": "value", "address": mgr, "size": "long",
+                 "operator": "!=", "value": SM_MAGIC},
+                # Condition 1: message box opened
+                {"type": "value", "address": mgr + SM_OFF_MSGBOX, "size": "byte",
+                 "operator": "==", "value": 1},
+                # Condition 2: TextPrinter active with state >= 1 (event text)
+                {"type": "value", "address": tp_base + TP_OFF_STATE, "size": "byte",
+                 "operator": ">=", "value": 1},
+            ],
+            poll_interval=ANIM_POLL,
+        )
+        if not result["triggered"]:
+            return "completed"  # script alive but no text after long wait
+        idx = result["condition_index"]
+        if idx == 0:
+            return "completed"  # script ended
+        # idx 1 (msg box) or idx 2 (event text) — text came back
+        return None
 
     # ── Main advance loop ──
     # Uses overlay-independent detection: TP.state for page turns,
@@ -419,22 +431,34 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
 
         # ── RUNNING: animation/movement/fanfare — wait passively ──
         if ctx["state"] == CTX_RUNNING:
-            for _ in range(MAX_ANIM_POLLS):
-                emu.advance_frames(ANIM_POLL)
-                if not _script_still_alive():
+            anim_result = emu.advance_frames_until(
+                max_frames=MAX_ANIM_POLLS * ANIM_POLL,
+                conditions=[
+                    # Condition 0: script ended
+                    {"type": "value", "address": mgr, "size": "long",
+                     "operator": "!=", "value": SM_MAGIC},
+                    # Condition 1: msg box closed during animation
+                    {"type": "value", "address": mgr + SM_OFF_MSGBOX, "size": "byte",
+                     "operator": "!=", "value": 1},
+                    # Condition 2: context left RUNNING state
+                    {"type": "value", "address": ctx_ptr + CTX_OFF_STATE, "size": "byte",
+                     "operator": "!=", "value": CTX_RUNNING},
+                ],
+                poll_interval=ANIM_POLL,
+            )
+            if anim_result["triggered"]:
+                idx = anim_result["condition_index"]
+                if idx == 0:
+                    # Script ended
                     _collect_text()
                     return _result("completed", conversation, start_frame, emu)
-                ss2 = _read_script_state(emu, mgr)
-                if not ss2["is_msg_box_open"]:
-                    # Msg box closed during animation — wait for it to come back
+                if idx == 1:
+                    # Msg box closed — wait for it to come back or script end
                     outcome = _wait_for_msgbox_or_script_end()
                     if outcome == "completed":
                         _collect_text()
                         return _result("completed", conversation, start_frame, emu)
-                    break  # text came back
-                ctx2 = _read_context_state(emu, ctx_ptr)
-                if ctx2["state"] != CTX_RUNNING:
-                    break
+                    # text came back — fall through to _collect_text + continue
             _collect_text()
             continue
 
@@ -492,39 +516,32 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
             # Also guard against false positives at dialogue end (msg box
             # closing or script ending while TP.state is still 0).
             if current_ctrl_ui != 0:
-                # Track TextPrinter cursor to distinguish rendering from Yes/No.
-                # Active rendering: currX advances as chars are drawn → break.
-                # Dialogue ending: isMsgBoxOpen/script/TP.active changes → break.
-                # Yes/No prompt: nothing changes for all polls → exhausted.
-                yes_no_detected = True  # Assume Yes/No; disproven by any break
+                # Distinguish Yes/No prompt (nothing changes) from normal
+                # text rendering (TP cursor moves, state transitions, etc.).
+                # Use advance_frames_until to check all disproval conditions
+                # at emulator speed. If NONE trigger, it's a Yes/No prompt.
                 from renegade_mcp.addresses import addr as _resolve
                 _tp = _resolve("TP_BASE")
-                cursor_pos = emu.read_memory(_tp + TP_OFF_CURR_X, size="short")
-                for _ in range(YES_NO_VERIFY_POLLS):
-                    emu.advance_frames(RENDER_POLL)
-                    if not _script_still_alive():
-                        yes_no_detected = False
-                        break  # Script ended
-                    ss3 = _read_script_state(emu, mgr)
-                    if not ss3["is_msg_box_open"]:
-                        yes_no_detected = False
-                        break  # Msg box closed
-                    tp3 = _read_tp_state(emu)
-                    if tp3["state"] >= 1:
-                        yes_no_detected = False
-                        break  # Scroll arrow — normal text
-                    if not tp3["active"]:
-                        yes_no_detected = False
-                        break  # TextPrinter finished
-                    ctx3 = _read_context_state(emu, ctx_ptr)
-                    if ctx3["state"] != CTX_WAITING:
-                        yes_no_detected = False
-                        break  # Script resumed
-                    new_pos = emu.read_memory(_tp + TP_OFF_CURR_X, size="short")
-                    if new_pos != cursor_pos:
-                        yes_no_detected = False
-                        break  # Cursor moved — still rendering
-                    cursor_pos = new_pos
+                yn_result = emu.advance_frames_until(
+                    max_frames=YES_NO_VERIFY_POLLS * RENDER_POLL,
+                    conditions=[
+                        # Any of these proves it's NOT a Yes/No prompt:
+                        {"type": "value", "address": mgr, "size": "long",
+                         "operator": "!=", "value": SM_MAGIC},              # script ended
+                        {"type": "value", "address": mgr + SM_OFF_MSGBOX, "size": "byte",
+                         "operator": "!=", "value": 1},                      # msg box closed
+                        {"type": "value", "address": _tp + TP_OFF_STATE, "size": "byte",
+                         "operator": ">=", "value": 1},                      # scroll arrow
+                        {"type": "value", "address": _tp + TP_OFF_ACTIVE, "size": "byte",
+                         "operator": "!=", "value": 1},                      # TP finished
+                        {"type": "value", "address": ctx_ptr + CTX_OFF_STATE, "size": "byte",
+                         "operator": "!=", "value": CTX_WAITING},            # script resumed
+                        {"type": "changed", "address": _tp + TP_OFF_CURR_X,
+                         "size": "short"},                                   # cursor moved
+                    ],
+                    poll_interval=RENDER_POLL,
+                )
+                yes_no_detected = not yn_result["triggered"]
                 if yes_no_detected:
                     # Verify via shouldResume: if we captured the Yes/No callback
                     # from the first ctrlUI transition, confirm this is the same.
