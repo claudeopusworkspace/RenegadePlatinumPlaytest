@@ -24,6 +24,9 @@ romdata/
 # Emulator checkpoints (ring buffer, huge)
 checkpoints/
 
+# Session recordings (MelonMCP HLS + session capture, mp4/json)
+recordings/
+
 # Auto-grind session logs
 logs/
 
