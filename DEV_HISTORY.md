@@ -2,6 +2,41 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Automated streaming suppression during tests (2026-04-13b)
+
+### Summary
+Pytest test runs no longer need manual intervention to prevent the MelonMCP renderer-zombie hang. A new session-scoped autouse fixture in `tests/conftest.py` (`_disable_streaming`) flips a process-local override on the MelonMCP server at session start and clears it at teardown. Verified with a full suite run: **302/302 pass in 641.22s with `settings.json: stream: true` baseline and no renderer processes spawned.**
+
+### Upstream plumbing
+Two MelonMCP changes landed today built a four-tier stream-control stack:
+
+- claudeopusworkspace/MelonMCP#4 → PR #5: `MELONDS_NO_STREAM` / `MELONDS_STREAM` env-var overrides (read by the server process at startup — useful for CI that owns MelonMCP's launch, but not for per-pytest-invocation in a Claude session since the MCP server's env is baked in at spawn time).
+- claudeopusworkspace/MelonMCP#6 → `d93e696`: `set_stream_config(enabled)` MCP tool. Process-local override at tier 0 of `settings.get_stream()` — above env vars and settings.json. Callable from Claude via `mcp__melonds__set_stream_config`.
+- claudeopusworkspace/MelonMCP#7 → `6820478`: mirrored `set_stream_config` on the bridge protocol. Makes it reachable from `EmulatorClient` (and therefore from `conftest.py`) without needing MCP.
+- claudeopusworkspace/MelonMCP#8 (open): follow-up to expose `stop_video_stream` + `start_video_stream` on the bridge too. The conftest fixture already has a forward-compatible `hasattr` probe that activates automatically when #8 lands — no conftest change needed at that point.
+
+### Fixture
+```python
+@pytest.fixture(scope="session", autouse=True)
+def _disable_streaming(emu):
+    if not hasattr(emu, "set_stream_config"):  # older MelonMCP or DesmumeMCP
+        yield
+        return
+    emu.set_stream_config(enabled=False)
+    if hasattr(emu, "stop_video_stream"):  # activates once #8 lands
+        try:
+            emu.stop_video_stream()
+        except Exception:
+            pass
+    try:
+        yield
+    finally:
+        emu.set_stream_config(enabled=None)  # restore default resolution
+```
+
+### Outcome
+`pytest tests/ -v` now works from any context (Claude session, CI, direct shell) without `settings.json` edits, env-var fiddling, or manual tool calls. Fixture teardown verified post-run: override is `None`, effective stream state falls back to `settings.json: true`.
+
 ## Dev Session: detect_shift refactor verified + stream toggle ergonomics (2026-04-13)
 
 ### Summary

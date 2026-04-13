@@ -87,6 +87,43 @@ def emu() -> Any:
     pytest.skip("No emulator bridge socket found — is an emulator running?")
 
 
+# ── Streaming suppression ──
+# Disable MelonMCP's auto-streaming for the test session. Streaming's renderer
+# subprocess can zombie under rapid load_rom/load_state/advance_frames churn
+# and silently hang the whole emulator (claudeopusworkspace/MelonMCP#4). The
+# set_stream_config override sits at tier 0 of settings.get_stream()'s chain,
+# scoped to the MelonMCP server process — no file writes, no env fiddling.
+# Exposed on the bridge in claudeopusworkspace/MelonMCP#7 so conftest can
+# call it directly without needing an MCP session in the loop.
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _disable_streaming(emu) -> Any:
+    """Force streaming off for the life of the test session, restore after."""
+    if not hasattr(emu, "set_stream_config"):
+        # Older MelonMCP or DesmumeMCP backend — nothing to do.
+        yield
+        return
+
+    emu.set_stream_config(enabled=False)
+
+    # Best-effort: kill any stream already running from a prior load_rom.
+    # Forward-compatible — becomes operative once stop_video_stream is
+    # exposed on the bridge (follow-up issue to #7).
+    if hasattr(emu, "stop_video_stream"):
+        try:
+            emu.stop_video_stream()
+        except Exception:
+            pass
+
+    try:
+        yield
+    finally:
+        # Restore default resolution (env vars + settings.json) so
+        # interactive play after pytest gets streaming back.
+        emu.set_stream_config(enabled=None)
+
+
 # ── Phase profiling ──
 # Activated by --benchmark flag or RENEGADE_BENCHMARK=1 env var.
 
