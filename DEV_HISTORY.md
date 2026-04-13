@@ -2,6 +2,26 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: detect_shift refactor verified + stream toggle ergonomics (2026-04-13)
+
+### Summary
+Verified the `detect_shift` refactor (pre-starter BUG-001 fix) against the full test suite — **302/302 tests passing in 633.20s (10m 33s)**, including the 10 new `test_detect_shift.py` tests. The refactor was already captured in commit `54ee3ca` (auto-backup at prior session end) but had never been suite-verified due to a streaming-induced hang from a prior session.
+
+### Unblocking the test suite
+Test suite had been hanging indefinitely under `stream: true` because MelonMCP's renderer subprocess zombied under rapid pytest `load_rom`/`load_state` churn — main MCP process then blocked on an unread journal socket, and every subsequent tool call (including `get_status`) hung.
+
+Ran this session's suite with `/workspace/MelonMCP/settings.json` flipped to `"stream": false` (re-read on every `load_rom`, no restart required), restored to `"stream": true` after. Zero hangs, clean pass.
+
+### MelonMCP Env Vars (#4 / #5) — Landed but Not Useful For Us
+`MELONDS_NO_STREAM` / `MELONDS_STREAM` env vars landed in claudeopusworkspace/MelonMCP#5, resolving #4. They're read by the MelonMCP server process, which is launched once per Claude Code session from `.mcp.json` — its env is fixed at spawn time. pytest runs in a separate process; setting the env via conftest or the pytest CLI doesn't reach into the already-running server. The env vars are designed for CI harnesses that own MelonMCP's launch, not for per-pytest-invocation overrides in a Claude Code session.
+
+### MelonMCP Feature Request (#6)
+Filed claudeopusworkspace/MelonMCP#6 proposing a runtime `set_stream_config(enabled)` MCP tool. Implementation would mutate a module-level override that `settings.get_stream()` consults ahead of the existing env/settings chain. Once it lands, conftest can call `emu.set_stream_config(enabled=False)` at session start and `emu.set_stream_config(enabled=None)` at teardown — no settings file writes, no MCP restart.
+
+### Tests
+- 302 pass (292 prior + 10 new `test_detect_shift.py`).
+- Runtime: 633.20s (prior suite was 704.02s; difference likely attributable to `stream: false` overhead reduction since the test set itself is larger now).
+
 ## Dev Session: Performance — advance_frames_until + Scan Narrowing (2026-04-11i)
 
 ### Summary
