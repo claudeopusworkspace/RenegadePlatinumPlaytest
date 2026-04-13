@@ -107,9 +107,9 @@ def _disable_streaming(emu) -> Any:
 
     emu.set_stream_config(enabled=False)
 
-    # Best-effort: kill any stream already running from a prior load_rom.
-    # Forward-compatible — becomes operative once stop_video_stream is
-    # exposed on the bridge (follow-up issue to #7).
+    # Kill any renderer + ffmpeg processes left from prior interactive play.
+    # Bridge exposure landed in claudeopusworkspace/MelonMCP#8. hasattr guard
+    # keeps this graceful against older MelonMCP builds / DesmumeMCP.
     if hasattr(emu, "stop_video_stream"):
         try:
             emu.stop_video_stream()

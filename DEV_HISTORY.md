@@ -2,6 +2,28 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Stream-suppression fixture — full verification (2026-04-13c)
+
+### Summary
+claudeopusworkspace/MelonMCP#8 landed (`27c7abd`), exposing `stop_video_stream` + `start_video_stream` on the bridge protocol. The conftest fixture's forward-compatible `hasattr` probe auto-activated — no fixture code change needed, just a stale-comment refresh. Verified end-to-end with a pre-existing-active-stream scenario (the case we couldn't cover before): **302/302 pass in 692.28s, renderer + ffmpeg processes killed at session setup and none respawned during the run**.
+
+### Verification scenario
+1. Cleared override (`set_stream_config(enabled=None)`), `settings.json: stream: true`.
+2. `load_rom` → renderer + HLS ffmpeg + recording ffmpeg all spawn (live interactive state).
+3. Ran `pytest tests/ -v`. Fixture set override=False and called `stop_video_stream` at session setup.
+4. Immediately post-setup: 0 renderer/ffmpeg processes remain.
+5. Through full 11.5 min run: 0 processes respawned (override prevented any test-triggered re-start).
+6. Post-teardown: `{override: None, effective: True}` — interactive streaming restored for future `load_rom` calls.
+
+### State of the stream-control stack (all landed)
+- Tier 0: process-local override via `set_stream_config` MCP tool (#6) + bridge method (#7).
+- Tier 1: `MELONDS_NO_STREAM` env var (#4/#5).
+- Tier 2: `MELONDS_STREAM` env var (#4/#5).
+- Tier 3: `settings.json` (baseline interactive default).
+- Bridge-side stream control (`start_video_stream`, `stop_video_stream`) now matches MCP-side (#8).
+
+`pytest tests/ -v` is now fully hands-off from any context — Claude session, CI, direct shell. No manual tool calls, no file edits, no env-var fiddling, works even if interactive streaming is live when tests kick off.
+
 ## Dev Session: Automated streaming suppression during tests (2026-04-13b)
 
 ### Summary
