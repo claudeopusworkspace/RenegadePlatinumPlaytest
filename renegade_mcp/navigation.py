@@ -2228,39 +2228,50 @@ def _execute_path(
             obs_info = obstacle_tiles.get((obs_gx, obs_gy))
             if obs_info is not None and obs_info["type"] in BIKE_SLOPE_TYPES:
                 # Bike slope — needs fast gear + running start, not an HM
-                # interaction.  Count consecutive slope tiles ahead.
-                num_slopes = 0
-                cx, cy = old_x, old_y
-                for j in range(i, len(directions)):
-                    sdx, sdy = _DIR_DELTAS[directions[j]]
-                    cx, cy = cx + sdx, cy + sdy
-                    si = obstacle_tiles.get((cx, cy))
-                    if si and si["type"] in BIKE_SLOPE_TYPES:
-                        num_slopes += 1
-                    else:
-                        break
+                # interaction.  Mount the bicycle first if walking.
+                from renegade_mcp.addresses import addr
+                cycling = bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short"))
+                if not cycling:
+                    from renegade_mcp.use_item import use_key_item
+                    mount_result = use_key_item(emu, "Bicycle")
+                    if mount_result.get("success"):
+                        active_hold = BIKE_HOLD_FRAMES
+                        cycling = True
 
-                final_x, final_y, tiles_moved = _traverse_bike_slope(
-                    emu, direction, old_x, old_y, num_slopes,
-                )
-                new_x, new_y = final_x, final_y
-                blocked = (old_x, old_y) == (new_x, new_y)
-                if not blocked:
-                    # Remove traversed slope tiles from tracking
-                    sx, sy = old_x, old_y
-                    for step in range(1, tiles_moved + 1):
-                        t = (sx + dx * step, sy + dy * step)
-                        obstacle_tiles.pop(t, None)
-                    # Skip consumed path steps (current step + extras)
-                    extra = tiles_moved - 1
-                    if extra > 0:
-                        i += extra
-                        steps_taken += extra
-                    nav_info.setdefault("obstacles_cleared", []).append({
-                        "type": "bike_slope",
-                        "tiles": num_slopes,
-                        "x": obs_gx, "y": obs_gy,
-                    })
+                if cycling:
+                    # Count consecutive slope tiles ahead.
+                    num_slopes = 0
+                    cx, cy = old_x, old_y
+                    for j in range(i, len(directions)):
+                        sdx, sdy = _DIR_DELTAS[directions[j]]
+                        cx, cy = cx + sdx, cy + sdy
+                        si = obstacle_tiles.get((cx, cy))
+                        if si and si["type"] in BIKE_SLOPE_TYPES:
+                            num_slopes += 1
+                        else:
+                            break
+
+                    final_x, final_y, tiles_moved = _traverse_bike_slope(
+                        emu, direction, old_x, old_y, num_slopes,
+                    )
+                    new_x, new_y = final_x, final_y
+                    blocked = (old_x, old_y) == (new_x, new_y)
+                    if not blocked:
+                        # Remove traversed slope tiles from tracking
+                        sx, sy = old_x, old_y
+                        for step in range(1, tiles_moved + 1):
+                            t = (sx + dx * step, sy + dy * step)
+                            obstacle_tiles.pop(t, None)
+                        # Skip consumed path steps (current step + extras)
+                        extra = tiles_moved - 1
+                        if extra > 0:
+                            i += extra
+                            steps_taken += extra
+                        nav_info.setdefault("obstacles_cleared", []).append({
+                            "type": "bike_slope",
+                            "tiles": num_slopes,
+                            "x": obs_gx, "y": obs_gy,
+                        })
 
             elif obs_info is not None:
                 is_surf = obs_info["type"] in SURF_TYPES

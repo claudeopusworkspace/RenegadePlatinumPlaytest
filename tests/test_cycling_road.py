@@ -340,3 +340,35 @@ class TestBikeSlopeTraversal:
             f"Expected y <= 718 (at or past slope), got y={result['final']['y']}"
         )
         assert "obstacles_cleared" in result
+
+    @retry_on_rng("route207_at_bike_slope_bottom")
+    def test_auto_mounts_bike_when_walking(self, emu: EmulatorClient):
+        """Walking player auto-mounts bicycle when slope is in the BFS path."""
+        from renegade_mcp.addresses import addr
+        from renegade_mcp.navigation import _navigate_to_impl
+        from renegade_mcp.use_item import use_key_item
+
+        # Dismount properly via the game's Bicycle key item
+        cycling = emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")
+        assert cycling != 0, "Precondition: save state should start on bicycle"
+        dismount = use_key_item(emu, "Bicycle")
+        assert dismount.get("success"), f"Dismount failed: {dismount}"
+        cycling = emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")
+        assert cycling == 0, "Precondition: player should be walking after dismount"
+
+        # Navigate through the slope — should auto-mount and clear it
+        result = _navigate_to_impl(emu, 306, 710)
+
+        # Verify slope was traversed
+        assert "obstacles_cleared" in result, (
+            f"Expected obstacles_cleared, got: {result}"
+        )
+        slopes = [o for o in result["obstacles_cleared"] if o["type"] == "bike_slope"]
+        assert len(slopes) == 1, f"Expected 1 bike_slope cleared, got {slopes}"
+
+        # Verify player is now on bike and past the slope
+        cycling = emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")
+        assert cycling != 0, "Player should be cycling after auto-mount"
+        assert result["final"]["y"] <= 718, (
+            f"Expected past the slope (y <= 718), got y={result['final']['y']}"
+        )
