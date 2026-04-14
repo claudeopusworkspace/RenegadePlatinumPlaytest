@@ -2,6 +2,35 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: navigation.py code splitting (2026-04-14)
+
+### Summary
+Split `navigation.py` from 3,804 lines into 8 focused modules. Pure refactor — no behavioral changes. All 303 tests collect successfully with zero import changes.
+
+### Motivation
+- `navigation.py` was 2x larger than the next biggest file (turn.py at 1,478 lines)
+- Every navigation feature change required reloading the entire 3,800-line module
+- The file contained 6+ distinct concerns: pathfinding, HM traversal, cycling road, fishing, NPC interaction, and core orchestration
+
+### New module structure
+
+| Module | Lines | Contents |
+|---|---|---|
+| `nav_constants.py` | 264 | All shared constants + tiny utilities |
+| `pathfinding.py` | 925 | BFS algorithms, terrain builders, elevation helpers |
+| `hm_traverse.py` | 74 | HM field move interaction |
+| `cycling_road.py` | 319 | Cycling road bridge + bike slope traversal |
+| `nav_events.py` | 235 | Post-nav encounter/dialogue detection, flee logic, door transitions |
+| `fishing.py` | 473 | Fishing encounters, pacing-pair seeking, seek_encounter |
+| `interaction.py` | 505 | interact_with, moving NPC interception |
+| `navigation.py` | 1,286 | Core orchestration + backward-compatible re-exports |
+
+### Backward compatibility
+- `navigation.py` re-exports every symbol from the new submodules
+- All existing `from renegade_mcp.navigation import X` patterns work unchanged
+- Cross-module calls use lazy imports (project convention for reload_tools compatibility)
+- `reload_tools` alphabetical ordering works correctly (nav_constants < navigation)
+
 ## Dev Session: Stream-suppression fixture — full verification (2026-04-13c)
 
 ### Summary

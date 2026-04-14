@@ -1,0 +1,925 @@
+"""BFS pathfinding algorithms and terrain grid construction.
+
+Contains all BFS variants (2D, 3D, obstacle-aware), terrain grid builders
+(single-chunk and multi-chunk), elevation helpers, and path validation.
+"""
+
+from __future__ import annotations
+
+import time
+from collections import deque
+from typing import TYPE_CHECKING, Any
+
+from renegade_mcp.nav_constants import (
+    _3D_MAX_DEPTH,
+    _3D_TIMEOUT,
+    _DIAG_CHAR,
+    BADGE_BITS,
+    BFS_MOVES,
+    CLEARABLE_OBSTACLES,
+    DIRECTIONAL_BLOCKS,
+    DIRECTIONAL_WARP,
+    DOOR_ACTIVATION,
+    HM_OBSTACLES,
+    LEDGE_DIRECTIONS,
+    PUZZLE_OBSTACLES,
+    TERRAIN_OBSTACLE_INFO,
+    TERRAIN_OBSTACLES,
+    WARP_PASSABLE,
+)
+from renegade_mcp.map_state import (
+    CHUNK_SIZE,
+    get_matrix_for_map,
+    load_terrain_from_rom,
+    parse_bdhc,
+)
+from renegade_mcp.party import read_party
+from renegade_mcp.trainer import read_trainer_status
+
+if TYPE_CHECKING:
+    from melonds_mcp.client import EmulatorClient
+
+
+def _get_field_move_availability(emu: EmulatorClient) -> dict[str, bool]:
+    """Check which field moves are usable (party has move + badge).
+
+    Returns dict mapping move name → available (e.g. {"Rock Smash": True}).
+    """
+    party = read_party(emu)
+    trainer = read_trainer_status(emu)
+    badge_byte = trainer.get("badge_raw", 0)
+
+    # Collect all move names across party
+    party_moves: set[str] = set()
+    for mon in party:
+        for mn in mon.get("move_names", []):
+            if mn and mn != "-":
+                party_moves.add(mn)
+
+    # All field moves we care about
+    field_moves = {
+        "Rock Smash": "Coal", "Cut": "Forest", "Strength": "Mine",
+        "Surf": "Fen", "Waterfall": "Beacon", "Rock Climb": "Icicle",
+    }
+
+    result = {}
+    for move, badge in field_moves.items():
+        has_move = move in party_moves
+        has_badge = bool(badge_byte & (1 << BADGE_BITS[badge]))
+        result[move] = has_move and has_badge
+
+    return result
+
+
+def _bfs_reachable(
+    terrain_info: list, npc_set: set,
+    start_x: int, start_y: int,
+    width: int, height: int,
+) -> set[tuple[int, int]]:
+    """Flood-fill BFS from start. Returns set of all reachable (x, y) tiles."""
+    if not (0 <= start_x < width and 0 <= start_y < height):
+        return set()
+    visited = {(start_x, start_y)}
+    queue = deque([(start_x, start_y)])
+    while queue:
+        x, y = queue.popleft()
+        for dx, dy, direction in BFS_MOVES:
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < width and 0 <= ny < height):
+                continue
+            if (nx, ny) in visited or (nx, ny) in npc_set:
+                continue
+            passable, behavior = terrain_info[ny][nx]
+            if not passable:
+                continue
+            if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
+                continue
+            if behavior in LEDGE_DIRECTIONS and LEDGE_DIRECTIONS[behavior] != direction:
+                continue
+            visited.add((nx, ny))
+            queue.append((nx, ny))
+    return visited
+
+
+def _find_nearest_reachable(
+    reachable: set[tuple[int, int]], target_x: int, target_y: int,
+) -> tuple[int, int] | None:
+    """Find the reachable tile closest to target by Manhattan distance."""
+    if not reachable:
+        return None
+    best = None
+    best_dist = float("inf")
+    for rx, ry in reachable:
+        d = abs(rx - target_x) + abs(ry - target_y)
+        if d < best_dist:
+            best_dist = d
+            best = (rx, ry)
+    return best
+
+
+def _render_failure_diagram(
+    terrain_info: list, npc_set: set,
+    player_x: int, player_y: int,
+    target_x: int, target_y: int,
+    nearest: tuple[int, int] | None,
+    width: int, height: int,
+    radius: int = 4,
+) -> str:
+    """Render a small ASCII grid centered on the target for failure diagnosis.
+
+    Shows: @ player, X target, * nearest reachable, # wall, . passable, ≈ water, etc.
+    """
+    cx, cy = target_x, target_y
+    min_x = max(0, cx - radius)
+    max_x = min(width - 1, cx + radius)
+    min_y = max(0, cy - radius)
+    max_y = min(height - 1, cy + radius)
+
+    lines = []
+    for y in range(min_y, max_y + 1):
+        row = []
+        for x in range(min_x, max_x + 1):
+            if (x, y) == (player_x, player_y):
+                row.append("@")
+            elif (x, y) == (target_x, target_y):
+                row.append("X")
+            elif nearest and (x, y) == nearest:
+                row.append("*")
+            elif (x, y) in npc_set:
+                row.append("N")
+            elif 0 <= y < len(terrain_info) and 0 <= x < len(terrain_info[0]):
+                passable, behavior = terrain_info[y][x]
+                if not passable:
+                    row.append(_DIAG_CHAR.get(behavior, "#"))
+                else:
+                    row.append(_DIAG_CHAR.get(behavior, "."))
+            else:
+                row.append(" ")
+        lines.append("".join(row))
+
+    return "\n".join(lines)
+
+
+def _build_terrain_info(
+    terrain: list, objects: list, width: int = 32, height: int = 32,
+    obj_offset_x: int = 0, obj_offset_y: int = 0,
+) -> tuple[list, set, dict]:
+    """Build terrain passability grid, NPC positions, and obstacle map.
+
+    Returns:
+        grid: 2D list of (passable, behavior) tuples
+        npc_set: set of (x, y) for truly impassable objects (NPCs + strength boulders)
+        obstacle_map: dict of (x, y) → obstacle info for clearable HM obstacles
+    """
+    grid = [[(True, 0)] * width for _ in range(height)]
+
+    for row in range(min(height, len(terrain))):
+        for col in range(min(width, len(terrain[row]) if row < len(terrain) else 0)):
+            val = terrain[row][col]
+            is_blocked = (val & 0x8000) != 0
+            behavior = val & 0x00FF
+            passable = (
+                ((not is_blocked) or behavior in WARP_PASSABLE or behavior in LEDGE_DIRECTIONS)
+                and behavior not in TERRAIN_OBSTACLES
+            )
+            grid[row][col] = (passable, behavior)
+
+    npc_set = set()
+    obstacle_map: dict[tuple[int, int], dict] = {}
+    for obj in objects:
+        if obj["index"] == 0:
+            continue
+        lx = obj.get("local_x", obj["x"]) - obj_offset_x
+        ly = obj.get("local_y", obj["y"]) - obj_offset_y
+        if not (0 <= lx < width and 0 <= ly < height):
+            continue
+
+        gfx_id = obj.get("graphics_id", 0)
+        if gfx_id in CLEARABLE_OBSTACLES:
+            info = HM_OBSTACLES[gfx_id]
+            obstacle_map[(lx, ly)] = {
+                "type": info["type"],
+                "move": info["move"],
+                "badge": info["badge"],
+                "gfx_id": gfx_id,
+                "global_x": obj["x"],
+                "global_y": obj["y"],
+            }
+        elif gfx_id in PUZZLE_OBSTACLES:
+            # Strength boulders go in npc_set — never auto-cleared
+            npc_set.add((lx, ly))
+        else:
+            npc_set.add((lx, ly))
+
+    return grid, npc_set, obstacle_map
+
+
+# ── 3D elevation helpers ──
+
+def _height_to_level(
+    height: float, elevation: dict,
+    tile_x: int | None = None, tile_y: int | None = None,
+) -> int | None:
+    """Convert player height (fx32 float) to a level index.
+
+    Exact match first. If tile coords are given, checks whether the tile has
+    explicit level data (ramp or level_map). Falls back to mid-ramp range
+    matching (preferring narrowest range) and finally nearest level by height.
+    """
+    h = round(height)
+    level = elevation["height_to_level"].get(h)
+    if level is not None:
+        return level
+
+    # If tile coords provided, use the tile's own elevation data
+    if tile_x is not None and tile_y is not None:
+        key = (tile_x, tile_y)
+        if key in elevation["ramp_tiles"]:
+            ri = elevation["ramp_tiles"][key]
+            # Player is on this ramp — pick the end closer to their height
+            levels_info = elevation["levels"]
+            hbl: dict[int, int] = {lv["level"]: lv["height"] for lv in levels_info}
+            fh = hbl.get(ri["from_level"], 0)
+            th = hbl.get(ri["to_level"], 0)
+            if abs(h - fh) <= abs(h - th):
+                return ri["from_level"]
+            return ri["to_level"]
+        if key in elevation["level_map"]:
+            tile_levels = elevation["level_map"][key]
+            if tile_levels:
+                # Pick the level whose defined height is closest to player height
+                levels_info = elevation["levels"]
+                hbl = {lv["level"]: lv["height"] for lv in levels_info}
+                return min(tile_levels, key=lambda lv: abs(hbl.get(lv, 0) - h))
+
+    # Player might be mid-ramp — check ramp height ranges, prefer narrowest
+    levels_info = elevation["levels"]
+    height_by_level: dict[int, int] = {lv["level"]: lv["height"] for lv in levels_info}
+    best_ramp_level = None
+    best_span = float("inf")
+    for ramp in elevation["ramps"]:
+        from_h = height_by_level.get(ramp["from_level"])
+        to_h = height_by_level.get(ramp["to_level"])
+        if from_h is not None and to_h is not None:
+            lo, hi = min(from_h, to_h), max(from_h, to_h)
+            span = hi - lo
+            if lo <= h <= hi and span < best_span:
+                best_span = span
+                # Pick the ramp end closer to the player's height
+                if abs(h - from_h) <= abs(h - to_h):
+                    best_ramp_level = ramp["from_level"]
+                else:
+                    best_ramp_level = ramp["to_level"]
+    if best_ramp_level is not None:
+        return best_ramp_level
+
+    # Final fallback: nearest defined level by height
+    if levels_info:
+        return min(levels_info, key=lambda lv: abs(lv["height"] - h))["level"]
+
+    return None
+
+
+def _get_tile_level(x: int, y: int, elevation: dict) -> list[int]:
+    """Get which elevation levels a tile belongs to.
+
+    Ramp tiles return both connected levels. Tiles with no elevation data
+    return [] (treated as any-level by the BFS).
+    """
+    key = (x, y)
+    if key in elevation["ramp_tiles"]:
+        ri = elevation["ramp_tiles"][key]
+        return [ri["from_level"], ri["to_level"]]
+    if key in elevation["level_map"]:
+        return elevation["level_map"][key]
+    return []
+
+
+def _bfs_pathfind(
+    terrain_info: list, npc_set: set,
+    start_x: int, start_y: int, goal_x: int, goal_y: int,
+    width: int = 32, height: int = 32,
+) -> list[str] | None:
+    """BFS shortest path with ledge awareness. Returns direction list or None."""
+    if not (0 <= start_x < width and 0 <= start_y < height):
+        return None
+    if not (0 <= goal_x < width and 0 <= goal_y < height):
+        return None
+    if (start_x, start_y) == (goal_x, goal_y):
+        return []
+
+    visited = {(start_x, start_y)}
+    queue = deque([(start_x, start_y, [])])
+
+    goal = (goal_x, goal_y)
+
+    while queue:
+        x, y, path = queue.popleft()
+
+        for dx, dy, direction in BFS_MOVES:
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < width and 0 <= ny < height):
+                continue
+            if (nx, ny) in visited:
+                continue
+            if (nx, ny) in npc_set and (nx, ny) != goal:
+                continue
+
+            passable, behavior = terrain_info[ny][nx]
+            if not passable:
+                continue
+
+            # Directional warps only allow entry from the correct direction
+            if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
+                continue
+
+            if behavior in LEDGE_DIRECTIONS and LEDGE_DIRECTIONS[behavior] != direction:
+                continue
+
+            new_path = path + [direction]
+            if (nx, ny) == goal:
+                return new_path
+
+            visited.add((nx, ny))
+            queue.append((nx, ny, new_path))
+
+    return None
+
+
+def _bfs_pathfind_obstacles(
+    terrain_info: list, npc_set: set, obstacle_map: dict,
+    start_x: int, start_y: int, goal_x: int, goal_y: int,
+    field_moves: dict[str, bool],
+    width: int = 32, height: int = 32,
+) -> tuple[list[str] | None, list[dict]]:
+    """BFS that treats clearable obstacles as passable when skills are available.
+
+    Returns (path, obstacles_crossed) where obstacles_crossed is a list of
+    obstacle info dicts for each obstacle the path passes through.
+    Returns (None, []) if no path found even with obstacles.
+    """
+    if not (0 <= start_x < width and 0 <= start_y < height):
+        return None, []
+    if not (0 <= goal_x < width and 0 <= goal_y < height):
+        return None, []
+    if (start_x, start_y) == (goal_x, goal_y):
+        return [], []
+
+    visited = {(start_x, start_y)}
+    # Each queue entry: (x, y, path, obstacles_on_path)
+    queue: deque[tuple[int, int, list[str], list[dict]]] = deque(
+        [(start_x, start_y, [], [])]
+    )
+
+    while queue:
+        x, y, path, obs_on_path = queue.popleft()
+
+        for dx, dy, direction in BFS_MOVES:
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < width and 0 <= ny < height):
+                continue
+            if (nx, ny) in visited:
+                continue
+
+            new_obs = list(obs_on_path)
+
+            # Check if this tile is a clearable object obstacle
+            if (nx, ny) in obstacle_map:
+                ob = obstacle_map[(nx, ny)]
+                if field_moves.get(ob["move"], False):
+                    new_obs.append(ob)
+                else:
+                    continue  # skill not available, treat as blocked
+            elif (nx, ny) in npc_set and (nx, ny) != (goal_x, goal_y):
+                continue  # regular NPC or strength boulder
+            else:
+                # Normal terrain check
+                passable, behavior = terrain_info[ny][nx]
+                if not passable:
+                    # Check if it's a terrain obstacle we can handle
+                    if behavior in TERRAIN_OBSTACLE_INFO:
+                        tinfo = TERRAIN_OBSTACLE_INFO[behavior]
+                        if field_moves.get(tinfo["move"], False):
+                            new_obs.append({
+                                "type": tinfo["type"],
+                                "move": tinfo["move"],
+                                "badge": tinfo["badge"],
+                                "x": nx, "y": ny,
+                            })
+                        else:
+                            continue  # can't handle this terrain obstacle
+                    else:
+                        continue  # truly impassable
+
+                # Directional warp check
+                if passable and behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
+                    continue
+                # Ledge direction check
+                if passable and behavior in LEDGE_DIRECTIONS and LEDGE_DIRECTIONS[behavior] != direction:
+                    continue
+
+            new_path = path + [direction]
+            if (nx, ny) == (goal_x, goal_y):
+                return new_path, new_obs
+
+            visited.add((nx, ny))
+            queue.append((nx, ny, new_path, new_obs))
+
+    return None, []
+
+
+# ── Level-constrained BFS (3D pathfinding) ──
+
+def _bfs_pathfind_level(
+    terrain_info: list, npc_set: set, elevation: dict,
+    start_x: int, start_y: int, goal_x: int, goal_y: int,
+    current_level: int, width: int = 32, height: int = 32,
+) -> tuple[list[str] | None, dict[int, tuple[list[str], tuple[int, int], int]]]:
+    """BFS pathfind restricted to a single elevation level.
+
+    Returns (path_to_goal, reachable_ramps) where:
+    - path_to_goal: direction list or None if goal unreachable on this level
+    - reachable_ramps: {ramp_index: (path_to_ramp, (rx, ry), other_level)}
+      for each ramp reachable from start on current_level
+    """
+    if not (0 <= start_x < width and 0 <= start_y < height):
+        return None, {}
+    if not (0 <= goal_x < width and 0 <= goal_y < height):
+        return None, {}
+    if (start_x, start_y) == (goal_x, goal_y):
+        return [], {}
+
+    level_map = elevation["level_map"]
+    ramp_tiles = elevation["ramp_tiles"]
+
+    def _tile_on_level(tx: int, ty: int, level: int) -> bool:
+        key = (tx, ty)
+        if key in ramp_tiles:
+            ri = ramp_tiles[key]
+            return level in (ri["from_level"], ri["to_level"])
+        if key in level_map:
+            return level in level_map[key]
+        # No elevation data → accessible on any level
+        return True
+
+    goal = (goal_x, goal_y)
+    visited = {(start_x, start_y)}
+    queue: deque[tuple[int, int, list[str]]] = deque([(start_x, start_y, [])])
+    reachable_ramps: dict[int, tuple[list[str], tuple[int, int], int]] = {}
+
+    while queue:
+        x, y, path = queue.popleft()
+
+        for dx, dy, direction in BFS_MOVES:
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < width and 0 <= ny < height):
+                continue
+            if (nx, ny) in visited:
+                continue
+            if (nx, ny) in npc_set and (nx, ny) != goal:
+                continue
+
+            passable, behavior = terrain_info[ny][nx]
+            if not passable:
+                continue
+
+            # Directional warp check
+            if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
+                continue
+            # Ledge direction check
+            if behavior in LEDGE_DIRECTIONS and LEDGE_DIRECTIONS[behavior] != direction:
+                continue
+            # Directional block on SOURCE tile (0x30 blocks east, 0x31 blocks west)
+            _, src_behavior = terrain_info[y][x]
+            if src_behavior in DIRECTIONAL_BLOCKS and DIRECTIONAL_BLOCKS[src_behavior] == direction:
+                continue
+
+            # Level constraint
+            if not _tile_on_level(nx, ny, current_level):
+                continue
+
+            new_path = path + [direction]
+            visited.add((nx, ny))
+
+            # Record ramp transitions to other levels
+            ramp_key = (nx, ny)
+            if ramp_key in ramp_tiles:
+                ri = ramp_tiles[ramp_key]
+                ramp_idx = ri["ramp_index"]
+                if ramp_idx not in reachable_ramps:
+                    if ri["from_level"] == current_level:
+                        other = ri["to_level"]
+                    elif ri["to_level"] == current_level:
+                        other = ri["from_level"]
+                    else:
+                        other = None
+                    if other is not None and other != current_level:
+                        reachable_ramps[ramp_idx] = (new_path, (nx, ny), other)
+
+            if (nx, ny) == (goal_x, goal_y):
+                return new_path, reachable_ramps
+
+            queue.append((nx, ny, new_path))
+
+    return None, reachable_ramps
+
+
+def _bfs_pathfind_3d(
+    terrain_info: list, npc_set: set, elevation: dict,
+    start_x: int, start_y: int, goal_x: int, goal_y: int,
+    start_level: int, width: int = 32, height: int = 32,
+) -> list[str] | None:
+    """Hierarchical 3D BFS: pathfind across elevation levels via ramp transitions.
+
+    Tries direct BFS on the start level. If the goal is unreachable, brute-forces
+    through reachable ramps: BFS to ramp → transition level → recurse.
+    Depth-capped at _3D_MAX_DEPTH, wall-clock timeout at _3D_TIMEOUT seconds.
+    """
+    goal_levels = _get_tile_level(goal_x, goal_y, elevation)
+    deadline = time.monotonic() + _3D_TIMEOUT
+
+    def _search(
+        sx: int, sy: int, level: int, depth: int, visited_ramps: frozenset[int],
+    ) -> list[str] | None:
+        if depth > _3D_MAX_DEPTH:
+            return None
+        if time.monotonic() > deadline:
+            return None
+
+        direct_path, reachable_ramps = _bfs_pathfind_level(
+            terrain_info, npc_set, elevation,
+            sx, sy, goal_x, goal_y,
+            level, width=width, height=height,
+        )
+
+        if direct_path is not None:
+            return direct_path
+
+        if not reachable_ramps:
+            return None
+
+        # Sort ramps: toward target level first, then Manhattan to goal, then path length
+        def _ramp_priority(item: tuple) -> tuple:
+            ramp_idx, (path_to_ramp, _, other_level) = item
+            toward_goal = 0 if (goal_levels and other_level in goal_levels) else 1
+            # Use ramp midpoint for distance heuristic
+            ri = None
+            for r in elevation["ramps"]:
+                if r["ramp_index"] == ramp_idx:
+                    ri = r
+                    break
+            if ri:
+                mid_c = (ri["col_range"][0] + ri["col_range"][1]) / 2
+                mid_r = (ri["row_range"][0] + ri["row_range"][1]) / 2
+                dist = abs(mid_c - goal_x) + abs(mid_r - goal_y)
+            else:
+                dist = 999.0
+            return (toward_goal, dist, len(path_to_ramp))
+
+        candidates = [
+            (idx, data) for idx, data in reachable_ramps.items()
+            if idx not in visited_ramps
+        ]
+        candidates.sort(key=_ramp_priority)
+
+        best_path: list[str] | None = None
+
+        for ramp_idx, (path_to_ramp, (rx, ry), other_level) in candidates:
+            if time.monotonic() > deadline:
+                break
+
+            new_visited = visited_ramps | {ramp_idx}
+            continuation = _search(rx, ry, other_level, depth + 1, new_visited)
+
+            if continuation is not None:
+                full_path = path_to_ramp + continuation
+                if best_path is None or len(full_path) < len(best_path):
+                    best_path = full_path
+
+        return best_path
+
+    return _search(start_x, start_y, start_level, 0, frozenset())
+
+
+def _build_multi_chunk_terrain(
+    emu: EmulatorClient, map_id: int, px: int, py: int, target_x: int, target_y: int,
+) -> tuple | None:
+    """Load multi-chunk terrain grid. Returns (terrain_info, origin_x, origin_y, w, h) or None."""
+    result = get_matrix_for_map(emu, map_id)
+    if result is None:
+        return None
+
+    matrix_id, mw, mh, header_ids, terrain_ids = result
+
+    player_chunk_x = px // CHUNK_SIZE
+    player_chunk_y = py // CHUNK_SIZE
+    target_chunk_x = target_x // CHUNK_SIZE
+    target_chunk_y = target_y // CHUNK_SIZE
+
+    min_cx = max(0, min(player_chunk_x, target_chunk_x) - 1)
+    max_cx = min(mw - 1, max(player_chunk_x, target_chunk_x) + 1)
+    min_cy = max(0, min(player_chunk_y, target_chunk_y) - 1)
+    max_cy = min(mh - 1, max(player_chunk_y, target_chunk_y) + 1)
+
+    # Cap at 5x5 chunks
+    if max_cx - min_cx > 4:
+        mid = (player_chunk_x + target_chunk_x) // 2
+        min_cx = max(0, mid - 2)
+        max_cx = min(mw - 1, mid + 2)
+    if max_cy - min_cy > 4:
+        mid = (player_chunk_y + target_chunk_y) // 2
+        min_cy = max(0, mid - 2)
+        max_cy = min(mh - 1, mid + 2)
+
+    num_cx = max_cx - min_cx + 1
+    num_cy = max_cy - min_cy + 1
+    grid_w = num_cx * CHUNK_SIZE
+    grid_h = num_cy * CHUNK_SIZE
+    grid_origin_x = min_cx * CHUNK_SIZE
+    grid_origin_y = min_cy * CHUNK_SIZE
+
+    combined = [[(False, 0)] * grid_w for _ in range(grid_h)]
+
+    for cy in range(min_cy, max_cy + 1):
+        for cx in range(min_cx, max_cx + 1):
+            land_id = terrain_ids[cy][cx]
+            if land_id == 0xFFFF:
+                continue
+
+            chunk_terrain = load_terrain_from_rom(land_id)
+            if chunk_terrain is None:
+                continue
+
+            base_x = (cx - min_cx) * CHUNK_SIZE
+            base_y = (cy - min_cy) * CHUNK_SIZE
+            for row in range(CHUNK_SIZE):
+                for col in range(CHUNK_SIZE):
+                    val = chunk_terrain[row][col]
+                    is_blocked = (val & 0x8000) != 0
+                    behavior = val & 0x00FF
+                    passable = (
+                        ((not is_blocked) or behavior in WARP_PASSABLE or behavior in LEDGE_DIRECTIONS)
+                        and behavior not in TERRAIN_OBSTACLES
+                    )
+                    combined[base_y + row][base_x + col] = (passable, behavior)
+
+    return combined, grid_origin_x, grid_origin_y, grid_w, grid_h
+
+
+def _build_multi_chunk_elevation(
+    emu: EmulatorClient, map_id: int,
+    terrain_info: list, grid_ox: int, grid_oy: int, grid_w: int, grid_h: int,
+) -> dict | None:
+    """Load BDHC for each chunk in the terrain grid, build combined elevation data.
+
+    Returns elevation dict compatible with _bfs_pathfind_3d, or None if flat.
+    """
+    from renegade_mcp.map_state import (
+        _tile_to_bdhc, get_matrix_for_map, parse_bdhc,
+    )
+
+    result = get_matrix_for_map(emu, map_id)
+    if result is None:
+        return None
+
+    _matrix_id, mw, mh, _header_ids, terrain_ids = result
+
+    min_cx = grid_ox // CHUNK_SIZE
+    min_cy = grid_oy // CHUNK_SIZE
+    num_cx = grid_w // CHUNK_SIZE
+    num_cy = grid_h // CHUNK_SIZE
+
+    # Pass 1: Load all BDHC data and collect flat heights
+    chunk_bdhcs: dict[tuple[int, int], dict] = {}
+    all_flat_heights: set[int] = set()
+
+    for cy in range(min_cy, min_cy + num_cy):
+        for cx in range(min_cx, min_cx + num_cx):
+            if cy >= mh or cx >= mw:
+                continue
+            land_id = terrain_ids[cy][cx]
+            if land_id == 0xFFFF:
+                continue
+            bdhc = parse_bdhc(land_id)
+            if bdhc is None:
+                continue
+
+            chunk_bdhcs[(cx, cy)] = bdhc
+
+            for plate in bdhc["plates"]:
+                nx, ny, nz = bdhc["normals"][plate["normal"]]
+                if abs(nx) < 0.01 and abs(nz) < 0.01 and abs(ny) > 0.01:
+                    d = bdhc["constants"][plate["constant"]]
+                    all_flat_heights.add(round(-d / ny))
+
+    if len(all_flat_heights) <= 1:
+        return None  # Flat terrain across all loaded chunks
+
+    sorted_heights = sorted(all_flat_heights)
+    h2l = {h: i for i, h in enumerate(sorted_heights)}
+
+    # Pass 2: Map tiles to levels across all chunks
+    level_map: dict[tuple[int, int], list[int]] = {}
+    ramp_tiles: dict[tuple[int, int], dict] = {}
+    ramps: list[dict] = []
+
+    for (cx, cy), bdhc in chunk_bdhcs.items():
+        base_x = (cx - min_cx) * CHUNK_SIZE
+        base_y = (cy - min_cy) * CHUNK_SIZE
+
+        plates = bdhc["plates"]
+        pts = bdhc["points"]
+        norms = bdhc["normals"]
+        consts = bdhc["constants"]
+
+        # Flat plates → tile level assignments
+        for row in range(CHUNK_SIZE):
+            for col in range(CHUNK_SIZE):
+                gx = base_x + col
+                gy = base_y + row
+                if gx >= grid_w or gy >= grid_h:
+                    continue
+                passable, _ = terrain_info[gy][gx]
+                if not passable:
+                    continue
+
+                x, z = _tile_to_bdhc(col, row)
+                levels: set[int] = set()
+                for plate in plates:
+                    x1, z1 = pts[plate["p1"]]
+                    x2, z2 = pts[plate["p2"]]
+                    if not (min(x1, x2) <= x <= max(x1, x2)
+                            and min(z1, z2) <= z <= max(z1, z2)):
+                        continue
+                    nx, ny, nz = norms[plate["normal"]]
+                    if abs(nx) < 0.01 and abs(nz) < 0.01 and abs(ny) > 0.01:
+                        d = consts[plate["constant"]]
+                        h = round(-d / ny)
+                        if h in h2l:
+                            levels.add(h2l[h])
+                if levels:
+                    level_map[(gx, gy)] = sorted(levels)
+
+        # Ramp plates
+        for plate in plates:
+            nx, ny, nz = norms[plate["normal"]]
+            if abs(nx) < 0.01 and abs(nz) < 0.01:
+                continue
+            if abs(ny) < 0.01:
+                continue
+
+            x1, z1 = pts[plate["p1"]]
+            x2, z2 = pts[plate["p2"]]
+            d = consts[plate["constant"]]
+
+            corners = [
+                (min(x1, x2), min(z1, z2)), (min(x1, x2), max(z1, z2)),
+                (max(x1, x2), min(z1, z2)), (max(x1, x2), max(z1, z2)),
+            ]
+            corner_heights = [
+                round(-(nx * cx_ + nz * cz + d) / ny) for cx_, cz in corners
+            ]
+            h_max, h_min = max(corner_heights), min(corner_heights)
+
+            from_level = h2l.get(h_max)
+            to_level = h2l.get(h_min)
+            if from_level is None or to_level is None:
+                continue
+
+            direction = (
+                ("south" if nz > 0 else "north")
+                if abs(nz) >= abs(nx) else ("east" if nx > 0 else "west")
+            )
+
+            col_min = int((min(x1, x2) + 256) / 16)
+            col_max = int((max(x1, x2) + 256) / 16)
+            row_min = int((min(z1, z2) + 256) / 16)
+            row_max = int((max(z1, z2) + 256) / 16)
+
+            ramp_info = {
+                "ramp_index": len(ramps),
+                "col_range": (base_x + col_min, base_x + col_max),
+                "row_range": (base_y + row_min, base_y + row_max),
+                "from_level": from_level,
+                "to_level": to_level,
+                "direction": direction,
+            }
+            ramps.append(ramp_info)
+
+            for r in range(row_min, row_max):
+                for c in range(col_min, col_max):
+                    gx = base_x + c
+                    gy = base_y + r
+                    if 0 <= gx < grid_w and 0 <= gy < grid_h:
+                        passable, _ = terrain_info[gy][gx]
+                        if passable:
+                            ramp_tiles[(gx, gy)] = ramp_info
+
+    levels_info = [{"level": h2l[h], "height": h} for h in sorted_heights]
+
+    return {
+        "level_map": level_map,
+        "ramp_tiles": ramp_tiles,
+        "ramps": ramps,
+        "levels": levels_info,
+        "height_to_level": h2l,
+    }
+
+
+def _classify_objects_for_grid(
+    objects: list, grid_ox: int, grid_oy: int, grid_w: int, grid_h: int,
+) -> tuple[set, dict]:
+    """Classify map objects into npc_set and obstacle_map for a given grid region."""
+    npc_set: set[tuple[int, int]] = set()
+    obstacle_map: dict[tuple[int, int], dict] = {}
+    for obj in objects:
+        if obj["index"] == 0:
+            continue
+        lx = obj["x"] - grid_ox
+        ly = obj["y"] - grid_oy
+        if not (0 <= lx < grid_w and 0 <= ly < grid_h):
+            continue
+
+        gfx_id = obj.get("graphics_id", 0)
+        if gfx_id in CLEARABLE_OBSTACLES:
+            info = HM_OBSTACLES[gfx_id]
+            obstacle_map[(lx, ly)] = {
+                "type": info["type"],
+                "move": info["move"],
+                "badge": info["badge"],
+                "gfx_id": gfx_id,
+                "global_x": obj["x"],
+                "global_y": obj["y"],
+            }
+        elif gfx_id in PUZZLE_OBSTACLES:
+            npc_set.add((lx, ly))
+        else:
+            npc_set.add((lx, ly))
+    return npc_set, obstacle_map
+
+
+def _dedupe_obstacles(obstacles: list[dict]) -> list[dict]:
+    """Remove duplicate obstacles (same type at same position)."""
+    seen: set[tuple[str, int, int]] = set()
+    result = []
+    for ob in obstacles:
+        key = (ob["type"], ob.get("global_x", ob.get("x", 0)), ob.get("global_y", ob.get("y", 0)))
+        if key not in seen:
+            seen.add(key)
+            result.append(ob)
+    return result
+
+
+def _validate_path(
+    terrain_info: list,
+    start_x: int,
+    start_y: int,
+    directions: list[str],
+    width: int = 32,
+    height: int = 32,
+) -> tuple[bool, int, str, tuple[int, int]]:
+    """Simulate a path on the terrain grid and check for collisions.
+
+    Returns (ok, step_index, direction, tile) where:
+    - ok=True, step_index=-1 means full path is clear
+    - ok=True, step_index>=0, direction="transition" means path is valid but
+      should be trimmed at step_index (inclusive) — that step walks off a
+      door/stair tile in its activation direction, triggering a map transition.
+    - ok=False means step_index'th direction hits a wall at tile (x, y)
+
+    Off-grid tiles are allowed (map transitions).
+    """
+    cx, cy = start_x, start_y
+    deltas = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
+
+    for i, d in enumerate(directions):
+        # Check if current tile is a door/stair whose activation direction
+        # matches this step — if so, this step triggers a map transition
+        # regardless of what's on the destination tile.
+        if 0 <= cx < width and 0 <= cy < height:
+            _, cur_behavior = terrain_info[cy][cx]
+            activation = DOOR_ACTIVATION.get(cur_behavior)
+            if activation is not None and activation == d:
+                dx, dy = deltas[d]
+                nx, ny = cx + dx, cy + dy
+                return True, i, "transition", (nx, ny)
+
+        dx, dy = deltas[d]
+        nx, ny = cx + dx, cy + dy
+
+        # Off-grid = possible map transition, allow it
+        if not (0 <= nx < width and 0 <= ny < height):
+            cx, cy = nx, ny
+            continue
+
+        passable, behavior = terrain_info[ny][nx]
+        if not passable:
+            return False, i, d, (nx, ny)
+
+        # Stepping onto a directional warp in its activation direction = transition
+        if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] == d:
+            return True, i, "transition", (nx, ny)
+
+        cx, cy = nx, ny
+
+    return True, -1, "", (0, 0)

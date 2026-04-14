@@ -2,1039 +2,177 @@
 
 Connects to the emulator to move the player one tile at a time,
 verifying position after each step.
+
+Implementation is split across several submodules for maintainability:
+  nav_constants   — shared constants and tiny utilities
+  pathfinding     — BFS algorithms and terrain grid construction
+  hm_traverse     — HM field move obstacle clearing
+  cycling_road    — cycling road bridge + bike slope traversal
+  nav_events      — post-navigation encounter/dialogue detection
+  fishing         — fishing encounters and pacing-pair seeking
+  interaction     — NPC/object interaction
 """
 
 from __future__ import annotations
 
-import re
-import time
-from collections import deque
 from typing import TYPE_CHECKING, Any
 
-from renegade_mcp.battle import format_battle, read_battle
-from renegade_mcp.dialogue import (
-    CTX_RUNNING, CTX_WAITING,
-    _find_script_manager, _read_context_state, _read_script_state,
-    advance_dialogue, read_dialogue,
+# ── Re-exports for backward compatibility ──
+# All symbols that were previously defined in this file are re-exported so
+# that existing imports (tests, server.py, other modules) continue to work.
+
+# --- nav_constants (all constants + utilities) ---
+from renegade_mcp.nav_constants import (  # noqa: F401
+    _3D_MAX_DEPTH,
+    _3D_TIMEOUT,
+    _ADJACENT_OFFSETS,
+    _BATTLE_OVER,
+    _DELTA_TO_FACE,
+    _DIAG_CHAR,
+    _DIR_DELTAS,
+    _FACE_TO_INT,
+    _FAINT_STATES,
+    _FACING_DELTAS,
+    _FACING_VALUES,
+    _FISH_ANIM_BITE,
+    _FISH_ANIM_OFFSET,
+    _FISH_MAX_POLL,
+    _INTERACT_COOLDOWN,
+    _MOVING_NPC_POLL,
+    _MOVING_NPC_TIMEOUT,
+    _OPPOSITE_DIR,
+    _ROD_NAMES,
+    AUTO_NAVIGATE_TYPES,
+    BADGE_BITS,
+    BFS_MOVES,
+    BIKE_HOLD_FRAMES,
+    BIKE_SLOPE_BACKUP_TILES,
+    BIKE_SLOPE_BEHAVIORS,
+    BIKE_SLOPE_MAX_FRAMES,
+    BIKE_SLOPE_TYPES,
+    CLEARABLE_OBSTACLES,
+    CLEARABLE_TYPES,
+    CYCLING_ROAD_LATERAL_HOLD,
+    CYCLING_ROAD_MAX_WAIT,
+    CYCLING_ROAD_POLL_INTERVAL,
+    CYCLING_ROAD_SLIDE_RATE,
+    CYCLING_ROAD_UPHILL_HOLD,
+    DIR_ALIASES,
+    DIRECTIONAL_BLOCKS,
+    DIRECTIONAL_WARP,
+    DOOR_ACTIVATION,
+    DOOR_POLL_FRAMES,
+    DOOR_TRANSITION_POLLS,
+    GRASS_BEHAVIOR,
+    HM_INTERACT_WAIT,
+    HM_OBSTACLES,
+    HM_POST_CONFIRM_WAIT,
+    HM_SETTLE_WAIT,
+    HOLD_FRAMES,
+    INTERACT_A_WAIT,
+    INTERACT_DIALOGUE_WAIT,
+    LEDGE_DIRECTIONS,
+    MAX_FLEE_ENCOUNTERS,
+    MAX_REPATHS,
+    MULTI_TILE_HM_TYPES,
+    OPPOSITE_DIR,
+    POST_BATTLE_SETTLE,
+    POST_NAV_MAX_POLLS,
+    POST_NAV_POLL_FRAMES,
+    PUZZLE_OBSTACLES,
+    ROCK_CLIMB_BEHAVIORS,
+    ROCK_CLIMB_TYPES,
+    SEEK_MAX_CASTS,
+    SEEK_MAX_STEPS,
+    SETTLE_FRAMES,
+    SLOW_TERRAIN_RETRIES,
+    SURF_HOLD_FRAMES,
+    SURF_TYPES,
+    TERRAIN_OBSTACLE_INFO,
+    TERRAIN_OBSTACLES,
+    WARP_PASSABLE,
+    WATER_BEHAVIORS,
+    WATERFALL_BEHAVIOR,
+    WATERFALL_TYPES,
+    WAIT_FRAMES,
+    _get_move_hold,
+    _normalize_direction,
+    _pos_with_map,
+    _read_position,
+    _summarize_path,
+    _tile_behavior_hint,
+    parse_directions,
 )
-from renegade_mcp.map_names import lookup_map_name
-from renegade_mcp.party import read_party
-from renegade_mcp.trainer import read_trainer_status
+
+# --- pathfinding ---
+from renegade_mcp.pathfinding import (  # noqa: F401
+    _bfs_pathfind,
+    _bfs_pathfind_3d,
+    _bfs_pathfind_level,
+    _bfs_pathfind_obstacles,
+    _bfs_reachable,
+    _build_multi_chunk_elevation,
+    _build_multi_chunk_terrain,
+    _build_terrain_info,
+    _classify_objects_for_grid,
+    _dedupe_obstacles,
+    _find_nearest_reachable,
+    _get_field_move_availability,
+    _get_tile_level,
+    _height_to_level,
+    _render_failure_diagram,
+    _validate_path,
+)
+
+# --- hm_traverse ---
+from renegade_mcp.hm_traverse import _clear_hm_obstacle  # noqa: F401
+
+# --- cycling_road ---
+from renegade_mcp.cycling_road import (  # noqa: F401
+    _check_encounter_quick,
+    _get_current_tile_behavior,
+    _navigate_cycling_road,
+    _traverse_bike_slope,
+)
+
+# --- nav_events ---
+from renegade_mcp.nav_events import (  # noqa: F401
+    _flee_wild_battle,
+    _handle_door_transition,
+    _post_nav_check,
+    _try_flee_encounter,
+)
+
+# --- fishing ---
+from renegade_mcp.fishing import (  # noqa: F401
+    _find_fishing_spot,
+    _find_pacing_pair,
+    _fish_once,
+    _seek_fishing,
+    seek_encounter,
+)
+
+# --- interaction ---
+from renegade_mcp.interaction import (  # noqa: F401
+    _target_info,
+    _wait_for_moving_npc,
+    interact_with,
+)
+
+# ── Imports for this module's own code ──
 from renegade_mcp.map_state import (
-    BIKE_BRIDGE_BEHAVIORS,
-    CHUNK_SIZE,
-    SIGN_GFX_IDS,
     analyze_elevation,
     get_land_data_id,
     get_map_state,
-    get_matrix_for_map,
     is_on_cycling_road,
-    load_terrain_from_rom,
     parse_bdhc,
     read_objects,
     read_player_height,
-    read_player_state,
     read_sign_tiles_from_rom,
 )
-from renegade_mcp.turn import _wait_for_action_prompt
 
 if TYPE_CHECKING:
     from melonds_mcp.client import EmulatorClient
-
-# ── Memory addresses (resolved at runtime) ──
-
-# ── Movement timing ──
-HOLD_FRAMES = 16       # walking: 1 tile per press
-BIKE_HOLD_FRAMES = 4   # cycling: bike moves 1 tile per ~4 frames
-SURF_HOLD_FRAMES = 8   # surfing: 1 tile per ~8 frames (2x walk speed)
-WAIT_FRAMES = 8
-SETTLE_FRAMES = 120
-SLOW_TERRAIN_RETRIES = 3  # Re-press attempts on apparent block (deep snow, ice)
-
-
-def _get_move_hold(emu: EmulatorClient) -> int:
-    """Return the per-tile hold frames based on whether the player is cycling."""
-    from renegade_mcp.addresses import addr
-    cycling = emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")
-    return BIKE_HOLD_FRAMES if cycling else HOLD_FRAMES
-
-MAX_REPATHS = 15
-
-# ── Direction handling ──
-DIR_ALIASES = {"u": "up", "d": "down", "l": "left", "r": "right"}
-BFS_MOVES = [(0, -1, "up"), (0, 1, "down"), (-1, 0, "left"), (1, 0, "right")]
-
-# Ledge behaviors: direction you must be moving to cross them
-LEDGE_DIRECTIONS = {
-    0x38: "down", 0x39: "up", 0x3A: "left", 0x3B: "right",
-}
-
-# Bike slope tiles — passable in collision data but the game engine blocks
-# single-step entry.  Require fast gear (4th gear) + 3-tile running start.
-BIKE_SLOPE_BEHAVIORS = {0xD9, 0xDA}  # bike_slope_top, bike_slope_bottom
-BIKE_SLOPE_TYPES = {"bike_slope"}
-BIKE_SLOPE_BACKUP_TILES = 3  # tiles to back up before the running start
-BIKE_SLOPE_MAX_FRAMES = 600  # safety cap for the continuous hold phase
-
-# Water tiles — impassable until Surf is available
-WATER_BEHAVIORS = {0x10, 0x15}  # river, sea (surfable)
-WATERFALL_BEHAVIOR = 0x13
-ROCK_CLIMB_BEHAVIORS = {0x4A, 0x4B}  # N-S, E-W
-
-# All terrain-based obstacles (water + waterfall + rock climb)
-TERRAIN_OBSTACLES = WATER_BEHAVIORS | {WATERFALL_BEHAVIOR} | ROCK_CLIMB_BEHAVIORS
-
-# ── HM obstacle objects (identified by graphics_id in zone_event data) ──
-# These are map objects (like NPCs) that can be cleared with field moves.
-HM_OBSTACLES: dict[int, dict[str, str]] = {
-    84: {"type": "strength_boulder", "move": "Strength",   "badge": "Mine"},
-    85: {"type": "rock_smash",       "move": "Rock Smash", "badge": "Coal"},
-    86: {"type": "cut_tree",         "move": "Cut",        "badge": "Forest"},
-}
-
-# Obstacles that can be auto-cleared (interact → yes → gone)
-CLEARABLE_OBSTACLES = {85, 86}  # rock_smash, cut_tree
-# Obstacle type strings that are auto-clearable during path execution
-CLEARABLE_TYPES = {"rock_smash", "cut_tree"}
-# Terrain obstacle types handled by entering Surf mode (player moves onto water)
-SURF_TYPES = {"water"}
-# Terrain obstacles that move the player through multiple tiles in one animation
-ROCK_CLIMB_TYPES = {"rock_climb"}
-WATERFALL_TYPES = {"waterfall"}
-# Types where the HM animation traverses all obstacle tiles at once
-MULTI_TILE_HM_TYPES = ROCK_CLIMB_TYPES | WATERFALL_TYPES
-# All types that navigate_to auto-executes (no caller confirmation needed)
-AUTO_NAVIGATE_TYPES = CLEARABLE_TYPES | SURF_TYPES | ROCK_CLIMB_TYPES | WATERFALL_TYPES
-# Obstacles that are never auto-handled (puzzle-dependent)
-PUZZLE_OBSTACLES = {84}  # strength_boulder
-
-# Badge name → bit index in the badge bitmask
-BADGE_BITS: dict[str, int] = {
-    "Coal": 0, "Forest": 1, "Cobble": 2, "Fen": 3,
-    "Relic": 4, "Mine": 5, "Icicle": 6, "Beacon": 7,
-}
-
-# Terrain obstacle → required move + badge
-TERRAIN_OBSTACLE_INFO: dict[int, dict[str, str]] = {
-    0x10: {"type": "water",       "move": "Surf",       "badge": "Fen"},
-    0x15: {"type": "water",       "move": "Surf",       "badge": "Fen"},
-    0x13: {"type": "waterfall",   "move": "Waterfall",  "badge": "Beacon"},
-    0x4A: {"type": "rock_climb",  "move": "Rock Climb", "badge": "Icicle"},
-    0x4B: {"type": "rock_climb",  "move": "Rock Climb", "badge": "Icicle"},
-}
-
-# Door/warp tile behaviors and how to activate them.
-# None = walk-into triggers warp automatically; string = press this direction after standing on tile.
-DOOR_ACTIVATION: dict[int, str | None] = {
-    0x69: None,     # DOOR — building entrance (walk into from any direction)
-    0x6E: None,     # WARP_NORTH — walk into
-    0x65: "down",   # WARP_ENTRANCE_SOUTH — stand on tile, press down
-    0x5F: "left",   # WARP_STAIRS_WEST — stand on tile, press left
-    0x5E: "right",  # WARP_STAIRS_EAST — stand on tile, press right
-    0x67: None,     # WARP_PANEL — teleport pad (step on, auto warp)
-    0x6A: None,     # ESCALATOR_FLIP_FACE — step on, auto
-    0x6B: None,     # ESCALATOR — step on, auto
-}
-
-# Directional walk-into warps: warp triggers when stepping ONTO the tile
-# while moving in the specified direction. These tiles have collision flags
-# but are passable from the correct approach direction.
-# Behavior → required movement direction
-DIRECTIONAL_WARP: dict[int, str] = {
-    0x62: "right",  # WARP_ENTRANCE_EAST — walk east into cave
-    0x63: "left",   # WARP_ENTRANCE_WEST — walk west into cave
-    0x64: "up",     # WARP_ENTRANCE_NORTH — walk north into cave
-    0x6C: "right",  # WARP_EAST — side entry, walk east
-    0x6D: "left",   # WARP_WEST — side entry, walk west
-    0x6F: "down",   # WARP_SOUTH — side entry, walk south
-}
-
-# All warp behaviors that should be passable despite collision flags
-WARP_PASSABLE = {0x69} | set(DIRECTIONAL_WARP.keys())
-
-# Directional blocks: behavior on SOURCE tile → direction that is blocked.
-# These are platform-edge tiles that prevent stepping off elevated surfaces.
-DIRECTIONAL_BLOCKS: dict[int, str] = {
-    0x30: "right",  # block_E — can't step east off platform
-    0x31: "left",   # block_W — can't step west off platform
-}
-
-# ── 3D pathfinding constants ──
-_3D_MAX_DEPTH = 5       # max ramp transitions in a single path search
-_3D_TIMEOUT = 300       # wall-clock seconds before aborting 3D search
-
-DOOR_TRANSITION_POLLS = 30   # polls to wait for map transition (30 * 15 = 450 frames)
-DOOR_POLL_FRAMES = 15
-
-
-def _tile_behavior_hint(behavior: int) -> str:
-    """Return a human-readable hint for common impassable tile behaviors."""
-    hints: dict[int, str] = {
-        0x10: "water (needs Surf)",
-        0x15: "water (needs Surf)",
-        0x13: "waterfall (needs Waterfall)",
-        0x4A: "rock climb wall (needs Rock Climb)",
-        0x4B: "rock climb wall (needs Rock Climb)",
-        0x69: "door/warp (may be locked)",
-        0x65: "warp entrance",
-    }
-    if behavior in hints:
-        return hints[behavior]
-    return f"behavior 0x{behavior:02X}"
-
-
-# ── Behavior chars for failure diagrams (subset of map_state._BEHAVIOR_CHAR) ──
-_DIAG_CHAR: dict[int, str] = {
-    0x02: '"', 0x03: '"',  # grass
-    0x10: '≈', 0x13: '≈', 0x15: '≈',  # water
-    0x38: 'v', 0x39: '^', 0x3A: '<', 0x3B: '>',  # ledges
-    0x69: 'D', 0x6E: 'D',  # doors
-}
-
-
-def _bfs_reachable(
-    terrain_info: list, npc_set: set,
-    start_x: int, start_y: int,
-    width: int, height: int,
-) -> set[tuple[int, int]]:
-    """Flood-fill BFS from start. Returns set of all reachable (x, y) tiles."""
-    if not (0 <= start_x < width and 0 <= start_y < height):
-        return set()
-    visited = {(start_x, start_y)}
-    queue = deque([(start_x, start_y)])
-    while queue:
-        x, y = queue.popleft()
-        for dx, dy, direction in BFS_MOVES:
-            nx, ny = x + dx, y + dy
-            if not (0 <= nx < width and 0 <= ny < height):
-                continue
-            if (nx, ny) in visited or (nx, ny) in npc_set:
-                continue
-            passable, behavior = terrain_info[ny][nx]
-            if not passable:
-                continue
-            if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
-                continue
-            if behavior in LEDGE_DIRECTIONS and LEDGE_DIRECTIONS[behavior] != direction:
-                continue
-            visited.add((nx, ny))
-            queue.append((nx, ny))
-    return visited
-
-
-def _find_nearest_reachable(
-    reachable: set[tuple[int, int]], target_x: int, target_y: int,
-) -> tuple[int, int] | None:
-    """Find the reachable tile closest to target by Manhattan distance."""
-    if not reachable:
-        return None
-    best = None
-    best_dist = float("inf")
-    for rx, ry in reachable:
-        d = abs(rx - target_x) + abs(ry - target_y)
-        if d < best_dist:
-            best_dist = d
-            best = (rx, ry)
-    return best
-
-
-def _render_failure_diagram(
-    terrain_info: list, npc_set: set,
-    player_x: int, player_y: int,
-    target_x: int, target_y: int,
-    nearest: tuple[int, int] | None,
-    width: int, height: int,
-    radius: int = 4,
-) -> str:
-    """Render a small ASCII grid centered on the target for failure diagnosis.
-
-    Shows: @ player, X target, * nearest reachable, # wall, . passable, ≈ water, etc.
-    """
-    cx, cy = target_x, target_y
-    min_x = max(0, cx - radius)
-    max_x = min(width - 1, cx + radius)
-    min_y = max(0, cy - radius)
-    max_y = min(height - 1, cy + radius)
-
-    lines = []
-    for y in range(min_y, max_y + 1):
-        row = []
-        for x in range(min_x, max_x + 1):
-            if (x, y) == (player_x, player_y):
-                row.append("@")
-            elif (x, y) == (target_x, target_y):
-                row.append("X")
-            elif nearest and (x, y) == nearest:
-                row.append("*")
-            elif (x, y) in npc_set:
-                row.append("N")
-            elif 0 <= y < len(terrain_info) and 0 <= x < len(terrain_info[0]):
-                passable, behavior = terrain_info[y][x]
-                if not passable:
-                    row.append(_DIAG_CHAR.get(behavior, "#"))
-                else:
-                    row.append(_DIAG_CHAR.get(behavior, "."))
-            else:
-                row.append(" ")
-        lines.append("".join(row))
-
-    return "\n".join(lines)
-
-
-def _get_field_move_availability(emu: EmulatorClient) -> dict[str, bool]:
-    """Check which field moves are usable (party has move + badge).
-
-    Returns dict mapping move name → available (e.g. {"Rock Smash": True}).
-    """
-    party = read_party(emu)
-    trainer = read_trainer_status(emu)
-    badge_byte = trainer.get("badge_raw", 0)
-
-    # Collect all move names across party
-    party_moves: set[str] = set()
-    for mon in party:
-        for mn in mon.get("move_names", []):
-            if mn and mn != "-":
-                party_moves.add(mn)
-
-    # All field moves we care about
-    field_moves = {
-        "Rock Smash": "Coal", "Cut": "Forest", "Strength": "Mine",
-        "Surf": "Fen", "Waterfall": "Beacon", "Rock Climb": "Icicle",
-    }
-
-    result = {}
-    for move, badge in field_moves.items():
-        has_move = move in party_moves
-        has_badge = bool(badge_byte & (1 << BADGE_BITS[badge]))
-        result[move] = has_move and has_badge
-
-    return result
-
-
-def _read_position(emu: EmulatorClient) -> tuple[int, int, int]:
-    """Read current map_id, x, y from memory."""
-    from renegade_mcp.addresses import addr
-    pos_base = addr("PLAYER_POS_BASE")
-    map_id = emu.read_memory(pos_base, size="long")
-    x = emu.read_memory(pos_base + 8, size="long")
-    y = emu.read_memory(pos_base + 12, size="long")
-    return map_id, x, y
-
-
-def _pos_with_map(x: int, y: int, map_id: int) -> dict[str, Any]:
-    """Build a compact position dict with map name."""
-    info = lookup_map_name(map_id)
-    return {"x": x, "y": y, "map": info["name"], "map_id": map_id}
-
-
-def _normalize_direction(d: str) -> str:
-    d = d.lower().strip()
-    return DIR_ALIASES.get(d, d)
-
-
-def parse_directions(args_str: str) -> list[str]:
-    """Parse direction string, expanding repeat counts (e.g., 'l20 u5 r3')."""
-    args = args_str.strip().split()
-    directions = []
-    pattern = re.compile(r"^([a-z]+)(\d+)$")
-    for arg in args:
-        arg = arg.lower().strip()
-        m = pattern.match(arg)
-        if m:
-            d = _normalize_direction(m.group(1))
-            count = int(m.group(2))
-            directions.extend([d] * count)
-        else:
-            directions.append(_normalize_direction(arg))
-    return directions
-
-
-def _build_terrain_info(
-    terrain: list, objects: list, width: int = 32, height: int = 32,
-    obj_offset_x: int = 0, obj_offset_y: int = 0,
-) -> tuple[list, set, dict]:
-    """Build terrain passability grid, NPC positions, and obstacle map.
-
-    Returns:
-        grid: 2D list of (passable, behavior) tuples
-        npc_set: set of (x, y) for truly impassable objects (NPCs + strength boulders)
-        obstacle_map: dict of (x, y) → obstacle info for clearable HM obstacles
-    """
-    grid = [[(True, 0)] * width for _ in range(height)]
-
-    for row in range(min(height, len(terrain))):
-        for col in range(min(width, len(terrain[row]) if row < len(terrain) else 0)):
-            val = terrain[row][col]
-            is_blocked = (val & 0x8000) != 0
-            behavior = val & 0x00FF
-            passable = (
-                ((not is_blocked) or behavior in WARP_PASSABLE or behavior in LEDGE_DIRECTIONS)
-                and behavior not in TERRAIN_OBSTACLES
-            )
-            grid[row][col] = (passable, behavior)
-
-    npc_set = set()
-    obstacle_map: dict[tuple[int, int], dict] = {}
-    for obj in objects:
-        if obj["index"] == 0:
-            continue
-        lx = obj.get("local_x", obj["x"]) - obj_offset_x
-        ly = obj.get("local_y", obj["y"]) - obj_offset_y
-        if not (0 <= lx < width and 0 <= ly < height):
-            continue
-
-        gfx_id = obj.get("graphics_id", 0)
-        if gfx_id in CLEARABLE_OBSTACLES:
-            info = HM_OBSTACLES[gfx_id]
-            obstacle_map[(lx, ly)] = {
-                "type": info["type"],
-                "move": info["move"],
-                "badge": info["badge"],
-                "gfx_id": gfx_id,
-                "global_x": obj["x"],
-                "global_y": obj["y"],
-            }
-        elif gfx_id in PUZZLE_OBSTACLES:
-            # Strength boulders go in npc_set — never auto-cleared
-            npc_set.add((lx, ly))
-        else:
-            npc_set.add((lx, ly))
-
-    return grid, npc_set, obstacle_map
-
-
-# ── 3D elevation helpers ──
-
-def _height_to_level(
-    height: float, elevation: dict,
-    tile_x: int | None = None, tile_y: int | None = None,
-) -> int | None:
-    """Convert player height (fx32 float) to a level index.
-
-    Exact match first. If tile coords are given, checks whether the tile has
-    explicit level data (ramp or level_map). Falls back to mid-ramp range
-    matching (preferring narrowest range) and finally nearest level by height.
-    """
-    h = round(height)
-    level = elevation["height_to_level"].get(h)
-    if level is not None:
-        return level
-
-    # If tile coords provided, use the tile's own elevation data
-    if tile_x is not None and tile_y is not None:
-        key = (tile_x, tile_y)
-        if key in elevation["ramp_tiles"]:
-            ri = elevation["ramp_tiles"][key]
-            # Player is on this ramp — pick the end closer to their height
-            levels_info = elevation["levels"]
-            hbl: dict[int, int] = {lv["level"]: lv["height"] for lv in levels_info}
-            fh = hbl.get(ri["from_level"], 0)
-            th = hbl.get(ri["to_level"], 0)
-            if abs(h - fh) <= abs(h - th):
-                return ri["from_level"]
-            return ri["to_level"]
-        if key in elevation["level_map"]:
-            tile_levels = elevation["level_map"][key]
-            if tile_levels:
-                # Pick the level whose defined height is closest to player height
-                levels_info = elevation["levels"]
-                hbl = {lv["level"]: lv["height"] for lv in levels_info}
-                return min(tile_levels, key=lambda lv: abs(hbl.get(lv, 0) - h))
-
-    # Player might be mid-ramp — check ramp height ranges, prefer narrowest
-    levels_info = elevation["levels"]
-    height_by_level: dict[int, int] = {lv["level"]: lv["height"] for lv in levels_info}
-    best_ramp_level = None
-    best_span = float("inf")
-    for ramp in elevation["ramps"]:
-        from_h = height_by_level.get(ramp["from_level"])
-        to_h = height_by_level.get(ramp["to_level"])
-        if from_h is not None and to_h is not None:
-            lo, hi = min(from_h, to_h), max(from_h, to_h)
-            span = hi - lo
-            if lo <= h <= hi and span < best_span:
-                best_span = span
-                # Pick the ramp end closer to the player's height
-                if abs(h - from_h) <= abs(h - to_h):
-                    best_ramp_level = ramp["from_level"]
-                else:
-                    best_ramp_level = ramp["to_level"]
-    if best_ramp_level is not None:
-        return best_ramp_level
-
-    # Final fallback: nearest defined level by height
-    if levels_info:
-        return min(levels_info, key=lambda lv: abs(lv["height"] - h))["level"]
-
-    return None
-
-
-def _get_tile_level(x: int, y: int, elevation: dict) -> list[int]:
-    """Get which elevation levels a tile belongs to.
-
-    Ramp tiles return both connected levels. Tiles with no elevation data
-    return [] (treated as any-level by the BFS).
-    """
-    key = (x, y)
-    if key in elevation["ramp_tiles"]:
-        ri = elevation["ramp_tiles"][key]
-        return [ri["from_level"], ri["to_level"]]
-    if key in elevation["level_map"]:
-        return elevation["level_map"][key]
-    return []
-
-
-def _bfs_pathfind(
-    terrain_info: list, npc_set: set,
-    start_x: int, start_y: int, goal_x: int, goal_y: int,
-    width: int = 32, height: int = 32,
-) -> list[str] | None:
-    """BFS shortest path with ledge awareness. Returns direction list or None."""
-    if not (0 <= start_x < width and 0 <= start_y < height):
-        return None
-    if not (0 <= goal_x < width and 0 <= goal_y < height):
-        return None
-    if (start_x, start_y) == (goal_x, goal_y):
-        return []
-
-    visited = {(start_x, start_y)}
-    queue = deque([(start_x, start_y, [])])
-
-    goal = (goal_x, goal_y)
-
-    while queue:
-        x, y, path = queue.popleft()
-
-        for dx, dy, direction in BFS_MOVES:
-            nx, ny = x + dx, y + dy
-            if not (0 <= nx < width and 0 <= ny < height):
-                continue
-            if (nx, ny) in visited:
-                continue
-            if (nx, ny) in npc_set and (nx, ny) != goal:
-                continue
-
-            passable, behavior = terrain_info[ny][nx]
-            if not passable:
-                continue
-
-            # Directional warps only allow entry from the correct direction
-            if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
-                continue
-
-            if behavior in LEDGE_DIRECTIONS and LEDGE_DIRECTIONS[behavior] != direction:
-                continue
-
-            new_path = path + [direction]
-            if (nx, ny) == goal:
-                return new_path
-
-            visited.add((nx, ny))
-            queue.append((nx, ny, new_path))
-
-    return None
-
-
-def _bfs_pathfind_obstacles(
-    terrain_info: list, npc_set: set, obstacle_map: dict,
-    start_x: int, start_y: int, goal_x: int, goal_y: int,
-    field_moves: dict[str, bool],
-    width: int = 32, height: int = 32,
-) -> tuple[list[str] | None, list[dict]]:
-    """BFS that treats clearable obstacles as passable when skills are available.
-
-    Returns (path, obstacles_crossed) where obstacles_crossed is a list of
-    obstacle info dicts for each obstacle the path passes through.
-    Returns (None, []) if no path found even with obstacles.
-    """
-    if not (0 <= start_x < width and 0 <= start_y < height):
-        return None, []
-    if not (0 <= goal_x < width and 0 <= goal_y < height):
-        return None, []
-    if (start_x, start_y) == (goal_x, goal_y):
-        return [], []
-
-    visited = {(start_x, start_y)}
-    # Each queue entry: (x, y, path, obstacles_on_path)
-    queue: deque[tuple[int, int, list[str], list[dict]]] = deque(
-        [(start_x, start_y, [], [])]
-    )
-
-    while queue:
-        x, y, path, obs_on_path = queue.popleft()
-
-        for dx, dy, direction in BFS_MOVES:
-            nx, ny = x + dx, y + dy
-            if not (0 <= nx < width and 0 <= ny < height):
-                continue
-            if (nx, ny) in visited:
-                continue
-
-            new_obs = list(obs_on_path)
-
-            # Check if this tile is a clearable object obstacle
-            if (nx, ny) in obstacle_map:
-                ob = obstacle_map[(nx, ny)]
-                if field_moves.get(ob["move"], False):
-                    new_obs.append(ob)
-                else:
-                    continue  # skill not available, treat as blocked
-            elif (nx, ny) in npc_set and (nx, ny) != (goal_x, goal_y):
-                continue  # regular NPC or strength boulder
-            else:
-                # Normal terrain check
-                passable, behavior = terrain_info[ny][nx]
-                if not passable:
-                    # Check if it's a terrain obstacle we can handle
-                    if behavior in TERRAIN_OBSTACLE_INFO:
-                        tinfo = TERRAIN_OBSTACLE_INFO[behavior]
-                        if field_moves.get(tinfo["move"], False):
-                            new_obs.append({
-                                "type": tinfo["type"],
-                                "move": tinfo["move"],
-                                "badge": tinfo["badge"],
-                                "x": nx, "y": ny,
-                            })
-                        else:
-                            continue  # can't handle this terrain obstacle
-                    else:
-                        continue  # truly impassable
-
-                # Directional warp check
-                if passable and behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
-                    continue
-                # Ledge direction check
-                if passable and behavior in LEDGE_DIRECTIONS and LEDGE_DIRECTIONS[behavior] != direction:
-                    continue
-
-            new_path = path + [direction]
-            if (nx, ny) == (goal_x, goal_y):
-                return new_path, new_obs
-
-            visited.add((nx, ny))
-            queue.append((nx, ny, new_path, new_obs))
-
-    return None, []
-
-
-# ── Level-constrained BFS (3D pathfinding) ──
-
-def _bfs_pathfind_level(
-    terrain_info: list, npc_set: set, elevation: dict,
-    start_x: int, start_y: int, goal_x: int, goal_y: int,
-    current_level: int, width: int = 32, height: int = 32,
-) -> tuple[list[str] | None, dict[int, tuple[list[str], tuple[int, int], int]]]:
-    """BFS pathfind restricted to a single elevation level.
-
-    Returns (path_to_goal, reachable_ramps) where:
-    - path_to_goal: direction list or None if goal unreachable on this level
-    - reachable_ramps: {ramp_index: (path_to_ramp, (rx, ry), other_level)}
-      for each ramp reachable from start on current_level
-    """
-    if not (0 <= start_x < width and 0 <= start_y < height):
-        return None, {}
-    if not (0 <= goal_x < width and 0 <= goal_y < height):
-        return None, {}
-    if (start_x, start_y) == (goal_x, goal_y):
-        return [], {}
-
-    level_map = elevation["level_map"]
-    ramp_tiles = elevation["ramp_tiles"]
-
-    def _tile_on_level(tx: int, ty: int, level: int) -> bool:
-        key = (tx, ty)
-        if key in ramp_tiles:
-            ri = ramp_tiles[key]
-            return level in (ri["from_level"], ri["to_level"])
-        if key in level_map:
-            return level in level_map[key]
-        # No elevation data → accessible on any level
-        return True
-
-    goal = (goal_x, goal_y)
-    visited = {(start_x, start_y)}
-    queue: deque[tuple[int, int, list[str]]] = deque([(start_x, start_y, [])])
-    reachable_ramps: dict[int, tuple[list[str], tuple[int, int], int]] = {}
-
-    while queue:
-        x, y, path = queue.popleft()
-
-        for dx, dy, direction in BFS_MOVES:
-            nx, ny = x + dx, y + dy
-            if not (0 <= nx < width and 0 <= ny < height):
-                continue
-            if (nx, ny) in visited:
-                continue
-            if (nx, ny) in npc_set and (nx, ny) != goal:
-                continue
-
-            passable, behavior = terrain_info[ny][nx]
-            if not passable:
-                continue
-
-            # Directional warp check
-            if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
-                continue
-            # Ledge direction check
-            if behavior in LEDGE_DIRECTIONS and LEDGE_DIRECTIONS[behavior] != direction:
-                continue
-            # Directional block on SOURCE tile (0x30 blocks east, 0x31 blocks west)
-            _, src_behavior = terrain_info[y][x]
-            if src_behavior in DIRECTIONAL_BLOCKS and DIRECTIONAL_BLOCKS[src_behavior] == direction:
-                continue
-
-            # Level constraint
-            if not _tile_on_level(nx, ny, current_level):
-                continue
-
-            new_path = path + [direction]
-            visited.add((nx, ny))
-
-            # Record ramp transitions to other levels
-            ramp_key = (nx, ny)
-            if ramp_key in ramp_tiles:
-                ri = ramp_tiles[ramp_key]
-                ramp_idx = ri["ramp_index"]
-                if ramp_idx not in reachable_ramps:
-                    if ri["from_level"] == current_level:
-                        other = ri["to_level"]
-                    elif ri["to_level"] == current_level:
-                        other = ri["from_level"]
-                    else:
-                        other = None
-                    if other is not None and other != current_level:
-                        reachable_ramps[ramp_idx] = (new_path, (nx, ny), other)
-
-            if (nx, ny) == (goal_x, goal_y):
-                return new_path, reachable_ramps
-
-            queue.append((nx, ny, new_path))
-
-    return None, reachable_ramps
-
-
-_DIR_DELTAS = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
-
-
-def _bfs_pathfind_3d(
-    terrain_info: list, npc_set: set, elevation: dict,
-    start_x: int, start_y: int, goal_x: int, goal_y: int,
-    start_level: int, width: int = 32, height: int = 32,
-) -> list[str] | None:
-    """Hierarchical 3D BFS: pathfind across elevation levels via ramp transitions.
-
-    Tries direct BFS on the start level. If the goal is unreachable, brute-forces
-    through reachable ramps: BFS to ramp → transition level → recurse.
-    Depth-capped at _3D_MAX_DEPTH, wall-clock timeout at _3D_TIMEOUT seconds.
-    """
-    goal_levels = _get_tile_level(goal_x, goal_y, elevation)
-    deadline = time.monotonic() + _3D_TIMEOUT
-
-    def _search(
-        sx: int, sy: int, level: int, depth: int, visited_ramps: frozenset[int],
-    ) -> list[str] | None:
-        if depth > _3D_MAX_DEPTH:
-            return None
-        if time.monotonic() > deadline:
-            return None
-
-        direct_path, reachable_ramps = _bfs_pathfind_level(
-            terrain_info, npc_set, elevation,
-            sx, sy, goal_x, goal_y,
-            level, width=width, height=height,
-        )
-
-        if direct_path is not None:
-            return direct_path
-
-        if not reachable_ramps:
-            return None
-
-        # Sort ramps: toward target level first, then Manhattan to goal, then path length
-        def _ramp_priority(item: tuple) -> tuple:
-            ramp_idx, (path_to_ramp, _, other_level) = item
-            toward_goal = 0 if (goal_levels and other_level in goal_levels) else 1
-            # Use ramp midpoint for distance heuristic
-            ri = None
-            for r in elevation["ramps"]:
-                if r["ramp_index"] == ramp_idx:
-                    ri = r
-                    break
-            if ri:
-                mid_c = (ri["col_range"][0] + ri["col_range"][1]) / 2
-                mid_r = (ri["row_range"][0] + ri["row_range"][1]) / 2
-                dist = abs(mid_c - goal_x) + abs(mid_r - goal_y)
-            else:
-                dist = 999.0
-            return (toward_goal, dist, len(path_to_ramp))
-
-        candidates = [
-            (idx, data) for idx, data in reachable_ramps.items()
-            if idx not in visited_ramps
-        ]
-        candidates.sort(key=_ramp_priority)
-
-        best_path: list[str] | None = None
-
-        for ramp_idx, (path_to_ramp, (rx, ry), other_level) in candidates:
-            if time.monotonic() > deadline:
-                break
-
-            new_visited = visited_ramps | {ramp_idx}
-            continuation = _search(rx, ry, other_level, depth + 1, new_visited)
-
-            if continuation is not None:
-                full_path = path_to_ramp + continuation
-                if best_path is None or len(full_path) < len(best_path):
-                    best_path = full_path
-
-        return best_path
-
-    return _search(start_x, start_y, start_level, 0, frozenset())
-
-
-def _build_multi_chunk_terrain(
-    emu: EmulatorClient, map_id: int, px: int, py: int, target_x: int, target_y: int,
-) -> tuple | None:
-    """Load multi-chunk terrain grid. Returns (terrain_info, origin_x, origin_y, w, h) or None."""
-    result = get_matrix_for_map(emu, map_id)
-    if result is None:
-        return None
-
-    matrix_id, mw, mh, header_ids, terrain_ids = result
-
-    player_chunk_x = px // CHUNK_SIZE
-    player_chunk_y = py // CHUNK_SIZE
-    target_chunk_x = target_x // CHUNK_SIZE
-    target_chunk_y = target_y // CHUNK_SIZE
-
-    min_cx = max(0, min(player_chunk_x, target_chunk_x) - 1)
-    max_cx = min(mw - 1, max(player_chunk_x, target_chunk_x) + 1)
-    min_cy = max(0, min(player_chunk_y, target_chunk_y) - 1)
-    max_cy = min(mh - 1, max(player_chunk_y, target_chunk_y) + 1)
-
-    # Cap at 5x5 chunks
-    if max_cx - min_cx > 4:
-        mid = (player_chunk_x + target_chunk_x) // 2
-        min_cx = max(0, mid - 2)
-        max_cx = min(mw - 1, mid + 2)
-    if max_cy - min_cy > 4:
-        mid = (player_chunk_y + target_chunk_y) // 2
-        min_cy = max(0, mid - 2)
-        max_cy = min(mh - 1, mid + 2)
-
-    num_cx = max_cx - min_cx + 1
-    num_cy = max_cy - min_cy + 1
-    grid_w = num_cx * CHUNK_SIZE
-    grid_h = num_cy * CHUNK_SIZE
-    grid_origin_x = min_cx * CHUNK_SIZE
-    grid_origin_y = min_cy * CHUNK_SIZE
-
-    combined = [[(False, 0)] * grid_w for _ in range(grid_h)]
-
-    for cy in range(min_cy, max_cy + 1):
-        for cx in range(min_cx, max_cx + 1):
-            land_id = terrain_ids[cy][cx]
-            if land_id == 0xFFFF:
-                continue
-
-            chunk_terrain = load_terrain_from_rom(land_id)
-            if chunk_terrain is None:
-                continue
-
-            base_x = (cx - min_cx) * CHUNK_SIZE
-            base_y = (cy - min_cy) * CHUNK_SIZE
-            for row in range(CHUNK_SIZE):
-                for col in range(CHUNK_SIZE):
-                    val = chunk_terrain[row][col]
-                    is_blocked = (val & 0x8000) != 0
-                    behavior = val & 0x00FF
-                    passable = (
-                        ((not is_blocked) or behavior in WARP_PASSABLE or behavior in LEDGE_DIRECTIONS)
-                        and behavior not in TERRAIN_OBSTACLES
-                    )
-                    combined[base_y + row][base_x + col] = (passable, behavior)
-
-    return combined, grid_origin_x, grid_origin_y, grid_w, grid_h
-
-
-def _build_multi_chunk_elevation(
-    emu: EmulatorClient, map_id: int,
-    terrain_info: list, grid_ox: int, grid_oy: int, grid_w: int, grid_h: int,
-) -> dict | None:
-    """Load BDHC for each chunk in the terrain grid, build combined elevation data.
-
-    Returns elevation dict compatible with _bfs_pathfind_3d, or None if flat.
-    """
-    from renegade_mcp.map_state import (
-        _tile_to_bdhc, get_matrix_for_map, parse_bdhc,
-    )
-
-    result = get_matrix_for_map(emu, map_id)
-    if result is None:
-        return None
-
-    _matrix_id, mw, mh, _header_ids, terrain_ids = result
-
-    min_cx = grid_ox // CHUNK_SIZE
-    min_cy = grid_oy // CHUNK_SIZE
-    num_cx = grid_w // CHUNK_SIZE
-    num_cy = grid_h // CHUNK_SIZE
-
-    # Pass 1: Load all BDHC data and collect flat heights
-    chunk_bdhcs: dict[tuple[int, int], dict] = {}
-    all_flat_heights: set[int] = set()
-
-    for cy in range(min_cy, min_cy + num_cy):
-        for cx in range(min_cx, min_cx + num_cx):
-            if cy >= mh or cx >= mw:
-                continue
-            land_id = terrain_ids[cy][cx]
-            if land_id == 0xFFFF:
-                continue
-            bdhc = parse_bdhc(land_id)
-            if bdhc is None:
-                continue
-
-            chunk_bdhcs[(cx, cy)] = bdhc
-
-            for plate in bdhc["plates"]:
-                nx, ny, nz = bdhc["normals"][plate["normal"]]
-                if abs(nx) < 0.01 and abs(nz) < 0.01 and abs(ny) > 0.01:
-                    d = bdhc["constants"][plate["constant"]]
-                    all_flat_heights.add(round(-d / ny))
-
-    if len(all_flat_heights) <= 1:
-        return None  # Flat terrain across all loaded chunks
-
-    sorted_heights = sorted(all_flat_heights)
-    h2l = {h: i for i, h in enumerate(sorted_heights)}
-
-    # Pass 2: Map tiles to levels across all chunks
-    level_map: dict[tuple[int, int], list[int]] = {}
-    ramp_tiles: dict[tuple[int, int], dict] = {}
-    ramps: list[dict] = []
-
-    for (cx, cy), bdhc in chunk_bdhcs.items():
-        base_x = (cx - min_cx) * CHUNK_SIZE
-        base_y = (cy - min_cy) * CHUNK_SIZE
-
-        plates = bdhc["plates"]
-        pts = bdhc["points"]
-        norms = bdhc["normals"]
-        consts = bdhc["constants"]
-
-        # Flat plates → tile level assignments
-        for row in range(CHUNK_SIZE):
-            for col in range(CHUNK_SIZE):
-                gx = base_x + col
-                gy = base_y + row
-                if gx >= grid_w or gy >= grid_h:
-                    continue
-                passable, _ = terrain_info[gy][gx]
-                if not passable:
-                    continue
-
-                x, z = _tile_to_bdhc(col, row)
-                levels: set[int] = set()
-                for plate in plates:
-                    x1, z1 = pts[plate["p1"]]
-                    x2, z2 = pts[plate["p2"]]
-                    if not (min(x1, x2) <= x <= max(x1, x2)
-                            and min(z1, z2) <= z <= max(z1, z2)):
-                        continue
-                    nx, ny, nz = norms[plate["normal"]]
-                    if abs(nx) < 0.01 and abs(nz) < 0.01 and abs(ny) > 0.01:
-                        d = consts[plate["constant"]]
-                        h = round(-d / ny)
-                        if h in h2l:
-                            levels.add(h2l[h])
-                if levels:
-                    level_map[(gx, gy)] = sorted(levels)
-
-        # Ramp plates
-        for plate in plates:
-            nx, ny, nz = norms[plate["normal"]]
-            if abs(nx) < 0.01 and abs(nz) < 0.01:
-                continue
-            if abs(ny) < 0.01:
-                continue
-
-            x1, z1 = pts[plate["p1"]]
-            x2, z2 = pts[plate["p2"]]
-            d = consts[plate["constant"]]
-
-            corners = [
-                (min(x1, x2), min(z1, z2)), (min(x1, x2), max(z1, z2)),
-                (max(x1, x2), min(z1, z2)), (max(x1, x2), max(z1, z2)),
-            ]
-            corner_heights = [
-                round(-(nx * cx_ + nz * cz + d) / ny) for cx_, cz in corners
-            ]
-            h_max, h_min = max(corner_heights), min(corner_heights)
-
-            from_level = h2l.get(h_max)
-            to_level = h2l.get(h_min)
-            if from_level is None or to_level is None:
-                continue
-
-            direction = (
-                ("south" if nz > 0 else "north")
-                if abs(nz) >= abs(nx) else ("east" if nx > 0 else "west")
-            )
-
-            col_min = int((min(x1, x2) + 256) / 16)
-            col_max = int((max(x1, x2) + 256) / 16)
-            row_min = int((min(z1, z2) + 256) / 16)
-            row_max = int((max(z1, z2) + 256) / 16)
-
-            ramp_info = {
-                "ramp_index": len(ramps),
-                "col_range": (base_x + col_min, base_x + col_max),
-                "row_range": (base_y + row_min, base_y + row_max),
-                "from_level": from_level,
-                "to_level": to_level,
-                "direction": direction,
-            }
-            ramps.append(ramp_info)
-
-            for r in range(row_min, row_max):
-                for c in range(col_min, col_max):
-                    gx = base_x + c
-                    gy = base_y + r
-                    if 0 <= gx < grid_w and 0 <= gy < grid_h:
-                        passable, _ = terrain_info[gy][gx]
-                        if passable:
-                            ramp_tiles[(gx, gy)] = ramp_info
-
-    levels_info = [{"level": h2l[h], "height": h} for h in sorted_heights]
-
-    return {
-        "level_map": level_map,
-        "ramp_tiles": ramp_tiles,
-        "ramps": ramps,
-        "levels": levels_info,
-        "height_to_level": h2l,
-    }
-
-
-def _summarize_path(directions: list[str]) -> str:
-    """Compress direction list into readable summary."""
-    if not directions:
-        return "(none)"
-    parts = []
-    current = directions[0]
-    count = 1
-    for d in directions[1:]:
-        if d == current:
-            count += 1
-        else:
-            parts.append(f"{current} x{count}" if count > 1 else current)
-            current = d
-            count = 1
-    parts.append(f"{current} x{count}" if count > 1 else current)
-    return " -> ".join(parts)
 
 
 # ── NPC tracking and dynamic repathing ──
@@ -1097,7 +235,6 @@ def _try_repath(
     elevation = ctx.get("elevation")
     if elevation is not None:
         emu = ctx["emu"]
-        from renegade_mcp.map_state import read_player_height
         player_level = _height_to_level(
             read_player_height(emu), elevation,
             tile_x=sx, tile_y=sy,
@@ -1129,1045 +266,6 @@ def _try_repath(
         sx, sy, ctx["goal_x"], ctx["goal_y"],
         width=w, height=h,
     )
-
-
-# ── Auto-flee for wild encounters during navigation ──
-
-MAX_FLEE_ENCOUNTERS = 10  # safety cap to prevent infinite loops
-POST_BATTLE_SETTLE = 300  # frames to wait after battle ends before resuming nav
-
-_BATTLE_OVER = {"BATTLE_ENDED"}
-_FAINT_STATES = {"FAINT_SWITCH", "FAINT_FORCED"}
-
-
-def _flee_wild_battle(emu: EmulatorClient) -> dict[str, Any]:
-    """Flee a wild battle, retrying on failure. Returns success/failure info.
-
-    Mirrors auto_grind._run_battle pattern but simplified for navigation use.
-    """
-    from renegade_mcp.turn import battle_turn as _battle_turn
-
-    max_attempts = 10
-    for attempt in range(max_attempts):
-        result = _battle_turn(emu, run=True)
-        state = result.get("final_state", "")
-
-        if state in _BATTLE_OVER:
-            return {"success": True, "attempts": attempt + 1}
-
-        if state == "WAIT_FOR_ACTION":
-            # Escape failed, enemy got a free turn — retry
-            continue
-
-        if state in _FAINT_STATES:
-            return {"success": False, "reason": "fainted", "state": state}
-
-        return {"success": False, "reason": f"unexpected state: {state}"}
-
-    return {"success": False, "reason": "max flee attempts reached"}
-
-
-def _try_flee_encounter(
-    emu: EmulatorClient, encounter: dict[str, Any] | None,
-) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-    """If encounter is a wild battle, flee it and return to overworld.
-
-    Returns (encounter_or_none, flee_entry_or_none).
-    - Wild battle fled successfully: (None, flee_log_entry) — encounter cleared.
-    - Wild battle flee failed: (original encounter, flee_log_entry with failure).
-    - Trainer battle or dialogue: (original encounter, None) — unchanged.
-    - No encounter: (None, None).
-    """
-    if encounter is None:
-        return None, None
-
-    if encounter.get("encounter") != "battle":
-        # Dialogue/cutscene — pass through unchanged
-        return encounter, None
-
-    if encounter.get("dialogue"):
-        # Trainer battle — can't flee, pass through
-        return encounter, None
-
-    # Wild battle — extract species and flee
-    species = "unknown"
-    for b in (encounter.get("battle_state") or []):
-        if b.get("side") == "enemy":
-            species = b.get("species", "unknown")
-            break
-
-    flee_result = _flee_wild_battle(emu)
-    flee_entry: dict[str, Any] = {"type": "wild", "species": species}
-
-    if flee_result["success"]:
-        flee_entry["fled"] = True
-        flee_entry["attempts"] = flee_result["attempts"]
-        emu.advance_frames(POST_BATTLE_SETTLE)
-        return None, flee_entry
-    else:
-        flee_entry["fled"] = False
-        flee_entry["reason"] = flee_result["reason"]
-        return encounter, flee_entry
-
-
-# ── Post-navigation encounter/dialogue detection ──
-
-POST_NAV_POLL_FRAMES = 15
-POST_NAV_MAX_POLLS = 20  # 20 * 15 = 300 frames
-
-
-def _post_nav_check(emu: EmulatorClient) -> dict[str, Any] | None:
-    """Check for battle encounter or overworld dialogue after navigation.
-
-    Polls up to 300 frames (15 at a time). On each iteration, checks
-    read_battle and read_dialogue BEFORE advancing, so frame 0 is checked.
-
-    If a battle is detected, advances through the transition to the first
-    action prompt (ability announcements, send-out text, etc.) and returns
-    the battle state, intro log, and prompt info — ready for battle_turn.
-
-    If overworld dialogue is detected, returns the dialogue text.
-
-    Returns None if neither is detected within 300 frames.
-    """
-    for _ in range(POST_NAV_MAX_POLLS):
-        # Check for battle encounter
-        battlers = read_battle(emu)
-        if battlers:
-            prompt_result = _wait_for_action_prompt(emu)
-            battle_state = read_battle(emu)
-            result: dict[str, Any] = {
-                "encounter": "battle",
-                "battle_log": prompt_result["log"],
-                "battle_state": battle_state,
-                "battle_state_formatted": format_battle(battle_state),
-                "prompt_ready": prompt_result["ready"],
-            }
-            if prompt_result.get("prompt_type"):
-                result["prompt_type"] = prompt_result["prompt_type"]
-            if prompt_result.get("state"):
-                result["final_state"] = prompt_result["state"]
-            return result
-
-        # Check for overworld dialogue
-        dialogue = read_dialogue(emu, region="overworld")
-        if dialogue["region"] != "none":
-            # Validate: text buffer can contain stale data during NPC approach
-            # animations. Only trust it when msgBox=1 (dialogue box visible).
-            mgr = _find_script_manager(emu)
-            if mgr is not None:
-                ss = _read_script_state(emu, mgr)
-                if not ss["is_msg_box_open"]:
-                    # msgBox=0: text is pre-positioned, not yet displayed.
-                    # If a script is running, keep polling — dialogue will
-                    # appear once the approach animation finishes.
-                    if ss["ctx0_ptr"]:
-                        ctx0 = _read_context_state(emu, ss["ctx0_ptr"])
-                        if ctx0["state"] in (CTX_RUNNING, CTX_WAITING):
-                            emu.advance_frames(POST_NAV_POLL_FRAMES)
-                            continue
-                    # No active script — stale buffer data, skip.
-                    emu.advance_frames(POST_NAV_POLL_FRAMES)
-                    continue
-
-            # msgBox is open — real dialogue. Auto-advance.
-            adv_result = advance_dialogue(emu)
-
-            # After dialogue, check if it transitioned into a battle
-            battlers = read_battle(emu)
-            if battlers:
-                prompt_result = _wait_for_action_prompt(emu)
-                battle_state = read_battle(emu)
-                result: dict[str, Any] = {
-                    "encounter": "battle",
-                    "dialogue": adv_result,
-                    "battle_log": prompt_result["log"],
-                    "battle_state": battle_state,
-                    "battle_state_formatted": format_battle(battle_state),
-                    "prompt_ready": prompt_result["ready"],
-                }
-                if prompt_result.get("prompt_type"):
-                    result["prompt_type"] = prompt_result["prompt_type"]
-                if prompt_result.get("state"):
-                    result["final_state"] = prompt_result["state"]
-                return result
-
-            return {
-                "encounter": "dialogue",
-                "dialogue": adv_result,
-            }
-
-        emu.advance_frames(POST_NAV_POLL_FRAMES)
-
-    return None
-
-
-# ── Door transition ──
-
-
-def _handle_door_transition(
-    emu: EmulatorClient, behavior: int, original_map: int,
-) -> dict[str, Any] | None:
-    """Handle a door/warp tile after navigation reaches it.
-
-    For walk-into doors (0x69, 0x6E), the warp may have already triggered.
-    For step-on doors (0x65, 0x5F, 0x5E), presses the activation direction.
-    For directional warps (0x62, 0x63, etc.), walks in the required direction.
-    Waits for map transition to complete and returns new position info.
-
-    Returns dict with new map info, or None if no transition occurred.
-    """
-    activation = DOOR_ACTIVATION.get(behavior)
-    if activation is None:
-        activation = DIRECTIONAL_WARP.get(behavior)
-
-    # For doors/warps that need a direction press, do it now
-    if activation is not None:
-        emu.advance_frames(HOLD_FRAMES, buttons=[activation])
-        emu.advance_frames(WAIT_FRAMES)
-
-    # Wait for map transition — map_id should change
-    from renegade_mcp.addresses import addr as _addr
-    pos_base = _addr("PLAYER_POS_BASE")
-    result = emu.advance_frames_until(
-        max_frames=DOOR_TRANSITION_POLLS * DOOR_POLL_FRAMES,
-        conditions=[{"type": "changed", "address": pos_base, "size": "long"}],
-        poll_interval=DOOR_POLL_FRAMES,
-    )
-    if result["triggered"]:
-        # Transition happened — settle and return new position
-        emu.advance_frames(SETTLE_FRAMES)
-        final_map, final_x, final_y = _read_position(emu)
-        return {
-            "door_entered": True,
-            "door_behavior": f"0x{behavior:02X}",
-            "new_map": final_map,
-            "new_position": _pos_with_map(final_x, final_y, final_map),
-        }
-
-    return None
-
-
-# ── Encounter seeking ──
-
-SEEK_MAX_STEPS = 200
-SEEK_MAX_CASTS = 20     # Max fishing attempts before giving up
-GRASS_BEHAVIOR = 0x02
-OPPOSITE_DIR = {"up": "down", "down": "up", "left": "right", "right": "left"}
-
-# ── Fishing constants ──
-# MapObject animation state offset from player object base (struct + 0xA0).
-# Values: 0=idle, 1=casting, 2=bite (press A!), 3=reeling in.
-_FISH_ANIM_OFFSET = 0xA0
-_FISH_ANIM_BITE = 2
-# Hook timing windows from decomp (frames at 60fps):
-#   Old Rod: 45, Good Rod: 30, Super Rod: 15
-# We poll every frame so we'll always catch it in time.
-_FISH_MAX_POLL = 600    # ~10 sec timeout per cast
-# Rod name → expected rod names (case-insensitive matching)
-_ROD_NAMES = {"old rod", "good rod", "super rod"}
-# Direction → facing value mapping (inverse of FACING_NAMES)
-_FACING_VALUES = {"up": 0, "down": 1, "left": 2, "right": 3}
-# Facing value → direction delta (dx, dy)
-_FACING_DELTAS = {0: (0, -1), 1: (0, 1), 2: (-1, 0), 3: (1, 0)}
-
-
-def _find_pacing_pair(
-    terrain: list, local_px: int, local_py: int,
-    npc_set: set, cave: bool = False,
-    width: int = 32, height: int = 32,
-) -> tuple | None:
-    """Find two adjacent tiles to pace between, plus path to reach them.
-
-    For grass mode: both tiles must have behavior 0x02 (tall grass).
-    For cave mode: any walkable non-ledge tiles.
-
-    Returns (tile_a, tile_b, dir_a_to_b, path_to_a) or None.
-    """
-    def is_valid(x: int, y: int) -> bool:
-        if not (0 <= x < width and 0 <= y < height):
-            return False
-        val = terrain[y][x]
-        if val & 0x8000:
-            return False
-        if (x, y) in npc_set:
-            return False
-        behavior = val & 0x00FF
-        if cave:
-            return behavior not in LEDGE_DIRECTIONS
-        return behavior == GRASS_BEHAVIOR
-
-    def valid_neighbor(x: int, y: int) -> tuple | None:
-        for dx, dy, direction in BFS_MOVES:
-            nx, ny = x + dx, y + dy
-            if is_valid(nx, ny):
-                return nx, ny, direction
-        return None
-
-    # Player already on a valid tile?
-    if is_valid(local_px, local_py):
-        nb = valid_neighbor(local_px, local_py)
-        if nb:
-            return (local_px, local_py), (nb[0], nb[1]), nb[2], []
-
-    # BFS to nearest valid tile that has a valid neighbor
-    visited = {(local_px, local_py)}
-    queue: deque[tuple[int, int, list[str]]] = deque([(local_px, local_py, [])])
-
-    while queue:
-        x, y, path = queue.popleft()
-        for dx, dy, direction in BFS_MOVES:
-            nx, ny = x + dx, y + dy
-            if not (0 <= nx < width and 0 <= ny < height):
-                continue
-            if (nx, ny) in visited:
-                continue
-            visited.add((nx, ny))
-            val = terrain[ny][nx]
-            if val & 0x8000:
-                continue
-            new_path = path + [direction]
-            if is_valid(nx, ny):
-                nb = valid_neighbor(nx, ny)
-                if nb:
-                    return (nx, ny), (nb[0], nb[1]), nb[2], new_path
-            queue.append((nx, ny, new_path))
-
-    return None
-
-
-def _fish_once(emu: EmulatorClient, rod_name: str) -> dict[str, Any]:
-    """Execute one fishing attempt: use rod → detect bite → press A → battle.
-
-    Returns dict with:
-        result: "encounter" | "no_bite" | "got_away" | "error"
-        encounter: (only on "encounter") battle data from _post_nav_check
-        error: (only on "error") error message
-    """
-    from renegade_mcp.use_item import activate_key_item, FISHING_FUNCS
-    from renegade_mcp.addresses import addr
-
-    # Use the rod through the menu system
-    activated = activate_key_item(emu, rod_name, allowed_funcs=FISHING_FUNCS)
-    if not activated.get("success"):
-        return {"result": "error", "error": activated.get("error", "Failed to use rod.")}
-
-    # Menu is closing, fishing animation starting.
-    # Read the player MapObject animation state to detect the bite.
-    obj_base = addr("OBJ_ARRAY_FPX_BASE") - 0x70  # MapObject[0] true start
-    anim_addr = obj_base + _FISH_ANIM_OFFSET
-
-    # Phase 1: Wait for cast animation to start (anim 0 → 1).
-    cast_result = emu.advance_frames_until(
-        max_frames=120,
-        conditions=[{"type": "value", "address": anim_addr, "size": "long",
-                     "operator": "==", "value": 1}],
-    )
-    if not cast_result["triggered"]:
-        # Cast never started — dismiss any leftover text and bail.
-        emu.press_buttons(["b"], frames=8)
-        emu.advance_frames(60)
-        return {"result": "got_away"}
-
-    # Phase 2: Wait for bite (anim == 2) or return to idle (anim == 0 = no bite).
-    bite_result = emu.advance_frames_until(
-        max_frames=_FISH_MAX_POLL,
-        conditions=[
-            {"type": "value", "address": anim_addr, "size": "long",
-             "operator": "==", "value": _FISH_ANIM_BITE},   # condition 0: bite
-            {"type": "value", "address": anim_addr, "size": "long",
-             "operator": "==", "value": 0},                  # condition 1: no bite
-        ],
-    )
-
-    if bite_result["triggered"] and bite_result["condition_index"] == 0:
-        # Bite! Press A immediately to hook the fish.
-        emu.press_buttons(["a"], frames=8)
-
-        # Reeling animation plays (~15 frames), then "Landed a Pokémon!"
-        # text appears. Wait for the text, then dismiss with A/B.
-        emu.advance_frames(120)
-        emu.press_buttons(["b"], frames=8)
-        emu.advance_frames(120)
-        emu.press_buttons(["b"], frames=8)
-        emu.advance_frames(120)
-
-        # Battle transition now. Use _post_nav_check which polls up to
-        # 300 frames for battle detection and advances through intro.
-        encounter = _post_nav_check(emu)
-        if encounter is not None:
-            return {"result": "encounter", "encounter": encounter}
-
-        # Fallback: advance more and re-check
-        emu.advance_frames(600)
-        encounter = _post_nav_check(emu)
-        if encounter is not None:
-            return {"result": "encounter", "encounter": encounter}
-
-        return {"result": "error", "error": "Bite detected but battle did not start."}
-
-    elif bite_result["triggered"] and bite_result["condition_index"] == 1:
-        # Animation returned to idle after casting = "Not even a nibble..."
-        # Dismiss the text with B and return.
-        emu.press_buttons(["b"], frames=8)
-        emu.advance_frames(120)
-        emu.press_buttons(["b"], frames=8)
-        emu.advance_frames(60)
-        return {"result": "no_bite"}
-
-    # Timeout — might be "The Pokémon got away..." or stuck.
-    # Dismiss any text and return.
-    emu.press_buttons(["b"], frames=8)
-    emu.advance_frames(120)
-    emu.press_buttons(["b"], frames=8)
-    emu.advance_frames(60)
-    return {"result": "got_away"}
-
-
-def _find_fishing_spot(
-    terrain: list, local_px: int, local_py: int,
-    npc_set: set, width: int, height: int,
-) -> tuple[int, int, str] | None:
-    """Find a walkable tile adjacent to water and the direction to face.
-
-    BFS from player position to find the nearest free tile that has at least
-    one adjacent water tile. Returns (local_x, local_y, face_direction) or None.
-    """
-    queue: deque[tuple[int, int, list[str]]] = deque()
-    queue.append((local_px, local_py, []))
-    visited: set[tuple[int, int]] = {(local_px, local_py)}
-
-    while queue:
-        cx, cy, path = queue.popleft()
-
-        # Check if this tile has an adjacent water tile
-        for direction, (dx, dy) in _DIR_DELTAS.items():
-            wx, wy = cx + dx, cy + dy
-            if 0 <= wx < width and 0 <= wy < height:
-                behavior = terrain[wy][wx] & 0x00FF
-                if behavior in WATER_BEHAVIORS:
-                    return (cx, cy, direction)
-
-        # Expand BFS to adjacent walkable tiles
-        if len(path) >= 15:
-            continue
-        for direction, (dx, dy) in _DIR_DELTAS.items():
-            nx, ny = cx + dx, cy + dy
-            if (nx, ny) in visited:
-                continue
-            if not (0 <= nx < width and 0 <= ny < height):
-                continue
-            cell = terrain[ny][nx]
-            blocked = (cell & 0x8000) != 0
-            behavior = cell & 0x00FF
-            if blocked or behavior in WATER_BEHAVIORS:
-                continue
-            if (nx, ny) in npc_set:
-                continue
-            visited.add((nx, ny))
-            queue.append((nx, ny, path + [direction]))
-
-    return None
-
-
-def _seek_fishing(emu: EmulatorClient, rod_name: str) -> dict[str, Any]:
-    """Fish repeatedly until a wild encounter triggers or max casts reached.
-
-    Handles positioning near water, facing water, and retrying on misses.
-    """
-    from renegade_mcp.map_state import FACING_NAMES
-
-    # Validate rod name
-    if rod_name.lower() not in _ROD_NAMES:
-        return {"error": f"Unknown rod: '{rod_name}'. Valid: Old Rod, Good Rod, Super Rod."}
-
-    # Check bag for the rod
-    from renegade_mcp.bag import read_bag
-    bag = read_bag(emu)
-    key_pocket = None
-    for pocket in bag:
-        if pocket["name"] == "Key Items":
-            key_pocket = pocket
-            break
-    if key_pocket is None:
-        return {"error": "Key Items pocket not found in bag data."}
-    rod_found = any(it["name"].lower() == rod_name.lower() for it in key_pocket["items"])
-    if not rod_found:
-        available_rods = [it["name"] for it in key_pocket["items"]
-                          if it["name"].lower() in _ROD_NAMES]
-        msg = f"'{rod_name}' not found in Key Items."
-        if available_rods:
-            msg += f" Available rods: {', '.join(available_rods)}."
-        else:
-            msg += " No fishing rods in bag."
-        return {"error": msg}
-
-    # Read current state
-    state = get_map_state(emu)
-    if state is None:
-        return {"error": "Could not read map state."}
-
-    local_px, local_py = state["local_px"], state["local_py"]
-    terrain = state["terrain"]
-    origin_x = state.get("origin_x", 0)
-    origin_y = state.get("origin_y", 0)
-    h = len(terrain)
-    w = len(terrain[0]) if terrain else 32
-
-    npc_set: set[tuple[int, int]] = set()
-    for obj in state.get("objects", []):
-        if obj["index"] == 0:
-            continue
-        lx = obj.get("local_x", obj["x"]) - origin_x
-        ly = obj.get("local_y", obj["y"]) - origin_y
-        if 0 <= lx < w and 0 <= ly < h:
-            npc_set.add((lx, ly))
-
-    # Check if player is surfing (standing on a water tile)
-    player_behavior = terrain[local_py][local_px] & 0x00FF if (
-        0 <= local_py < h and 0 <= local_px < w
-    ) else 0
-    is_surfing = player_behavior in WATER_BEHAVIORS
-
-    if is_surfing:
-        # Already on water — check if facing a water tile, if not turn to face one
-        _, _, _, facing_val = read_player_state(emu)
-        facing_name = FACING_NAMES.get(facing_val, "down")
-        dx, dy = _FACING_DELTAS.get(facing_val, (0, 1))
-        check_x, check_y = local_px + dx, local_py + dy
-
-        facing_water = (
-            0 <= check_x < w and 0 <= check_y < h
-            and (terrain[check_y][check_x] & 0x00FF) in WATER_BEHAVIORS
-        )
-
-        if not facing_water:
-            # Turn to face a water tile
-            for direction, (ddx, ddy) in _DIR_DELTAS.items():
-                nx, ny = local_px + ddx, local_py + ddy
-                if 0 <= nx < w and 0 <= ny < h:
-                    if (terrain[ny][nx] & 0x00FF) in WATER_BEHAVIORS:
-                        emu.press_buttons([direction], frames=2)
-                        emu.advance_frames(15)
-                        break
-    else:
-        # Not surfing — find a walkable tile next to water and navigate there
-        spot = _find_fishing_spot(terrain, local_px, local_py, npc_set, w, h)
-        if spot is None:
-            return {"error": "No water tiles found nearby to fish from."}
-
-        target_lx, target_ly, face_dir = spot
-        target_gx = target_lx + origin_x
-        target_gy = target_ly + origin_y
-
-        # Navigate to the fishing spot if not already there
-        if (local_px, local_py) != (target_lx, target_ly):
-            nav_result = navigate_to(emu, target_gx, target_gy)
-            if nav_result.get("encounter"):
-                return {"result": "encounter", "steps_taken": 0,
-                        "encounter": nav_result["encounter"]}
-
-        # Face the water
-        emu.press_buttons([face_dir], frames=2)
-        emu.advance_frames(15)
-
-    # Fish repeatedly until encounter or max casts
-    casts = 0
-    for casts in range(1, SEEK_MAX_CASTS + 1):
-        result = _fish_once(emu, rod_name)
-
-        if result["result"] == "encounter":
-            return {
-                "result": "encounter",
-                "steps_taken": casts,
-                "encounter": result["encounter"],
-            }
-        elif result["result"] == "error":
-            return {"error": result["error"], "casts": casts}
-        # "no_bite" or "got_away" — retry
-
-    _, fx, fy = _read_position(emu)
-    return {
-        "result": "max_casts",
-        "steps_taken": casts,
-        "position": _pos_with_map(fx, fy, _read_position(emu)[0]),
-    }
-
-
-def seek_encounter(emu: EmulatorClient, cave: bool = False,
-                   rod: str = "") -> dict[str, Any]:
-    """Walk in grass/cave or fish until a wild encounter triggers.
-
-    Without rod: finds nearest grass tiles (or cave walkable tiles) and paces
-    between them. Checks for battle after each step. Caps at 200 steps.
-
-    With rod: validates the rod is in the bag, positions near water (or turns
-    to face water if surfing), uses the rod, and detects the bite via the
-    player's MapObject animation state. Retries on "not even a nibble" and
-    "the Pokémon got away". Caps at 20 casts.
-
-    Args:
-        cave: If True, pace on any walkable tiles (not just grass).
-        rod: Name of fishing rod to use (e.g. "Old Rod"). Empty = no fishing.
-
-    Returns dict with result type, steps taken, and encounter data if found.
-    """
-    # ── Fishing path ──
-    if rod:
-        return _seek_fishing(emu, rod)
-
-    # ── Grass/cave path ──
-    from renegade_mcp.phase_timer import phase
-
-    with phase("seek_setup"):
-        state = get_map_state(emu)
-    if state is None:
-        return {"error": "Could not read map state."}
-
-    map_id = state["map_id"]
-    local_px, local_py = state["local_px"], state["local_py"]
-    terrain = state["terrain"]
-    origin_x = state.get("origin_x", 0)
-    origin_y = state.get("origin_y", 0)
-    height = len(terrain)
-    width = len(terrain[0]) if terrain else 32
-
-    # Build NPC set in local coords
-    npc_set: set[tuple[int, int]] = set()
-    for obj in state.get("objects", []):
-        if obj["index"] == 0:
-            continue
-        lx = obj.get("local_x", obj["x"]) - origin_x
-        ly = obj.get("local_y", obj["y"]) - origin_y
-        if 0 <= lx < width and 0 <= ly < height:
-            npc_set.add((lx, ly))
-
-    pair = _find_pacing_pair(terrain, local_px, local_py, npc_set,
-                             cave=cave, width=width, height=height)
-    if pair is None:
-        kind = "walkable" if cave else "grass"
-        return {"error": f"No adjacent {kind} tiles found nearby."}
-
-    tile_a, tile_b, dir_a_to_b, path_to_a = pair
-    dir_b_to_a = OPPOSITE_DIR[dir_a_to_b]
-    steps_taken = 0
-    hold = _get_move_hold(emu)
-
-    # Walk to first pacing tile if needed
-    for direction in path_to_a:
-        if steps_taken >= SEEK_MAX_STEPS:
-            break
-        old_map, old_x, old_y = _read_position(emu)
-        emu.advance_frames(hold, buttons=[direction])
-        emu.advance_frames(WAIT_FRAMES)
-        new_map, new_x, new_y = _read_position(emu)
-        steps_taken += 1
-
-        if (old_x, old_y, old_map) == (new_x, new_y, new_map):
-            encounter = _post_nav_check(emu)
-            if encounter is not None:
-                return {"result": "encounter", "steps_taken": steps_taken,
-                        "encounter": encounter}
-            return {"result": "blocked", "steps_taken": steps_taken,
-                    "position": _pos_with_map(new_x, new_y, new_map)}
-
-    # Pace back and forth
-    current_dir = dir_a_to_b
-
-    while steps_taken < SEEK_MAX_STEPS:
-        old_map, old_x, old_y = _read_position(emu)
-        emu.advance_frames(hold, buttons=[current_dir])
-        emu.advance_frames(WAIT_FRAMES)
-        new_map, new_x, new_y = _read_position(emu)
-        steps_taken += 1
-
-        if (old_x, old_y, old_map) == (new_x, new_y, new_map):
-            encounter = _post_nav_check(emu)
-            if encounter is not None:
-                return {"result": "encounter", "steps_taken": steps_taken,
-                        "encounter": encounter}
-            return {"result": "blocked", "steps_taken": steps_taken,
-                    "position": _pos_with_map(new_x, new_y, new_map)}
-
-        current_dir = dir_b_to_a if current_dir == dir_a_to_b else dir_a_to_b
-
-    # Max steps — final check
-    encounter = _post_nav_check(emu)
-    if encounter is not None:
-        return {"result": "encounter", "steps_taken": steps_taken,
-                "encounter": encounter}
-
-    final_map, final_x, final_y = _read_position(emu)
-    return {"result": "max_steps", "steps_taken": steps_taken,
-            "position": _pos_with_map(final_x, final_y, final_map)}
-
-
-# ── Cycling road movement ──
-# Route 206 bridge body tiles (0x71) auto-slide the player south at ~4f/tile.
-# Timings from empirical testing (melonDS JIT):
-#   South: passive slide at ~4 frames/tile, no input needed
-#   North: ~8 frames/tile with UP held (first step slides south, then north takes over)
-#   East/West: ~4 frames/tile lateral, but each lateral step also slides 1 tile south
-CYCLING_ROAD_SLIDE_RATE = 4      # frames per tile when sliding south
-CYCLING_ROAD_UPHILL_HOLD = 12    # frames to hold UP per tile (padded for safety)
-CYCLING_ROAD_LATERAL_HOLD = 4    # frames to hold LEFT/RIGHT per tile
-CYCLING_ROAD_POLL_INTERVAL = 2   # frames between position checks
-CYCLING_ROAD_MAX_WAIT = 600      # max frames to wait for a slide to complete (~10 sec)
-
-
-def _check_encounter_quick(emu: EmulatorClient) -> dict[str, Any] | None:
-    """Lightweight encounter check for use during cycling road movement.
-
-    Checks read_battle (trainer/wild) and dialogue (trainer spotted, sign, etc.).
-    Returns encounter dict if detected, None otherwise. Does NOT advance frames.
-    """
-    battlers = read_battle(emu)
-    if battlers:
-        return {"encounter": "battle_detected", "battlers": battlers}
-
-    dialogue = read_dialogue(emu, region="overworld")
-    if dialogue["region"] != "none":
-        mgr = _find_script_manager(emu)
-        if mgr is not None:
-            ss = _read_script_state(emu, mgr)
-            if ss["is_msg_box_open"]:
-                return {"encounter": "dialogue_detected", "dialogue": dialogue}
-            # Script running but msgBox not open yet — trainer approach animation
-            if ss["ctx0_ptr"]:
-                ctx0 = _read_context_state(emu, ss["ctx0_ptr"])
-                if ctx0["state"] in (CTX_RUNNING, CTX_WAITING):
-                    return {"encounter": "script_running"}
-    return None
-
-
-def _get_current_tile_behavior(emu: EmulatorClient) -> int:
-    """Read the terrain behavior byte at the player's current tile."""
-    from renegade_mcp.map_state import get_map_state
-    state = get_map_state(emu)
-    if state is None:
-        return 0
-    terrain = state["terrain"]
-    lx, ly = state["local_px"], state["local_py"]
-    if 0 <= ly < len(terrain) and 0 <= lx < len(terrain[ly]):
-        return terrain[ly][lx] & 0x00FF
-    return 0
-
-
-def _navigate_cycling_road(
-    emu: EmulatorClient, target_x: int, target_y: int,
-) -> dict[str, Any]:
-    """Navigate on the cycling road where auto-slide is active.
-
-    Strategy — order matters because every action on bridge body tiles drifts south:
-      1. Normal bike steps until we reach bridge body tiles (0x71)
-      2. North (uphill): hold UP continuously, polling position
-      3. Lateral (east/west): hold direction, accept south drift per step
-      4. South: let auto-slide carry us (no input), or normal step on non-bridge
-
-    Encounter detection runs after every movement phase. Trainer battles (pre-battle
-    dialogue) and wild encounters are caught and returned immediately.
-    """
-    start_map, start_x, start_y = _read_position(emu)
-    cur_x, cur_y = start_x, start_y
-    steps_log: list[str] = []
-    total_frames = 0
-    encounter: dict[str, Any] | None = None
-    max_iters = 200
-    no_progress = 0
-    last_pos = (cur_x, cur_y)
-
-    for _ in range(max_iters):
-        if cur_x == target_x and cur_y == target_y:
-            break
-
-        # General stuck detection: bail after 3 consecutive no-progress iterations
-        if (cur_x, cur_y) == last_pos:
-            no_progress += 1
-            if no_progress >= 3:
-                break
-        else:
-            no_progress = 0
-        last_pos = (cur_x, cur_y)
-
-        dx = target_x - cur_x
-        dy = target_y - cur_y
-        behavior = _get_current_tile_behavior(emu)
-        on_bridge = (behavior == 0x71)
-
-        # ── Phase: Normal ground movement (not on bridge body) ──
-        if not on_bridge:
-            if dy > 0:
-                emu.advance_frames(BIKE_HOLD_FRAMES, buttons=["down"])
-                emu.advance_frames(WAIT_FRAMES)
-                total_frames += BIKE_HOLD_FRAMES + WAIT_FRAMES
-            elif dy < 0:
-                emu.advance_frames(BIKE_HOLD_FRAMES, buttons=["up"])
-                emu.advance_frames(WAIT_FRAMES)
-                total_frames += BIKE_HOLD_FRAMES + WAIT_FRAMES
-            elif dx != 0:
-                btn = "left" if dx < 0 else "right"
-                emu.advance_frames(BIKE_HOLD_FRAMES, buttons=[btn])
-                emu.advance_frames(WAIT_FRAMES)
-                total_frames += BIKE_HOLD_FRAMES + WAIT_FRAMES
-            else:
-                break
-
-            _, new_x, new_y = _read_position(emu)
-            if (new_x, new_y) != (cur_x, cur_y):
-                steps_log.append(f"step ({cur_x},{cur_y})→({new_x},{new_y})")
-            cur_x, cur_y = new_x, new_y
-
-            # Encounter check after ground step
-            enc = _check_encounter_quick(emu)
-            if enc is not None:
-                encounter = _post_nav_check(emu)
-                break
-            continue
-
-        # ── Phase: On bridge body — uphill first (before lateral) ──
-        if dy < 0:
-            wait = 0
-            phase_start_y = cur_y
-            while cur_y > target_y and wait < CYCLING_ROAD_MAX_WAIT:
-                emu.advance_frames(4, buttons=["up"])
-                wait += 4
-                total_frames += 4
-                _, new_x, new_y = _read_position(emu)
-                if new_y != cur_y:
-                    steps_log.append(f"up ({cur_x},{cur_y})→({new_x},{new_y})")
-                    cur_x, cur_y = new_x, new_y
-                # Encounter check during uphill
-                enc = _check_encounter_quick(emu)
-                if enc is not None:
-                    encounter = _post_nav_check(emu)
-                    break
-            if encounter is not None:
-                break
-            if cur_y == phase_start_y:
-                break  # No uphill progress — stuck (NPC or wall blocking)
-            continue
-
-        # ── Phase: On bridge body — lateral moves ──
-        if dx != 0:
-            btn = "left" if dx < 0 else "right"
-            emu.advance_frames(4, buttons=[btn])
-            total_frames += 4
-            for _ in range(8):
-                _, new_x, new_y = _read_position(emu)
-                if new_x != cur_x:
-                    break
-                emu.advance_frames(1, buttons=[btn])
-                total_frames += 1
-            _, new_x, new_y = _read_position(emu)
-            if (new_x, new_y) != (cur_x, cur_y):
-                steps_log.append(f"{btn} ({cur_x},{cur_y})→({new_x},{new_y})")
-            cur_x, cur_y = new_x, new_y
-
-            # Encounter check after lateral step
-            enc = _check_encounter_quick(emu)
-            if enc is not None:
-                encounter = _post_nav_check(emu)
-                break
-            continue
-
-        # ── Phase: On bridge body — southbound (auto-slide) ──
-        if dy > 0:
-            wait = 0
-            phase_start_y = cur_y
-            while cur_y < target_y and wait < CYCLING_ROAD_MAX_WAIT:
-                emu.advance_frames(CYCLING_ROAD_POLL_INTERVAL)
-                wait += CYCLING_ROAD_POLL_INTERVAL
-                total_frames += CYCLING_ROAD_POLL_INTERVAL
-                _, new_x, new_y = _read_position(emu)
-                if new_y != cur_y:
-                    steps_log.append(f"slide ({cur_x},{cur_y})→({new_x},{new_y})")
-                    cur_x, cur_y = new_x, new_y
-                    if _get_current_tile_behavior(emu) != 0x71:
-                        break
-                # Encounter check during slide — position may stall if trainer
-                # spotted us (approach animation freezes player movement)
-                enc = _check_encounter_quick(emu)
-                if enc is not None:
-                    encounter = _post_nav_check(emu)
-                    break
-            if encounter is not None:
-                break
-            if cur_y == phase_start_y:
-                break  # No slide progress — stuck (NPC or wall blocking)
-            continue
-
-        # Should not reach here
-        break
-
-    final_map, final_x, final_y = _read_position(emu)
-    reached = (final_x == target_x and final_y == target_y)
-
-    result: dict[str, Any] = {
-        "cycling_road": True,
-        "reached_target": reached,
-        "steps_log": steps_log,
-        "total_frames": total_frames,
-        "start": _pos_with_map(start_x, start_y, start_map),
-        "final": _pos_with_map(final_x, final_y, final_map),
-    }
-    if encounter is not None:
-        result["encounter"] = encounter
-    if not reached and encounter is None:
-        result["note"] = (
-            f"Stopped at ({final_x},{final_y}), target was ({target_x},{target_y}). "
-            f"Possible obstacle (trainer NPC, wall, or end of bridge)."
-        )
-    return result
-
-
-# ── Bike slope traversal ──
-
-_OPPOSITE_DIR = {"up": "down", "down": "up", "left": "right", "right": "left"}
-
-
-def _traverse_bike_slope(
-    emu: EmulatorClient,
-    direction: str,
-    old_x: int, old_y: int,
-    num_slope_tiles: int,
-) -> tuple[int, int, int]:
-    """Traverse bike slope tiles using fast gear and a running start.
-
-    The game engine blocks single-step entry onto slope tiles.  To cross:
-    1. Switch to fast gear (press B if in slow gear)
-    2. Back up 3 tiles (opposite direction) to build momentum space
-    3. Hold *direction* continuously until past all slope tiles
-    4. Restore original gear
-
-    Args:
-        direction: Direction of travel through the slope.
-        old_x, old_y: Player position immediately before the first slope tile.
-        num_slope_tiles: Consecutive slope tiles to cross (usually 2).
-
-    Returns:
-        (final_x, final_y, tiles_moved) where tiles_moved is the distance
-        from old_x/old_y to the final position (includes the slope tiles).
-    """
-    from renegade_mcp.addresses import BIKE_GEAR_STATE_ADDR
-
-    opp = _OPPOSITE_DIR[direction]
-    dx, dy = _DIR_DELTAS[direction]
-
-    # ── 1. Ensure fast gear ──
-    gear = emu.read_memory(BIKE_GEAR_STATE_ADDR, size="byte")
-    was_slow = gear != 0
-    if was_slow:
-        emu.press_buttons(["b"], frames=8)
-        emu.advance_frames(8)
-
-    # ── 2. Back up 3 tiles for running start ──
-    for _ in range(BIKE_SLOPE_BACKUP_TILES):
-        emu.advance_frames(BIKE_HOLD_FRAMES, buttons=[opp])
-        emu.advance_frames(WAIT_FRAMES)
-
-    # ── 3. Continuous hold through the slope ──
-    # Fine-grained 2-frame polling from the backed-up position all the way
-    # through the slope.  Fast gear moves ~2-3 f/tile, so coarser polling
-    # causes multi-tile overshoot.  Stop once we've moved past all slope
-    # tiles (fwd > num_slope_tiles, measured from old_x/old_y).
-    frames_used = 0
-    last_pos = None
-    stall_frames = 0
-    while frames_used < BIKE_SLOPE_MAX_FRAMES:
-        emu.advance_frames(2, buttons=[direction])
-        frames_used += 2
-        _, nx, ny = _read_position(emu)
-
-        fwd = (nx - old_x) * dx + (ny - old_y) * dy
-        if fwd > num_slope_tiles:
-            break  # just past the last slope tile
-
-        # Stuck detection: bail if position unchanged for 40+ frames
-        if (nx, ny) == last_pos:
-            stall_frames += 2
-            if stall_frames >= 40:
-                break
-        else:
-            stall_frames = 0
-        last_pos = (nx, ny)
-
-    # ── 3b. Cancel fast gear and drain momentum ──
-    # Write slow gear (3rd) immediately so the bike stops auto-advancing,
-    # then idle for 120 frames (~2 sec) to fully drain the game engine's
-    # internal momentum counter.  Shorter settle periods look stable but
-    # the bike resumes drifting when subsequent code advances frames
-    # (e.g. the 300-frame post-navigation encounter poll).
-    emu.write_memory(BIKE_GEAR_STATE_ADDR, value=1, size="byte")
-    emu.advance_frames(120)
-
-    _, final_x, final_y = _read_position(emu)
-    tiles_moved = abs(final_x - old_x) + abs(final_y - old_y)
-    return final_x, final_y, tiles_moved
-
-
-# ── HM obstacle clearing ──
-
-# Timing for the HM field move interaction sequence.
-# Flow: face obstacle → A (interact) → wait for "Would you like to use X?" →
-#       A (confirm Yes, selected by default) → wait for "[Mon] used X!" text →
-#       wait for text to auto-dismiss + animation to finish → back in overworld.
-HM_INTERACT_WAIT = 120   # frames after A press for text scroll + Yes/No prompt
-HM_POST_CONFIRM_WAIT = 300  # frames after Yes for text + animation to complete
-HM_SETTLE_WAIT = 120     # frames to settle back into overworld after animation
-
-
-def _clear_hm_obstacle(
-    emu: EmulatorClient,
-    direction: str,
-    obstacle_info: dict,
-) -> bool:
-    """Execute the HM field move interaction to clear/traverse an obstacle.
-
-    Handles Rock Smash, Cut, Surf, Rock Climb, and Waterfall.
-    Assumes the player is adjacent to the obstacle and facing the right direction
-    (the initial movement press turned the player to face the obstacle).
-    Returns True if the obstacle was cleared/traversed, False if the interaction didn't trigger.
-    """
-    # Ensure player is fully facing the obstacle before interacting.
-    # The directional press that caused the block may have only started
-    # the turn animation — settle before pressing A.
-    emu.advance_frames(WAIT_FRAMES)
-
-    # Press A to interact with the obstacle
-    emu.press_buttons(["a"], frames=8)
-    emu.advance_frames(HM_INTERACT_WAIT)
-
-    # Check if dialogue appeared ("Would you like to use X?")
-    dialogue = read_dialogue(emu, region="overworld")
-    if dialogue["region"] == "none":
-        # No dialogue — maybe not facing correctly. Try waiting longer.
-        emu.advance_frames(HM_INTERACT_WAIT)
-        dialogue = read_dialogue(emu, region="overworld")
-        if dialogue["region"] == "none":
-            return False
-
-    # Press A to confirm "Yes" (selected by default on the top-screen prompt)
-    emu.press_buttons(["a"], frames=8)
-
-    # Wait for "[Mon] used X!" text to appear, auto-dismiss, and animation to play.
-    emu.advance_frames(HM_POST_CONFIRM_WAIT)
-
-    # Dismiss any remaining text (some HM animations leave a text box open)
-    emu.press_buttons(["b"], frames=8)
-    emu.advance_frames(HM_SETTLE_WAIT)
-
-    # Verify we're back in overworld by checking no dialogue is active
-    dialogue = read_dialogue(emu, region="overworld")
-    if dialogue["region"] != "none":
-        # Still showing text — press B a few more times to clear it
-        for _ in range(3):
-            emu.press_buttons(["b"], frames=8)
-            emu.advance_frames(60)
-            dialogue = read_dialogue(emu, region="overworld")
-            if dialogue["region"] == "none":
-                break
-
-    return True
 
 
 # ── Path execution ──
@@ -2417,61 +515,6 @@ def _execute_path(
 
 # ── Public API ──
 
-def _validate_path(
-    terrain_info: list,
-    start_x: int,
-    start_y: int,
-    directions: list[str],
-    width: int = 32,
-    height: int = 32,
-) -> tuple[bool, int, str, tuple[int, int]]:
-    """Simulate a path on the terrain grid and check for collisions.
-
-    Returns (ok, step_index, direction, tile) where:
-    - ok=True, step_index=-1 means full path is clear
-    - ok=True, step_index>=0, direction="transition" means path is valid but
-      should be trimmed at step_index (inclusive) — that step walks off a
-      door/stair tile in its activation direction, triggering a map transition.
-    - ok=False means step_index'th direction hits a wall at tile (x, y)
-
-    Off-grid tiles are allowed (map transitions).
-    """
-    cx, cy = start_x, start_y
-    deltas = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
-
-    for i, d in enumerate(directions):
-        # Check if current tile is a door/stair whose activation direction
-        # matches this step — if so, this step triggers a map transition
-        # regardless of what's on the destination tile.
-        if 0 <= cx < width and 0 <= cy < height:
-            _, cur_behavior = terrain_info[cy][cx]
-            activation = DOOR_ACTIVATION.get(cur_behavior)
-            if activation is not None and activation == d:
-                dx, dy = deltas[d]
-                nx, ny = cx + dx, cy + dy
-                return True, i, "transition", (nx, ny)
-
-        dx, dy = deltas[d]
-        nx, ny = cx + dx, cy + dy
-
-        # Off-grid = possible map transition, allow it
-        if not (0 <= nx < width and 0 <= ny < height):
-            cx, cy = nx, ny
-            continue
-
-        passable, behavior = terrain_info[ny][nx]
-        if not passable:
-            return False, i, d, (nx, ny)
-
-        # Stepping onto a directional warp in its activation direction = transition
-        if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] == d:
-            return True, i, "transition", (nx, ny)
-
-        cx, cy = nx, ny
-
-    return True, -1, "", (0, 0)
-
-
 def navigate_manual(emu: EmulatorClient, directions_str: str, flee_encounters: bool = False) -> dict[str, Any]:
     """Walk a manual path. Returns result dict with steps taken and final position."""
     directions = parse_directions(directions_str)
@@ -2617,50 +660,6 @@ def navigate_manual(emu: EmulatorClient, directions_str: str, flee_encounters: b
     return result
 
 
-def _classify_objects_for_grid(
-    objects: list, grid_ox: int, grid_oy: int, grid_w: int, grid_h: int,
-) -> tuple[set, dict]:
-    """Classify map objects into npc_set and obstacle_map for a given grid region."""
-    npc_set: set[tuple[int, int]] = set()
-    obstacle_map: dict[tuple[int, int], dict] = {}
-    for obj in objects:
-        if obj["index"] == 0:
-            continue
-        lx = obj["x"] - grid_ox
-        ly = obj["y"] - grid_oy
-        if not (0 <= lx < grid_w and 0 <= ly < grid_h):
-            continue
-
-        gfx_id = obj.get("graphics_id", 0)
-        if gfx_id in CLEARABLE_OBSTACLES:
-            info = HM_OBSTACLES[gfx_id]
-            obstacle_map[(lx, ly)] = {
-                "type": info["type"],
-                "move": info["move"],
-                "badge": info["badge"],
-                "gfx_id": gfx_id,
-                "global_x": obj["x"],
-                "global_y": obj["y"],
-            }
-        elif gfx_id in PUZZLE_OBSTACLES:
-            npc_set.add((lx, ly))
-        else:
-            npc_set.add((lx, ly))
-    return npc_set, obstacle_map
-
-
-def _dedupe_obstacles(obstacles: list[dict]) -> list[dict]:
-    """Remove duplicate obstacles (same type at same position)."""
-    seen: set[tuple[str, int, int]] = set()
-    result = []
-    for ob in obstacles:
-        key = (ob["type"], ob.get("global_x", ob.get("x", 0)), ob.get("global_y", ob.get("y", 0)))
-        if key not in seen:
-            seen.add(key)
-            result.append(ob)
-    return result
-
-
 def navigate_to(
     emu: EmulatorClient, target_x: int, target_y: int,
     path_choice: str | None = None,
@@ -2703,14 +702,10 @@ def navigate_to(
             break
 
         if enc.get("encounter") != "battle":
-            # Dialogue/cutscene — could be a signpost, but could also be a
-            # scripted event that repositions the player or blocks the path.
-            # Halt and let the caller see what happened.
             break
 
         if enc.get("dialogue"):
             # Trainer battle: pre-battle dialogue present → can't flee.
-            # Battle state is ready for the caller to handle.
             break
 
         # Extract species from battle state for the log
@@ -2889,11 +884,6 @@ def _navigate_to_impl(
             )
 
         if path_3d is None:
-            # 3D BFS failed — fall back to 2D BFS.  This handles:
-            # - Disconnected elevation levels (e.g., L0 with no ramp to L1)
-            # - Dynamic terrain changes (e.g., rotated clock puzzles in gyms)
-            # - Multi-chunk overworld slopes that control camera, not walkability
-            # The _try_repath fallback also drops to 2D when 3D fails mid-walk.
             is_3d = False
             elevation = None
             repath_ctx.pop("elevation", None)
@@ -2905,8 +895,6 @@ def _navigate_to_impl(
 
     if is_3d:
         path = path_3d
-        # Even on 3D maps, check if a shorter path exists through auto-navigable
-        # obstacles (Rock Smash/Cut/Surf). The 3D BFS treats them as impassable.
         field_moves = _get_field_move_availability(emu)
         if path is not None:
             obs_path_3d, obs_crossed_3d = _bfs_pathfind_obstacles(
@@ -2931,7 +919,6 @@ def _navigate_to_impl(
                 bfs_sx, bfs_sy, bfs_tx, bfs_ty, width=bfs_w, height=bfs_h,
             )
 
-        # Only run obstacle BFS if there are obstacles on the map or terrain obstacles
         field_moves = _get_field_move_availability(emu)
         with phase("nav_bfs_obstacle"):
             obs_path, obs_crossed = _bfs_pathfind_obstacles(
@@ -2946,7 +933,6 @@ def _navigate_to_impl(
         has_obs = obs_path is not None and len(obs_crossed) > 0
         obs_shorter = has_obs and (not has_clean or len(obs_path) < len(clean_path))
 
-        # Check if all required skills are available for the obstacle path
         skills_available = True
         if has_obs:
             for ob in obs_crossed:
@@ -2954,13 +940,10 @@ def _navigate_to_impl(
                     skills_available = False
                     break
 
-        # Classify obstacles: auto-navigable (Rock Smash/Cut/Surf/Rock Climb/
-        # Waterfall — auto-execute) vs manual (Strength — require caller confirmation)
         auto_obs = [ob for ob in obs_crossed if ob["type"] in AUTO_NAVIGATE_TYPES]
         manual_obs = [ob for ob in obs_crossed if ob["type"] not in AUTO_NAVIGATE_TYPES]
         all_auto = len(manual_obs) == 0 and len(auto_obs) > 0
 
-        # Determine which path to use
         if path_choice == "obstacle":
             if not has_obs:
                 return {"error": "No obstacle path available.", "start": _pos_with_map(px, py, map_id)}
@@ -2975,10 +958,8 @@ def _navigate_to_impl(
                         "start": _pos_with_map(px, py, map_id)}
             path = clean_path
         elif has_obs and obs_shorter and skills_available and all_auto and path_choice is None:
-            # All obstacles are auto-navigable — auto-take
             path = obs_path
         elif has_obs and obs_shorter and skills_available and not all_auto and path_choice is None:
-            # Manual obstacles (Strength boulders) — ask the caller
             start_pos = _pos_with_map(px, py, map_id)
             status = "obstacle_choice" if has_clean else "obstacle_required"
             obstacle_info = [{
@@ -3010,7 +991,6 @@ def _navigate_to_impl(
                 "message": msg,
             }
         elif has_obs and obs_shorter and not skills_available and not has_clean:
-            # Only path requires obstacles but skills aren't available
             missing = [ob["move"] for ob in obs_crossed if not field_moves.get(ob["move"], False)]
             return {
                 "error": f"No path found. An obstacle path exists but requires: {set(missing)}",
@@ -3018,7 +998,6 @@ def _navigate_to_impl(
                 "target": {"x": target_x, "y": target_y},
             }
         else:
-            # Default: use clean path (or None)
             path = clean_path
 
     # ── Check if target tile is a door/warp ──
@@ -3062,7 +1041,6 @@ def _navigate_to_impl(
                 "by walls, water, NPCs, or obstacles"
             )
 
-        # Build visual failure diagram + nearest reachable suggestion
         result: dict[str, Any] = {
             "error": "No path found: " + "; ".join(reasons) + ".",
             "start": start_pos,
@@ -3096,7 +1074,6 @@ def _navigate_to_impl(
 
     if len(path) == 0:
         if is_door:
-            # Already standing on the door tile — activate it
             door_result = _handle_door_transition(emu, target_behavior, map_id)
             result: dict[str, Any] = {
                 "path": "at door",
@@ -3107,7 +1084,6 @@ def _navigate_to_impl(
                 result.update(door_result)
                 result["final"] = door_result["new_position"]
             else:
-                # Check if dialogue/battle preempted the warp activation
                 encounter = _post_nav_check(emu)
                 if encounter:
                     result["final"] = start_pos
@@ -3132,11 +1108,6 @@ def _navigate_to_impl(
         }
 
     # Build obstacle tile lookup for _execute_path (auto-navigable obstacles).
-    # Maps global (x, y) → obstacle info so the executor can auto-handle them.
-    # Includes Rock Smash/Cut (object removed), Surf (enter water mode),
-    # Rock Climb (climb wall), and Waterfall (ascend/descend waterfall).
-    # Object obstacles have "global_x"/"global_y" from zone_event data.
-    # Terrain obstacles (water, waterfall, rock_climb) have grid-relative "x"/"y" — convert to global.
     exec_obstacle_tiles: dict[tuple[int, int], dict] = {}
     if obs_crossed and path is obs_path:
         for ob in obs_crossed:
@@ -3148,10 +1119,7 @@ def _navigate_to_impl(
                     gy = ob["y"] + repath_oy
                 exec_obstacle_tiles[(gx, gy)] = ob
 
-    # Scan the chosen path for bike slope tiles and add them to the obstacle
-    # lookup so _execute_path can trigger the running-start traversal.
-    # Slopes are passable in collision data (BFS finds them fine) but the game
-    # engine blocks single-step entry — special movement handling is needed.
+    # Scan the chosen path for bike slope tiles
     if path and terrain_info:
         sx, sy = bfs_sx, bfs_sy
         for step_dir in path:
@@ -3168,7 +1136,6 @@ def _navigate_to_impl(
                         }
 
     # Provide field_moves + obstacle_map for repath during Surf navigation.
-    # When surfing, _try_repath uses obstacle-aware BFS so water stays passable.
     repath_ctx["field_moves"] = field_moves
     repath_ctx["obstacle_map"] = obstacle_map
 
@@ -3179,9 +1146,7 @@ def _navigate_to_impl(
         )
     path_str = _summarize_path(path)
 
-    # Door target but couldn't reach it — check for dialogue/battle that
-    # interrupted the path (e.g., NPC farewell at zone exit), then fall back
-    # to warp_failed if nothing is found.
+    # Door target but couldn't reach it
     if is_door and stopped_early:
         encounter = _post_nav_check(emu)
         final_map, final_x, final_y = _read_position(emu)
@@ -3210,7 +1175,6 @@ def _navigate_to_impl(
     if is_door and not stopped_early:
         cur_map, cur_x, cur_y = _read_position(emu)
         if cur_map != map_id:
-            # Warp already happened (walk-into door like 0x69)
             emu.advance_frames(SETTLE_FRAMES)
             final_map, final_x, final_y = _read_position(emu)
             return {
@@ -3221,7 +1185,6 @@ def _navigate_to_impl(
                 "door_entered": True,
             }
 
-        # Warp didn't trigger yet — activate the door
         door_result = _handle_door_transition(emu, target_behavior, map_id)
         result = {
             "path": path_str,
@@ -3232,7 +1195,6 @@ def _navigate_to_impl(
             result.update(door_result)
             result["final"] = door_result["new_position"]
         else:
-            # Warp failed — check if dialogue/battle preempted it
             encounter = _post_nav_check(emu)
             final_map, final_x, final_y = _read_position(emu)
             result["final"] = _pos_with_map(final_x, final_y, final_map)
@@ -3276,7 +1238,6 @@ def _navigate_to_impl(
                     result.update(door_result)
                     result["final"] = door_result["new_position"]
                     return result
-                # Adjacent door didn't warp — note it and fall through
                 adj_gx, adj_gy = adj_lx + gox, adj_ly + goy
                 adj_warp_failed = {
                     "warp_failed": True,
@@ -3303,15 +1264,10 @@ def _navigate_to_impl(
         "final": _pos_with_map(final_x, final_y, final_map),
     }
 
-    # Include HM obstacles cleared during path execution
     if nav_info.get("obstacles_cleared"):
         result["obstacles_cleared"] = nav_info["obstacles_cleared"]
 
     if stopped_early:
-        # Check if we stopped adjacent to the target (Manhattan distance 1).
-        # This happens when the target tile is occupied by an NPC, signpost,
-        # or other entity — the player can't walk onto it but is right next
-        # to it. Treat this as a successful arrival rather than an error.
         dx = abs(final_x - target_x)
         dy = abs(final_y - target_y)
         if (dx + dy) <= 1 and nav_info.get("blocked_on_final_step"):
@@ -3328,477 +1284,3 @@ def _navigate_to_impl(
         result.update(adj_warp_failed)
 
     return result
-
-
-# ── Interact with object ──
-
-# Direction to face the target from each adjacent offset
-_ADJACENT_OFFSETS = [
-    (0, -1, "down"),   # tile above target → face down
-    (0,  1, "up"),     # tile below target → face up
-    (-1, 0, "right"),  # tile left of target → face right
-    (1,  0, "left"),   # tile right of target → face left
-]
-
-INTERACT_DIALOGUE_WAIT = 60  # frames to wait for auto-interaction
-INTERACT_A_WAIT = 60         # frames to wait after pressing A
-
-# Moving NPC intercept timing
-_MOVING_NPC_POLL = 15        # frames between polls (~4/sec)
-_MOVING_NPC_TIMEOUT = 900    # ~15 sec, covers 2 full patrol cycles
-_INTERACT_COOLDOWN = 90      # min frames between A-press attempts
-
-# Direction deltas → face direction string
-_DELTA_TO_FACE = {(1, 0): "right", (-1, 0): "left", (0, 1): "down", (0, -1): "up"}
-_FACE_TO_INT = {"up": 0, "down": 1, "left": 2, "right": 3}
-
-
-def _wait_for_moving_npc(
-    emu: "EmulatorClient",
-    object_index: int,
-    nav_result: dict[str, Any],
-) -> dict[str, Any] | None:
-    """Wait for a patrolling NPC to become interactable.
-
-    Called after the normal face→A sequence fails because the target NPC
-    has a patrol movement and moved away from the expected position.
-
-    Polls for up to ~15 seconds (2 full patrol cycles):
-      - Checks for battle (trainer spotted us during patrol).
-      - Checks for overworld dialogue (script triggered).
-      - When NPC is adjacent, faces them and presses A.
-
-    Returns the updated *nav_result* on success, or None on timeout.
-    """
-    polls = _MOVING_NPC_TIMEOUT // _MOVING_NPC_POLL
-    last_attempt_frame = -_INTERACT_COOLDOWN  # allow first attempt immediately
-    elapsed = 0
-
-    for _ in range(polls):
-        # ── 1. Battle check (trainer spotted us during patrol) ──
-        battlers = read_battle(emu)
-        if battlers:
-            encounter = _post_nav_check(emu)
-            if encounter:
-                nav_result["encounter"] = encounter
-                nav_result["intercepted_moving_npc"] = True
-                return nav_result
-
-        # ── 2. Dialogue check (NPC script triggered) ──
-        dlg = read_dialogue(emu, region="overworld")
-        if dlg["region"] != "none":
-            adv = advance_dialogue(emu)
-            nav_result["dialogue"] = adv
-            battlers = read_battle(emu)
-            if battlers:
-                encounter = _post_nav_check(emu)
-                if encounter:
-                    nav_result["encounter"] = encounter
-            nav_result["intercepted_moving_npc"] = True
-            return nav_result
-
-        # ── 3. Adjacency check — face + A when NPC is next to us ──
-        if elapsed - last_attempt_frame >= _INTERACT_COOLDOWN:
-            _, px, py, _ = read_player_state(emu)
-            objects_now = read_objects(emu)
-            target = next((o for o in objects_now if o["index"] == object_index), None)
-            if target:
-                dx = target["x"] - px
-                dy = target["y"] - py
-                if abs(dx) + abs(dy) == 1:
-                    face_dir = _DELTA_TO_FACE.get((dx, dy))
-                    if face_dir:
-                        last_attempt_frame = elapsed
-
-                        # Face the NPC
-                        emu.advance_frames(HOLD_FRAMES, buttons=[face_dir])
-                        emu.advance_frames(WAIT_FRAMES)
-
-                        # Check if trainer spotted us during face turn
-                        _, _, _, new_facing = read_player_state(emu)
-                        if new_facing != _FACE_TO_INT[face_dir]:
-                            encounter = _post_nav_check(emu)
-                            if encounter:
-                                nav_result["encounter"] = encounter
-                                nav_result["intercepted_moving_npc"] = True
-                                return nav_result
-
-                        # Press A and check for response
-                        emu.press_buttons(["a"], frames=8)
-                        emu.advance_frames(INTERACT_A_WAIT)
-
-                        dlg = read_dialogue(emu, region="overworld")
-                        if dlg["region"] != "none":
-                            adv = advance_dialogue(emu)
-                            nav_result["dialogue"] = adv
-                            nav_result["pressed_a"] = True
-                            battlers = read_battle(emu)
-                            if battlers:
-                                encounter = _post_nav_check(emu)
-                                if encounter:
-                                    nav_result["encounter"] = encounter
-                            nav_result["intercepted_moving_npc"] = True
-                            return nav_result
-
-                        # Check for approach animation (ctx0=RUN after A press)
-                        mgr = _find_script_manager(emu)
-                        if mgr:
-                            ss = _read_script_state(emu, mgr)
-                            if not ss["is_msg_box_open"] and not ss["sub_ctx_active"] and ss["ctx0_ptr"]:
-                                ctx0 = _read_context_state(emu, ss["ctx0_ptr"])
-                                if ctx0["state"] == CTX_RUNNING:
-                                    encounter = _post_nav_check(emu)
-                                    if encounter:
-                                        nav_result["encounter"] = encounter
-                                        nav_result["intercepted_moving_npc"] = True
-                                        return nav_result
-
-        emu.advance_frames(_MOVING_NPC_POLL)
-        elapsed += _MOVING_NPC_POLL
-
-    return None
-
-
-def _target_info(has_object: bool, object_index: int, name: str, x: int, y: int) -> dict:
-    """Build target dict for interact_with results."""
-    info: dict[str, Any] = {"name": name, "x": x, "y": y}
-    if has_object:
-        info["index"] = object_index
-    return info
-
-
-def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: int = -1, flee_encounters: bool = False) -> dict[str, Any]:
-    """Navigate to an object/NPC or static tile and interact with it.
-
-    Object mode (object_index): looks up by index, pathfinds to adjacent tile.
-    Coordinate mode (x, y): targets a specific tile directly (for PCs, bookshelves, etc.).
-    """
-    hold_frames = _get_move_hold(emu)
-    has_object = object_index >= 0
-    has_coords = x >= 0 and y >= 0
-    if not has_object and not has_coords:
-        return {"error": "Provide either object_index or both x and y."}
-    if has_object and has_coords:
-        return {"error": "Provide object_index OR (x, y), not both."}
-
-    # ── Read current state ──
-    state = get_map_state(emu)
-    if state is None:
-        return {"error": "Could not read map state."}
-
-    objects = state["objects"]
-    map_id = state["map_id"]
-    px, py = state["px"], state["py"]
-    chunked = state["chunked"]
-
-    if has_object:
-        target = next((o for o in objects if o["index"] == object_index), None)
-        if target is None:
-            return {"error": f"Object index {object_index} not found in current map objects."}
-        target_x, target_y = target["x"], target["y"]
-        target_name = target.get("name", f"Object {object_index}")
-        exclude_index = object_index
-    else:
-        target_x, target_y = x, y
-        target_name = f"Tile ({x}, {y})"
-        exclude_index = -1
-
-    # ── Build terrain and NPC set ──
-    is_global = target_x > 31 or target_y > 31 or chunked
-
-    if is_global and chunked:
-        mc_result = _build_multi_chunk_terrain(emu, map_id, px, py, target_x, target_y)
-        if mc_result is None:
-            return {"error": "Could not load multi-chunk terrain."}
-
-        terrain_info, grid_ox, grid_oy, grid_w, grid_h = mc_result
-
-        # Build NPC set, excluding the target object
-        npc_set = set()
-        for obj in objects:
-            if obj["index"] == 0 or obj["index"] == exclude_index:
-                continue
-            nx = obj["x"] - grid_ox
-            ny = obj["y"] - grid_oy
-            if 0 <= nx < grid_w and 0 <= ny < grid_h:
-                npc_set.add((nx, ny))
-
-        # Block sign activation tiles
-        for sx, sy in read_sign_tiles_from_rom(emu, map_id):
-            lx, ly = sx - grid_ox, sy - grid_oy
-            if 0 <= lx < grid_w and 0 <= ly < grid_h:
-                npc_set.add((lx, ly))
-
-        rel_px = px - grid_ox
-        rel_py = py - grid_oy
-        rel_tx = target_x - grid_ox
-        rel_ty = target_y - grid_oy
-        width, height = grid_w, grid_h
-    else:
-        origin_x = state.get("origin_x", 0)
-        origin_y = state.get("origin_y", 0)
-        terrain_info, npc_set, _ = _build_terrain_info(state["terrain"], state["objects"])
-
-        # Block sign activation tiles
-        for sx, sy in read_sign_tiles_from_rom(emu, map_id):
-            lx, ly = sx - origin_x, sy - origin_y
-            if 0 <= lx < 32 and 0 <= ly < 32:
-                npc_set.add((lx, ly))
-
-        # Remove target from NPC set so adjacency checks work
-        rel_tx = target_x - origin_x if target_x > 31 else target_x
-        rel_ty = target_y - origin_y if target_y > 31 else target_y
-        npc_set.discard((rel_tx, rel_ty))
-        rel_px = state["local_px"]
-        rel_py = state["local_py"]
-        width, height = 32, 32
-        grid_ox, grid_oy = origin_x, origin_y
-
-    # ── Find shortest path to any adjacent tile ──
-    candidates = []
-    for dx, dy, face_dir in _ADJACENT_OFFSETS:
-        adj_x, adj_y = rel_tx + dx, rel_ty + dy
-        if not (0 <= adj_x < width and 0 <= adj_y < height):
-            continue
-        passable, behavior = terrain_info[adj_y][adj_x]
-        if not passable:
-            continue
-        if (adj_x, adj_y) in npc_set:
-            continue
-        path = _bfs_pathfind(terrain_info, npc_set, rel_px, rel_py,
-                             adj_x, adj_y, width=width, height=height)
-        if path is not None:
-            candidates.append((len(path), path, adj_x, adj_y, face_dir))
-
-    # ── Fallback: try across-counter interaction (2 tiles away) ──
-    if not candidates:
-        for dx, dy, face_dir in _ADJACENT_OFFSETS:
-            # Check if intermediate tile is a counter
-            mid_x, mid_y = rel_tx + dx, rel_ty + dy
-            far_x, far_y = rel_tx + dx * 2, rel_ty + dy * 2
-            if not (0 <= mid_x < width and 0 <= mid_y < height):
-                continue
-            if not (0 <= far_x < width and 0 <= far_y < height):
-                continue
-            _, mid_behavior = terrain_info[mid_y][mid_x]
-            if mid_behavior != 0x80:  # not a counter tile
-                continue
-            far_passable, _ = terrain_info[far_y][far_x]
-            if not far_passable or (far_x, far_y) in npc_set:
-                continue
-            path = _bfs_pathfind(terrain_info, npc_set, rel_px, rel_py,
-                                 far_x, far_y, width=width, height=height)
-            if path is not None:
-                candidates.append((len(path), path, far_x, far_y, face_dir))
-
-    if not candidates:
-        return {
-            "error": f"No reachable tile adjacent to {target_name} at ({target_x}, {target_y}). "
-                     "Fully surrounded by obstacles.",
-            "target": _target_info(has_object, object_index, target_name, target_x, target_y),
-        }
-
-    # Pick shortest path
-    candidates.sort(key=lambda c: c[0])
-    _, best_path, dest_x, dest_y, face_dir = candidates[0]
-
-    # ── Execute path ──
-    nav_result: dict[str, Any] = {
-        "target": _target_info(has_object, object_index, target_name, target_x, target_y),
-        "destination": {"x": dest_x + grid_ox, "y": dest_y + grid_oy},
-        "face_direction": face_dir,
-    }
-
-    if len(best_path) > 0:
-        repath_ctx = {
-            "terrain_info": terrain_info,
-            "goal_x": dest_x,
-            "goal_y": dest_y,
-            "grid_w": width,
-            "grid_h": height,
-            "grid_ox": grid_ox,
-            "grid_oy": grid_oy,
-        }
-        stopped_early, steps_taken, repaths_used, nav_info = _execute_path(
-            emu, best_path, repath_ctx=repath_ctx, hold_frames=hold_frames,
-        )
-        nav_result["path"] = _summarize_path(best_path)
-        nav_result["steps"] = steps_taken
-        if stopped_early:
-            encounter = _post_nav_check(emu)
-            if encounter and flee_encounters:
-                encounter, flee_entry = _try_flee_encounter(emu, encounter)
-                if flee_entry:
-                    nav_result.setdefault("flee_log", []).append(flee_entry)
-                    if flee_entry.get("fled"):
-                        nav_result["encounters_fled"] = nav_result.get("encounters_fled", 0) + 1
-                    elif flee_entry.get("reason"):
-                        reason = flee_entry["reason"]
-                        species = flee_entry.get("species", "unknown")
-                        if "fainted" in reason:
-                            nav_result["flee_failed"] = (
-                                f"Pokemon fainted while fleeing wild {species}. "
-                                f"Heal party before continuing."
-                            )
-                        else:
-                            nav_result["flee_failed"] = f"Flee failed against wild {species}: {reason}"
-                        nav_result["encounter"] = encounter
-                        nav_result["interrupted"] = True
-                        return nav_result
-            if encounter:
-                nav_result["encounter"] = encounter
-                nav_result["interrupted"] = True
-                return nav_result
-            if not nav_result.get("encounters_fled"):
-                # Stopped early but no encounter (door entry, wall, etc.)
-                nav_result["stopped_early"] = True
-                nav_result.update(nav_info)
-                return nav_result
-            # Wild encounter fled — re-navigate from current position
-            emu.advance_frames(POST_BATTLE_SETTLE)
-            dest_gx, dest_gy = dest_x + grid_ox, dest_y + grid_oy
-            retry = navigate_to(emu, dest_gx, dest_gy, flee_encounters=True)
-            if retry.get("flee_log"):
-                nav_result["flee_log"].extend(retry["flee_log"])
-                nav_result["encounters_fled"] += retry.get("encounters_fled", 0)
-            if retry.get("encounter") or retry.get("error") or retry.get("stopped_early"):
-                if retry.get("encounter"):
-                    nav_result["encounter"] = retry["encounter"]
-                    nav_result["interrupted"] = True
-                return nav_result
-            # Re-path succeeded — fall through to face + interact
-    else:
-        nav_result["path"] = "adjacent"
-        nav_result["steps"] = 0
-
-    # ── Face the target ──
-    _, _, _, cur_facing = read_player_state(emu)
-    desired_facing = {"up": 0, "down": 1, "left": 2, "right": 3}[face_dir]
-    facing_seized = False
-    if cur_facing != desired_facing:
-        emu.advance_frames(HOLD_FRAMES, buttons=[face_dir])
-        emu.advance_frames(WAIT_FRAMES)
-        # Validate facing actually changed — if not, a script may have
-        # seized control (e.g. trainer-spotted animation)
-        _, _, _, new_facing = read_player_state(emu)
-        if new_facing == desired_facing:
-            nav_result["turned_to_face"] = face_dir
-        else:
-            facing_seized = True
-            nav_result["facing_seized"] = True
-
-    # ── If facing was seized, a trainer-spotted script likely has control.
-    #    Poll for the resulting dialogue or battle instead of pressing A. ──
-    if facing_seized:
-        encounter = _post_nav_check(emu)
-        if encounter:
-            nav_result["encounter"] = encounter
-            nav_result["interrupted"] = True
-            return nav_result
-        # Still nothing — fall through to normal interaction below
-
-    # ── Check for auto-interaction (signs auto-trigger when faced) ──
-    emu.advance_frames(INTERACT_DIALOGUE_WAIT)
-    dialogue = read_dialogue(emu, region="overworld")
-    if dialogue["region"] != "none":
-        adv_result = advance_dialogue(emu)
-        if adv_result.get("status") != "no_dialogue":
-            nav_result["dialogue"] = adv_result
-            # Check if dialogue led into a battle (trainer taunts, etc.)
-            battlers = read_battle(emu)
-            if battlers:
-                encounter = _post_nav_check(emu)
-                if encounter:
-                    nav_result["encounter"] = encounter
-            return nav_result
-        # msgBox=0: might be stale buffer data, or a sign overlay (board
-        # message) that doesn't set msgBox.  Signs use a BG-layer overlay
-        # for text instead of the standard dialogue box.
-        is_sign = (has_object and target is not None
-                   and target.get("graphics_id", 0) in SIGN_GFX_IDS)
-        if is_sign:
-            # Accept the text from read_dialogue and dismiss the overlay
-            emu.press_buttons(["b"], frames=8)
-            emu.advance_frames(SETTLE_FRAMES)
-            nav_result["dialogue"] = {
-                "status": "completed",
-                "text": dialogue.get("text", ""),
-                "lines": dialogue.get("lines", []),
-                "sign_overlay": True,
-            }
-            return nav_result
-        # Not a sign — stale data. Fall through to A press.
-
-    # ── Press A to interact ──
-    emu.press_buttons(["a"], frames=8)
-    emu.advance_frames(INTERACT_A_WAIT)
-
-    dialogue = read_dialogue(emu, region="overworld")
-    if dialogue["region"] != "none":
-        adv_result = advance_dialogue(emu)
-        if adv_result.get("status") != "no_dialogue":
-            nav_result["dialogue"] = adv_result
-            nav_result["pressed_a"] = True
-            # Check if dialogue led into a battle
-            battlers = read_battle(emu)
-            if battlers:
-                encounter = _post_nav_check(emu)
-                if encounter:
-                    nav_result["encounter"] = encounter
-            return nav_result
-        # msgBox=0: might be pre-positioned cutscene data, or sign overlay.
-        is_sign = (has_object and target is not None
-                   and target.get("graphics_id", 0) in SIGN_GFX_IDS)
-        if is_sign:
-            emu.press_buttons(["b"], frames=8)
-            emu.advance_frames(SETTLE_FRAMES)
-            nav_result["dialogue"] = {
-                "status": "completed",
-                "text": dialogue.get("text", ""),
-                "lines": dialogue.get("lines", []),
-                "sign_overlay": True,
-            }
-            nav_result["pressed_a"] = True
-            return nav_result
-        # Not a sign — fall through to script detection.
-
-    # ── Fallback: check for script activation (trainer spotted during walk
-    #    or "!" approach animation still in progress after A press) ──
-    mgr = _find_script_manager(emu)
-    if mgr is not None:
-        ss = _read_script_state(emu, mgr)
-        script_active = ss["is_msg_box_open"] or ss["sub_ctx_active"]
-        # During trainer approach animations ("!" bubble + walk toward player),
-        # msgBox and subCtx are both 0 for ~170 frames.  The only signal is
-        # ctx0 being in RUN or WAIT state.
-        if not script_active and ss["ctx0_ptr"]:
-            ctx0 = _read_context_state(emu, ss["ctx0_ptr"])
-            if ctx0["state"] in (CTX_RUNNING, CTX_WAITING):
-                script_active = True
-        if script_active:
-            encounter = _post_nav_check(emu)
-            if encounter:
-                nav_result["encounter"] = encounter
-                nav_result["interrupted"] = True
-                return nav_result
-
-    # ── Moving NPC retry: if target has a patrol movement, wait for it ──
-    if has_object and target is not None:
-        movement = target.get("movement_type", "none")
-        if movement not in ("none", "stationary"):
-            intercept = _wait_for_moving_npc(emu, object_index, nav_result)
-            if intercept is not None:
-                return intercept
-            # Timeout — include diagnostics
-            nav_result["dialogue"] = None
-            nav_result["note"] = (
-                f"{target_name} has patrol movement ({movement}) and could not "
-                f"be intercepted within {_MOVING_NPC_TIMEOUT // 60:.0f} seconds. "
-                f"Try navigating to their patrol area and waiting manually."
-            )
-            return nav_result
-
-    # ── No dialogue found ──
-    nav_result["dialogue"] = None
-    nav_result["note"] = f"{target_name} did not produce any dialogue when interacted with."
-    return nav_result
