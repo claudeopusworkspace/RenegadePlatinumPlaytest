@@ -1978,3 +1978,40 @@ Woj received Wayne's endgame save file (8 badges, Pokemon League). Goal: import 
 - `renegade_mcp/server.py` — registered use_fly tool
 - `tests/helpers.py` — redetect_shift parameter for cross-save state loading
 - `tests/test_fly.py` — 12 integration tests
+
+---
+
+## Session: 2026-04-14 — Bike Slope Auto-Mount Fix + Strength Boulder Scouting
+
+### Goal
+Begin implementing a `move_boulder` tool for Strength puzzles. First step: find a Strength boulder in-game to create a test save state.
+
+### Boulder Scouting (Unsuccessful)
+Explored multiple locations using Wayne's E4 save (8 badges, full HM coverage) looking for Strength boulders:
+- **Iron Island** (via Canalave City sailor) — no boulders found in B1F or B2F
+- **Oreburgh Gate B1F** (via Route 203) — no boulders on accessible section
+- **Mt. Coronet** (Route 207 entrance) — boulders exist in deeper rooms (zones 215/216) but 3D elevation navigation couldn't reach them
+- **Route 204 / Ravaged Path** — entrances found but boulders have placeholder ROM coords
+
+ROM zone_event scan found 48 Strength boulder objects (GFX ID 84) across 10 zones, but only 2 had non-placeholder coordinates. Most are dynamically spawned at runtime. Woj will investigate boulder locations manually before next session.
+
+### Bug Found: Bike Slope Auto-Navigation Fails When Walking
+While navigating Route 207, discovered that `navigate_to` gets permanently stuck at bike slopes when the player is not on a bicycle. The slope traversal code (`_traverse_bike_slope`) assumed the player was already cycling — no state check, no auto-mount.
+
+**Root cause**: The BFS correctly found a path through slope tiles (passable in collision data), and the post-BFS obstacle scan correctly tagged them for special handling. But `_execute_path` called `_traverse_bike_slope` without checking `CYCLING_GEAR_ADDR`, so the fast-gear toggle + running start algorithm failed silently when walking.
+
+**Fix** (navigation.py line ~2229): Before slope traversal, read `CYCLING_GEAR_ADDR`. If walking, auto-mount the Bicycle via `use_key_item("Bicycle")` and update `active_hold` to `BIKE_HOLD_FRAMES`. Falls through to repath if mounting fails.
+
+### Video Stream Issue
+MelonMCP video stream silently died mid-session. `stop_video_stream` returned "No video stream running." Only ~7:41 of footage was captured from the start. Cause unknown — may be related to rapid save state loading or extended JIT frame advancement. Woj investigating.
+
+### Code Size Observation
+navigation.py has grown to 3,804 lines — more than double the next largest file. Identified natural split seams: pathfinding (~600 lines), HM traversal (~400), cycling road (~300), movement execution (~400). Saved analysis to project memory for next session.
+
+### Test Results
+- 28/28 cycling road + bike slope tests pass (including new auto-mount test)
+- New test: `test_auto_mounts_bike_when_walking` — properly dismounts via Bicycle key item, navigates through slope, verifies auto-mount + traversal
+
+### Files Changed
+- `renegade_mcp/navigation.py` — auto-mount bicycle before bike slope traversal when walking
+- `tests/test_cycling_road.py` — added `test_auto_mounts_bike_when_walking`
