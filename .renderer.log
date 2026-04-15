@@ -1,0 +1,29 @@
+13:29:26 [renderer] INFO melonds_mcp.renderer: Renderer starting: rom=/workspace/RenegadePlatinumPlaytest/RenegadePlatinum.nds port=18091 data_dir=/workspace/RenegadePlatinumPlaytest initial_state=None server_pid=31605
+13:29:26 [renderer] INFO melonds_mcp.emulator: Initializing melonDS engine
+13:29:26 [renderer] INFO melonds_mcp.emulator: melonDS initialized successfully (JIT: True)
+13:29:26 [renderer] INFO melonds_mcp.emulator: Loading ROM: /workspace/RenegadePlatinumPlaytest/RenegadePlatinum.nds
+13:29:26 [renderer] INFO melonds_mcp.emulator: ROM loaded successfully: RenegadePlatinum.nds
+13:29:26 [renderer] INFO melonds_mcp.streamer: ffmpeg started (pid 40031)
+13:29:26 [renderer] INFO melonds_mcp.streamer: Frame writer thread starting
+13:29:26 [renderer] INFO melonds_mcp.streamer: HLS streamer started on http://0.0.0.0:18091 (hls dir: /tmp/melonds_hls_0fira4_n)
+13:29:26 [renderer] INFO melonds_mcp.renderer: HLS streamer started on port 18091 (blocking mode)
+13:29:26 [renderer] INFO melonds_mcp.recorder: Recorder ffmpeg started (pid 40035)
+13:29:26 [renderer] INFO melonds_mcp.recorder: Recorder writer thread starting
+13:29:26 [renderer] INFO melonds_mcp.recorder: Session recorder started: /workspace/RenegadePlatinumPlaytest/recordings/20260415_182926.mp4 (tmp: /tmp/melonds_rec__vo1ryw3)
+13:29:26 [renderer] INFO melonds_mcp.renderer: Session recorder started, output dir: /workspace/RenegadePlatinumPlaytest/recordings, name: rock_smash_verification
+13:29:26 [renderer] INFO melonds_mcp.journal: Journal reader opened /workspace/RenegadePlatinumPlaytest/.melonds_journal.jsonl
+13:29:26 [renderer] INFO melonds_mcp.renderer: Journal reader connected, entering replay loop
+13:29:27 [renderer] INFO melonds_mcp.streamer: video pipe buffer set to 1048576 bytes
+13:29:27 [renderer] INFO melonds_mcp.recorder: Recorder FIFOs opened
+13:29:27 [renderer] INFO melonds_mcp.streamer: audio pipe buffer set to 1048576 bytes
+13:29:27 [renderer] INFO melonds_mcp.streamer: Both FIFOs opened for writing
+13:29:30 [renderer] INFO melonds_mcp.renderer: Renderer loaded state: /workspace/RenegadePlatinumPlaytest/savestates/hm_test_rock_smash_oreburgh_mine_b2f.mst
+13:30:06 [renderer] INFO melonds_mcp.renderer: Renderer received shutdown entry
+13:30:06 [renderer] INFO melonds_mcp.recorder: Recorder stopping (wrote 2662 frames)
+13:30:06 [renderer] INFO melonds_mcp.recorder: Recorder writer thread exiting (wrote 2662 frames)
+13:30:06 [renderer] INFO melonds_mcp.recorder: Session recorder stopped: /workspace/RenegadePlatinumPlaytest/recordings/20260415_182926.mp4
+13:30:06 [renderer] INFO melonds_mcp.journal: Journal file cleaned up: /workspace/RenegadePlatinumPlaytest/.melonds_journal.jsonl
+13:30:06 [renderer] INFO melonds_mcp.streamer: HLS streamer shutting down (wrote 2661 frames, dropped 0)
+13:30:06 [renderer] INFO melonds_mcp.streamer: Frame writer thread exiting (wrote 2662 frames)
+13:30:06 [renderer] INFO melonds_mcp.streamer: HLS streamer stopped
+13:30:06 [renderer] INFO melonds_mcp.renderer: Renderer exiting
