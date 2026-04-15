@@ -667,12 +667,14 @@ def navigate_to(
 ) -> dict[str, Any]:
     """Pathfind to target tile using BFS. Obstacle-aware with dual pathfinding.
 
-    Auto-navigates Rock Smash rocks, Cut trees, water (Surf), Rock Climb walls,
-    and Waterfall tiles when the obstacle path is shorter than the clean path
-    and the party has the required move + badge.
+    Auto-traverses water (Surf), Rock Climb walls, and Waterfall tiles when
+    the obstacle path is shorter than the clean path and the party has the
+    required move + badge.
 
-    For obstacles not in AUTO_NAVIGATE_TYPES (Strength boulders), returns
-    obstacle_choice/obstacle_required status for manual handling.
+    Rock Smash rocks and Cut trees are treated as impassable objects
+    (Renegade Platinum has no mandatory Rock Smash/Cut obstacles — see
+    CLEARABLE_OBSTACLES in nav_constants.py). Strength boulders likewise go
+    to npc_set; the Distortion World puzzle needs manual handling.
 
     When flee_encounters=True, automatically flees wild encounters and resumes
     navigation. Trainer battles (detected by pre-battle dialogue) are still

@@ -2,6 +2,30 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: trim Rock Smash + Cut auto-clear (2026-04-15)
+
+### Summary
+Reclassified Rock Smash rocks (GFX 85) and Cut trees (GFX 86) as impassable objects instead of auto-clearable HM obstacles. External documentation and on-camera verification at Oreburgh Mine B2F confirmed Drayano removed every path-gating Rock Smash and Cut obstacle from Renegade Platinum — remaining instances are decorative and walkable-around. Auto-clearing was actually counter-productive (the HM animation takes ~5–8s vs. ~1s to walk around). Also decided to drop the planned Strength tool: the only mandatory Strength obstacle is the Distortion World B5F/B6F Lake Guardian boulder puzzle, which is a one-shot and cheaper to handle manually with `press_buttons` when we reach it.
+
+### On-camera verification
+Loaded `hm_test_rock_smash_oreburgh_mine_b2f`, ran `navigate_to(21, 28)` then `navigate_to(18, 28)` with streaming on. Footage confirmed the tool smashed both rocks correctly — but the rocks sit in open corridor tiles with clean walkable routes immediately adjacent. Nothing was gated behind them.
+
+### Code changes
+- `nav_constants.py`: Emptied `CLEARABLE_OBSTACLES` (`{85, 86}` → `set()`) and `CLEARABLE_TYPES` (`{"rock_smash", "cut_tree"}` → `set()`). Kept `HM_OBSTACLES` dict intact (used for view_map labels via decomp-sourced `GFX_NAMES`). Added a comment block explaining the trim and documenting the one-line restore path. `AUTO_NAVIGATE_TYPES` now contains only Surf/Rock Climb/Waterfall types.
+- `pathfinding.py`: No changes. The `if gfx_id in CLEARABLE_OBSTACLES` branches at lines 198 and 844 still exist; with the set empty, Rock Smash/Cut objects fall through to the `else: npc_set.add(...)` branch (impassable). Dual-path BFS and `_bfs_pathfind_obstacles` stay in place for Surf/Rock Climb/Waterfall (which are terrain-based, not GFX-based).
+- `hm_traverse.py`: No changes. `_clear_hm_obstacle` is generic and still used by Surf/Rock Climb/Waterfall.
+- `navigation.py`, `server.py`: Updated docstrings to reflect the narrower auto-clear scope.
+- `CLAUDE.md`, `SAVE_STATES.md`: Updated navigation docs; removed "Cut standalone" and "Strength" from the "Still needed" save-state backlog.
+
+### Test changes
+- Replaced `TestRockSmashAutoClear` (6 tests, exercised auto-clear path) with `TestRockSmashImpassable` (4 tests, verify rocks go to `npc_set`, `navigate_to` routes around them, and field-move availability is still detected). Same save state reused.
+- Fixed `TestHMObstacleGfxIds::test_gfx_id_mapping` — now asserts `CLEARABLE_OBSTACLES == set()`.
+- Fixed `test_surf_auto_navigate_types` — now asserts `rock_smash` and `cut_tree` are NOT in `AUTO_NAVIGATE_TYPES`.
+- Full suite: 301/301 pass in 705.69s (was 302; -6 deleted + 4 added = net -2, but one other test was previously counted separately).
+
+### Why keep the scaffolding intact
+Emptying the clearable sets rather than deleting the infrastructure means adding a mandatory HM obstacle back takes a single-line change (add GFX id to `CLEARABLE_OBSTACLES`). The only dead code this leaves is the `if gfx_id in CLEARABLE_OBSTACLES` branch itself — net ~10 lines across two files — which is cheap insurance.
+
 ## Dev Session: navigation.py code splitting (2026-04-14)
 
 ### Summary

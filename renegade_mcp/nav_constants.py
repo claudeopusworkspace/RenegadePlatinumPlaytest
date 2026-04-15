@@ -60,21 +60,36 @@ ROCK_CLIMB_BEHAVIORS = {0x4A, 0x4B}  # N-S, E-W
 TERRAIN_OBSTACLES = WATER_BEHAVIORS | {WATERFALL_BEHAVIOR} | ROCK_CLIMB_BEHAVIORS
 
 # ── HM obstacle objects (identified by graphics_id in zone_event data) ──
+# HM_OBSTACLES is retained as a reference table — view_map uses decomp-sourced
+# GFX_NAMES for labels, so trimming the auto-clear sets below doesn't affect
+# visible metadata. See "HM auto-clear scope" note below the constants.
 HM_OBSTACLES: dict[int, dict[str, str]] = {
     84: {"type": "strength_boulder", "move": "Strength",   "badge": "Mine"},
     85: {"type": "rock_smash",       "move": "Rock Smash", "badge": "Coal"},
     86: {"type": "cut_tree",         "move": "Cut",        "badge": "Forest"},
 }
 
-# Obstacles that can be auto-cleared (interact → yes → gone)
-CLEARABLE_OBSTACLES = {85, 86}  # rock_smash, cut_tree
-CLEARABLE_TYPES = {"rock_smash", "cut_tree"}
+# ── HM auto-clear scope ──
+# Renegade Platinum removes every path-gating Cut tree and every path-gating
+# Rock Smash rock from Sinnoh. Drayano left decorative instances in place
+# (e.g. Oreburgh Mine B2F rocks), but they never block a required route — the
+# player can always walk around. Auto-clearing them through the HM animation
+# is slower than routing around, so GFX 85 / 86 are now treated as impassable
+# objects (they fall through to npc_set in pathfinding classification).
+#
+# The dual-path BFS and hm_traverse clearing sequence are kept intact for
+# Surf, Rock Climb, and Waterfall, which are still mandatory. If a mandatory
+# Rock Smash / Cut obstacle is ever discovered, re-enabling auto-clear is a
+# one-line change: add the relevant GFX id(s) to CLEARABLE_OBSTACLES and the
+# matching type string(s) to CLEARABLE_TYPES.
+CLEARABLE_OBSTACLES: set[int] = set()    # was {85, 86} — see note above
+CLEARABLE_TYPES: set[str] = set()        # was {"rock_smash", "cut_tree"}
 SURF_TYPES = {"water"}
 ROCK_CLIMB_TYPES = {"rock_climb"}
 WATERFALL_TYPES = {"waterfall"}
 MULTI_TILE_HM_TYPES = ROCK_CLIMB_TYPES | WATERFALL_TYPES
 AUTO_NAVIGATE_TYPES = CLEARABLE_TYPES | SURF_TYPES | ROCK_CLIMB_TYPES | WATERFALL_TYPES
-PUZZLE_OBSTACLES = {84}  # strength_boulder
+PUZZLE_OBSTACLES = {84}  # strength_boulder — Distortion World only; handle manually
 
 # Badge name → bit index in the badge bitmask
 BADGE_BITS: dict[str, int] = {

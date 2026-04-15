@@ -15,98 +15,70 @@ from helpers import do_load_state
 
 
 # ---------------------------------------------------------------------------
-# Rock Smash auto-clear
+# Rock Smash (treated as impassable in Renegade Platinum)
 # ---------------------------------------------------------------------------
+# Drayano removed every path-gating Rock Smash rock from Sinnoh; the rocks that
+# remain (e.g. Oreburgh Mine B2F) are decorative and can always be walked around.
+# Auto-clear is disabled (see CLEARABLE_OBSTACLES in nav_constants.py) — rocks
+# are treated as impassable objects like regular NPCs.
 
-class TestRockSmashAutoClear:
-    """navigate_to auto-clears Rock Smash rocks when the obstacle path is shorter."""
+class TestRockSmashImpassable:
+    """Rock Smash rocks are impassable; navigate_to routes around them.
 
-    def test_navigate_through_rock(self, emu: EmulatorClient):
-        """Walking through a Rock Smash rock clears it and reaches target."""
-        do_load_state(emu, "hm_test_rock_smash_oreburgh_mine_b2f", redetect_shift=True)
-        from renegade_mcp.navigation import navigate_to
+    Oreburgh Mine B2F has two decorative rocks at (17, 28) and (19, 28) with
+    the player spawning at (18, 28). Clean paths exist via row 29.
+    """
 
-        # Player at (18, 28), rock at (19, 28), target at (21, 28)
-        # Obstacle path: 3 steps right (through rock)
-        # Clean path: 5 steps (around via row 29)
-        result = navigate_to(emu, 21, 28)
+    SAVE_STATE = "hm_test_rock_smash_oreburgh_mine_b2f"
 
-        assert result["final"]["x"] == 21
-        assert result["final"]["y"] == 28
-        assert "obstacles_cleared" in result
-        cleared = result["obstacles_cleared"]
-        assert len(cleared) == 1
-        assert cleared[0]["type"] == "rock_smash"
-        assert cleared[0]["move"] == "Rock Smash"
-        assert cleared[0]["x"] == 19
-        assert cleared[0]["y"] == 28
-
-    def test_clean_path_preferred_when_shorter(self, emu: EmulatorClient):
-        """When clean path is shorter than obstacle path, takes clean path."""
-        do_load_state(emu, "hm_test_rock_smash_oreburgh_mine_b2f", redetect_shift=True)
-        from renegade_mcp.navigation import navigate_to
-
-        # Navigate south — clean path is just 1 step down, no obstacles needed
-        result = navigate_to(emu, 18, 29)
-
-        assert result["final"]["x"] == 18
-        assert result["final"]["y"] == 29
-        assert "obstacles_cleared" not in result
-
-    def test_obstacle_path_only_when_required(self, emu: EmulatorClient):
-        """When only path goes through obstacles and no clean path exists."""
-        do_load_state(emu, "hm_test_rock_smash_oreburgh_mine_b2f", redetect_shift=True)
-        from renegade_mcp.navigation import navigate_to, _read_position
-
-        # Navigate to (20, 28) — 2 steps right through rock vs 4 steps around
-        result = navigate_to(emu, 20, 28)
-
-        assert result["final"]["x"] == 20
-        assert result["final"]["y"] == 28
-        # Should have cleared the rock at (19, 28)
-        assert "obstacles_cleared" in result
-        assert result["obstacles_cleared"][0]["x"] == 19
-
-    def test_multiple_rocks_same_path(self, emu: EmulatorClient):
-        """Navigate through two rocks on the same row."""
-        do_load_state(emu, "hm_test_rock_smash_oreburgh_mine_b2f", redetect_shift=True)
-        from renegade_mcp.navigation import navigate_to
-
-        # Rocks at (17, 28) and (19, 28), player at (18, 28)
-        # Navigate to (16, 28) — must go through rock at (17, 28)
-        result = navigate_to(emu, 16, 28)
-
-        assert result["final"]["x"] == 16
-        assert result["final"]["y"] == 28
-        assert "obstacles_cleared" in result
-        assert any(c["x"] == 17 for c in result["obstacles_cleared"])
-
-    def test_field_move_availability_checked(self, emu: EmulatorClient):
-        """BFS correctly detects Rock Smash availability from party + badges."""
-        do_load_state(emu, "hm_test_rock_smash_oreburgh_mine_b2f", redetect_shift=True)
-        from renegade_mcp.navigation import _get_field_move_availability
-
-        field_moves = _get_field_move_availability(emu)
-        assert field_moves["Rock Smash"] is True
-        assert field_moves["Cut"] is True
-
-    def test_obstacle_map_populated(self, emu: EmulatorClient):
-        """Rocks are correctly classified in the obstacle_map."""
-        do_load_state(emu, "hm_test_rock_smash_oreburgh_mine_b2f", redetect_shift=True)
+    def test_rocks_classified_as_impassable(self, emu: EmulatorClient):
+        """Rocks go into npc_set (impassable), not obstacle_map (auto-clearable)."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
         from renegade_mcp.map_state import get_map_state
         from renegade_mcp.navigation import _build_terrain_info
 
         state = get_map_state(emu)
         _, npc_set, obstacle_map = _build_terrain_info(state["terrain"], state["objects"])
 
-        # Rocks at (19, 28) and (17, 28) should be in obstacle_map, not npc_set
-        assert (19, 28) in obstacle_map
-        assert (17, 28) in obstacle_map
-        assert obstacle_map[(19, 28)]["type"] == "rock_smash"
-        assert obstacle_map[(17, 28)]["type"] == "rock_smash"
-        # Should NOT be in npc_set
-        assert (19, 28) not in npc_set
-        assert (17, 28) not in npc_set
+        # Rocks at (19, 28) and (17, 28) are impassable (npc_set), not clearable
+        assert (19, 28) in npc_set
+        assert (17, 28) in npc_set
+        assert (19, 28) not in obstacle_map
+        assert (17, 28) not in obstacle_map
+
+    def test_navigate_around_rock(self, emu: EmulatorClient):
+        """navigate_to routes around a rock without invoking Rock Smash."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.navigation import navigate_to
+
+        # Player at (18, 28), rock at (19, 28), target at (21, 28).
+        # Clean path exists via row 29. navigate_to should take it without smashing.
+        result = navigate_to(emu, 21, 28)
+
+        assert result["final"]["x"] == 21
+        assert result["final"]["y"] == 28
+        assert "obstacles_cleared" not in result
+
+    def test_clean_path_unaffected(self, emu: EmulatorClient):
+        """Navigation unrelated to the rocks still works identically."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.navigation import navigate_to
+
+        # One step south: no interaction with rocks.
+        result = navigate_to(emu, 18, 29)
+
+        assert result["final"]["x"] == 18
+        assert result["final"]["y"] == 29
+        assert "obstacles_cleared" not in result
+
+    def test_field_move_availability_still_detected(self, emu: EmulatorClient):
+        """Rock Smash + Cut are still reported as available HMs (for future use)."""
+        do_load_state(emu, self.SAVE_STATE, redetect_shift=True)
+        from renegade_mcp.navigation import _get_field_move_availability
+
+        field_moves = _get_field_move_availability(emu)
+        assert field_moves["Rock Smash"] is True
+        assert field_moves["Cut"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -264,7 +236,7 @@ class TestSurfNavigation:
         assert len(water_obs) == 0, "BFS should not cross water without Surf"
 
     def test_surf_auto_navigate_types(self, emu: EmulatorClient):
-        """Water type is included in AUTO_NAVIGATE_TYPES alongside Rock Smash/Cut."""
+        """Water type is included in AUTO_NAVIGATE_TYPES."""
         from renegade_mcp.navigation import (
             AUTO_NAVIGATE_TYPES, CLEARABLE_TYPES, SURF_TYPES,
         )
@@ -272,8 +244,10 @@ class TestSurfNavigation:
         assert "water" in AUTO_NAVIGATE_TYPES
         assert "water" in SURF_TYPES
         assert "water" not in CLEARABLE_TYPES
-        assert "rock_smash" in AUTO_NAVIGATE_TYPES
-        assert "cut_tree" in AUTO_NAVIGATE_TYPES
+        # Rock Smash + Cut are not auto-clearable in Renegade Platinum
+        # (see CLEARABLE_OBSTACLES note in nav_constants.py).
+        assert "rock_smash" not in AUTO_NAVIGATE_TYPES
+        assert "cut_tree" not in AUTO_NAVIGATE_TYPES
 
 
 # ---------------------------------------------------------------------------
@@ -577,5 +551,8 @@ class TestHMObstacleGfxIds:
         assert HM_OBSTACLES[85]["type"] == "rock_smash"
         assert HM_OBSTACLES[86]["type"] == "cut_tree"
 
-        assert CLEARABLE_OBSTACLES == {85, 86}
+        # Rock Smash (85) + Cut (86) are impassable in Renegade Platinum — no
+        # mandatory obstacles exist, and decorative ones are walked around.
+        # Strength (84) boulders are puzzle-only (Distortion World).
+        assert CLEARABLE_OBSTACLES == set()
         assert PUZZLE_OBSTACLES == {84}

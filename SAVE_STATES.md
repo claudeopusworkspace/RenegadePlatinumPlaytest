@@ -65,9 +65,9 @@ Fly (Garchomp), Surf (Swampert), Rock Smash (Nidoking), Strength (Nidoking), Roc
 | `hm_test_surf_route218` | Route 218 at (121, 758). East side of canal, gate entrance. |
 | `hm_test_surf_route218_at_water` | Route 218 at (112, 754). Adjacent to water edge. **Best Surf test location** — navigate west to (100, 756) crosses water. |
 | `hm_test_surf_waterfall_pokemon_league` | Pokemon League outdoor at (847, 560). Obstacle BFS confirms path south requires Surf + Waterfall. |
-| `hm_test_rock_smash_mt_coronet` | Mt. Coronet map 207 (Route 208 entrance) at (4, 8). 4 Rock Smash objects present (coords show 0,0 in view_map — runtime loading issue). |
-| `hm_test_rock_smash_oreburgh_mine_b2f` | Oreburgh Mine B2F at (18, 28). Standing between two Rock Smash rocks at (17, 28) and (19, 28). Best Rock Smash test location. |
-| `hm_test_cut_surf_route214` | Route 214 at (725, 678). Obstacle BFS detected Cut tree at (731, 648) + Surf tiles on path. Combined Cut + Surf test. |
+| `hm_test_rock_smash_mt_coronet` | Mt. Coronet map 207 (Route 208 entrance) at (4, 8). 4 Rock Smash objects present (coords show 0,0 in view_map — runtime loading issue). Rocks treated as impassable post-2026-04-15 trim. |
+| `hm_test_rock_smash_oreburgh_mine_b2f` | Oreburgh Mine B2F at (18, 28). Standing between two decorative Rock Smash rocks at (17, 28) and (19, 28). Used to verify rocks are impassable (`TestRockSmashImpassable`) rather than auto-cleared. |
+| `hm_test_cut_surf_route214` | Route 214 at (725, 678). Obstacle BFS detected Cut tree at (731, 648) + Surf tiles on path when auto-clear was enabled; Cut tree is now impassable, Surf portion still exercised if retained. |
 | `hm_test_rock_climb_veilstone` | Veilstone City at (691, 617). South of a 2-tile Rock Climb wall at (691, 615-616). Navigate to (691, 614) = 3 steps through wall. 68-step clean path around. |
 
 ### Bike Slope Test States
@@ -78,15 +78,15 @@ Fly (Garchomp), Surf (Swampert), Rock Smash (Nidoking), Strength (Nidoking), Roc
 | `move_relearner_pastoria` | Pastoria City at map 129 (C06R0401), inside the Move Relearner's house. E4 save (8 badges). NPC "Collector" is the relearner. |
 | `move_deleter_oreburgh` | Oreburgh City at map 58 (C03R0301), inside the Move Deleter's house. E4 save (8 badges). NPC "Old Man" is the deleter. |
 
-### Still needed
-- **Cut (standalone)** — All cut trees have story flags; may need our playthrough save (2-badge, pre-Galactic) for Eterna City trees.
-- **Strength** — Oreburgh Mine B2F objects are Rock Smash, not Strength. Need cave with actual Strength boulders (gfx=85). Reliable ROM coords: Stark Mountain Room 3 (10, 13).
+### No longer needed
+- **Cut / Rock Smash (standalone)** — Renegade Platinum removes every path-gating Cut tree and Rock Smash rock (per the hack's documented changes, confirmed by on-cam verification at Oreburgh Mine B2F on 2026-04-15: rocks are trivially walkable-around). Both GFX types are now treated as impassable; no new save states needed.
+- **Strength** — The only mandatory Strength obstacle in Renegade is the Distortion World B5F/B6F Lake Guardian boulder puzzle. When reached, handle manually with `press_buttons` rather than building a full HM tool — it's a one-time, 3-boulder puzzle.
 
 ### ROM data reference
-Full HM obstacle scan in `romdata/zone_event/`. Key findings:
-- **Cut trees (gfx=87)**: 335 across 107 archives. All have story flags. Eterna City (327,516) and (317,558) gated behind Galactic flags.
-- **Rock Smash (gfx=86)**: 49 across 19 archives. Most have placeholder coords (0,0). Oreburgh Mine B2F has verified (17,28) and (19,28).
-- **Strength boulders (gfx=85)**: 111 across 21 archives. Most placeholder coords. Oreburgh Mine B2F (19,28)/(17,28) per ROM but show as Rock Smash in-game.
+Full HM obstacle scan in `romdata/zone_event/` (scan performed pre-trim — kept for historical reference):
+- **Cut trees (gfx=86)**: 335 across 107 archives. All have story flags. Eterna City (327,516) and (317,558) gated behind Galactic flags. Now treated as impassable.
+- **Rock Smash (gfx=85)**: 49 across 19 archives. Most placeholder coords (0,0). Oreburgh Mine B2F has verified (17,28) and (19,28) — confirmed decorative. Now treated as impassable.
+- **Strength boulders (gfx=84)**: 111 across 21 archives. Most placeholder coords — the real puzzle boulders spawn at runtime in Distortion World B5F (`MAP_OBJECT_B5F_UXIE_BOULDER`, `_AZELF_BOULDER`, `_MESPRIT_BOULDER`).
 - **Rock Climb (0x4A/0x4B)**: 34 land_data chunks. Most in Mt. Coronet, some Route 216/217.
 
 ---
