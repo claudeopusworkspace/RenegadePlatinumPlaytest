@@ -305,12 +305,15 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
         # A script context in CTX_RUNNING means an animation/event is in progress
         # (e.g., gym puzzle "The fountain's water level dropped!"). Enter the main
         # loop so we can wait for event text and dismiss it with B.
+        # CTX_WAITING means the script is paused on a callback — cutscene text
+        # can hold in TextPrinter while the script waits for B input (e.g., Barry's
+        # post-Cyrus dialogue at Lake Verity). Also enter the main loop for these.
         ctx_ptr = ss["ctx1_ptr"] if (ss["sub_ctx_active"] and ss["ctx1_ptr"]) else ss["ctx0_ptr"]
-        event_running = False
+        script_active = False
         if ctx_ptr:
             ctx = _read_context_state(emu, ctx_ptr)
-            event_running = ctx["state"] == CTX_RUNNING
-        if not event_running:
+            script_active = ctx["state"] in (CTX_RUNNING, CTX_WAITING)
+        if not script_active:
             result = read_dialogue(emu, "overworld")
             result["status"] = "no_dialogue"
             result["conversation"] = result.get("lines", [])

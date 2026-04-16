@@ -11,7 +11,7 @@
   },
   "2": {
     "code": "UG",
-    "name": "Canalave Library",
+    "name": "Mystery Zone",
     "room": ""
   },
   "3": {
@@ -21,77 +21,77 @@
   },
   "4": {
     "code": "C01FS0101",
-    "name": "[C01FS0101]",
+    "name": "Jubilife City",
     "room": ""
   },
   "5": {
     "code": "C01GYM0101",
-    "name": "[C01GYM0101]",
+    "name": "Jubilife City",
     "room": ""
   },
   "6": {
     "code": "C01PC0101",
-    "name": "[C01PC0101]",
+    "name": "Jubilife City",
     "room": ""
   },
   "7": {
     "code": "C01PC0102",
-    "name": "[C01PC0102]",
+    "name": "Jubilife City",
     "room": ""
   },
   "8": {
     "code": "C01R0101",
-    "name": "Jubilife City",
+    "name": "Pokétch Co.",
     "room": "R0101"
   },
   "9": {
     "code": "C01R0102",
-    "name": "Jubilife City",
+    "name": "Pokétch Co.",
     "room": "R0102"
   },
   "10": {
     "code": "C01R0103",
-    "name": "Jubilife City",
+    "name": "Pokétch Co.",
     "room": "R0103"
   },
   "11": {
     "code": "C01R0201",
-    "name": "Jubilife City",
+    "name": "Jubilife TV",
     "room": "R0201"
   },
   "12": {
     "code": "C01R0202",
-    "name": "Jubilife City",
+    "name": "Jubilife TV",
     "room": "R0202"
   },
   "13": {
     "code": "C01R0203",
-    "name": "Jubilife City",
+    "name": "Jubilife TV",
     "room": "R0203"
   },
   "14": {
     "code": "C01R0204",
-    "name": "Jubilife City",
+    "name": "Jubilife TV",
     "room": "R0204"
   },
   "15": {
     "code": "C01R0205",
-    "name": "Jubilife City",
+    "name": "Jubilife TV",
     "room": "R0205"
   },
   "16": {
     "code": "C01R0206",
-    "name": "Jubilife City",
+    "name": "Jubilife TV",
     "room": "R0206"
   },
   "17": {
     "code": "C01R0207",
-    "name": "Jubilife City",
+    "name": "Jubilife TV",
     "room": "R0207"
   },
   "18": {
     "code": "C01R0208",
-    "name": "Jubilife City",
+    "name": "Jubilife TV",
     "room": "R0208"
   },
   "19": {
@@ -141,12 +141,12 @@
   },
   "28": {
     "code": "C01R0601",
-    "name": "Jubilife City",
+    "name": "Global Terminal",
     "room": "R0601"
   },
   "29": {
     "code": "C01R0701",
-    "name": "Jubilife City",
+    "name": "Trainers' School",
     "room": "R0701"
   },
   "30": {
@@ -171,37 +171,37 @@
   },
   "34": {
     "code": "C02FS0101",
-    "name": "[C02FS0101]",
+    "name": "Canalave City",
     "room": ""
   },
   "35": {
     "code": "C02GYM0101",
-    "name": "[C02GYM0101]",
+    "name": "Canalave City",
     "room": ""
   },
   "36": {
     "code": "C02PC0101",
-    "name": "[C02PC0101]",
+    "name": "Canalave City",
     "room": ""
   },
   "37": {
     "code": "C02PC0102",
-    "name": "[C02PC0102]",
+    "name": "Canalave City",
     "room": ""
   },
   "38": {
     "code": "C02R0101",
-    "name": "Canalave City",
+    "name": "Canalave Library",
     "room": "R0101"
   },
   "39": {
     "code": "C02R0102",
-    "name": "Canalave City",
+    "name": "Canalave Library",
     "room": "R0102"
   },
   "40": {
     "code": "C02R0103",
-    "name": "Canalave City",
+    "name": "Canalave Library",
     "room": "R0103"
   },
   "41": {
@@ -231,22 +231,22 @@
   },
   "46": {
     "code": "C03FS0101",
-    "name": "[C03FS0101]",
+    "name": "Oreburgh City",
     "room": ""
   },
   "47": {
     "code": "C03GYM0101",
-    "name": "[C03GYM0101]",
+    "name": "Oreburgh City",
     "room": ""
   },
   "48": {
     "code": "C03PC0101",
-    "name": "[C03PC0101]",
+    "name": "Oreburgh City",
     "room": ""
   },
   "49": {
     "code": "C03PC0102",
-    "name": "[C03PC0102]",
+    "name": "Oreburgh City",
     "room": ""
   },
   "50": {
@@ -296,7 +296,7 @@
   },
   "59": {
     "code": "C03R0401",
-    "name": "Oreburgh City",
+    "name": "Mining Museum",
     "room": "R0401"
   },
   "60": {
@@ -331,52 +331,52 @@
   },
   "66": {
     "code": "C04FS0101",
-    "name": "[C04FS0101]",
+    "name": "Eterna City",
     "room": ""
   },
   "67": {
     "code": "C04GYM0101",
-    "name": "[C04GYM0101]",
+    "name": "Eterna City",
     "room": ""
   },
   "68": {
     "code": "C04GYM0102",
-    "name": "[C04GYM0102]",
+    "name": "Eterna City",
     "room": ""
   },
   "69": {
     "code": "C04PC0101",
-    "name": "[C04PC0101]",
+    "name": "Eterna City",
     "room": ""
   },
   "70": {
     "code": "C04PC0102",
-    "name": "[C04PC0102]",
+    "name": "Eterna City",
     "room": ""
   },
   "71": {
     "code": "C04R0101",
-    "name": "Eterna City",
+    "name": "Cycle Shop",
     "room": "R0101"
   },
   "72": {
     "code": "C04R0201",
-    "name": "Eterna City",
+    "name": "T.G. Eterna Bldg",
     "room": "R0201"
   },
   "73": {
     "code": "C04R0202",
-    "name": "Eterna City",
+    "name": "T.G. Eterna Bldg",
     "room": "R0202"
   },
   "74": {
     "code": "C04R0203",
-    "name": "Eterna City",
+    "name": "T.G. Eterna Bldg",
     "room": "R0203"
   },
   "75": {
     "code": "C04R0204",
-    "name": "Eterna City",
+    "name": "T.G. Eterna Bldg",
     "room": "R0204"
   },
   "76": {
@@ -401,7 +401,7 @@
   },
   "80": {
     "code": "C04R0401",
-    "name": "Eterna City",
+    "name": "Route 206",
     "room": "R0401"
   },
   "81": {
@@ -436,82 +436,82 @@
   },
   "87": {
     "code": "C05FS0101",
-    "name": "[C05FS0101]",
+    "name": "Hearthome City",
     "room": ""
   },
   "88": {
     "code": "C05GYM0101",
-    "name": "[C05GYM0101]",
+    "name": "Hearthome City",
     "room": ""
   },
   "89": {
     "code": "C05GYM0102",
-    "name": "[C05GYM0102]",
+    "name": "Hearthome City",
     "room": ""
   },
   "90": {
     "code": "C05GYM0103",
-    "name": "[C05GYM0103]",
+    "name": "Hearthome City",
     "room": ""
   },
   "91": {
     "code": "C05GYM0104",
-    "name": "[C05GYM0104]",
+    "name": "Hearthome City",
     "room": ""
   },
   "92": {
     "code": "C05GYM0105",
-    "name": "[C05GYM0105]",
+    "name": "Hearthome City",
     "room": ""
   },
   "93": {
     "code": "C05GYM0106",
-    "name": "[C05GYM0106]",
+    "name": "Hearthome City",
     "room": ""
   },
   "94": {
     "code": "C05GYM0107",
-    "name": "[C05GYM0107]",
+    "name": "Hearthome City",
     "room": ""
   },
   "95": {
     "code": "C05GYM0108",
-    "name": "[C05GYM0108]",
+    "name": "Hearthome City",
     "room": ""
   },
   "96": {
     "code": "C05GYM0109",
-    "name": "[C05GYM0109]",
+    "name": "Hearthome City",
     "room": ""
   },
   "97": {
     "code": "C05GYM0110",
-    "name": "[C05GYM0110]",
+    "name": "Hearthome City",
     "room": ""
   },
   "98": {
     "code": "C05GYM0111",
-    "name": "[C05GYM0111]",
+    "name": "Hearthome City",
     "room": ""
   },
   "99": {
     "code": "C05GYM0112",
-    "name": "[C05GYM0112]",
+    "name": "Hearthome City",
     "room": ""
   },
   "100": {
     "code": "C05GYM0113",
-    "name": "[C05GYM0113]",
+    "name": "Hearthome City",
     "room": ""
   },
   "101": {
     "code": "C05PC0101",
-    "name": "[C05PC0101]",
+    "name": "Hearthome City",
     "room": ""
   },
   "102": {
     "code": "C05PC0102",
-    "name": "[C05PC0102]",
+    "name": "Hearthome City",
     "room": ""
   },
   "103": {
@@ -546,17 +546,17 @@
   },
   "109": {
     "code": "C05R0501",
-    "name": "Hearthome City",
+    "name": "Route 208",
     "room": "R0501"
   },
   "110": {
     "code": "C05R0601",
-    "name": "Hearthome City",
+    "name": "Route 209",
     "room": "R0601"
   },
   "111": {
     "code": "C05R0701",
-    "name": "Hearthome City",
+    "name": "Route 212",
     "room": "R0701"
   },
   "112": {
@@ -581,22 +581,22 @@
   },
   "116": {
     "code": "C05R1001",
-    "name": "Hearthome City",
+    "name": "Poffin House",
     "room": "R1001"
   },
   "117": {
     "code": "C05R1101",
-    "name": "Hearthome City",
+    "name": "Contest Hall",
     "room": "R1101"
   },
   "118": {
     "code": "C05R1102",
-    "name": "Hearthome City",
+    "name": "Contest Hall",
     "room": "R1102"
   },
   "119": {
     "code": "C05R1201",
-    "name": "Hearthome City",
+    "name": "Foreign Building",
     "room": "R1201"
   },
   "120": {
@@ -606,22 +606,22 @@
   },
   "121": {
     "code": "C06FS0101",
-    "name": "[C06FS0101]",
+    "name": "Pastoria City",
     "room": ""
   },
   "122": {
     "code": "C06GYM0101",
-    "name": "[C06GYM0101]",
+    "name": "Pastoria City",
     "room": ""
   },
   "123": {
     "code": "C06PC0101",
-    "name": "[C06PC0101]",
+    "name": "Pastoria City",
     "room": ""
   },
   "124": {
     "code": "C06PC0102",
-    "name": "[C06PC0102]",
+    "name": "Pastoria City",
     "room": ""
   },
   "125": {
@@ -666,52 +666,52 @@
   },
   "133": {
     "code": "C07GYM0101",
-    "name": "[C07GYM0101]",
+    "name": "Veilstone City",
     "room": ""
   },
   "134": {
     "code": "C07PC0101",
-    "name": "[C07PC0101]",
+    "name": "Veilstone City",
     "room": ""
   },
   "135": {
     "code": "C07PC0102",
-    "name": "[C07PC0102]",
+    "name": "Veilstone City",
     "room": ""
   },
   "136": {
     "code": "C07R0101",
-    "name": "Veilstone City",
+    "name": "Game Corner",
     "room": "R0101"
   },
   "137": {
     "code": "C07R0201",
-    "name": "Veilstone City",
+    "name": "Veilstone Store",
     "room": "R0201"
   },
   "138": {
     "code": "C07R0202",
-    "name": "Veilstone City",
+    "name": "Veilstone Store",
     "room": "R0202"
   },
   "139": {
     "code": "C07R0203",
-    "name": "Veilstone City",
+    "name": "Veilstone Store",
     "room": "R0203"
   },
   "140": {
     "code": "C07R0204",
-    "name": "Veilstone City",
+    "name": "Veilstone Store",
     "room": "R0204"
   },
   "141": {
     "code": "C07R0205",
-    "name": "Veilstone City",
+    "name": "Veilstone Store",
     "room": "R0205"
   },
   "142": {
     "code": "C07R0206",
-    "name": "Veilstone City",
+    "name": "Veilstone Store",
     "room": "R0206"
   },
   "143": {
@@ -746,7 +746,7 @@
   },
   "149": {
     "code": "C07R0901",
-    "name": "Veilstone City",
+    "name": "Route 215",
     "room": "R0901"
   },
   "150": {
@@ -756,37 +756,37 @@
   },
   "151": {
     "code": "C08PC0101",
-    "name": "[C08PC0101]",
+    "name": "Sunyshore City",
     "room": ""
   },
   "152": {
     "code": "C08PC0102",
-    "name": "[C08PC0102]",
+    "name": "Sunyshore City",
     "room": ""
   },
   "153": {
     "code": "C08FS0101",
-    "name": "[C08FS0101]",
+    "name": "Sunyshore City",
     "room": ""
   },
   "154": {
     "code": "C08GYM0101",
-    "name": "[C08GYM0101]",
+    "name": "Sunyshore City",
     "room": ""
   },
   "155": {
     "code": "C08GYM0102",
-    "name": "[C08GYM0102]",
+    "name": "Sunyshore City",
     "room": ""
   },
   "156": {
     "code": "C08GYM0103",
-    "name": "[C08GYM0103]",
+    "name": "Sunyshore City",
     "room": ""
   },
   "157": {
     "code": "C08R0101",
-    "name": "Sunyshore City",
+    "name": "Sunyshore Market",
     "room": "R0101"
   },
   "158": {
@@ -821,7 +821,7 @@
   },
   "164": {
     "code": "C08R0801",
-    "name": "Sunyshore City",
+    "name": "Vista Lighthouse",
     "room": "R0801"
   },
   "165": {
@@ -831,22 +831,22 @@
   },
   "166": {
     "code": "C09FS0101",
-    "name": "[C09FS0101]",
+    "name": "Snowpoint City",
     "room": ""
   },
   "167": {
     "code": "C09GYM0101",
-    "name": "[C09GYM0101]",
+    "name": "Snowpoint City",
     "room": ""
   },
   "168": {
     "code": "C09PC0101",
-    "name": "[C09PC0101]",
+    "name": "Snowpoint City",
     "room": ""
   },
   "169": {
     "code": "C09PC0102",
-    "name": "[C09PC0102]",
+    "name": "Snowpoint City",
     "room": ""
   },
   "170": {
@@ -866,12 +866,12 @@
   },
   "173": {
     "code": "C10PC0101",
-    "name": "[C10PC0101]",
+    "name": "Pokémon League",
     "room": ""
   },
   "174": {
     "code": "C10PC0102",
-    "name": "[C10PC0102]",
+    "name": "Pokémon League",
     "room": ""
   },
   "175": {
@@ -941,47 +941,47 @@
   },
   "188": {
     "code": "C11",
-    "name": "[C11]",
+    "name": "Fight Area",
     "room": ""
   },
   "189": {
     "code": "C11PC0101",
-    "name": "[C11PC0101]",
+    "name": "Fight Area",
     "room": ""
   },
   "190": {
     "code": "C11PC0102",
-    "name": "[C11PC0102]",
+    "name": "Fight Area",
     "room": ""
   },
   "191": {
     "code": "C11FS0101",
-    "name": "[C11FS0101]",
+    "name": "Fight Area",
     "room": ""
   },
   "192": {
     "code": "C11R0101",
-    "name": "[C11]",
+    "name": "Battle Park",
     "room": "R0101"
   },
   "193": {
     "code": "C11R0201",
-    "name": "[C11]",
+    "name": "Route 225",
     "room": "R0201"
   },
   "194": {
     "code": "C11R0301",
-    "name": "[C11]",
+    "name": "Fight Area",
     "room": "R0301"
   },
   "195": {
     "code": "C11R0401",
-    "name": "[C11]",
+    "name": "Fight Area",
     "room": "R0401"
   },
   "196": {
     "code": "C11R0501",
-    "name": "[C11]",
+    "name": "Mystery Zone",
     "room": "R0501"
   },
   "197": {
@@ -1031,7 +1031,7 @@
   },
   "206": {
     "code": "D05",
-    "name": "Mt. Coronet",
+    "name": "Mystery Zone",
     "room": ""
   },
   "207": {
@@ -1101,612 +1101,612 @@
   },
   "220": {
     "code": "D05R0114",
-    "name": "Mt. Coronet",
+    "name": "Spear Pillar",
     "room": "R0114"
   },
   "221": {
     "code": "D05R0115",
-    "name": "Mt. Coronet",
+    "name": "Spear Pillar",
     "room": "R0115"
   },
   "222": {
     "code": "D06",
-    "name": "Spear Pillar",
+    "name": "Mystery Zone",
     "room": ""
   },
   "223": {
     "code": "D06R0101",
-    "name": "Spear Pillar",
+    "name": "Pastoria City",
     "room": "R0101"
   },
   "224": {
     "code": "D07",
-    "name": "Great Marsh",
+    "name": "Mystery Zone",
     "room": ""
   },
   "225": {
     "code": "D07R0101",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0101"
   },
   "226": {
     "code": "D07R0102",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0102"
   },
   "227": {
     "code": "D07R0103",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0103"
   },
   "228": {
     "code": "D07R0104",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0104"
   },
   "229": {
     "code": "D07R0105",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0105"
   },
   "230": {
     "code": "D07R0106",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0106"
   },
   "231": {
     "code": "D07R0107",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0107"
   },
   "232": {
     "code": "D07R0108",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0108"
   },
   "233": {
     "code": "D07R0109",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0109"
   },
   "234": {
     "code": "D07R0110",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0110"
   },
   "235": {
     "code": "D07R0111",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0111"
   },
   "236": {
     "code": "D07R0112",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0112"
   },
   "237": {
     "code": "D07R0113",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0113"
   },
   "238": {
     "code": "D07R0114",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0114"
   },
   "239": {
     "code": "D07R0115",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0115"
   },
   "240": {
     "code": "D07R0116",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0116"
   },
   "241": {
     "code": "D07R0117",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0117"
   },
   "242": {
     "code": "D07R0118",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0118"
   },
   "243": {
     "code": "D09",
-    "name": "Solaceon Ruins",
+    "name": "Mystery Zone",
     "room": ""
   },
   "244": {
     "code": "D09R0101",
-    "name": "Solaceon Ruins",
+    "name": "Victory Road",
     "room": "R0101"
   },
   "245": {
     "code": "D09R0102",
-    "name": "Solaceon Ruins",
+    "name": "Victory Road",
     "room": "R0102"
   },
   "246": {
     "code": "D09R0103",
-    "name": "Solaceon Ruins",
+    "name": "Victory Road",
     "room": "R0103"
   },
   "247": {
     "code": "D09R0104",
-    "name": "Solaceon Ruins",
+    "name": "Victory Road",
     "room": "R0104"
   },
   "248": {
     "code": "D09R0105",
-    "name": "Solaceon Ruins",
+    "name": "Victory Road",
     "room": "R0105"
   },
   "249": {
     "code": "D09R0106",
-    "name": "Solaceon Ruins",
+    "name": "Victory Road",
     "room": "R0106"
   },
   "250": {
     "code": "D10",
-    "name": "Victory Road",
+    "name": "Mystery Zone",
     "room": ""
   },
   "251": {
     "code": "D10R0101",
-    "name": "Victory Road",
+    "name": "Pal Park",
     "room": "R0101"
   },
   "252": {
     "code": "D11",
-    "name": "Pal Park",
+    "name": "Mystery Zone",
     "room": ""
   },
   "253": {
     "code": "D11R0101",
-    "name": "Pal Park",
+    "name": "Amity Square",
     "room": "R0101"
   },
   "254": {
     "code": "D12R0101",
-    "name": "Amity Square",
+    "name": "Ravaged Path",
     "room": "R0101"
   },
   "255": {
     "code": "D13",
-    "name": "Ravaged Path",
+    "name": "Mystery Zone",
     "room": ""
   },
   "256": {
     "code": "D13R0101",
-    "name": "Ravaged Path",
+    "name": "Floaroma Meadow",
     "room": "R0101"
   },
   "257": {
     "code": "D13R0102",
-    "name": "Ravaged Path",
+    "name": "Floaroma Meadow",
     "room": "R0102"
   },
   "258": {
     "code": "D14R0101",
-    "name": "Floaroma Meadow",
+    "name": "Oreburgh Gate",
     "room": "R0101"
   },
   "259": {
     "code": "D14R0102",
-    "name": "Floaroma Meadow",
+    "name": "Oreburgh Gate",
     "room": "R0102"
   },
   "260": {
     "code": "D15",
-    "name": "Oreburgh Gate",
+    "name": "Fullmoon Island",
     "room": ""
   },
   "261": {
     "code": "D15R0101",
-    "name": "Oreburgh Gate",
+    "name": "Fullmoon Island",
     "room": "R0101"
   },
   "262": {
     "code": "D16",
-    "name": "Distortion World",
+    "name": "Stark Mountain",
     "room": ""
   },
   "263": {
     "code": "D16R0101",
-    "name": "Distortion World",
+    "name": "Stark Mountain",
     "room": "R0101"
   },
   "264": {
     "code": "D16R0102",
-    "name": "Distortion World",
+    "name": "Stark Mountain",
     "room": "R0102"
   },
   "265": {
     "code": "D16R0103",
-    "name": "Distortion World",
+    "name": "Stark Mountain",
     "room": "R0103"
   },
   "266": {
     "code": "D17",
-    "name": "[D17]",
+    "name": "Mystery Zone",
     "room": ""
   },
   "267": {
     "code": "D17R0101",
-    "name": "[D17]",
+    "name": "Sendoff Spring",
     "room": "R0101"
   },
   "268": {
     "code": "D17R0102",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0102"
   },
   "269": {
     "code": "D17R0103",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0103"
   },
   "270": {
     "code": "D17R0104",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0104"
   },
   "271": {
     "code": "D17R0105",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0105"
   },
   "272": {
     "code": "D17R0106",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0106"
   },
   "273": {
     "code": "D17R0107",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0107"
   },
   "274": {
     "code": "D18",
-    "name": "[D18]",
+    "name": "Flower Paradise",
     "room": ""
   },
   "275": {
     "code": "D18R0101",
-    "name": "[D18]",
+    "name": "Mystery Zone",
     "room": "R0101"
   },
   "276": {
     "code": "D19A",
-    "name": "[D19A]",
+    "name": "Mystery Zone",
     "room": ""
   },
   "277": {
     "code": "D19B",
-    "name": "[D19B]",
+    "name": "Mystery Zone",
     "room": ""
   },
   "278": {
     "code": "D20R0101",
-    "name": "[D20]",
+    "name": "Snowpoint Temple",
     "room": "R0101"
   },
   "279": {
     "code": "D20R0102",
-    "name": "[D20]",
+    "name": "Snowpoint Temple",
     "room": "R0102"
   },
   "280": {
     "code": "D20R0103",
-    "name": "[D20]",
+    "name": "Snowpoint Temple",
     "room": "R0103"
   },
   "281": {
     "code": "D20R0104",
-    "name": "[D20]",
+    "name": "Snowpoint Temple",
     "room": "R0104"
   },
   "282": {
     "code": "D20R0105",
-    "name": "[D20]",
+    "name": "Snowpoint Temple",
     "room": "R0105"
   },
   "283": {
     "code": "D20R0106",
-    "name": "[D20]",
+    "name": "Snowpoint Temple",
     "room": "R0106"
   },
   "284": {
     "code": "D21R0101",
-    "name": "[D21]",
+    "name": "Wayward Cave",
     "room": "R0101"
   },
   "285": {
     "code": "D21R0102",
-    "name": "[D21]",
+    "name": "Wayward Cave",
     "room": "R0102"
   },
   "286": {
     "code": "D22R0101",
-    "name": "[D22]",
+    "name": "Ruin Maniac Cave",
     "room": "R0101"
   },
   "287": {
     "code": "D23R0101",
-    "name": "[D23]",
+    "name": "Trophy Garden",
     "room": "R0101"
   },
   "288": {
     "code": "D24",
-    "name": "[D24]",
+    "name": "Iron Island",
     "room": ""
   },
   "289": {
     "code": "D24R0101",
-    "name": "[D24]",
+    "name": "Iron Island",
     "room": "R0101"
   },
   "290": {
     "code": "D24R0102",
-    "name": "[D24]",
+    "name": "Iron Island",
     "room": "R0102"
   },
   "291": {
     "code": "D24R0103",
-    "name": "[D24]",
+    "name": "Iron Island",
     "room": "R0103"
   },
   "292": {
     "code": "D24R0104",
-    "name": "[D24]",
+    "name": "Iron Island",
     "room": "R0104"
   },
   "293": {
     "code": "D24R0105",
-    "name": "[D24]",
+    "name": "Iron Island",
     "room": "R0105"
   },
   "294": {
     "code": "D24R0106",
-    "name": "[D24]",
+    "name": "Iron Island",
     "room": "R0106"
   },
   "295": {
     "code": "D25R0101",
-    "name": "[D25]",
+    "name": "Old Chateau",
     "room": "R0101"
   },
   "296": {
     "code": "D25R0102",
-    "name": "[D25]",
+    "name": "Old Chateau",
     "room": "R0102"
   },
   "297": {
     "code": "D25R0103",
-    "name": "[D25]",
+    "name": "Old Chateau",
     "room": "R0103"
   },
   "298": {
     "code": "D25R0104",
-    "name": "[D25]",
+    "name": "Old Chateau",
     "room": "R0104"
   },
   "299": {
     "code": "D25R0105",
-    "name": "[D25]",
+    "name": "Old Chateau",
     "room": "R0105"
   },
   "300": {
     "code": "D25R0106",
-    "name": "[D25]",
+    "name": "Old Chateau",
     "room": "R0106"
   },
   "301": {
     "code": "D25R0107",
-    "name": "[D25]",
+    "name": "Old Chateau",
     "room": "R0107"
   },
   "302": {
     "code": "D25R0108",
-    "name": "[D25]",
+    "name": "Old Chateau",
     "room": "R0108"
   },
   "303": {
     "code": "D25R0109",
-    "name": "[D25]",
+    "name": "Old Chateau",
     "room": "R0109"
   },
   "304": {
     "code": "D25R1001",
-    "name": "[D25]",
+    "name": "Mystery Zone",
     "room": "R1001"
   },
   "305": {
     "code": "D26R0101",
-    "name": "[D26]",
+    "name": "Galactic HQ",
     "room": "R0101"
   },
   "306": {
     "code": "D26R0102",
-    "name": "[D26]",
+    "name": "Galactic HQ",
     "room": "R0102"
   },
   "307": {
     "code": "D26R0103",
-    "name": "[D26]",
+    "name": "Galactic HQ",
     "room": "R0103"
   },
   "308": {
     "code": "D26R0104",
-    "name": "[D26]",
+    "name": "Galactic HQ",
     "room": "R0104"
   },
   "309": {
     "code": "D26R0105",
-    "name": "[D26]",
+    "name": "Galactic HQ",
     "room": "R0105"
   },
   "310": {
     "code": "D26R0106",
-    "name": "[D26]",
+    "name": "Galactic HQ",
     "room": "R0106"
   },
   "311": {
     "code": "D27R0101",
-    "name": "[D27]",
+    "name": "Lake Verity",
     "room": "R0101"
   },
   "312": {
     "code": "D27R0102",
-    "name": "[D27]",
+    "name": "Lake Verity",
     "room": "R0102"
   },
   "313": {
     "code": "D27R0103",
-    "name": "[D27]",
+    "name": "Verity Cavern",
     "room": "R0103"
   },
   "314": {
     "code": "D28R0101",
-    "name": "[D28]",
+    "name": "Lake Valor",
     "room": "R0101"
   },
   "315": {
     "code": "D28R0102",
-    "name": "[D28]",
+    "name": "Lake Valor",
     "room": "R0102"
   },
   "316": {
     "code": "D28R0103",
-    "name": "[D28]",
+    "name": "Valor Cavern",
     "room": "R0103"
   },
   "317": {
     "code": "D29R0101",
-    "name": "[D29]",
+    "name": "Lake Acuity",
     "room": "R0101"
   },
   "318": {
     "code": "D29R0102",
-    "name": "[D29]",
+    "name": "Lake Acuity",
     "room": "R0102"
   },
   "319": {
     "code": "D29R0103",
-    "name": "[D29]",
+    "name": "Acuity Cavern",
     "room": "R0103"
   },
   "320": {
     "code": "D30",
-    "name": "[D30]",
+    "name": "Newmoon Island",
     "room": ""
   },
   "321": {
     "code": "D30R0101",
-    "name": "[D30]",
+    "name": "Newmoon Island",
     "room": "R0101"
   },
   "322": {
     "code": "D31",
-    "name": "[D31]",
+    "name": "Battle Park",
     "room": ""
   },
   "323": {
     "code": "D31R0101",
-    "name": "[D31]",
+    "name": "Battle Park",
     "room": "R0101"
   },
   "324": {
     "code": "D31R0102",
-    "name": "[D31]",
+    "name": "Mystery Zone",
     "room": "R0102"
   },
   "325": {
     "code": "D31R0103",
-    "name": "[D31]",
+    "name": "Mystery Zone",
     "room": "R0103"
   },
   "326": {
     "code": "D31R0201",
-    "name": "[D31]",
+    "name": "Battle Tower",
     "room": "R0201"
   },
   "327": {
     "code": "D31R0202",
-    "name": "[D31]",
+    "name": "Battle Tower",
     "room": "R0202"
   },
   "328": {
     "code": "D31R0203",
-    "name": "[D31]",
+    "name": "Battle Tower",
     "room": "R0203"
   },
   "329": {
     "code": "D31R0204",
-    "name": "[D31]",
+    "name": "Battle Tower",
     "room": "R0204"
   },
   "330": {
     "code": "D31R0205",
-    "name": "[D31]",
+    "name": "Battle Tower",
     "room": "R0205"
   },
   "331": {
     "code": "D31R0206",
-    "name": "[D31]",
+    "name": "Battle Tower",
     "room": "R0206"
   },
   "332": {
     "code": "DIRECT2",
-    "name": "[DI]",
+    "name": "Mystery Zone",
     "room": "RECT2"
   },
   "333": {
     "code": "DIRECT4",
-    "name": "[DI]",
+    "name": "Mystery Zone",
     "room": "RECT4"
   },
   "334": {
     "code": "L01",
-    "name": "Flower Shop",
+    "name": "Verity Lakefront",
     "room": ""
   },
   "335": {
     "code": "L01R0101",
-    "name": "Flower Shop",
+    "name": "Verity Lakefront",
     "room": "R0101"
   },
   "336": {
     "code": "L02",
-    "name": "Mining Museum",
+    "name": "Valor Lakefront",
     "room": ""
   },
   "337": {
     "code": "L02R0101",
-    "name": "Mining Museum",
+    "name": "Restaurant",
     "room": "R0101"
   },
   "338": {
     "code": "L02R0201",
-    "name": "Mining Museum",
+    "name": "Grand Lake",
     "room": "R0201"
   },
   "339": {
     "code": "L02R0301",
-    "name": "Mining Museum",
+    "name": "Grand Lake",
     "room": "R0301"
   },
   "340": {
     "code": "L03",
-    "name": "Contest Hall",
+    "name": "Acuity Lakefront",
     "room": ""
   },
   "341": {
     "code": "L04",
-    "name": "Trainers' School",
+    "name": "Spring Path",
     "room": ""
   },
   "342": {
@@ -1761,7 +1761,7 @@
   },
   "352": {
     "code": "R206R0201",
-    "name": "Route 206",
+    "name": "Mystery Zone",
     "room": "R0201"
   },
   "353": {
@@ -1841,17 +1841,17 @@
   },
   "368": {
     "code": "R212AR0101",
-    "name": "Route 212",
+    "name": "Pokémon Mansion",
     "room": "R0101"
   },
   "369": {
     "code": "R212AR0102",
-    "name": "Route 212",
+    "name": "Pokémon Mansion",
     "room": "R0102"
   },
   "370": {
     "code": "R212AR0103",
-    "name": "Route 212",
+    "name": "Pokémon Mansion",
     "room": "R0103"
   },
   "371": {
@@ -1876,27 +1876,27 @@
   },
   "375": {
     "code": "R213R0201",
-    "name": "Route 213",
+    "name": "Footstep House",
     "room": "R0201"
   },
   "376": {
     "code": "R213R0301",
-    "name": "Route 213",
+    "name": "Grand Lake",
     "room": "R0301"
   },
   "377": {
     "code": "R213R0401",
-    "name": "Route 213",
+    "name": "Grand Lake",
     "room": "R0401"
   },
   "378": {
     "code": "R213R0501",
-    "name": "Route 213",
+    "name": "Grand Lake",
     "room": "R0501"
   },
   "379": {
     "code": "R213R0601",
-    "name": "Route 213",
+    "name": "Grand Lake",
     "room": "R0601"
   },
   "380": {
@@ -1966,7 +1966,7 @@
   },
   "393": {
     "code": "R221R0101",
-    "name": "Route 221",
+    "name": "Pal Park",
     "room": "R0101"
   },
   "394": {
@@ -2006,12 +2006,12 @@
   },
   "401": {
     "code": "R226A",
-    "name": "Route 226",
+    "name": "Mystery Zone",
     "room": ""
   },
   "402": {
     "code": "R226B",
-    "name": "Route 226",
+    "name": "Mystery Zone",
     "room": ""
   },
   "403": {
@@ -2021,12 +2021,12 @@
   },
   "404": {
     "code": "R227A",
-    "name": "Route 227",
+    "name": "Mystery Zone",
     "room": ""
   },
   "405": {
     "code": "R227B",
-    "name": "Route 227",
+    "name": "Mystery Zone",
     "room": ""
   },
   "406": {
@@ -2041,17 +2041,17 @@
   },
   "408": {
     "code": "R230",
-    "name": "Route 230",
+    "name": "Mystery Zone",
     "room": ""
   },
   "409": {
     "code": "R232",
-    "name": "[R232]",
+    "name": "Mystery Zone",
     "room": ""
   },
   "410": {
     "code": "RECORD",
-    "name": "[RECO]",
+    "name": "Mystery Zone",
     "room": "RD"
   },
   "411": {
@@ -2096,17 +2096,17 @@
   },
   "419": {
     "code": "T02FS0101",
-    "name": "[T02FS0101]",
+    "name": "Sandgem Town",
     "room": ""
   },
   "420": {
     "code": "T02PC0101",
-    "name": "[T02PC0101]",
+    "name": "Sandgem Town",
     "room": ""
   },
   "421": {
     "code": "T02PC0102",
-    "name": "[T02PC0102]",
+    "name": "Sandgem Town",
     "room": ""
   },
   "422": {
@@ -2136,22 +2136,22 @@
   },
   "427": {
     "code": "T03FS0101",
-    "name": "[T03FS0101]",
+    "name": "Floaroma Town",
     "room": ""
   },
   "428": {
     "code": "T03PC0101",
-    "name": "[T03PC0101]",
+    "name": "Floaroma Town",
     "room": ""
   },
   "429": {
     "code": "T03PC0102",
-    "name": "[T03PC0102]",
+    "name": "Floaroma Town",
     "room": ""
   },
   "430": {
     "code": "T03R0101",
-    "name": "Floaroma Town",
+    "name": "Flower Shop",
     "room": "R0101"
   },
   "431": {
@@ -2171,22 +2171,22 @@
   },
   "434": {
     "code": "T04FS0101",
-    "name": "[T04FS0101]",
+    "name": "Solaceon Town",
     "room": ""
   },
   "435": {
     "code": "T04PC0101",
-    "name": "[T04PC0101]",
+    "name": "Solaceon Town",
     "room": ""
   },
   "436": {
     "code": "T04PC0102",
-    "name": "[T04PC0102]",
+    "name": "Solaceon Town",
     "room": ""
   },
   "437": {
     "code": "T04R0101",
-    "name": "Solaceon Town",
+    "name": "Pokémon Day Care",
     "room": "R0101"
   },
   "438": {
@@ -2216,12 +2216,12 @@
   },
   "443": {
     "code": "T05PC0101",
-    "name": "[T05PC0101]",
+    "name": "Celestic Town",
     "room": ""
   },
   "444": {
     "code": "T05PC0102",
-    "name": "[T05PC0102]",
+    "name": "Celestic Town",
     "room": ""
   },
   "445": {
@@ -2251,87 +2251,87 @@
   },
   "450": {
     "code": "T06",
-    "name": "[T06]",
+    "name": "Survival Area",
     "room": ""
   },
   "451": {
     "code": "T06FS0101",
-    "name": "[T06FS0101]",
+    "name": "Survival Area",
     "room": ""
   },
   "452": {
     "code": "T06PC0101",
-    "name": "[T06PC0101]",
+    "name": "Survival Area",
     "room": ""
   },
   "453": {
     "code": "T06PC0102",
-    "name": "[T06PC0102]",
+    "name": "Survival Area",
     "room": ""
   },
   "454": {
     "code": "T06R0101",
-    "name": "[T06]",
+    "name": "Battleground",
     "room": "R0101"
   },
   "455": {
     "code": "T06R0201",
-    "name": "[T06]",
+    "name": "Survival Area",
     "room": "R0201"
   },
   "456": {
     "code": "T06R0301",
-    "name": "[T06]",
+    "name": "Survival Area",
     "room": "R0301"
   },
   "457": {
     "code": "T07",
-    "name": "[T07]",
+    "name": "Resort Area",
     "room": ""
   },
   "458": {
     "code": "T07FS0101",
-    "name": "[T07FS0101]",
+    "name": "Resort Area",
     "room": ""
   },
   "459": {
     "code": "T07PC0101",
-    "name": "[T07PC0101]",
+    "name": "Resort Area",
     "room": ""
   },
   "460": {
     "code": "T07PC0102",
-    "name": "[T07PC0102]",
+    "name": "Resort Area",
     "room": ""
   },
   "461": {
     "code": "T07R0101",
-    "name": "[T07]",
+    "name": "Resort Area",
     "room": "R0101"
   },
   "462": {
     "code": "T07R0102",
-    "name": "[T07]",
+    "name": "Resort Area",
     "room": "R0102"
   },
   "463": {
     "code": "T07R0103",
-    "name": "[T07]",
+    "name": "Resort Area",
     "room": "R0103"
   },
   "464": {
     "code": "T07R0201",
-    "name": "[T07]",
+    "name": "Villa",
     "room": "R0201"
   },
   "465": {
     "code": "T07R0301",
-    "name": "[T07]",
+    "name": "Resort Area",
     "room": "R0301"
   },
   "466": {
     "code": "UNION",
-    "name": "Vista Lighthouse",
+    "name": "Mystery Zone",
     "room": ""
   },
   "467": {
@@ -2351,7 +2351,7 @@
   },
   "470": {
     "code": "W229",
-    "name": "Route 229",
+    "name": "Mystery Zone",
     "room": ""
   },
   "471": {
@@ -2361,97 +2361,97 @@
   },
   "472": {
     "code": "W231",
-    "name": "[W231]",
+    "name": "Seabreak Path",
     "room": ""
   },
   "473": {
     "code": "W233",
-    "name": "[W233]",
+    "name": "Mystery Zone",
     "room": ""
   },
   "474": {
     "code": "C01PC0103",
-    "name": "[C01PC0103]",
+    "name": "Jubilife City",
     "room": ""
   },
   "475": {
     "code": "C02PC0103",
-    "name": "[C02PC0103]",
+    "name": "Canalave City",
     "room": ""
   },
   "476": {
     "code": "C03PC0103",
-    "name": "[C03PC0103]",
+    "name": "Oreburgh City",
     "room": ""
   },
   "477": {
     "code": "C04PC0103",
-    "name": "[C04PC0103]",
+    "name": "Eterna City",
     "room": ""
   },
   "478": {
     "code": "C05PC0103",
-    "name": "[C05PC0103]",
+    "name": "Hearthome City",
     "room": ""
   },
   "479": {
     "code": "C06PC0103",
-    "name": "[C06PC0103]",
+    "name": "Pastoria City",
     "room": ""
   },
   "480": {
     "code": "C07PC0103",
-    "name": "[C07PC0103]",
+    "name": "Veilstone City",
     "room": ""
   },
   "481": {
     "code": "C08PC0103",
-    "name": "[C08PC0103]",
+    "name": "Sunyshore City",
     "room": ""
   },
   "482": {
     "code": "C09PC0103",
-    "name": "[C09PC0103]",
+    "name": "Snowpoint City",
     "room": ""
   },
   "483": {
     "code": "C10PC0103",
-    "name": "[C10PC0103]",
+    "name": "Pokémon League",
     "room": ""
   },
   "484": {
     "code": "C11PC0103",
-    "name": "[C11PC0103]",
+    "name": "Fight Area",
     "room": ""
   },
   "485": {
     "code": "T02PC0103",
-    "name": "[T02PC0103]",
+    "name": "Sandgem Town",
     "room": ""
   },
   "486": {
     "code": "T03PC0103",
-    "name": "[T03PC0103]",
+    "name": "Floaroma Town",
     "room": ""
   },
   "487": {
     "code": "T04PC0103",
-    "name": "[T04PC0103]",
+    "name": "Solaceon Town",
     "room": ""
   },
   "488": {
     "code": "T05PC0103",
-    "name": "[T05PC0103]",
+    "name": "Celestic Town",
     "room": ""
   },
   "489": {
     "code": "T06PC0103",
-    "name": "[T06PC0103]",
+    "name": "Survival Area",
     "room": ""
   },
   "490": {
     "code": "T07PC0103",
-    "name": "[T07PC0103]",
+    "name": "Resort Area",
     "room": ""
   },
   "491": {
@@ -2461,17 +2461,17 @@
   },
   "492": {
     "code": "R210AR0101",
-    "name": "Route 210",
+    "name": "Café",
     "room": "R0101"
   },
   "493": {
     "code": "D31R0207",
-    "name": "[D31]",
+    "name": "Battle Tower",
     "room": "R0207"
   },
   "494": {
     "code": "D26R0107",
-    "name": "[D26]",
+    "name": "Galactic HQ",
     "room": "R0107"
   },
   "495": {
@@ -2486,7 +2486,7 @@
   },
   "497": {
     "code": "D26R0108",
-    "name": "[D26]",
+    "name": "Galactic HQ",
     "room": "R0108"
   },
   "498": {
@@ -2521,67 +2521,67 @@
   },
   "504": {
     "code": "D06R0201",
-    "name": "Spear Pillar",
+    "name": "Great Marsh",
     "room": "R0201"
   },
   "505": {
     "code": "D06R0202",
-    "name": "Spear Pillar",
+    "name": "Great Marsh",
     "room": "R0202"
   },
   "506": {
     "code": "D06R0203",
-    "name": "Spear Pillar",
+    "name": "Great Marsh",
     "room": "R0203"
   },
   "507": {
     "code": "D06R0204",
-    "name": "Spear Pillar",
+    "name": "Great Marsh",
     "room": "R0204"
   },
   "508": {
     "code": "D06R0205",
-    "name": "Spear Pillar",
+    "name": "Great Marsh",
     "room": "R0205"
   },
   "509": {
     "code": "D06R0206",
-    "name": "Spear Pillar",
+    "name": "Great Marsh",
     "room": "R0206"
   },
   "510": {
     "code": "D05R0116",
-    "name": "Mt. Coronet",
+    "name": "Hall of Origin",
     "room": "R0116"
   },
   "511": {
     "code": "D05R0117",
-    "name": "Mt. Coronet",
+    "name": "Hall of Origin",
     "room": "R0117"
   },
   "512": {
     "code": "D22R0102",
-    "name": "[D22]",
+    "name": "Ruin Maniac Cave",
     "room": "R0102"
   },
   "513": {
     "code": "D22R0103",
-    "name": "[D22]",
+    "name": "Maniac Tunnel",
     "room": "R0103"
   },
   "514": {
     "code": "D24R0201",
-    "name": "[D24]",
+    "name": "Iron Island",
     "room": "R0201"
   },
   "515": {
     "code": "D07R0119",
-    "name": "Great Marsh",
+    "name": "Solaceon Ruins",
     "room": "R0119"
   },
   "516": {
     "code": "C08R0802",
-    "name": "Sunyshore City",
+    "name": "Vista Lighthouse",
     "room": "R0802"
   },
   "517": {
@@ -2591,377 +2591,377 @@
   },
   "518": {
     "code": "D17R0108",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0108"
   },
   "519": {
     "code": "D17R0109",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0109"
   },
   "520": {
     "code": "D17R0110",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0110"
   },
   "521": {
     "code": "D17R0111",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0111"
   },
   "522": {
     "code": "D17R0112",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0112"
   },
   "523": {
     "code": "D17R0113",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0113"
   },
   "524": {
     "code": "D17R0114",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0114"
   },
   "525": {
     "code": "D17R0115",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0115"
   },
   "526": {
     "code": "D17R0116",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0116"
   },
   "527": {
     "code": "D17R0117",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0117"
   },
   "528": {
     "code": "D17R0118",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0118"
   },
   "529": {
     "code": "D17R0119",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0119"
   },
   "530": {
     "code": "D17R0120",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0120"
   },
   "531": {
     "code": "D17R0121",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0121"
   },
   "532": {
     "code": "D17R0122",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0122"
   },
   "533": {
     "code": "D17R0123",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0123"
   },
   "534": {
     "code": "D17R0124",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0124"
   },
   "535": {
     "code": "D17R0125",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0125"
   },
   "536": {
     "code": "D17R0126",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0126"
   },
   "537": {
     "code": "D17R0127",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0127"
   },
   "538": {
     "code": "D17R0128",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0128"
   },
   "539": {
     "code": "D17R0129",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0129"
   },
   "540": {
     "code": "D17R0130",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0130"
   },
   "541": {
     "code": "D17R0131",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0131"
   },
   "542": {
     "code": "D17R0132",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0132"
   },
   "543": {
     "code": "D17R0133",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0133"
   },
   "544": {
     "code": "D17R0134",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0134"
   },
   "545": {
     "code": "D17R0135",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0135"
   },
   "546": {
     "code": "D17R0136",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0136"
   },
   "547": {
     "code": "D17R0137",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0137"
   },
   "548": {
     "code": "D17R0138",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0138"
   },
   "549": {
     "code": "D17R0139",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0139"
   },
   "550": {
     "code": "D17R0140",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0140"
   },
   "551": {
     "code": "D17R0141",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0141"
   },
   "552": {
     "code": "D17R0142",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0142"
   },
   "553": {
     "code": "D17R0143",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0143"
   },
   "554": {
     "code": "D17R0144",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0144"
   },
   "555": {
     "code": "D17R0145",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0145"
   },
   "556": {
     "code": "D17R0146",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0146"
   },
   "557": {
     "code": "D17R0147",
-    "name": "[D17]",
+    "name": "Turnback Cave",
     "room": "R0147"
   },
   "558": {
     "code": "C05R1103",
-    "name": "Hearthome City",
+    "name": "Contest Hall",
     "room": "R1103"
   },
   "559": {
     "code": "D32",
-    "name": "[D32]",
+    "name": "Battle Frontier",
     "room": ""
   },
   "560": {
     "code": "D32R0101",
-    "name": "[D32]",
+    "name": "Battle Frontier",
     "room": "R0101"
   },
   "561": {
     "code": "D32R0201",
-    "name": "[D32]",
+    "name": "Battle Tower",
     "room": "R0201"
   },
   "562": {
     "code": "D32R0301",
-    "name": "[D32]",
+    "name": "Battle Factory",
     "room": "R0301"
   },
   "563": {
     "code": "D32R0401",
-    "name": "[D32]",
+    "name": "Battle Hall",
     "room": "R0401"
   },
   "564": {
     "code": "D32R0501",
-    "name": "[D32]",
+    "name": "Battle Castle",
     "room": "R0501"
   },
   "565": {
     "code": "D32R0601",
-    "name": "[D32]",
+    "name": "Battle Arcade",
     "room": "R0601"
   },
   "566": {
     "code": "C07R0207",
-    "name": "Veilstone City",
+    "name": "Veilstone Store",
     "room": "R0207"
   },
   "567": {
     "code": "C01R0602",
-    "name": "Jubilife City",
+    "name": "Global Terminal",
     "room": "R0602"
   },
   "568": {
     "code": "C01R0603",
-    "name": "Jubilife City",
+    "name": "Global Terminal",
     "room": "R0603"
   },
   "569": {
     "code": "D26R0109",
-    "name": "[D26]",
+    "name": "Galactic HQ",
     "room": "R0109"
   },
   "570": {
     "code": "D33R0101",
-    "name": "[D33]",
+    "name": "Distortion World",
     "room": "R0101"
   },
   "571": {
     "code": "C04R0205",
-    "name": "Eterna City",
+    "name": "ROTOM's Room",
     "room": "R0205"
   },
   "572": {
     "code": "C04R0206",
-    "name": "Eterna City",
+    "name": "T.G. Eterna Bldg",
     "room": "R0206"
   },
   "573": {
     "code": "D34R0101",
-    "name": "[D34]",
+    "name": "Distortion World",
     "room": "R0101"
   },
   "574": {
     "code": "D34R0102",
-    "name": "[D34]",
+    "name": "Distortion World",
     "room": "R0102"
   },
   "575": {
     "code": "D34R0103",
-    "name": "[D34]",
+    "name": "Distortion World",
     "room": "R0103"
   },
   "576": {
     "code": "D34R0104",
-    "name": "[D34]",
+    "name": "Distortion World",
     "room": "R0104"
   },
   "577": {
     "code": "D34R0105",
-    "name": "[D34]",
+    "name": "Distortion World",
     "room": "R0105"
   },
   "578": {
     "code": "D34R0106",
-    "name": "[D34]",
+    "name": "Distortion World",
     "room": "R0106"
   },
   "579": {
     "code": "D34R0107",
-    "name": "[D34]",
+    "name": "Distortion World",
     "room": "R0107"
   },
   "580": {
     "code": "D34R0108",
-    "name": "[D34]",
+    "name": "Distortion World",
     "room": "R0108"
   },
   "581": {
     "code": "D34R0109",
-    "name": "[D34]",
+    "name": "Distortion World",
     "room": "R0109"
   },
   "582": {
     "code": "D34R0110",
-    "name": "[D34]",
+    "name": "Distortion World",
     "room": "R0110"
   },
   "583": {
     "code": "D34R0111",
-    "name": "[D34]",
+    "name": "Distortion World",
     "room": "R0111"
   },
   "584": {
     "code": "D05R0118",
-    "name": "Mt. Coronet",
+    "name": "Spear Pillar",
     "room": "R0118"
   },
   "585": {
     "code": "D05R0119",
-    "name": "Mt. Coronet",
+    "name": "Spear Pillar",
     "room": "R0119"
   },
   "586": {
     "code": "HIROBA",
-    "name": "Mystery Zone",
+    "name": "Jubilife City",
     "room": "ROBA"
   },
   "587": {
     "code": "D35R0101",
-    "name": "[D35]",
+    "name": "Iron Island",
     "room": "R0101"
   },
   "588": {
     "code": "D35R0102",
-    "name": "[D35]",
+    "name": "Iron Ruins",
     "room": "R0102"
   },
   "589": {
     "code": "D35R0103",
-    "name": "[D35]",
+    "name": "Mt. Coronet",
     "room": "R0103"
   },
   "590": {
     "code": "D35R0104",
-    "name": "[D35]",
+    "name": "Iceberg Ruins",
     "room": "R0104"
   },
   "591": {
     "code": "D35R0105",
-    "name": "[D35]",
+    "name": "Route 228",
     "room": "R0105"
   },
   "592": {
     "code": "D35R0106",
-    "name": "[D35]",
+    "name": "Rock Peak Ruins",
     "room": "R0106"
   }
 }

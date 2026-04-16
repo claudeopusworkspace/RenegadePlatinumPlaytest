@@ -455,9 +455,21 @@ def buy_item(
         _press(emu, ["a"])               # select YES → "Here you are! Thank you!"
 
         # ── Post-purchase dialogue ──
-        _press(emu, ["a"])               # advance "Here you are!"
-        _press(emu, ["a"])               # "You put away the [item] in the [pocket]."
-        _press(emu, ["a"], _MENU_WAIT)   # dismiss → back to item list
+        # Standard buy: 2 pages ("Here you are!" + "You put away the [item]...")
+        # Premier Ball bonus (10+ Poké Balls): 4 pages (+2 for bonus text).
+        # Poll msgBox to consume ALL pages rather than hardcoding press count.
+        from renegade_mcp.dialogue import _find_script_manager, _read_script_state
+        for _ in range(10):  # safety cap — never more than ~10 pages
+            emu.advance_frames(60)
+            mgr = _find_script_manager(emu)
+            if mgr is None:
+                break
+            ss = _read_script_state(emu, mgr)
+            if not ss["is_msg_box_open"]:
+                break
+            emu.press_buttons(["a"], frames=8)
+            emu.advance_frames(_TEXT_WAIT)
+        emu.advance_frames(_MENU_WAIT)   # settle back to item list
 
         # ── Exit shop: B → See Ya ──
         _press(emu, ["b"], _MENU_WAIT)   # back to Buy/Sell/See Ya
@@ -470,6 +482,13 @@ def buy_item(
     new_status = read_trainer_status(emu)
     new_money = new_status.get("money", 0)
     spent = money - new_money
+
+    if spent != total_cost:
+        return _error(
+            f"Purchase verification failed: expected to spend ¥{total_cost:,} "
+            f"but actually spent ¥{spent:,} (money {money:,} → {new_money:,}). "
+            f"Shop UI may be in a bad state — screenshot to diagnose."
+        )
 
     result = {
         "success": True,

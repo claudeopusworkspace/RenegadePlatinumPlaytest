@@ -1293,6 +1293,11 @@ def _execute_move_learn(
 def _recover_from_level_up(emu: EmulatorClient, result: dict[str, Any]) -> dict[str, Any]:
     """After level-up causes a timeout, press B to advance through stat screens."""
     for _ in range(RECOVERY_PRESSES):
+        # Check for evolution text BEFORE pressing B — a B press during
+        # "What? X is evolving!" cancels the evolution entirely.
+        if _is_evolution_text_on_screen(emu):
+            return _wait_for_evolution(emu, result)
+
         # Init baseline BEFORE dismissing, so text that appears after B
         # (like "learned Quick Attack!") is detected as new by the poll.
         _tracker.init(emu)
@@ -1300,13 +1305,12 @@ def _recover_from_level_up(emu: EmulatorClient, result: dict[str, Any]) -> dict[
         emu.press_buttons(["b"], frames=8)
         emu.advance_frames(RECOVERY_WAIT)
 
-        # Check for evolution text BEFORE polling — the poll's auto_press
-        # would dismiss it with B and subsequent B presses would cancel
-        # the evolution animation.
+        # Re-check evolution after B press — the B may have dismissed a stat
+        # screen revealing evolution text underneath.
         if _is_evolution_text_on_screen(emu):
             return _wait_for_evolution(emu, result)
 
-        poll = _tracker.poll(emu, auto_press=True)
+        poll = _tracker.poll(emu, auto_press=False)
 
         if poll["final_state"] == "WAIT_FOR_ACTION":
             result["log"].extend(poll.get("log", []))
@@ -1460,9 +1464,15 @@ def _classify_final_state(emu: EmulatorClient, result: dict[str, Any]) -> str:
         # returning to the action prompt with rejection text in the log.
         # Note: _classify_final_state runs before prompt log is merged,
         # so result["log"] here contains only poll entries.
+        # IMPORTANT: Only detect OUR Pokemon being blocked, not the opponent's.
+        # When our Taunt lands, the game shows "The foe's X can't use Y after
+        # the taunt!" — same "can't use" substring but that's the opponent.
         for entry in result.get("log", []):
             t = entry.get("text", "").replace("\n", " ").lower()
             if "can't use" in t or "cannot use" in t or "is disabled" in t:
+                # Skip if this is about the opponent (foe/wild prefix)
+                if "foe's" in t or "wild " in t or "the opposing" in t:
+                    continue
                 return "MOVE_BLOCKED"
         return "WAIT_FOR_ACTION"
 

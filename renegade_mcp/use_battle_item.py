@@ -129,20 +129,19 @@ def use_battle_item(
 
     # Snapshot battle HP before item use (for healing verification)
     # NOTE: read_party reads the save block which is NOT updated during battle.
-    # read_battle reads the live BattleMon structs.
+    # read_battle reads the live BattleMon structs (active battlers only).
     old_hp = -1
     old_max_hp = -1
     if battle_use == 2 and party_slot >= 0:
         from renegade_mcp.battle import read_battle
         battlers = read_battle(emu)
-        # Player's active Pokemon is slot 0 in battlers (side=="player")
         for b in battlers:
-            if b.get("side") == "player" and b.get("slot") == 0:
+            if b.get("side") == "player" and b.get("slot") == party_slot:
                 old_hp = b.get("hp", -1)
                 old_max_hp = b.get("max_hp", -1)
                 break
-        # For non-active party members, HP isn't in read_battle — fall back
-        # to trusting the state (can't verify non-active HP from battle data)
+        # For non-active party members, old_hp stays -1 — HP verification
+        # is skipped (read_battle only contains active battlers)
 
     # ── Step 1: Tap BAG on action screen ──
     _tap(emu, BAG_XY[0], BAG_XY[1])
@@ -202,9 +201,34 @@ def use_battle_item(
         from renegade_mcp.turn import _wait_for_action_prompt
         prompt = _wait_for_action_prompt(emu)
         if prompt["ready"]:
-            final_state = "WAIT_FOR_ACTION"
+            final_state = prompt.get("prompt_type", "WAIT_FOR_ACTION")
         else:
             final_state = prompt.get("state", "TIMEOUT")
+
+    # ── Step 8: Blackout recovery ──
+    # If the enemy KO'd our last Pokemon after the item was used, the game
+    # plays the full blackout sequence. Detect via _is_battle_over and handle
+    # the same way as turn.py — advance through fade + Nurse Joy dialogue.
+    if final_state in ("TIMEOUT", "FAINT_FORCED", "FAINT_SWITCH"):
+        from renegade_mcp.turn import _is_battle_over, _handle_blackout
+        if _is_battle_over(emu):
+            blackout_dialogue = _handle_blackout(emu)
+            msg = (
+                f"Used {item_name}, but party wiped — blacked out to Pokemon Center. "
+                f"State: BATTLE_ENDED."
+            )
+            result = {
+                "success": True,
+                "item": item_name,
+                "final_state": "BATTLE_ENDED",
+                "blackout": True,
+                "formatted": msg,
+            }
+            if blackout_dialogue:
+                result["post_battle_dialogue"] = blackout_dialogue
+            if party_slot >= 0:
+                result["party_slot"] = party_slot
+            return result
 
     # ── Step 9: Verify item was used ──
     # NOTE: During battle, the overworld bag (BAG_BASE) is NOT updated —
@@ -212,49 +236,69 @@ def use_battle_item(
     # Instead, verify via party HP change (healing items) or trust the
     # final state (X items / escape items).
 
-    if battle_use == 2 and party_slot >= 0 and old_hp >= 0:
-        # Healing item on active Pokemon — check if HP changed via battle data
+    if battle_use == 2 and party_slot >= 0:
         from renegade_mcp.battle import read_battle
         battlers_after = read_battle(emu)
-        new_hp = -1
         target_name = f"Slot {party_slot}"
+        # Find the battler matching party_slot (only works for active battlers)
         for b in battlers_after:
-            if b.get("side") == "player" and b.get("slot") == 0:
-                new_hp = b.get("hp", -1)
+            if b.get("side") == "player" and b.get("slot") == party_slot:
                 target_name = b.get("nickname") or b.get("species", target_name)
                 break
-        if new_hp >= 0:
-            hp_changed = new_hp != old_hp
-            if hp_changed:
-                msg = (
-                    f"Used {item_name} on {target_name}. "
-                    f"HP: {old_hp} -> {new_hp}/{old_max_hp}. State: {final_state}."
-                )
-                return {
-                    "success": True,
-                    "item": item_name,
-                    "target": target_name,
-                    "party_slot": party_slot,
-                    "old_hp": old_hp,
-                    "new_hp": new_hp,
-                    "final_state": final_state,
-                    "formatted": msg,
-                }
-            else:
-                msg = (
-                    f"Item use may have failed — {target_name} HP unchanged "
-                    f"({old_hp}/{old_max_hp}). The item may have had no effect "
-                    f"or the UI navigation missed. State: {final_state}."
-                )
-                return {
-                    "success": False,
-                    "item": item_name,
-                    "target": target_name,
-                    "party_slot": party_slot,
-                    "hp": old_hp,
-                    "final_state": final_state,
-                    "formatted": msg,
-                }
+
+        if old_hp >= 0:
+            # Active battler — verify HP changed via battle data
+            new_hp = -1
+            for b in battlers_after:
+                if b.get("side") == "player" and b.get("slot") == party_slot:
+                    new_hp = b.get("hp", -1)
+                    break
+            if new_hp >= 0:
+                hp_changed = new_hp != old_hp
+                if hp_changed:
+                    msg = (
+                        f"Used {item_name} on {target_name}. "
+                        f"HP: {old_hp} -> {new_hp}/{old_max_hp}. State: {final_state}."
+                    )
+                    return {
+                        "success": True,
+                        "item": item_name,
+                        "target": target_name,
+                        "party_slot": party_slot,
+                        "old_hp": old_hp,
+                        "new_hp": new_hp,
+                        "final_state": final_state,
+                        "formatted": msg,
+                    }
+                else:
+                    msg = (
+                        f"Item use may have failed — {target_name} HP unchanged "
+                        f"({old_hp}/{old_max_hp}). The item may have had no effect "
+                        f"or the UI navigation missed. State: {final_state}."
+                    )
+                    return {
+                        "success": False,
+                        "item": item_name,
+                        "target": target_name,
+                        "party_slot": party_slot,
+                        "hp": old_hp,
+                        "final_state": final_state,
+                        "formatted": msg,
+                    }
+
+        # Bench Pokemon — can't verify HP from battle data, trust the UI tap
+        msg = (
+            f"Used {item_name} on {target_name} (bench — HP unverifiable). "
+            f"State: {final_state}."
+        )
+        return {
+            "success": True,
+            "item": item_name,
+            "target": target_name,
+            "party_slot": party_slot,
+            "final_state": final_state,
+            "formatted": msg,
+        }
 
     # X item or escape item — trust final state
     if final_state in ("WAIT_FOR_ACTION", "BATTLE_ENDED"):
