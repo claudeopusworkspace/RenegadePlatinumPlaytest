@@ -2,6 +2,46 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: QA bug triage — live verification of 8 bugs (2026-04-15)
+
+### Summary
+Verified the 8 bugs the QA Sonnet session filed on 2026-04-14 against the live emulator. Previously all had been static-analyzed only. **Result: 7 reproduced (5 live, 2 via code inspection), 1 not reproducible.** Each confirmed bug now has a documented fix approach, file:line pointer, and preserved repro save state. Backlog memory (`project_tool_improvements.md`) updated so next session can pick a bug and go directly to implementation.
+
+### Setup
+Copied the needed QA save states from `/workspace/RenegadePlatinumQA/savestates/` into Playtest's `savestates/` with a `qa_` prefix (so `list_states` picks them up and the existing melonDS bridge can load them without a directory switch). The QA states come from a different battery save with a different heap delta, so `reload_tools` was called after each load to re-detect. `mcp__renegade__reload_tools` was sufficient — no need to flush the MelonMCP bridge.
+
+### Per-bug verification
+| ID | Tool | Status | Key finding |
+|---|---|---|---|
+| BUG-002 | `read_dialogue` | REPRODUCED | Tool returns `no_dialogue` while script is CTX_WAITING for input. Single manual B press unsticks Barry's dialogue, proving script was active. Fix: expand `dialogue.py:304-318` bailout to include CTX_WAITING with a bounded timed-wait. |
+| BUG-003 | `buy_item` | REPRODUCED | Poké Ball×15 → Potion×5 yielded Antidote×3. Response `total_cost:1500` vs `money_spent:300` mismatch. Premier Ball bonus dialogue adds 2 extra pages that `shop.py:457-460`'s hardcoded 3 A-presses don't consume. Fix: dialogue-aware post-purchase loop. |
+| BUG-004 | `battle_turn` | REPRODUCED | Chimchar Taunt vs Turtwig Withdraw → `MOVE_BLOCKED` returned, but Taunt PP 20→19 (turn consumed) proves the classifier is wrong. Fix: filter "can't use" matches where "foe's" or "fell for the taunt" appears in adjacent log entries. |
+| BUG-005 | `auto_grind` | CONFIRMED (code) | `turn.py:1300` presses B BEFORE `turn.py:1306` checks evolution text — classic race. Also `_tracker.poll(auto_press=True)` can press during evo animation. Live repro deferred (~15-battle grind). Fix: swap check-before-press; disable auto_press when evo text may appear. |
+| BUG-007 | doubles partner | **NOT REPRODUCIBLE** | Tested move_index=0/1/3 on Monferno partner — all correct (Mach Punch, Flame Wheel, Taunt with matching PP decrements and targets). QA's "always uses Taunt" doesn't fire from clean load. Likely a stale-cursor effect from QA session history. Closing as not-reproducible. |
+| BUG-008 | `map_name` | REPRODUCED | map_id=258 returns "Floaroma Meadow" but engine popup shows "Oreburgh Gate"; view_map confirms with a *warp to* Floaroma Meadow (can't BE the place you warp TO). `data/map_id_to_name.json` is stale for Renegade's reshuffled IDs. Fix: rebuild table from per-map zone-header location_name index × msg file 433. Audit the whole table, not just 258. |
+| BUG-009 | `use_battle_item` | REPRODUCED | `party_slot=1` passed, response says `target:"Monferno"` (slot 0, active). `use_battle_item.py:221-225` iterates battlers matching only `b.slot == 0`. Fix: walk battlers for `party_slot`; if non-active, skip HP verification. |
+| BUG-010 | `use_battle_item` | CONFIRMED (code) | `turn.py:929-941` has the full blackout recovery block; `use_battle_item.py:192-207` has no equivalent. Live 3-KO repro deferred. Fix: copy the 13-line block. |
+
+### Preserved checkpoints / save states
+- `qa_oreburgh_gate_entrance.mst` — BUG-008 repro (inside map 258)
+- `qa_lake_verity_cyrus_cutscene_done.mst` — BUG-002 repro
+- `qa_route202_ready_chimchar_lv10.mst` + `bug004_dawn_battle_pretaunt_backup.mst` — BUG-004 (Dawn rival battle pre-Taunt)
+- `qa_oreburgh_city_arrival.mst` + `bug003_pre_buy_repro.mst` — BUG-003 pre-buy state
+- `qa_oreburgh_gym_monferno_lead.mst` — BUG-009 / BUG-010 repro (Roark pre-battle)
+- `qa_route203_trainers_defeated_monferno.mst` + `bug007_partner_action_checkpoint.mst` — BUG-007 doubles partner action moment
+- `qa_jubilife_city_town_map_obtained.mst` — BUG-005 repro path (Chimchar Lv13, 1317/2197 exp)
+
+### Fix difficulty ranking (cheapest first)
+1. **BUG-010** — copy 13 lines from turn.py:929-941 into use_battle_item.py after final_state classification. Literal copy-paste.
+2. **BUG-009** — change `if b.get("slot") == 0` loop to match `party_slot`; add unverifiable-HP note for non-active targets.
+3. **BUG-004** — subject filter for "can't use" log matches (one-line addition or helper function).
+4. **BUG-005** — swap two lines in `_recover_from_level_up` + add evo check inside poll loop.
+5. **BUG-002** — extend `dialogue.py:304-318` bailout with a bounded wait for CTX_WAITING state.
+6. **BUG-003** — rewrite post-purchase section of `shop.py:457-460` to poll `is_msg_box_open` until clear.
+7. **BUG-008** — regenerate `data/map_id_to_name.json` from per-map zone headers. Largest change; touches ROM-parsing utility rather than gameplay code.
+
+Next session: just pick from the list. Each bug's memory entry has the exact repro steps, so no re-verification is needed.
+
 ## Dev Session: trim Rock Smash + Cut auto-clear (2026-04-15)
 
 ### Summary
