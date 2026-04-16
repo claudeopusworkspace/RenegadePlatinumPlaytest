@@ -2148,3 +2148,75 @@ navigation.py has grown to 3,804 lines — more than double the next largest fil
 ### Files Changed
 - `renegade_mcp/navigation.py` — auto-mount bicycle before bike slope traversal when walking
 - `tests/test_cycling_road.py` — added `test_auto_mounts_bike_when_walking`
+
+---
+
+## Session: 2026-04-16 — QA Bug Triage (Round 2, Reproduction + Root Cause)
+
+### Context
+Next round of QA findings from `/workspace/RenegadePlatinumQA` (`BUG_LOG.md` there, bugs #001–#004). Four bugs: one cosmetic (`throw_ball` formatter), three major (`auto_grind` FAINT_SWITCH, `auto_grind` evolution cancel, doubles target-pick stall). Session focus: reproduce each, identify root cause with file:line pointers, leave a clean hand-off for the implementation session.
+
+### Setup
+- Copied QA save states into main project with `bug_qa_*` prefix (4 files).
+- QA battery save backed up read-only at `saves/qa_playthrough.sav` (chmod 444). Save states carry full RAM, so the battery save isn't needed to load them — just mirrored for reference.
+- Emulator loaded ROM + each save state in turn; verified on-screen state matches QA description.
+
+### QA BUG-001 — `throw_ball` `formatted` shows `State: TIMEOUT` after successful CAUGHT (cosmetic)
+**Reproduction:** QA save state is post-catch (Shinx in party slot 3, 11/19 HP). Inspected code path directly.
+
+**Root cause (two issues in one output):**
+1. `catch.py::_recover_from_catch` (lines 79-113) overwrites `result["final_state"] = "CAUGHT"` but never rebuilds `result["formatted"]`. The `formatted` string was built by `_tracker.poll` (`battle_tracker.py:306/312`) with whatever state the tracker saw last — typically `TIMEOUT`, because catch sequences don't end on a `WAIT_FOR_ACTION` marker.
+2. `battle_tracker.py::_format_log` (lines 173-174) does `text[:text.index("[FFFE]")].rstrip()` in a loop. For raw text `[FFFE][0202][0001][0003]Gotcha!\n...`, the first `[FFFE]` is at index 0, so the whole "Gotcha! Shinx was caught!" line is stripped to empty.
+
+**Fix direction:**
+- In `_recover_from_catch`, rebuild `result["formatted"] = _format_log(result["log"], result["final_state"])` before returning.
+- In `_format_log`, handle leading control codes: after finding `[FFFE]`, skip the 3 u16 arg words (the `[XXXX][XXXX][XXXX]` triplet that follows each FFFE marker) instead of truncating the rest of the line.
+
+### QA BUG-002 — `auto_grind` auto-heal stuck on wild-battle FAINT_SWITCH (major)
+**Reproduction:** Loaded save state (wild Rattata, Shinx 0 HP, party grid "Choose a Pokémon." on bottom screen). Called `battle_turn()` with no args (the exact call path from `_auto_heal_and_return`). Response: `{"error":"Must switch in a trainer battle — specify switch_to (1-5)."}` — confirms prompt was classified as `FAINT_FORCED`, not `FAINT_SWITCH`.
+
+**Root cause:**
+- `turn.py::_wait_for_action_prompt` lines 581-589: when polling times out with a fainted player on the battlefield, distinguishes wild vs trainer faint by looking for "Use next" in the accumulated log. On a fresh `battle_turn()` call the log starts empty — so the check fails and the fallback defaults to `FAINT_FORCED`.
+- `auto_grind.py::_auto_heal_and_return` lines 940-951: calls `_battle_turn(emu)` once with no args expecting a silent flee. On misclassification as `FAINT_FORCED`, the validator (`turn.py:889`) errors out; `auto_grind` surfaces it as `"Failed to exit battle after faint. State: WAIT_FOR_ACTION"`. (The `heal_trips: 1` in the QA report is that single failed attempt.)
+
+**Fix direction:** Replace the log-text heuristic with a persistent memory flag. In pokeplatinum decomp the battle context has a `battleType` field with `BATTLE_TYPE_TRAINER` / wild bits; we already have `BATTLE_BASE` (0x022C5774) mapped. Pick a stable offset (trainer pointer or format flag) and read it in `_wait_for_action_prompt`'s fallback. Alternative: pass the prompt type forward from the prior `_fight_battle` classification so `_auto_heal_and_return` doesn't re-classify.
+
+### QA BUG-003 — `auto_grind` cancels post-move-learn evolution; leaves "stopped evolving" dialogue hanging (major)
+**Reproduction:** Loaded save state. Top screen shows "Huh? Chimchar stopped evolving!" dialogue. Party confirmed: Chimchar still species 390, Lv14, Flame Wheel learned. Move-learn flow completed before evolution failed.
+
+**Root cause:**
+- `turn.py::_learn_move_flow` (lines 708-715) advances past "forgot [old]" / "learned [new]" confirmation text with 6 B-presses, gated on `_is_evolution_text_on_screen(emu)` (lines 330-337) — which only matches the substring `"is evolving"`.
+- Gen 4 evolution actually starts with a `WAIT_FOR_ACTION` `"What?"` prompt BEFORE `"is evolving!"`. The existing helper `_handle_evolution_what` (lines 243-263) detects this via the WAIT_FOR_ACTION marker + `_is_evolution_text_on_screen` fallback, but it's only called from `_poll_after_action` / `_recover_from_level_up`, NOT from `_learn_move_flow`.
+- In a narrow frame window the memory scan misses `"is evolving"` while `"What?"` is the active text; B is pressed; evolution cancels. Same weak check also exists in `_skip_move_learn_flow` lines 674-680.
+
+**Fix direction:** Broaden `_is_evolution_text_on_screen` (or add a sibling predicate) to also detect the evolution-trigger state — scan for WAIT_FOR_ACTION `"What?"` prompt text or cross-check via `_is_msg_box_open` + an evolution-pending indicator. Early-exit from the B-press loop and hand off to `_wait_for_evolution` before any B press that could land on "is evolving!".
+
+### QA BUG-004 — `battle_turn` stalls on target-pick submenu after doubles collapses to 1v1 (major)
+**Reproduction:** Loaded save state. `read_battle` confirms: Monferno (slot 0, alive), Azurill (slot 1, alive), Shinx (slot 2, 0 HP), Sunkern (slot 3, 0 HP burn). Top screen "What will Monferno do?", bottom screen doubles target-pick grid with Azurill lit, CANCEL button visible.
+
+**Root cause:**
+- `turn.py::_is_double_battle` (lines 405-409) returns `True` only if ≥2 player battlers are alive (`b.get("side") == "player" and b.get("hp", 0) > 0`). When partner faints mid-doubles-battle, the count drops to 1 and the function returns `False` — even though the UI is still doubles (target-pick submenu still shown after FIGHT → move selection).
+- `_execute_action` (line 1046: `is_double = _is_double_battle(emu)`) then skips `_target_flow_with_retry`. `_fight_flow` taps the FIGHT coordinate, which on the target-pick screen lands on whatever is at those pixels (not a valid target). A second tap hits move-slot coordinates that also aren't target cells. Game stays at the submenu; scan buffer still has stale "What will Monferno do?" text; `_classify_prompt` returns `ACTION`; no damage, no turn advance.
+- Bug compounds: the next `battle_turn(move_index=0, target=0)` call hits the same path — repeats indefinitely until the user intervenes with `tap_touch_screen`.
+
+**Fix direction:**
+- `_is_double_battle` should detect doubles format from a persistent signal, not a live-alive count. Options: (a) read `battleType` from battle context memory (same source BUG-002 will use); (b) count total player slots with `species > 0` regardless of HP (slot 2 persists after faint); (c) cache the initial doubles-ness at battle start and reuse throughout.
+- Also add a "target-pick submenu" detector on `battle_turn` entry: if the grid is visible (scan bottom-screen UI state or check for a CANCEL button signature in memory), tap a valid target instead of retrying FIGHT. Guards against other paths where the submenu lingers.
+
+**Bonus cosmetic (from QA notes):** Azurill's Bubble produced the "Monferno's Speed fell!" message twice in the battle log despite `stages.Spe == -1`. Likely a log-dedup bug in the tracker. Defer — low priority.
+
+### Files Changed
+- Save states copied from `/workspace/RenegadePlatinumQA/savestates/`: `bug_qa_throw_ball_state_mismatch.mst`, `bug_qa_auto_grind_faint_switch_stuck.mst`, `bug_qa_auto_grind_evolution_stop_lingering_dialogue.mst`, `bug_qa_battle_turn_stuck_after_double_ko_doubles.mst`.
+- `saves/qa_playthrough.sav` — read-only copy of QA battery save (reference only).
+- `SAVE_STATES.md` — 4 new rows under Debug & Testing.
+- `DEV_HISTORY.md` — this entry.
+- Project memory: `project_tool_improvements.md` updated with file:line fix pointers for all four bugs.
+
+### Next Session — Implementation Plan
+Ordered fastest-first; each bug gets an integration test against the `bug_qa_*` save state:
+1. **BUG-001 (cosmetic):** 2-line fix in `catch.py::_recover_from_catch` (rebuild `formatted`) + safer `[FFFE]` skip in `battle_tracker._format_log`. Test: unit-test `_format_log` directly for `[FFFE]`-leading input (no emulator needed). Optional integration test needs a pre-catch save (QA state is post-catch).
+2. **BUG-003:** add WAIT_FOR_ACTION "What?" detection to the evolution-gate check in `_learn_move_flow` and `_skip_move_learn_flow`. Test: since QA save is post-bug, may need to roll back via an earlier Chimchar-Lv13 state or reconstruct via auto_grind from a Route 202 save. Worst case: unit-test the evolution-detection predicate.
+3. **BUG-002:** wire a memory-based wild-vs-trainer flag; use it in `_wait_for_action_prompt` fallback and `_auto_heal_and_return`. Test: load `bug_qa_auto_grind_faint_switch_stuck`, call `battle_turn()`, assert flee succeeds and returns `BATTLE_ENDED`. Also a test that the SAME save correctly classifies as `FAINT_SWITCH` on a fresh `battle_turn(switch_to=N)` call.
+4. **BUG-004:** fix `_is_double_battle` (use species count or persistent format flag) + add target-pick submenu detector. Test: load `bug_qa_battle_turn_stuck_after_double_ko_doubles`, call `battle_turn(move_index=0, target=0)`, assert Scratch lands on Azurill (HP drops) and turn resolves.
+
+Run full suite after each fix: `.venv/bin/python -m pytest tests/ -v` (~12 min). Turn off melonDS streaming during pytest (project memory `feedback_disable_stream_for_tests`).

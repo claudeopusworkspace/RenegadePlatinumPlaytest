@@ -29,6 +29,10 @@
 | `route211_west_pre_trainer` | Route 211 west at (368, 524). Pre-trainer (Bird Keeper Alexandra 1 tile left). 6 Pokemon party, full HP. |
 | `bug_wild_faint_switch_trainer_error` | Route 205 mid-battle. Charmeleon vs Volbeat Lv17, Luxio fainted. `battle_turn(run=True)` errored "Must switch in a trainer battle" on a wild battle. |
 | `bug_move_learn_skip_fire_fang_stuck` | Route 205 mid-battle. Luxio Lv24, "give up on Fire Fang?" prompt. `forget_move=-1` fails to dismiss. |
+| `bug_qa_throw_ball_state_mismatch` | QA save, Route 202 overworld. Shinx just caught (5th ball). `throw_ball` JSON says CAUGHT but `formatted` string ends `State: TIMEOUT`. Cosmetic. |
+| `bug_qa_auto_grind_faint_switch_stuck` | QA save, Route 202 mid-battle. Wild Rattata, Shinx FNT, party grid on bottom. `auto_grind(auto_heal=True)` failed with `heal_failed` / "Failed to exit battle after faint. State: WAIT_FOR_ACTION" — prompt misclassified as FAINT_FORCED. |
+| `bug_qa_auto_grind_evolution_stop_lingering_dialogue` | QA save, Route 202 grass at (163,805). "Huh? Chimchar stopped evolving!" dialogue hanging. Chimchar Lv14 with Flame Wheel learned — move-learn ok, evolution cancelled by stray B press. |
+| `bug_qa_battle_turn_stuck_after_double_ko_doubles` | QA save, Route 203 mid-doubles Lass tag. Monferno 28/54 vs Azurill 20/29 (1v1 collapsed from doubles; Shinx + Sunkern both fainted). Target-pick submenu open, battle_turn returns `ACTION` with no damage. |
 | `debug_pokeball_cutscene_interrupt` | Eterna City at (326, 516). `interact_with(object_index=21)` on Pokeball triggers Cynthia cutscene with delayed dialogue. |
 | `debug_signpost_blocking_navigate` | Route 211 at (352, 531). Arrow Signpost at (353, 531) blocks BFS pathfinding east. |
 | `debug_route211_bridge_pathfind` | Route 211 at (377, 532). 3D BFS walks off bridge to reach Pokeball at (368, 535). |
