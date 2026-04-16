@@ -2,6 +2,46 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Fix + test all 7 QA bugs (2026-04-15b)
+
+### Summary
+Implemented fixes for all 7 confirmed QA bugs from the triage session, live-tested 5 against the emulator with QA save states, and added 14 automated integration tests. Two bugs (BUG-005 evolution race, BUG-010 use_battle_item blackout) are probably fixed but lack easy reproduction — BUG-005 was visually confirmed (evolution screen observed), BUG-010 uses identical code path to battle_turn's verified blackout handler.
+
+### Fixes implemented (commit 28f8a2c)
+- **BUG-009** (`use_battle_item.py`): Target reporting matched `party_slot` not hardcoded slot 0; bench Pokemon report "HP unverifiable".
+- **BUG-010** (`use_battle_item.py`): Added blackout recovery via `_is_battle_over` + `_handle_blackout` after item use.
+- **BUG-004** (`turn.py`): MOVE_BLOCKED detection skips opponent's "foe's"/"wild" Taunt-blocked text.
+- **BUG-003** (`shop.py`): Post-purchase dialogue polls `is_msg_box_open` via ScriptManager instead of hardcoded 3 A-presses. Added money-spent sanity check.
+- **BUG-002** (`dialogue.py`): `advance_dialogue` enters main loop for `CTX_WAITING` scripts, not just `CTX_RUNNING`.
+- **BUG-005** (`turn.py`): `_recover_from_level_up` checks evolution text before pressing B; disabled `auto_press` in poll.
+- **BUG-008** (`build_map_table.py` + `map_id_to_name.json`): Rebuilt from ROM zone header `mapLabelTextID` field instead of hardcoded area-code mappings. All 593 maps authoritative.
+
+### Bonus fix (commit e24b76f)
+- `use_battle_item.py`: Map internal `"ACTION"` prompt_type to public `"WAIT_FOR_ACTION"` — caught during live testing.
+
+### Test file: `tests/test_qa_bugfixes.py` (14 tests)
+- BUG-008: 3 tests (static lookup, live map_id, no unknowns)
+- BUG-004: 3 tests (Taunt → WAIT_FOR_ACTION, PP consumed, "fell for the taunt" in log)
+- BUG-009: 4 tests (bench target, HP unverifiable, active name, final_state mapping)
+- BUG-002: 2 tests (cutscene not no_dialogue, Barry dialogue collected)
+- BUG-003: 2 tests (10 Poke Balls + 3 Potions, money sanity check)
+
+### Save states created for tests
+- `test_bug004_dawn_battle_taunt` — Chimchar vs Turtwig at action prompt
+- `test_bug009_roark_battle_monferno_lead` — Monferno active with bench Pokemon, at action prompt
+- `test_bug003_oreburgh_city_post_event` — Oreburgh overworld, scripted NPC cleared
+
+### Verification status
+| Bug | Status | Evidence |
+|-----|--------|----------|
+| BUG-008 | Verified | "Oreburgh Gate" returned, 3 automated tests |
+| BUG-004 | Verified | WAIT_FOR_ACTION returned, PP consumed, 3 automated tests |
+| BUG-009 | Verified | "Slot 1" not "Monferno", 4 automated tests |
+| BUG-002 | Verified | Barry dialogue collected, 2 automated tests |
+| BUG-003 | Verified | Correct item + cost after Premier Ball bonus, 2 automated tests |
+| BUG-005 | Probably fixed | Evolution screen observed visually; read_party stale (heap delta shift) |
+| BUG-010 | Probably fixed | Code path identical to verified battle_turn blackout; no easy repro |
+
 ## Dev Session: QA bug triage — live verification of 8 bugs (2026-04-15)
 
 ### Summary
