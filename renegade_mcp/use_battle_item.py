@@ -201,7 +201,10 @@ def use_battle_item(
         from renegade_mcp.turn import _wait_for_action_prompt
         prompt = _wait_for_action_prompt(emu)
         if prompt["ready"]:
-            final_state = prompt.get("prompt_type", "WAIT_FOR_ACTION")
+            pt = prompt.get("prompt_type", "ACTION")
+            # Map internal "ACTION" to public "WAIT_FOR_ACTION"; pass through
+            # FAINT_SWITCH, FAINT_FORCED, SWITCH_PROMPT, MOVE_LEARN as-is.
+            final_state = "WAIT_FOR_ACTION" if pt == "ACTION" else pt
         else:
             final_state = prompt.get("state", "TIMEOUT")
 
