@@ -158,3 +158,43 @@ class TestMapName:
         name2 = lookup_map_name(mid2)["name"]
 
         assert name1 != name2
+
+
+# ---------------------------------------------------------------------------
+# BUG-008: map_name returns wrong names for reshuffled map IDs
+# ---------------------------------------------------------------------------
+# Save state: qa_oreburgh_gate_entrance — player inside Oreburgh Gate, map_id=258.
+
+class TestBug008MapName:
+    """map_id_to_name.json rebuilt from ROM zone headers."""
+
+    def test_oreburgh_gate_not_floaroma_meadow(self, emu: EmulatorClient):
+        """Map 258 should be 'Oreburgh Gate', not 'Floaroma Meadow'."""
+        load_state(emu, "qa_oreburgh_gate_entrance")
+        from renegade_mcp.map_names import lookup_map_name
+        result = lookup_map_name(258)
+        assert result["name"] == "Oreburgh Gate", (
+            f"Expected 'Oreburgh Gate', got '{result['name']}'"
+        )
+
+    def test_map_name_from_live_map_id(self, emu: EmulatorClient):
+        """lookup_map_name() with the live map_id returns the correct name."""
+        load_state(emu, "qa_oreburgh_gate_entrance")
+        from renegade_mcp.map_names import lookup_map_name
+        from renegade_mcp.map_state import read_player_state
+        map_id, _, _, _ = read_player_state(emu)
+        result = lookup_map_name(map_id)
+        assert result["map_id"] == 258
+        assert result["name"] == "Oreburgh Gate"
+
+    def test_map_table_no_unknowns(self, emu: EmulatorClient):
+        """Every entry in the rebuilt table has a resolved name (no 'Unknown')."""
+        from renegade_mcp.data import map_table
+        table = map_table()
+        unknowns = [
+            (k, v) for k, v in table.items()
+            if "Unknown" in v.get("name", "")
+        ]
+        assert len(unknowns) == 0, (
+            f"Found {len(unknowns)} unknown entries: {unknowns[:5]}"
+        )

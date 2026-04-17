@@ -155,3 +155,94 @@ class TestHealParty:
         from renegade_mcp.heal_party import heal_party
         result = heal_party(emu)
         assert "error" not in result
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-010: read_party reports garbled max_hp for freshly-loaded savestates
+# ---------------------------------------------------------------------------
+# read_party reports garbled max_hp for freshly-loaded savestates where a slot
+# contains a previously-PC-round-tripped Pokémon. The extension bytes are
+# captured mid-recompute: the first 8 bytes (status/level/cur_hp) are in one
+# encryption state while the next 2 bytes (max_hp) are in the opposite state.
+# Neither "fully primary" nor "fully secondary" passes _ext_sane, so the old
+# fallback returned primary's garbage max_hp (e.g. 37988 for Shinx slot 3).
+# Fix: field-level composition picks the sane value for each field.
+#
+# Save state: eterna_forest_entered_south — pre-first-battle savestate with
+# PC-round-tripped Shinx in slot 3.
+
+class TestQaBug010MaxHpMixedStateRecovery:
+    """_resolve_party_extension composes field-by-field when neither source
+    is fully sane, so max_hp in a mixed-encryption slot reads correctly."""
+
+    def test_mixed_state_field_composition(self):
+        """Unit: craft an extension buffer with level/hp plaintext at bytes
+        0-7 and a sane max_hp at bytes 8-9. The composer picks max_hp from
+        whichever source has a sane range and level/hp from the other."""
+        import struct
+        from renegade_mcp.party import _prng_decrypt, _resolve_party_extension
+
+        # Fake PID for PRNG stream
+        pid = 0xE01037C3
+        # Build a plaintext extension: level=6, cur_hp=21, max_hp=21.
+        plain = bytearray(100)
+        struct.pack_into("<I", plain, 0, 0)  # status 0
+        plain[4] = 6                          # level 6
+        struct.pack_into("<H", plain, 6, 21)  # cur_hp 21
+        struct.pack_into("<H", plain, 8, 21)  # max_hp 21
+
+        # Simulate the observed mixed state: bytes 0-7 are encrypted (the
+        # PRNG-XOR of plain), bytes 8+ are plaintext. Applying _prng_decrypt
+        # again on the header flips it back; bytes 8+ become garbage.
+        enc_header = _prng_decrypt(bytes(plain[:8]), pid)
+        mixed = bytearray(enc_header) + plain[8:]
+
+        # `flag_says_decrypted=False` because flags == 0 (what the live
+        # Shinx save reported). Primary = prng_decrypt(mixed) — header
+        # recovers, tail garbles. Secondary = mixed — header garbage, tail
+        # (max_hp @ 8) plaintext.
+        status, level, cur_hp, max_hp = _resolve_party_extension(
+            bytes(mixed), pid, flag_says_decrypted=False
+        )
+        assert level == 6, f"level compose: got {level}"
+        assert cur_hp == 21, f"cur_hp compose: got {cur_hp}"
+        assert max_hp == 21, f"max_hp compose: got {max_hp} (expected 21 from raw tail)"
+
+    def test_shinx_slot_reads_21_21_on_fresh_load(self, emu: EmulatorClient):
+        """Integration: loading `eterna_forest_entered_south` (a pre-first-
+        battle savestate with PC-round-tripped Shinx in slot 3) returns
+        Shinx's max_hp as 21, matching the in-game party menu."""
+        from renegade_mcp.party import read_party
+        load_state(emu, "eterna_forest_entered_south")
+
+        party = read_party(emu)
+        shinx = next((p for p in party if p["name"] == "Shinx"), None)
+        assert shinx is not None, f"Shinx not in party: {[p['name'] for p in party]}"
+        assert shinx["level"] == 6, f"Shinx level: {shinx['level']}"
+        assert shinx["hp"] == 21, f"Shinx hp: {shinx['hp']}"
+        assert shinx["max_hp"] == 21, (
+            f"Shinx max_hp: {shinx['max_hp']} — expected 21 "
+            "(BUG-010 regression: mixed-state extension read)"
+        )
+
+    def test_other_slots_unaffected_on_fresh_load(self, emu: EmulatorClient):
+        """Sanity: the mixed-state recovery path doesn't corrupt already-sane
+        slots. Monferno/Vaporeon/Burmy still read at their expected values."""
+        from renegade_mcp.party import read_party
+        load_state(emu, "eterna_forest_entered_south")
+
+        party = read_party(emu)
+        expected = {
+            "Monferno": {"level": 27, "max_hp": 82},
+            "Vaporeon": {"level": 16, "max_hp": 72},
+            "Burmy": {"level": 18, "max_hp": 45},
+        }
+        for name, wants in expected.items():
+            mon = next((p for p in party if p["name"] == name), None)
+            assert mon is not None, f"{name} missing from party"
+            assert mon["level"] == wants["level"], (
+                f"{name} level: got {mon['level']}, expected {wants['level']}"
+            )
+            assert mon["max_hp"] == wants["max_hp"], (
+                f"{name} max_hp: got {mon['max_hp']}, expected {wants['max_hp']}"
+            )

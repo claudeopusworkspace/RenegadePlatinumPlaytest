@@ -213,3 +213,66 @@ class TestFr003BattleTurnUseItemDelegation:
 
         assert result.get("success") is False
         assert "throw_ball" in result.get("error", "").lower()
+
+
+# ---------------------------------------------------------------------------
+# BUG-009: use_battle_item target reporting hardcoded to slot 0
+# ---------------------------------------------------------------------------
+# Save state: test_bug009_roark_battle_monferno_lead — Monferno Lv16 (slot 0)
+# at action prompt vs Roark's Nosepass, Luxio (slot 1) and Eevee (slot 2) on
+# bench, Potions in bag.
+
+class TestBug009BattleItemTarget:
+    """use_battle_item on bench Pokemon reports correct target, not slot 0."""
+
+    def test_potion_on_bench_reports_correct_slot(self, emu: EmulatorClient):
+        """Potion on party_slot=1 (bench Luxio) should NOT say 'Monferno'."""
+        load_state(emu, "test_bug009_roark_battle_monferno_lead")
+        from renegade_mcp.use_battle_item import use_battle_item
+        result = use_battle_item(emu, "Potion", party_slot=1)
+
+        assert result["success"] is True
+        assert result["party_slot"] == 1
+        # Must NOT report the active Pokemon (Monferno)
+        target = result.get("target", "")
+        assert "Monferno" not in target, (
+            f"Target should not be Monferno (active slot 0), got: '{target}'"
+        )
+
+    def test_bench_pokemon_hp_unverifiable(self, emu: EmulatorClient):
+        """Bench Pokemon healing returns success with unverifiable note."""
+        load_state(emu, "test_bug009_roark_battle_monferno_lead")
+        from renegade_mcp.use_battle_item import use_battle_item
+        result = use_battle_item(emu, "Potion", party_slot=1)
+
+        assert result["success"] is True
+        assert "bench" in result.get("formatted", "").lower(), (
+            f"Expected 'bench' in formatted message: {result.get('formatted')}"
+        )
+
+    def test_active_pokemon_reports_correct_name(self, emu: EmulatorClient):
+        """Potion on party_slot=0 (active Monferno) reports 'Monferno'.
+
+        Monferno is at full HP so the game says "It won't have any effect" —
+        HP is unchanged, but the target name should still be resolved correctly.
+        """
+        load_state(emu, "test_bug009_roark_battle_monferno_lead")
+        from renegade_mcp.use_battle_item import use_battle_item
+        result = use_battle_item(emu, "Potion", party_slot=0)
+
+        # Full HP → HP unchanged → tool reports failure (no effect).
+        # The key assertion: target name should be "Monferno", not some other
+        # Pokemon. Even on failure, the target is correctly identified.
+        target = result.get("target", "")
+        assert "Monferno" in target, (
+            f"Expected 'Monferno' in target for active slot 0, got: '{target}'"
+        )
+
+    def test_final_state_is_wait_for_action(self, emu: EmulatorClient):
+        """Using battle item returns WAIT_FOR_ACTION (not internal 'ACTION')."""
+        load_state(emu, "test_bug009_roark_battle_monferno_lead")
+        from renegade_mcp.use_battle_item import use_battle_item
+        result = use_battle_item(emu, "Potion", party_slot=1)
+        assert result["final_state"] == "WAIT_FOR_ACTION", (
+            f"Expected WAIT_FOR_ACTION, got {result['final_state']}"
+        )

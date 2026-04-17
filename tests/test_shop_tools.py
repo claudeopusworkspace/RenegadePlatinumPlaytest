@@ -184,3 +184,85 @@ class TestSellItem:
         result = sell_item(emu, "Parlyz Heal", quantity=999)
         assert result["success"] is False
         assert "not enough" in result["error"].lower()
+
+
+# ---------------------------------------------------------------------------
+# BUG-003: buy_item Premier Ball bonus breaks next purchase
+# ---------------------------------------------------------------------------
+# Save state: test_bug003_oreburgh_city_post_event — Oreburgh City overworld,
+# 0 badges, has Potions and money for purchases.
+
+class TestBug003PremierBallBonus:
+    """Buying 10+ Poke Balls (Premier Ball bonus) doesn't poison next buy."""
+
+    @retry_on_rng("test_bug003_oreburgh_city_post_event")
+    def test_buy_10_pokeballs_then_potions(self, emu: EmulatorClient):
+        """Buy 10 Poke Balls, then 3 Potions — both succeed with correct cost."""
+        from renegade_mcp.shop import buy_item
+        from renegade_mcp.trainer import read_trainer_status
+
+        status = read_trainer_status(emu)
+        badges = status.get("badges", 0)
+
+        # First purchase: 10 Poke Balls (triggers Premier Ball bonus)
+        result1 = buy_item(emu, "Poké Ball", quantity=10, badge_count=badges)
+        assert result1["success"] is True, f"Poke Ball buy failed: {result1}"
+        assert result1["money_spent"] == result1["total_cost"], (
+            f"Poke Ball cost mismatch: spent={result1['money_spent']} "
+            f"vs expected={result1['total_cost']}"
+        )
+
+        # Second purchase: 3 Potions (this was broken before the fix)
+        result2 = buy_item(emu, "Potion", quantity=3, badge_count=badges)
+        assert result2["success"] is True, f"Potion buy failed: {result2}"
+        assert result2["item"] == "Potion", (
+            f"Expected to buy Potion, got '{result2.get('item')}'"
+        )
+        assert result2["money_spent"] == result2["total_cost"], (
+            f"Potion cost mismatch: spent={result2['money_spent']} "
+            f"vs expected={result2['total_cost']}"
+        )
+
+    @retry_on_rng("test_bug003_oreburgh_city_post_event")
+    def test_money_sanity_check(self, emu: EmulatorClient):
+        """Purchase verification catches cost mismatch (sanity check exists)."""
+        from renegade_mcp.shop import buy_item
+        from renegade_mcp.trainer import read_trainer_status
+
+        status = read_trainer_status(emu)
+        badges = status.get("badges", 0)
+
+        # Normal single buy — sanity check should pass
+        result = buy_item(emu, "Potion", quantity=1, badge_count=badges)
+        assert result["success"] is True
+        assert result["money_spent"] == result["total_cost"]
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-006: buy_item leaves player stuck in shop UI on "How many?" prompt
+# ---------------------------------------------------------------------------
+# Save state: jubilife_mart_after_buy_5potions — inside Jubilife Mart, player
+# in overworld, 0 badges, ¥1,948.
+
+class TestQaBug006BuyItemExit:
+    """After buy_item completes, game must be back in full overworld control
+    — not sitting on the post-purchase quantity prompt or item list."""
+
+    @retry_on_rng("jubilife_mart_after_buy_5potions")
+    def test_buy_item_returns_to_overworld(self, emu: EmulatorClient):
+        """Pre-fix: tool returned success but game sat on "Potion? Certainly.
+        How many would you like?" quantity prompt — 3 B-presses shy of overworld.
+
+        Post-fix: 3 B-presses advance both post-purchase dialog pages plus the
+        item-list → main-menu step, then down×2 + A×2 exits through SEE YA!.
+        """
+        from renegade_mcp.dialogue import read_dialogue
+        from renegade_mcp.shop import buy_item
+
+        result = buy_item(emu, "Potion", quantity=1, badge_count=0)
+        assert "error" not in result, f"buy_item error: {result.get('error')}"
+
+        dlg = read_dialogue(emu, "overworld")
+        assert dlg.get("text", "(no active text)") == "(no active text)", (
+            f"Expected no active text after buy_item, got: {dlg.get('text')!r}"
+        )

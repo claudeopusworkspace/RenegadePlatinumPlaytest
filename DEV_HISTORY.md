@@ -2,6 +2,75 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Test-suite reorganization (2026-04-17 session 11)
+
+### Summary
+Split the two catch-all test files (`test_battle.py`, `test_qa_bugfixes.py`)
+into per-subsystem files so the filename tells you what the test exercises.
+"QA tests" isn't a useful category — every test was a QA test at some
+point. Test count unchanged at 369; 71 tests sampled across every moved
+and renamed file pass.
+
+### Motivation
+`test_qa_bugfixes.py` (1235 lines, 16 classes) accumulated regression
+tests for 2026-04-15 and -16 triage sessions. `test_battle.py` (527 lines)
+mixed core turn mechanics with throw_ball, read_dialogue, trainer flows,
+and move-learn. Neither name helped answer "where do I put this new
+test?" or "which file covers feature X?"
+
+### Battle split (5 files, all `test_battle_*` prefix)
+- `test_battle_turn.py` — core `battle_turn`: move/switch/run, doubles,
+  self-targeting, accuracy warnings, plus BUG-004 (Taunt false MOVE_BLOCKED),
+  QA BUG-002 (wild FAINT_SWITCH classification), QA BUG-003 (evolution
+  "What?" detection), QA BUG-004 (doubles species-count), FR-005
+  (switch_to=0 error message).
+- `test_battle_trainer.py` — multi-Pokemon trainer flows (SWITCH_PROMPT,
+  post-battle dialogue).
+- `test_battle_move_learn.py` — move-learn prompt (skip, learn, Prompt 2
+  Fire Fang regression).
+- `test_battle_catch.py` — `throw_ball` + QA BUG-001 (`_format_log`
+  [FFFE] handling + `_recover_from_catch` formatted rebuild).
+- `test_battle_tracker.py` — `battle_tracker` internals: QA BUG-011
+  orphan-name filter.
+
+### New standalone files
+- `test_dialogue.py` — `read_dialogue`/`advance_dialogue` (moved from
+  `test_battle.py`) + BUG-002 (cutscene `CTX_WAITING`).
+- `test_text_encoding.py` — QA BUG-005 (VAR-block + glyph 0x25BD/0x01A8),
+  QA BUG-008 (alt-font '&'/'%' + pocket icon sprites 0x0113–0x011A),
+  QA BUG-009 ([01E0][01E1] "Pokémon" ligature).
+
+### Appended to existing per-subsystem files
+- `test_map_tools.py` ← BUG-008 (`map_id_to_name.json` rebuild, 3 tests).
+- `test_shop_tools.py` ← BUG-003 (Premier Ball bonus poisons next buy, 2
+  tests) + QA BUG-006 (buy_item exit-to-overworld, 1 test).
+- `test_use_battle_item.py` ← BUG-009 (target reporting hardcoded to
+  slot 0, 4 tests).
+- `test_party_tools.py` ← QA BUG-010 (`_resolve_party_extension`
+  field-level composition, 3 tests).
+
+### Renamed
+- `test_event_text.py` → `test_battle_event_text.py` for consistency
+  with the `test_battle_*` category prefix (it's post-battle event
+  animation text dismissal).
+
+### Deleted
+- `test_battle.py` and `test_qa_bugfixes.py` — all contents redistributed.
+
+### Verification
+- `pytest --collect-only`: 369 tests across 31 files (previously 369
+  across 26 files). No tests lost.
+- Ran 71 tests across every moved/renamed file against the standalone
+  test emulator (`scripts/start_test_emulator.py` on `.melonds_test_bridge.sock`):
+  26/26 pure-unit + integration in `test_battle_catch`/`test_battle_tracker`/
+  `test_text_encoding`; 28/28 QA/BUG classes across the five other
+  moved files; 17/17 sampled tests from battle splits + shop regressions +
+  renamed event-text file. All green.
+
+### File count bump
+- `CLAUDE.md` Test Suite header: "369 tests across 26 files" → "369 tests
+  across 31 files".
+
 ## Dev Session: QA run-3 closeout — BUG-009/010/011 (2026-04-17 session 10)
 
 ### Summary
