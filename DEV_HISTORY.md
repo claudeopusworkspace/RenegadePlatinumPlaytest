@@ -2,6 +2,68 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: QA BUG-008 hex-code leaks + BUG-007 root-cause (2026-04-17)
+
+### Summary
+Two new bugs landed in the 2026-04-17 QA run — BUG-008 (hex format codes still leaking after the BUG-005 fix) and BUG-007 (post-battle reward dialogue tokens elide to empty strings). BUG-008 **fixed** (10 CHAR_MAP entries, 5 tests, live-verified). BUG-007 **root-caused but deferred** — the fix is risky and the bug is cosmetic. Three new feature requests (FR-003/004/005) triaged to the backlog untouched — scoping conversation with Woj next session.
+
+### QA triage
+- **BUG-001..006** — all already marked FIXED (round-1 resolved 2026-04-15, round-2 resolved 2026-04-16/17). No action needed.
+- **BUG-008** — new, actionable. Same decoder family as BUG-005 but a different set of unmapped glyph codes was still reaching callers.
+- **BUG-007** — new, root cause is deeper than BUG-008. Deferred.
+- **FR-003/004/005** — new QoL suggestions, to be scoped next session.
+
+### QA BUG-008 — Hex-code leak sibling of BUG-005
+- **Symptom:** Every item-pickup cutscene and some dialogue cutscenes leaked raw bracket tokens like `"in the [0114]KEY ITEMS Pocket."`, `"90[01D2] of all Pokémon..."`, `"TMs [01C2] HMs"`.
+- **Root cause:** Five distinct unmapped u16 codes hitting the `decode_char` bracket fallback. Traced via `search_rom_messages` against Renegade Platinum's message archives:
+  - `0x01C2` and `0x01D2` are alt-font `&` and `%` glyphs used inline in normal dialogue (ROM file 395 "TMs & HMs", file 23 Dawn's "90% of all Pokémon").
+  - `0x0113`..`0x011A` are the 8 pocket sprite icons embedded in pocket-name strings (ROM file 396 pocket label table: ITEMS / KEY ITEMS / TMs & HMs / MAIL / MEDICINE / BERRIES / POKé BALLS / BATTLE ITEMS).
+- **Fix:** 10 entries added to `CHAR_MAP` in `renegade_mcp/text_encoding.py`. Alt-font glyphs map to ASCII variants; pocket-icon sprites map to empty string (no ASCII equivalent, and in-game they render as small sprites). The decoder pipeline itself is unchanged — the new entries just cover previously unmapped values so they bypass the `[XXXX]` fallback.
+- **Live verification:** Replayed the Galactic-grunts double battle from `bug008_pre_galactic_battle_win`; `post_battle_dialogue` now returns `"90% of all Pokémon are somehow tied to evolution!"` and `"WOJ put the Fashion Case in the KEY ITEMS Pocket."` with zero bracketed leaks.
+
+### QA BUG-007 — Root-cause identified, fix deferred
+- **Symptom:** Roark's post-battle reward ceremony surfaces text with tokens silently elided to empty strings — `"Obtained the !"` / `" put the \nin the  Pocket."` / `"That  contains\nthe move Stealth Rock."`. Distinct from BUG-005/008 (raw brackets) and easier to miss.
+- **Root cause (from ROM analysis):** Roark's reward templates use `{0x0108,0x0000,0x0000}` (VAR var_id=0x0108, arg-0=0x0000). The Galactic-grunts Fashion Case templates — which **do** resolve correctly in the same session, same code path — use `{0x0108,0x0001,0x0000}` (arg-0=0x0001). Same var_id. Working theory: Gen 4 VAR arg-0 selects which internal memory slot the game's `TextPrinter` substitutes from. The Roark reward script doesn't populate slot 0 before the text renders, so the raw VAR block reaches our text buffer, and the BUG-005 `_consume_var_block` fix correctly strips it → empty string.
+- **Why deferred:**
+  - Severity is cosmetic (minor).
+  - Fix option (a) — per-var-id substitution reading player name from save block, bag items, pocket names from ROM file 396 — is a big surface area and risks regressing the many code paths where VAR stripping currently works fine.
+  - Fix option (b) — read the text buffer at a later point after the game's own substitution pass completes — needs investigation. Likely involves picking a different slot among the multiple `D2EC/B6F8` header markers in the scan region (pre- vs post-substitution buffers).
+- **Notes captured for next investigation:** `reference_gen4_var_substitution.md` memory with observed VAR id/arg pairs; QA `BUG_LOG.md` entry updated with the analysis.
+
+### Tests Added (5 tests in `tests/test_qa_bugfixes.py`)
+New class `TestQaBug008HexFormatCodeLeak`:
+- **Unit (4):** `0x01C2` renders as `&` in "TMs & HMs"; `0x01D2` renders as `%` in "90%"; all 8 pocket sprite icons (`0x0113`..`0x011A`) elide to empty string; end-to-end pocket-label template (`FFFE FF00 0001 0002 | 0x0114 | FFFE FF00 0001 0000 | "KEY ITEMS"`) decodes to `"KEY ITEMS"` with no brackets.
+- **Integration (1):** Replays the 4-turn Galactic-grunts battle from `bug008_pre_galactic_battle_win`, asserts `post_battle_dialogue` has no `[XXXX]` tokens anywhere (regex-guarded), plus positive spot-checks that `"90% of all"` and `"KEY ITEMS Pocket"` are present with their glyphs resolved.
+
+All 6 prior BUG-005 tests still pass (regression check) — the new CHAR_MAP entries don't affect the control-code handling.
+
+### Files Changed
+- `renegade_mcp/text_encoding.py` — 10 new `CHAR_MAP` entries: `0x01C2='&'`, `0x01D2='%'`, `0x0113`..`0x011A=''`. Section comments reference the ROM files they were enumerated from.
+- `tests/test_qa_bugfixes.py` — `TestQaBug008HexFormatCodeLeak` with 5 tests.
+
+### Save States
+Four QA-project save states copied permanently into `/workspace/RenegadePlatinumPlaytest/savestates/` for future repros:
+- `jubilife_galactic_grunts_double_battle_start.mst` — pre-battle, exercises the Fashion Case cutscene on win (working control for VAR-substitution comparisons).
+- `meadow_cleared_works_key_obtained.mst` — post-cutscene, Works Key + Honey dialogue dismissed (for manual inspection).
+- `oreburgh_gym_pre_roark_lv20_monferno.mst` — BUG-007 repro target; must win the Roark battle to trigger the reward ceremony.
+- `post_galactic_grunts_jubilife_fashion_case.mst` — post-cutscene reference state.
+
+Plus two session-local states saved during investigation:
+- `bug008_pre_galactic_battle_win.mst` — integration-test entry point (turn 1 of the Galactic double battle).
+- `bug007_pre_roark_battle_start.mst` — mid-Roark-fight snapshot for any future BUG-007 work (Monferno paralyzed, Geodude/Onix survivors).
+
+### Verification
+- New BUG-008 tests (5) green — 4 unit tests complete in 0.34s, integration test in 25.5s.
+- BUG-005 regression class (6 tests) still green — no regressions.
+- Committed as `5ccc902` and pushed to `origin/main`.
+- QA `BUG_LOG.md` annotated with BUG-008 FIXED status + BUG-007 root-cause notes; committed on the `qa-run-3` branch locally. **Not pushed** — that branch has diverged 11 local vs 10 remote commits, needs Woj's review before resolving the history.
+
+### Next Session Plan
+Three feature requests queued up and waiting for scoping:
+- **FR-003** (medium) — Merge `use_battle_item` into `battle_turn` as a fourth action type (mirrors `move_index`/`switch_to`/`run`/`forget_move`). Pure delegation, moderate surface area.
+- **FR-004** (medium) — `use_item` is hard-scoped to Medicine pocket; doesn't work for evolution stones. Either generalize to fall through to Items pocket, or add dedicated `evolve_with_stone(party_slot, stone_name)` with ROM-validated compatibility (similar to `teach_tm`).
+- **FR-005** (low) — Include active battler species name in `battle_turn(switch_to=0)` rejection error message + clarify battle-slot vs party-slot numbering. Pure signaling fix.
+
 ## Dev Session: QA BUG-005/006 — text decoder + shop exit (2026-04-16c)
 
 ### Summary
