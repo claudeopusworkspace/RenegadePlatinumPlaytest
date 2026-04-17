@@ -762,3 +762,145 @@ class TestQaBug006BuyItemExit:
         assert dlg.get("text", "(no active text)") == "(no active text)", (
             f"Expected no active text after buy_item, got: {dlg.get('text')!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-008: Hex format codes leak in item-pickup / cutscene dialogue
+# ---------------------------------------------------------------------------
+# Same family as fixed BUG-005 (0x25BD, 0x01A8). BUG-005 handled FFFE VAR blocks
+# and two glyphs, but left five more glyphs that routinely leak through
+# item-acquired cutscene text:
+#   0x01C2 — small-font '&'   ("TMs & HMs" pocket label, ROM file 395)
+#   0x01D2 — small-font '%'   ("90% of all Pokémon", ROM file 23 Dawn dialogue)
+#   0x0113 — ITEMS pocket icon glyph
+#   0x0114 — KEY ITEMS pocket icon glyph
+#   0x0115 — TMs & HMs pocket icon glyph
+#   (0x0116–0x011A cover MAIL/MEDICINE/BERRIES/POKé BALLS/BATTLE ITEMS per ROM file 396)
+#
+# Pocket icon glyphs are tiny sprites in-game — they can't render as ASCII and
+# are emitted as empty string. Alt-font glyphs are mapped to their ASCII variant.
+
+class TestQaBug008HexFormatCodeLeak:
+    """CHAR_MAP covers alternate-font glyphs and pocket-icon sprite codes so
+    they don't leak as raw [XXXX] brackets in decoded dialogue."""
+
+    def test_small_font_ampersand_0x01c2(self):
+        """0x01C2 (alt-font '&') renders as '&'. Example: 'TMs & HMs'."""
+        from renegade_mcp.text_encoding import decode_values
+
+        # "TMs " + 0x01C2 + " HMs"
+        # T=0x013E A=0x012B/...  but simpler: test the glyph directly surrounded by ASCII.
+        # Use letters T(0x013E), M(0x0137), s(0x0157), space(0x01DE), H(0x0132).
+        vals = [0x013E, 0x0137, 0x0157, 0x01DE, 0x01C2, 0x01DE, 0x0132, 0x0137, 0x0157]
+        lines = decode_values(vals)
+        assert lines == ["TMs & HMs"], f"Got: {lines!r}"
+
+    def test_small_font_percent_0x01d2(self):
+        """0x01D2 (alt-font '%') renders as '%'. Example: '90% of all'."""
+        from renegade_mcp.text_encoding import decode_values
+
+        # "90" + 0x01D2 (→ %) + " " — digits: 9=0x016A 0=0x0161
+        vals = [0x016A, 0x0161, 0x01D2]
+        lines = decode_values(vals)
+        assert lines == ["90%"], f"Got: {lines!r}"
+
+    def test_pocket_icon_glyphs_are_elided(self):
+        """0x0113..0x011A are pocket sprite icons — render as empty string.
+
+        Covers all 8 pockets from ROM file 396 (pocket label table).
+        """
+        from renegade_mcp.text_encoding import decode_values
+
+        for glyph in (0x0113, 0x0114, 0x0115, 0x0116, 0x0117, 0x0118, 0x0119, 0x011A):
+            # Render "A" + glyph + "B" — glyph should vanish entirely.
+            vals = [0x012B, glyph, 0x012C]
+            lines = decode_values(vals)
+            assert lines == ["AB"], (
+                f"Glyph 0x{glyph:04X} leaked instead of being elided: {lines!r}"
+            )
+
+    def test_pocket_name_template_renders_clean(self):
+        """End-to-end: 'KEY ITEMS Pocket' template round-trips without brackets.
+
+        Reproduces the ROM file 396 KEY ITEMS entry: FFFE color-open + 0x0114
+        icon + FFFE color-close + 'KEY ITEMS'. Pre-fix this surfaced as
+        '[0114]KEY ITEMS'; post-fix it is just 'KEY ITEMS'.
+        """
+        from renegade_mcp.text_encoding import CTRL_VAR, decode_values
+
+        # FFFE FF00 0001 0002 (color-open 1-arg 0x0002 = blue)
+        # + 0x0114 pocket icon
+        # + FFFE FF00 0001 0000 (color-close 1-arg 0x0000)
+        # + " KEY ITEMS" letters
+        # Letter codes from CHAR_MAP: A=0x012B, so K=A+10=0x0135, E=A+4=0x012F,
+        # Y=A+24=0x0143, I=A+8=0x0133, T=A+19=0x013E, M=A+12=0x0137, S=A+18=0x013D,
+        # space=0x01DE.
+        vals = [
+            CTRL_VAR, 0xFF00, 0x0001, 0x0002,
+            0x0114,
+            CTRL_VAR, 0xFF00, 0x0001, 0x0000,
+            0x0135, 0x012F, 0x0143, 0x01DE,  # "KEY "
+            0x0133, 0x013E, 0x012F, 0x0137, 0x013D,  # "ITEMS"
+        ]
+        lines = decode_values(vals)
+        assert lines == ["KEY ITEMS"], f"Got: {lines!r}"
+        # Belt-and-braces: no bracketed leaks.
+        joined = "".join(lines)
+        assert "[" not in joined, f"Raw bracket in decoded output: {joined!r}"
+
+    def test_post_galactic_dialogue_has_no_brackets(self, emu: EmulatorClient):
+        """Integration: replay the Galactic-grunts double battle win and
+        assert the `post_battle_dialogue` list contains no [XXXX] leaks.
+
+        Pre-fix the Fashion Case cutscene surfaced:
+          'in the [0114]KEY ITEMS Pocket.' and '90[01D2] of all Pokémon...'
+        Post-fix both lines are clean.
+        """
+        import re
+        from renegade_mcp.turn import battle_turn
+
+        load_state(emu, "bug008_pre_galactic_battle_win")
+
+        # Finish the double battle — Flame Wheel (slot 1) KOs each enemy.
+        # Partner Clefairy flinches / auto-acts; we just need to land killing blows.
+        # Turn 1: Flame Wheel → Stunky (crit + Aftermath, but Stunky dies).
+        # Turn 2: Silcoon (sent in after Stunky faints).
+        # Turn 3: Cascoon (sent in after Silcoon faints) → battle ends.
+        r1 = battle_turn(emu, move_index=1, target=0)
+        assert r1["final_state"] in ("WAIT_FOR_ACTION", "ACTION"), (
+            f"Turn 1 state: {r1['final_state']}"
+        )
+        r2 = battle_turn(emu, move_index=1, target=1)  # target Silcoon
+        assert r2["final_state"] in ("WAIT_FOR_ACTION", "ACTION"), (
+            f"Turn 2 state: {r2['final_state']}"
+        )
+        r3 = battle_turn(emu, move_index=1, target=0)  # target remaining enemy
+        assert r3["final_state"] in ("WAIT_FOR_ACTION", "ACTION"), (
+            f"Turn 3 state: {r3['final_state']}"
+        )
+        r4 = battle_turn(emu, move_index=1, target=1)
+        assert r4["final_state"] == "BATTLE_ENDED", (
+            f"Turn 4 did not end battle: {r4['final_state']}"
+        )
+
+        post_dialogue = r4.get("post_battle_dialogue", [])
+        assert post_dialogue, "Expected post_battle_dialogue from Galactic cutscene"
+
+        # Assert no lines contain bracketed hex tokens like [0114] / [01D2].
+        bracket_re = re.compile(r"\[[0-9A-F]{4}\]")
+        for line in post_dialogue:
+            leak = bracket_re.search(line)
+            assert leak is None, (
+                f"Hex-code leak in post_battle_dialogue: {leak.group()!r} "
+                f"in line: {line!r}"
+            )
+
+        # Positive spot-checks: the two specific lines that carried the leak
+        # now render with their resolved glyphs.
+        all_text = "\n".join(post_dialogue)
+        assert "90% of all" in all_text, (
+            f"Expected '90% of all' with resolved %% in:\n{all_text!r}"
+        )
+        assert "KEY ITEMS Pocket" in all_text, (
+            f"Expected 'KEY ITEMS Pocket' with stripped icon in:\n{all_text!r}"
+        )

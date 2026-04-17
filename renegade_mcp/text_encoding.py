@@ -53,11 +53,25 @@ CHAR_MAP[0x01BC] = "*"
 CHAR_MAP[0x01BD] = "#"
 CHAR_MAP[0x01BE] = "-"  # en-dash / line-break hyphen
 CHAR_MAP[0x01C0] = ";"
+CHAR_MAP[0x01C2] = "&"  # small-font ampersand (ROM file 395/396 "TMs & HMs")
 CHAR_MAP[0x01C3] = "%"
 CHAR_MAP[0x01C4] = ":"
+CHAR_MAP[0x01D2] = "%"  # small-font percent (ROM file 23 "90% of all Pokémon")
 
 # Currency glyph (₽-like P-with-stroke). Rendered as "$" for ASCII output.
 CHAR_MAP[0x01A8] = "$"
+
+# Bag pocket sprite icons — small bag-pocket glyphs that can't render as ASCII.
+# Emitted empty so pocket names like "[0113]ITEMS Pocket" render as "ITEMS Pocket".
+# Enumerated from ROM file 396 (pocket label table).
+CHAR_MAP[0x0113] = ""  # ITEMS icon
+CHAR_MAP[0x0114] = ""  # KEY ITEMS icon
+CHAR_MAP[0x0115] = ""  # TMs & HMs icon
+CHAR_MAP[0x0116] = ""  # MAIL icon
+CHAR_MAP[0x0117] = ""  # MEDICINE icon
+CHAR_MAP[0x0118] = ""  # BERRIES icon
+CHAR_MAP[0x0119] = ""  # POKé BALLS icon
+CHAR_MAP[0x011A] = ""  # BATTLE ITEMS icon
 
 # Gender symbols used in battle text (different codepoints from 0x0189/0x018A)
 CHAR_MAP[0x2467] = "\u2642"  # ♂
