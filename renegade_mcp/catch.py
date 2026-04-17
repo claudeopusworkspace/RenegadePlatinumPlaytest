@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from renegade_mcp.battle_tracker import _tracker
+from renegade_mcp.battle_tracker import _format_log, _tracker
 from renegade_mcp.turn import _is_battle_over
 
 if TYPE_CHECKING:
@@ -106,8 +106,10 @@ def _recover_from_catch(emu: EmulatorClient, result: dict[str, Any]) -> dict[str
 
         if _is_battle_over(emu):
             result["final_state"] = "CAUGHT"
+            result["formatted"] = _format_log(result.get("log", []), "CAUGHT")
             return result
 
     # If we exhausted recovery, assume caught (we saw the text)
     result["final_state"] = "CAUGHT"
+    result["formatted"] = _format_log(result.get("log", []), "CAUGHT")
     return result

@@ -6,10 +6,14 @@ with an in-memory BattleTracker singleton.
 
 from __future__ import annotations
 
+import re
 import struct
 from typing import TYPE_CHECKING, Any
 
 from renegade_mcp.text_encoding import CHAR_MAP, CTRL_END, CTRL_NEWLINE, CTRL_PAGE_BREAK, CTRL_VAR
+
+# Matches [FFFE] plus up to 3 following [XXXX] argument tokens (decoded u16 vars)
+_FFFE_TOKEN_RE = re.compile(r"\[FFFE\](?:\[[0-9A-F]{4}\]){0,3}")
 
 if TYPE_CHECKING:
     from melonds_mcp.client import EmulatorClient
@@ -170,8 +174,11 @@ def _format_log(log: list[dict], final_state: str) -> str:
     lines = ["=== Battle Log ==="]
     for entry in log:
         text = entry["text"].replace("\n", " / ")
-        while "[FFFE]" in text:
-            text = text[: text.index("[FFFE]")].rstrip()
+        # Strip [FFFE] control codes plus their up-to-3-word argument triplets
+        # (e.g. "[FFFE][0202][XXXX][XXXX]" or "[FFFE][0200]"). Preserves any
+        # readable text on either side so lines that begin with a substitution
+        # (like "[FFFE][0202]...Gotcha!") aren't truncated to empty.
+        text = _FFFE_TOKEN_RE.sub("", text).strip()
         marker = ""
         if entry["stop"] == "WAIT_FOR_INPUT":
             marker = "  [waits for B]"

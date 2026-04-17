@@ -2220,3 +2220,47 @@ Ordered fastest-first; each bug gets an integration test against the `bug_qa_*` 
 4. **BUG-004:** fix `_is_double_battle` (use species count or persistent format flag) + add target-pick submenu detector. Test: load `bug_qa_battle_turn_stuck_after_double_ko_doubles`, call `battle_turn(move_index=0, target=0)`, assert Scratch lands on Azurill (HP drops) and turn resolves.
 
 Run full suite after each fix: `.venv/bin/python -m pytest tests/ -v` (~12 min). Turn off melonDS streaming during pytest (project memory `feedback_disable_stream_for_tests`).
+
+---
+
+## Session: 2026-04-17 — QA Round 2 Bug Fixes (Implementation + Tests)
+
+### Context
+Implementation session following the 2026-04-16 triage. All four QA BUG-001..004 fixes landed with integration + unit tests. Full suite 329/329 green.
+
+### Fixes (summary)
+
+**QA BUG-001 — `throw_ball` formatted "State: TIMEOUT" after CAUGHT (cosmetic):**
+- `battle_tracker.py::_format_log` — replaced naive `text[: text.index("[FFFE]")]` truncation with a regex `r"\[FFFE\](?:\[[0-9A-F]{4}\]){0,3}"` that strips the control code plus up-to-3 argument tokens and preserves surrounding text.
+- `catch.py::_recover_from_catch` — rebuilds `result["formatted"] = _format_log(..., "CAUGHT")` on both success paths so the final state matches the final log.
+
+**QA BUG-002 — `auto_grind` auto-heal stuck on wild FAINT_SWITCH (major):**
+- Extracted `_classify_faint_type(emu, log)` helper. After the polling log check fails, it scans the current marker buffer for "Use next" text before defaulting to FAINT_FORCED. Previously the fallback only consulted the accumulated polling log, which is empty on fresh calls from `_auto_heal_and_return`. The helper is independently unit-testable via a mock emu + a Gen4 text encoder — no live emulator needed.
+- `_wait_for_action_prompt` now delegates to the helper.
+
+**QA BUG-003 — B-press cancels post-move-learn evolution (major):**
+- `_is_evolution_text_on_screen` — broadened to return True when any marker starts with "What?" (the WAIT_FOR_ACTION prompt that precedes "is evolving!"). `_learn_move_flow` and `_skip_move_learn_flow` both gate their B-press loops on this predicate, so the fix prevents the B press that was landing on "is evolving!" and triggering "Huh? stopped evolving!".
+
+**QA BUG-004 — `battle_turn` stalls on doubles target-pick after partner KO (major):**
+- `_is_double_battle` — rewritten to count player battle slots with a valid species (1-493) regardless of HP, reading `BATTLE_BASE` + slot offsets directly instead of going through `read_battle`. A fainted partner still registers as doubles, so the target-pick tap flow stays active.
+- Verified end-to-end: `battle_turn(move_index=0, target=0)` on the QA save state resolves the stuck submenu and Scratch lands on Azurill.
+
+### Tests Added (16 tests in `tests/test_qa_bugfixes.py`, all 329 suite tests green)
+
+- **BUG-001 (5 tests, unit-level):** `_format_log` [FFFE]-prefix, [FFFE][0200] action-prompt, inline [FFFE], plain text passthrough, + mock-based `_recover_from_catch` formatted rebuild.
+- **BUG-002 (5 tests):** `_classify_faint_type` finds "Use next" in marker scan (mock emu + Gen4 text encoder); log short-circuits the scan; defaults to FAINT_FORCED when absent; QA save state (post-YES party grid) classifies as FAINT_FORCED; recovery via `battle_turn(switch_to=1)` works.
+- **BUG-003 (2 tests):** post-bug "stopped evolving" state doesn't false-positive; predicate unit test verifies matches for "is evolving", "What?", and rejects unrelated text.
+- **BUG-004 (3 tests):** species-count detection on QA save state; battle struct sanity (slot 0/2 species in range); full `battle_turn(move_index=0, target=0)` recovery (Azurill HP drops OR battle ends).
+
+The BUG-002 save state was captured AFTER the Yes/No prompt had been answered YES, so it couldn't exercise the actual fix path live — resolved by adding a Gen4 text encoder (`_encode_gen4_text` helper inside the test) that synthesizes a fake "Use next Pokemon?" marker blob for the helper to find. Cleanest possible unit coverage of the marker-scan fallback without needing a new save state.
+
+### Files Changed
+- `renegade_mcp/battle_tracker.py` — regex import + `_FFFE_TOKEN_RE` + `_format_log` rewrite.
+- `renegade_mcp/catch.py` — import `_format_log`, rebuild `formatted` on both CAUGHT paths.
+- `renegade_mcp/turn.py` — `_is_evolution_text_on_screen` predicate broadening, `_is_double_battle` species-count rewrite, `_classify_faint_type` helper + `_wait_for_action_prompt` delegation.
+- `tests/test_qa_bugfixes.py` — 4 new test classes (16 tests), docstring updated with round-2 save states.
+
+### Verification
+- Full suite: `329 passed in 766.95s`.
+- BUG-004 full-flow test (`test_battle_turn_resolves_target_pick_with_scratch`) confirms the fix works end-to-end: stuck submenu unsticks, Scratch lands, HP drops.
+

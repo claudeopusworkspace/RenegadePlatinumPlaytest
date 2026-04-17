@@ -328,11 +328,26 @@ def _clear_overworld_move_learn_text(emu: EmulatorClient, prompt_log: list[dict]
 
 
 def _is_evolution_text_on_screen(emu: EmulatorClient) -> bool:
-    """Check if evolution text is currently displayed (e.g. 'is evolving!')."""
+    """Check whether the post-move-learn flow is about to enter evolution.
+
+    The evolution sequence in Gen 4 is:
+        1. "What?"          (WAIT_FOR_ACTION prompt — [FFFE][0200])
+        2. "<Pokemon> is evolving!"
+        3. animation → "evolved into <Species>!"
+
+    The "What?" prompt appears BEFORE "is evolving!" — if we only match on
+    "is evolving" we'll press B right as that text renders, cancelling the
+    evolution. Detect both markers so callers can stop pressing B as soon
+    as the sequence begins. "What?" is prefixed-only (rather than a contains
+    check) to avoid matching unrelated text containing the word.
+    """
     data = emu.read_memory_block(_scan_start(), SCAN_SIZE)
     markers = _scan_markers(data, _scan_start())
     for text in markers.values():
-        if "is evolving" in text.replace("\n", " "):
+        clean = text.replace("\n", " ").strip()
+        if "is evolving" in clean:
+            return True
+        if clean.startswith("What?"):
             return True
     return False
 
@@ -403,10 +418,22 @@ def _wait_for_evolution(emu: EmulatorClient, result: dict[str, Any]) -> dict[str
 # ── Double battle helpers ──
 
 def _is_double_battle(emu: EmulatorClient) -> bool:
-    """Check if current battle has 2 active Pokemon on the player's side."""
-    battlers = read_battle(emu)
-    player_active = sum(1 for b in battlers if b.get("side") == "player" and b.get("hp", 0) > 0)
-    return player_active >= 2
+    """Check if the current battle is in doubles format.
+
+    Counts player battle slots with a valid species (not just alive) so a
+    fainted partner still registers as doubles — the target-pick submenu and
+    partner-action flow remain active until both actions are submitted,
+    regardless of who's fainted.
+    """
+    from renegade_mcp.addresses import addr
+    base = addr("BATTLE_BASE")
+    player_slots = 0
+    for slot in (0, 2):
+        offset = slot * BATTLE_SLOT_SIZE
+        species = emu.read_memory(base + offset + 0x00, size="short")
+        if species and 1 <= species <= 493:
+            player_slots += 1
+    return player_slots >= 2
 
 
 def _alive_enemy_count(emu: EmulatorClient) -> int:
@@ -506,6 +533,30 @@ def _target_flow(emu: EmulatorClient, target: int) -> None:
 
 # ── Prompt detection ──
 
+def _classify_faint_type(emu: EmulatorClient, log: list[dict]) -> str:
+    """Return "FAINT_SWITCH" (wild) or "FAINT_FORCED" (trainer) for a faint state.
+
+    Wild battles show a "Use next Pokemon?" Yes/No prompt before the party
+    grid; trainer battles jump straight to the party grid. First checks the
+    accumulated polling log (fastest path), then falls back to a direct scan
+    of the current marker buffer — the "Use next" prompt may have been
+    written after the polling loop exited (e.g. when called fresh from
+    _auto_heal_and_return right after the caller already classified
+    FAINT_SWITCH and the tracker was re-initialized). If the marker scan
+    finds "Use next", it appends a log entry so the caller has a record.
+    """
+    if any("Use next" in e.get("text", "") for e in log):
+        return "FAINT_SWITCH"
+    data = emu.read_memory_block(_scan_start(), SCAN_SIZE)
+    if data:
+        markers = _scan_markers(data, _scan_start())
+        for t in markers.values():
+            if "Use next" in t.replace("\n", " "):
+                log.append({"text": t, "stop": "WAIT_FOR_ACTION"})
+                return "FAINT_SWITCH"
+    return "FAINT_FORCED"
+
+
 def _wait_for_action_prompt(emu: EmulatorClient) -> dict[str, Any]:
     """Wait for a battle prompt that requires player input.
 
@@ -579,12 +630,10 @@ def _wait_for_action_prompt(emu: EmulatorClient) -> dict[str, Any]:
     # Timed out — check for forced switch (trainer faint, party grid showing).
     # In doubles, the fainted Pokemon may be slot 2 (partner), not slot 0.
     if not _is_battle_over(emu) and _any_player_fainted(emu):
-        # Distinguish wild (FAINT_SWITCH) from trainer (FAINT_FORCED).
-        # Wild faint shows "Use next Pokemon?" text; trainer faint shows
-        # the party grid with no text.  The text may have appeared in the
-        # log without being classified as WAIT_FOR_ACTION (wrong control
-        # code), so check the accumulated log entries.
-        if any("Use next" in e.get("text", "") for e in log):
+        prompt_type = _classify_faint_type(emu, log)
+        if prompt_type == "FAINT_SWITCH":
+            # _classify_faint_type appends the discovered "Use next" marker
+            # to log when it fires on the marker scan, so no extra work here.
             return {"ready": True, "log": log, "prompt_type": "FAINT_SWITCH"}
         return {"ready": True, "log": log, "prompt_type": "FAINT_FORCED"}
 

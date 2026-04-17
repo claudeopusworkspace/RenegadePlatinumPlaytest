@@ -1,8 +1,10 @@
-"""Tests for QA bug fixes from 2026-04-15 triage session.
+"""Tests for QA bug fixes from 2026-04-15 and 2026-04-16 triage sessions.
 
-Covers BUG-002, BUG-003, BUG-004, BUG-008, BUG-009.
-BUG-005 (evolution race) and BUG-010 (blackout) are code-confirmed only
-(too expensive to repro — ~15 battles and 3-KO party wipe respectively).
+2026-04-15: BUG-002, BUG-003, BUG-004, BUG-008, BUG-009 (see test classes below).
+2026-04-16: QA BUG-001/002/003/004 (round-2 classes at bottom of file).
+
+BUG-005 (evolution race) and BUG-010 (blackout) from 2026-04-15 are code-
+confirmed only (too expensive to repro — ~15 battles and 3-KO party wipe).
 
 Save states:
   qa_oreburgh_gate_entrance:
@@ -29,6 +31,24 @@ Save states:
     - Oreburgh City overworld, scripted NPC event already cleared
     - 0 badges, has Potions and money for purchases
     - Used for BUG-003 (Premier Ball bonus)
+
+  bug_qa_throw_ball_state_mismatch:
+    - Post-catch state — Shinx in party slot 3 at 11/19 HP.
+    - QA BUG-001 target state is post-catch so the throw_ball flow can't
+      be re-run here; unit tests exercise the _format_log / _recover_from_catch
+      fixes directly.
+
+  bug_qa_auto_grind_faint_switch_stuck:
+    - Wild Rattata battle, Shinx 0 HP, party grid "Choose a Pokémon."
+    - Used for QA BUG-002 (wild FAINT_SWITCH misclassified as FAINT_FORCED).
+
+  bug_qa_auto_grind_evolution_stop_lingering_dialogue:
+    - "Huh? Chimchar stopped evolving!" dialogue on screen (post-bug state).
+    - Used for QA BUG-003 observation/regression checks.
+
+  bug_qa_battle_turn_stuck_after_double_ko_doubles:
+    - Doubles target-pick submenu with Monferno acting; partner Shinx 0 HP.
+    - Used for QA BUG-004 (doubles detection + target-pick recovery).
 """
 
 from __future__ import annotations
@@ -281,3 +301,337 @@ class TestBug003PremierBallBonus:
         result = buy_item(emu, "Potion", quantity=1, badge_count=badges)
         assert result["success"] is True
         assert result["money_spent"] == result["total_cost"]
+
+
+# ===========================================================================
+# 2026-04-16 QA Round 2 — BUG-001/002/003/004
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-001 (2026-04-16): throw_ball formatted shows "State: TIMEOUT" after CAUGHT
+# ---------------------------------------------------------------------------
+
+class TestQaBug001ThrowBallFormatted:
+    """_format_log [FFFE] handling + _recover_from_catch formatted rebuild.
+
+    The QA save state is post-catch (Shinx already in party), so the full
+    throw_ball flow can't be re-run. Instead we unit-test the two fix points
+    directly: _format_log must not empty lines starting with [FFFE]..., and
+    _recover_from_catch must rebuild result["formatted"] with the CAUGHT state.
+    """
+
+    def test_format_log_strips_fffe_triplet_prefix(self):
+        """Line starting with [FFFE][0202][XXXX][XXXX] keeps the trailing text."""
+        from renegade_mcp.battle_tracker import _format_log
+        log = [{"text": "[FFFE][0202][0001][0003]Gotcha! Shinx was caught!", "stop": "AUTO_ADVANCE"}]
+        out = _format_log(log, "CAUGHT")
+        assert "Gotcha! Shinx was caught!" in out, (
+            f"[FFFE]-prefixed text truncated; got: {out!r}"
+        )
+        assert "State: CAUGHT" in out
+
+    def test_format_log_strips_fffe_0200_action_prompt(self):
+        """WAIT_FOR_ACTION [FFFE][0200] marker is stripped without truncating line."""
+        from renegade_mcp.battle_tracker import _format_log
+        log = [{"text": "What will [FFFE][0200]Luxray do?", "stop": "WAIT_FOR_ACTION"}]
+        out = _format_log(log, "WAIT_FOR_ACTION")
+        assert "What will" in out
+        assert "Luxray do?" in out
+        assert "[FFFE]" not in out
+        assert "[0200]" not in out
+
+    def test_format_log_inline_fffe_preserves_surrounding_text(self):
+        """[FFFE] substitution mid-line drops the var tokens but keeps text."""
+        from renegade_mcp.battle_tracker import _format_log
+        log = [{"text": "Shinx grew to Lv. [FFFE][0202][0001][0002]!", "stop": "AUTO_ADVANCE"}]
+        out = _format_log(log, "BATTLE_ENDED")
+        assert "Shinx grew to Lv." in out
+        assert "[FFFE]" not in out
+        # The trailing "!" after the triplet survives the substitution.
+        assert "!" in out
+
+    def test_format_log_no_fffe_is_unchanged(self):
+        """Plain text without [FFFE] is formatted as-is."""
+        from renegade_mcp.battle_tracker import _format_log
+        log = [{"text": "Shinx fainted!", "stop": "AUTO_ADVANCE"}]
+        out = _format_log(log, "BATTLE_ENDED")
+        assert "Shinx fainted!" in out
+
+    def test_recover_from_catch_rebuilds_formatted(self):
+        """_recover_from_catch overwrites the stale formatted tail from the tracker poll."""
+        from unittest.mock import MagicMock
+        from renegade_mcp import catch as catch_mod
+
+        # Stub _is_battle_over so the recovery loop exits on the first iteration.
+        original_over = catch_mod._is_battle_over
+        catch_mod._is_battle_over = lambda emu: True
+        try:
+            fake_emu = MagicMock()
+            # Tracker-style poll result with stale "State: TIMEOUT" in formatted.
+            initial_formatted = (
+                "=== Battle Log ===\n"
+                "  \n"  # The [FFFE]-prefixed catch line was truncated to empty.
+                "\nState: TIMEOUT"
+            )
+            result = {
+                "log": [{"text": "[FFFE][0202][0001][0003]Gotcha! Shinx was caught!",
+                         "stop": "AUTO_ADVANCE"}],
+                "final_state": "TIMEOUT",
+                "formatted": initial_formatted,
+            }
+            fixed = catch_mod._recover_from_catch(fake_emu, result)
+        finally:
+            catch_mod._is_battle_over = original_over
+
+        assert fixed["final_state"] == "CAUGHT"
+        assert "State: CAUGHT" in fixed["formatted"]
+        assert "State: TIMEOUT" not in fixed["formatted"]
+        # After the _format_log fix the "Gotcha!" line survives reformatting.
+        assert "Gotcha! Shinx was caught!" in fixed["formatted"]
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-002 (2026-04-16): auto_grind auto-heal stuck on wild FAINT_SWITCH
+# ---------------------------------------------------------------------------
+
+class TestQaBug002WildFaintSwitchClassification:
+    """_wait_for_action_prompt distinguishes wild FAINT_SWITCH from trainer FAINT_FORCED.
+
+    The fallback path used to default to FAINT_FORCED when its own polling log
+    lacked "Use next" text — which is exactly what happens when the caller
+    (e.g. _auto_heal_and_return) invokes battle_turn() fresh and the tracker
+    log is empty. The fix (_classify_faint_type) scans the current marker
+    buffer for "Use next" before defaulting to FAINT_FORCED.
+
+    Note: the QA save state (bug_qa_auto_grind_faint_switch_stuck) was captured
+    AFTER the "Use next Pokémon?" Yes/No prompt had already been answered YES
+    — the game is at the "Choose a Pokémon." party grid with no option to flee.
+    So the save state exercises the CORRECT FAINT_FORCED classification path
+    (text is truly absent) and the recovery-via-switch path. The Yes-stage
+    behavior is covered by the unit test below using a synthesized marker blob.
+    """
+
+    def _encode_gen4_text(self, text: str) -> bytes:
+        """Encode ASCII `text` into Gen4 16-bit chars + END terminator + header."""
+        import struct
+        from renegade_mcp.battle_tracker import HEADER_MARKER
+        from renegade_mcp.text_encoding import CTRL_END
+        reverse = {}
+        # A-Z
+        for i in range(26):
+            reverse[chr(ord("A") + i)] = 0x012B + i
+        # a-z
+        for i in range(26):
+            reverse[chr(ord("a") + i)] = 0x0145 + i
+        # digits
+        for i in range(10):
+            reverse[chr(ord("0") + i)] = 0x0161 + i
+        reverse[" "] = 0x01DE
+        reverse["?"] = 0x01AC
+        reverse["."] = 0x01AE
+        reverse["!"] = 0x01AB
+        reverse[","] = 0x01AD
+        vals = [reverse[c] for c in text if c in reverse]
+        vals.append(CTRL_END)
+        body = b"".join(struct.pack("<H", v) for v in vals)
+        return HEADER_MARKER + body
+
+    def test_classify_faint_type_finds_use_next_in_marker_scan(self):
+        """_classify_faint_type returns FAINT_SWITCH when 'Use next' is in the scan buffer."""
+        from unittest.mock import MagicMock
+        from renegade_mcp import turn as turn_mod
+
+        # Fake emu: read_memory_block returns a buffer containing the encoded prompt.
+        blob = b"\x00" * 0x100 + self._encode_gen4_text("Use next Pokemon?") + b"\x00" * 0x100
+        fake_emu = MagicMock()
+        fake_emu.read_memory_block.return_value = blob
+
+        # Patch _scan_start to return a known base address (value doesn't matter
+        # for content matching — _classify_faint_type only uses the decoded text).
+        orig_scan_start = turn_mod._scan_start
+        turn_mod._scan_start = lambda: 0x02000000
+        try:
+            log: list[dict] = []
+            result = turn_mod._classify_faint_type(fake_emu, log)
+        finally:
+            turn_mod._scan_start = orig_scan_start
+
+        assert result == "FAINT_SWITCH", (
+            f"Expected FAINT_SWITCH from marker scan, got {result!r}"
+        )
+        assert any("Use next" in e.get("text", "") for e in log), (
+            "Discovered marker should be appended to log."
+        )
+
+    def test_classify_faint_type_from_log_short_circuits(self):
+        """Accumulated log containing 'Use next' returns FAINT_SWITCH without scanning memory."""
+        from unittest.mock import MagicMock
+        from renegade_mcp import turn as turn_mod
+
+        fake_emu = MagicMock()
+        # If the scan path were taken this would raise — but it shouldn't be.
+        fake_emu.read_memory_block.side_effect = AssertionError("should not scan when log matches")
+
+        log = [{"text": "Use next Pokemon?", "stop": "WAIT_FOR_ACTION"}]
+        result = turn_mod._classify_faint_type(fake_emu, log)
+        assert result == "FAINT_SWITCH"
+
+    def test_classify_faint_type_defaults_to_forced_when_absent(self):
+        """No 'Use next' anywhere → FAINT_FORCED (trainer-style forced switch)."""
+        from unittest.mock import MagicMock
+        from renegade_mcp import turn as turn_mod
+
+        # Buffer has other Gen4 text but no "Use next" prompt.
+        blob = b"\x00" * 0x100 + self._encode_gen4_text("Choose a Pokemon.") + b"\x00" * 0x100
+        fake_emu = MagicMock()
+        fake_emu.read_memory_block.return_value = blob
+
+        orig_scan_start = turn_mod._scan_start
+        turn_mod._scan_start = lambda: 0x02000000
+        try:
+            result = turn_mod._classify_faint_type(fake_emu, [])
+        finally:
+            turn_mod._scan_start = orig_scan_start
+
+        assert result == "FAINT_FORCED"
+
+    def test_post_yes_state_classified_as_faint_forced(self, emu: EmulatorClient):
+        """QA save state is post-YES (party grid, no 'Use next') — must classify as FAINT_FORCED."""
+        load_state(emu, "bug_qa_auto_grind_faint_switch_stuck")
+        from renegade_mcp.turn import _wait_for_action_prompt
+        prompt = _wait_for_action_prompt(emu)
+        assert prompt.get("ready") is True
+        assert prompt.get("prompt_type") == "FAINT_FORCED", (
+            f"Party grid state should classify as FAINT_FORCED, got {prompt.get('prompt_type')}"
+        )
+
+    def test_recovery_via_switch_to_eevee(self, emu: EmulatorClient):
+        """From the stuck party-grid state, battle_turn(switch_to=1) sends in Eevee."""
+        load_state(emu, "bug_qa_auto_grind_faint_switch_stuck")
+        from renegade_mcp.turn import battle_turn
+        # Slot 1 is Eevee Lv10 (confirmed via read_party in the debug session).
+        result = battle_turn(emu, switch_to=1)
+        state = result.get("final_state", "")
+        # After switch, a wild battle turn resolves and we get the next action
+        # prompt (or the battle ends if Eevee also faints — unlikely at full HP).
+        assert state in ("WAIT_FOR_ACTION", "BATTLE_ENDED", "FAINT_SWITCH"), (
+            f"Unexpected state after switch-in: {state}. Error: {result.get('error')!r}"
+        )
+        # Must not error out as a trainer battle — that was the original symptom.
+        err = result.get("error", "")
+        assert "trainer battle" not in err.lower(), (
+            f"Recovery via switch_to should not fail with trainer error: {err!r}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-003 (2026-04-16): _is_evolution_text_on_screen misses "What?" prompt
+# ---------------------------------------------------------------------------
+
+class TestQaBug003EvolutionWhatDetection:
+    """_is_evolution_text_on_screen detects both "is evolving" and WAIT_FOR_ACTION "What?".
+
+    Root cause: the predicate only matched "is evolving". In Gen 4, evolution
+    begins with a WAIT_FOR_ACTION "What?" prompt that precedes the "is evolving!"
+    text. If the move-learn flow pressed B during the "What?" window, the input
+    cancelled the pending evolution. The fix broadens the predicate to treat a
+    "What?"-prefixed marker as evolution-in-progress so the B-press loop exits
+    and hands off to _wait_for_evolution.
+    """
+
+    def test_stopped_evolving_does_not_false_positive(self, emu: EmulatorClient):
+        """On a post-bug 'stopped evolving' state, the predicate returns False — evolution is already done/cancelled."""
+        load_state(emu, "bug_qa_auto_grind_evolution_stop_lingering_dialogue")
+        from renegade_mcp.turn import _is_evolution_text_on_screen
+        # "Huh? Chimchar stopped evolving!" is on screen. Neither "is evolving"
+        # nor a "What?" prompt — predicate must stay False.
+        assert _is_evolution_text_on_screen(emu) is False
+
+    def test_predicate_matches_is_evolving_substring(self):
+        """Direct scan_markers-style substring check: 'is evolving' matches."""
+        # The predicate loop is: any marker containing "is evolving" OR starting
+        # with "What?". Simulate the loop over a markers dict.
+        from renegade_mcp.text_encoding import CTRL_END
+        import struct
+
+        # Just unit-verify the substring tests that the predicate uses.
+        def _predicate(markers: dict) -> bool:
+            for text in markers.values():
+                clean = text.replace("\n", " ").strip()
+                if "is evolving" in clean:
+                    return True
+                if clean.startswith("What?"):
+                    return True
+            return False
+
+        assert _predicate({"0x1": "Chimchar is evolving!"}) is True
+        assert _predicate({"0x1": "What?\n"}) is True
+        assert _predicate({"0x1": "What will Chimchar do?"}) is False
+        assert _predicate({"0x1": "Huh? Chimchar stopped evolving!"}) is False
+        assert _predicate({"0x1": "Chimchar learned Flame Wheel!"}) is False
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-004 (2026-04-16): battle_turn stalls on target-pick after partner KO
+# ---------------------------------------------------------------------------
+
+class TestQaBug004DoublesDetectionSpeciesCount:
+    """_is_double_battle uses species count, not alive count.
+
+    Previously it returned False once a player partner fainted, which made
+    _execute_action skip the target-pick tap in doubles and leave the game
+    stuck on the target-pick submenu. The fix counts player slots with a
+    valid species (regardless of HP).
+    """
+
+    def test_is_double_battle_true_with_fainted_partner(self, emu: EmulatorClient):
+        """Slot 0 alive + slot 2 fainted should still read as doubles."""
+        load_state(emu, "bug_qa_battle_turn_stuck_after_double_ko_doubles")
+        from renegade_mcp.turn import _is_double_battle
+        assert _is_double_battle(emu) is True, (
+            "Doubles format detection failed: fainted partner treated as singles."
+        )
+
+    def test_battle_struct_has_valid_species_in_both_player_slots(self, emu: EmulatorClient):
+        """Sanity check: slot 0 and slot 2 both hold real species (even if fainted)."""
+        import struct
+        load_state(emu, "bug_qa_battle_turn_stuck_after_double_ko_doubles")
+        from renegade_mcp.addresses import addr
+        base = addr("BATTLE_BASE")
+        for slot in (0, 2):
+            off = slot * 0xC0
+            species = emu.read_memory(base + off + 0x00, size="short")
+            assert 1 <= species <= 493, (
+                f"Slot {slot} species {species} invalid — struct corrupted?"
+            )
+
+    def test_battle_turn_resolves_target_pick_with_scratch(self, emu: EmulatorClient):
+        """battle_turn(move_index=0, target=0) picks Azurill and the turn resolves.
+
+        Pre-fix: _is_double_battle returned False (partner fainted) so the
+        target-pick tap was skipped, battle stuck on submenu. Now with species-
+        count detection, the target flow fires and the move connects.
+        """
+        load_state(emu, "bug_qa_battle_turn_stuck_after_double_ko_doubles")
+        from renegade_mcp.turn import battle_turn
+        from renegade_mcp.battle import read_battle
+
+        # Capture Azurill's HP before the turn. Slot 1 = first enemy = target 0.
+        pre = {b["slot"]: b["hp"] for b in read_battle(emu)}
+        azurill_pre = pre.get(1, 0)
+
+        result = battle_turn(emu, move_index=0, target=0)
+        # The turn must actually advance — not stall at ACTION with stale prompt.
+        state = result.get("final_state", "")
+        assert state in ("WAIT_FOR_ACTION", "BATTLE_ENDED"), (
+            f"Turn did not resolve — state={state}. Error: {result.get('error')!r}"
+        )
+
+        # Scratch should have dealt damage or KO'd Azurill.
+        post = {b["slot"]: b["hp"] for b in read_battle(emu)}
+        azurill_post = post.get(1, azurill_pre)
+        assert azurill_post < azurill_pre or state == "BATTLE_ENDED", (
+            f"Azurill HP unchanged ({azurill_pre} → {azurill_post}); "
+            f"Scratch didn't land. state={state}"
+        )
