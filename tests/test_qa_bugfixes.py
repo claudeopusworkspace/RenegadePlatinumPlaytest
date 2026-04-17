@@ -947,3 +947,289 @@ class TestFr005SwitchToZeroErrorMessage:
         assert "active battler" in msg.lower(), (
             f"Expected 'active battler' phrasing in helper output, got: {msg!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-009 (2026-04-17 session 9): [01E0][01E1] "Pokémon" ligature leak
+# ---------------------------------------------------------------------------
+# Trainer-class strings in ROM file 619 begin with the pair 0x01E0 0x01E1 to
+# render the stylized "Pokémon" glyph ahead of "Trainer"/"Breeder"/"Ranger".
+# Before this fix the pair leaked as `[01E0][01E1] Trainer Cheryl`.
+# CHAR_MAP now maps 0x01E0 → "Pokémon" and 0x01E1 → "" so the 2-byte pair
+# decodes as one word and the full string renders "Pokémon Trainer Cheryl".
+
+def _encode_ascii(text: str) -> list[int]:
+    """Encode an ASCII string using the reverse of CHAR_MAP. Only supports
+    letters/digits/space/basic punctuation — enough to construct the test
+    strings below. Skips the ligature bytes, which must be inserted directly."""
+    from renegade_mcp.text_encoding import CHAR_MAP
+
+    # Build a one-shot reverse map over the subset we need (letters + digits +
+    # space + common punctuation). Ligature codes (0x01E0 / 0x01E1 → "Pokémon"/"")
+    # are excluded so plain "P" still maps to its letter code.
+    reverse: dict[str, int] = {}
+    reserved = {0x01E0, 0x01E1, 0x01C2, 0x01D2, 0x01B7,  # dupes / ligatures
+                0x0121, 0x0122, 0x0123, 0x0124, 0x0125,   # small-font digits
+                0x0126, 0x0127, 0x0128, 0x0129, 0x012A}
+    for code, ch in CHAR_MAP.items():
+        if code in reserved or not ch or code < 0x0100:
+            continue
+        reverse.setdefault(ch, code)
+    return [reverse[c] for c in text]
+
+
+class TestQaBug009PokemonLigatureLeak:
+    """CHAR_MAP resolves the [01E0][01E1] pair to "Pokémon"."""
+
+    def test_ligature_decodes_as_pokemon(self):
+        """0x01E0 + 0x01E1 + space + 'Trainer' → 'Pokémon Trainer'."""
+        from renegade_mcp.text_encoding import decode_values
+
+        vals = [0x01E0, 0x01E1] + _encode_ascii(" Trainer")
+        lines = decode_values(vals)
+        assert lines == ["Pokémon Trainer"], f"Got: {lines!r}"
+
+    def test_ligature_prefix_before_breeder(self):
+        """ROM file 619 index 16 is [01E0][01E1] Breeder."""
+        from renegade_mcp.text_encoding import decode_values
+
+        vals = [0x01E0, 0x01E1] + _encode_ascii(" Breeder")
+        lines = decode_values(vals)
+        assert lines == ["Pokémon Breeder"], f"Got: {lines!r}"
+
+    def test_trainer_name_line_no_brackets(self):
+        """End-to-end: trainer send-in line renders with resolved ligature."""
+        from renegade_mcp.text_encoding import decode_values
+
+        vals = [0x01E0, 0x01E1] + _encode_ascii(
+            " Trainer Cheryl sent out Wailmer!"
+        )
+        lines = decode_values(vals)
+        joined = "\n".join(lines)
+        assert "[01E0]" not in joined, f"Hex leak: {joined!r}"
+        assert "[01E1]" not in joined, f"Hex leak: {joined!r}"
+        assert "Pokémon Trainer Cheryl sent out Wailmer!" in joined, (
+            f"Unexpected decoded text: {joined!r}"
+        )
+
+    def test_cheryl_battle_log_has_no_brackets(self, emu: EmulatorClient):
+        """Integration: running a turn in the Cheryl battle surfaces at
+        least one 'Pokémon Trainer' line and never surfaces [01E0]/[01E1]."""
+        import re
+        from renegade_mcp.interaction import interact_with
+        from renegade_mcp.turn import battle_turn
+
+        load_state(emu, "eterna_forest_entered_south")
+
+        enc = interact_with(emu, x=28, y=83)
+        assert enc.get("encounter", {}).get("encounter") == "battle", (
+            f"Expected Cheryl battle trigger, got: {enc!r}"
+        )
+
+        # Turn 1: KO Drifloon (Flamethrower = move slot 1) by turn 2 — Cheryl
+        # heals with Super Potion on turn 2 then we KO. The "Pokémon Trainer
+        # Cheryl used one Super Potion!" and send-in lines only appear on the
+        # turn Cheryl's first Pokémon faints. Run two turns to hit them.
+        # Flamethrower KOs Drifloon (resist but frail); if it survives,
+        # Cheryl will Super Potion on turn 2 — either path surfaces a
+        # "Pokémon Trainer Cheryl" line.
+        all_log: list[dict] = []
+        for _ in range(3):
+            r = battle_turn(emu, move_index=1)
+            all_log.extend(r.get("log", []) or [])
+            if r["final_state"] == "SWITCH_PROMPT":
+                break
+            if r["final_state"] not in ("WAIT_FOR_ACTION", "ACTION"):
+                break
+
+        joined = "\n".join(entry.get("text", "") for entry in all_log)
+
+        # Assert no hex-code leaks for this glyph family.
+        bracket_re = re.compile(r"\[(?:01E0|01E1)\]")
+        assert bracket_re.search(joined) is None, (
+            f"Ligature leaked into Cheryl battle log:\n{joined}"
+        )
+        # Positive spot-check: the resolved ligature should appear at least
+        # once across the two turns (Cheryl's Super Potion + send-in Wailmer
+        # lines both carry the prefix).
+        assert "Pokémon Trainer" in joined, (
+            f"Expected 'Pokémon Trainer' line across 2 Cheryl turns:\n{joined}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-010 (2026-04-17 session 9): read_party reports garbled max_hp for
+# freshly-loaded savestates where a slot contains a previously-PC-round-tripped
+# Pokémon. The extension bytes are captured mid-recompute: the first 8 bytes
+# (status/level/cur_hp) are in one encryption state while the next 2 bytes
+# (max_hp) are in the opposite state. Neither "fully primary" nor "fully
+# secondary" passes _ext_sane, so the old fallback returned primary's garbage
+# max_hp (e.g. 37988 for Shinx slot 3). Fix: field-level composition picks
+# the sane value for each field.
+# ---------------------------------------------------------------------------
+
+class TestQaBug010MaxHpMixedStateRecovery:
+    """_resolve_party_extension composes field-by-field when neither source
+    is fully sane, so max_hp in a mixed-encryption slot reads correctly."""
+
+    def test_mixed_state_field_composition(self):
+        """Unit: craft an extension buffer with level/hp plaintext at bytes
+        0-7 and a sane max_hp at bytes 8-9. The composer picks max_hp from
+        whichever source has a sane range and level/hp from the other."""
+        import struct
+        from renegade_mcp.party import _prng_decrypt, _resolve_party_extension
+
+        # Fake PID for PRNG stream
+        pid = 0xE01037C3
+        # Build a plaintext extension: level=6, cur_hp=21, max_hp=21.
+        plain = bytearray(100)
+        struct.pack_into("<I", plain, 0, 0)  # status 0
+        plain[4] = 6                          # level 6
+        struct.pack_into("<H", plain, 6, 21)  # cur_hp 21
+        struct.pack_into("<H", plain, 8, 21)  # max_hp 21
+
+        # Simulate the observed mixed state: bytes 0-7 are encrypted (the
+        # PRNG-XOR of plain), bytes 8+ are plaintext. Applying _prng_decrypt
+        # again on the header flips it back; bytes 8+ become garbage.
+        enc_header = _prng_decrypt(bytes(plain[:8]), pid)
+        mixed = bytearray(enc_header) + plain[8:]
+
+        # `flag_says_decrypted=False` because flags == 0 (what the live
+        # Shinx save reported). Primary = prng_decrypt(mixed) — header
+        # recovers, tail garbles. Secondary = mixed — header garbage, tail
+        # (max_hp @ 8) plaintext.
+        status, level, cur_hp, max_hp = _resolve_party_extension(
+            bytes(mixed), pid, flag_says_decrypted=False
+        )
+        assert level == 6, f"level compose: got {level}"
+        assert cur_hp == 21, f"cur_hp compose: got {cur_hp}"
+        assert max_hp == 21, f"max_hp compose: got {max_hp} (expected 21 from raw tail)"
+
+    def test_shinx_slot_reads_21_21_on_fresh_load(self, emu: EmulatorClient):
+        """Integration: loading `eterna_forest_entered_south` (a pre-first-
+        battle savestate with PC-round-tripped Shinx in slot 3) returns
+        Shinx's max_hp as 21, matching the in-game party menu."""
+        from renegade_mcp.party import read_party
+        load_state(emu, "eterna_forest_entered_south")
+
+        party = read_party(emu)
+        shinx = next((p for p in party if p["name"] == "Shinx"), None)
+        assert shinx is not None, f"Shinx not in party: {[p['name'] for p in party]}"
+        assert shinx["level"] == 6, f"Shinx level: {shinx['level']}"
+        assert shinx["hp"] == 21, f"Shinx hp: {shinx['hp']}"
+        assert shinx["max_hp"] == 21, (
+            f"Shinx max_hp: {shinx['max_hp']} — expected 21 "
+            "(BUG-010 regression: mixed-state extension read)"
+        )
+
+    def test_other_slots_unaffected_on_fresh_load(self, emu: EmulatorClient):
+        """Sanity: the mixed-state recovery path doesn't corrupt already-sane
+        slots. Monferno/Vaporeon/Burmy still read at their expected values."""
+        from renegade_mcp.party import read_party
+        load_state(emu, "eterna_forest_entered_south")
+
+        party = read_party(emu)
+        expected = {
+            "Monferno": {"level": 27, "max_hp": 82},
+            "Vaporeon": {"level": 16, "max_hp": 72},
+            "Burmy": {"level": 18, "max_hp": 45},
+        }
+        for name, wants in expected.items():
+            mon = next((p for p in party if p["name"] == name), None)
+            assert mon is not None, f"{name} missing from party"
+            assert mon["level"] == wants["level"], (
+                f"{name} level: got {mon['level']}, expected {wants['level']}"
+            )
+            assert mon["max_hp"] == wants["max_hp"], (
+                f"{name} max_hp: got {mon['max_hp']}, expected {wants['max_hp']}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-011 (2026-04-17 session 9): orphan species/trainer-class log entries
+# ---------------------------------------------------------------------------
+# The battle text poll loop picks the memory slot with the most decoded chars
+# each tick. Between a macro clearing and the next macro populating, a short
+# name-cache buffer ("Slowpoke", "Makuhita", "Bug Catcher") briefly becomes
+# the top match and leaks into the log. Real narrative lines always contain
+# either a newline or terminal punctuation; bare name caches contain neither,
+# so we filter AUTO_ADVANCE entries with neither property and <= 24 chars.
+
+class TestQaBug011OrphanNameFilter:
+    """Short bare-name scratch buffers no longer leak into battle log."""
+
+    def test_bare_species_name_is_orphan(self):
+        from renegade_mcp.battle_tracker import _is_orphan_name_text
+        assert _is_orphan_name_text("Slowpoke") is True
+        assert _is_orphan_name_text("Makuhita") is True
+        assert _is_orphan_name_text("Monferno") is True
+
+    def test_bare_trainer_class_is_orphan(self):
+        from renegade_mcp.battle_tracker import _is_orphan_name_text
+        assert _is_orphan_name_text("Bug Catcher") is True
+        assert _is_orphan_name_text("Ace Trainer") is True
+
+    def test_bare_move_name_is_orphan(self):
+        from renegade_mcp.battle_tracker import _is_orphan_name_text
+        # The Cheryl level-up repro leaked "Water Pulse" as a bare move name.
+        assert _is_orphan_name_text("Water Pulse") is True
+
+    def test_real_lines_are_not_orphan(self):
+        """Every AUTO_ADVANCE macro observed in QA logs carries a newline
+        or terminal punctuation — they must never be filtered."""
+        from renegade_mcp.battle_tracker import _is_orphan_name_text
+        real_lines = [
+            "Monferno used\nFlamethrower!",
+            "The foe's Drifloon used\nAir Cutter!",
+            "It's super effective!",
+            "What will Monferno do?",
+            "The foe's Drifloon fainted!\n",
+            "Monferno gained\n258 Exp. Points!\n",
+            "Vaporeon grew to\nLv. 17!\n",
+            "A wild Slowpoke appeared!\n",
+            "Go! Monferno!",
+            "Pokémon Trainer Cheryl is\nabout to send in Wailmer.",
+        ]
+        for line in real_lines:
+            assert _is_orphan_name_text(line) is False, (
+                f"False positive — would filter real line: {line!r}"
+            )
+
+    def test_empty_and_edge_cases(self):
+        from renegade_mcp.battle_tracker import _is_orphan_name_text
+        # Empty string is not an orphan (no text to filter).
+        assert _is_orphan_name_text("") is False
+        # Very long strings (>24 chars) are not orphans even if no punctuation.
+        assert _is_orphan_name_text("a" * 30) is False
+
+    def test_slowpoke_orphan_dropped_from_seek_encounter_log(
+        self, emu: EmulatorClient
+    ):
+        """Integration: the pre-BUG-011 repro from session 9 was a wild
+        Slowpoke encounter whose first log entry was a bare "Slowpoke" before
+        the "A wild Slowpoke appeared!" line. After the fix, the first entry
+        must be the real appearance macro."""
+        from renegade_mcp.fishing import seek_encounter
+
+        load_state(emu, "forest_exit_route205_north_post_cheryl")
+
+        result = seek_encounter(emu)
+        assert result.get("result") == "encounter", (
+            f"Expected wild encounter, got: {result!r}"
+        )
+        log = result["encounter"]["battle_log"]
+        assert log, f"Expected non-empty battle_log, got: {log!r}"
+
+        # The first AUTO_ADVANCE entry must not be a bare species name.
+        first = log[0]["text"]
+        assert "appeared" in first or "\n" in first or any(
+            c in first for c in ".!?"
+        ), (
+            f"BUG-011 regression: first log entry looks like an orphan "
+            f"bare name: {first!r}\nFull log: {log!r}"
+        )
+        # Positive spot-check: the real macro is still present.
+        joined = "\n".join(e["text"] for e in log)
+        assert "appeared" in joined, (
+            f"Missing 'A wild X appeared!' macro in log: {joined!r}"
+        )

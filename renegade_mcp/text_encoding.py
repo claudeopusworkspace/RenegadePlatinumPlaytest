@@ -73,6 +73,14 @@ CHAR_MAP[0x0118] = ""  # BERRIES icon
 CHAR_MAP[0x0119] = ""  # POKé BALLS icon
 CHAR_MAP[0x011A] = ""  # BATTLE ITEMS icon
 
+# "Pokémon" ligature glyph — rendered as a 2-tile sprite icon in-game (looks
+# like the stylized "PKMN" logo). Always appears as the 2-byte pair
+# [0x01E0][0x01E1] prefixing trainer classes in ROM file 619: "Pokémon
+# Trainer", "Pokémon Breeder", "Pokémon Ranger". Map the first byte to the
+# text "Pokémon" and the second to empty so the pair decodes as one word.
+CHAR_MAP[0x01E0] = "Pokémon"
+CHAR_MAP[0x01E1] = ""
+
 # Gender symbols used in battle text (different codepoints from 0x0189/0x018A)
 CHAR_MAP[0x2467] = "\u2642"  # ♂
 CHAR_MAP[0x2469] = "\u2640"  # ♀

@@ -227,15 +227,35 @@ def _ext_sane(data: bytes) -> bool:
     return True
 
 
+# Per-field sanity predicates for mixed-state recovery.
+def _level_sane(level: int) -> bool:
+    return 1 <= level <= 100
+
+
+def _hp_sane(hp: int) -> bool:
+    return 0 <= hp <= 999
+
+
+def _max_hp_sane(max_hp: int) -> bool:
+    return 1 <= max_hp <= 999
+
+
 def _resolve_party_extension(
     ext_raw: bytes, pid: int, flag_says_decrypted: bool
 ) -> tuple[int, int, int, int]:
     """Resolve the actual encryption state of the party extension and extract status/level/HP.
 
     The extension has no checksum, so we try the flag-indicated state first,
-    then fall back to the opposite if values look insane. This handles save
-    states captured mid-GetValue where blocks and extension can be in
-    different encryption states.
+    then fall back to the opposite if values look insane.
+
+    BUG-010 recovery path: handles the mixed-encryption case where the first
+    8 bytes (status/level/cur_hp) are in one state and the next 2 bytes
+    (max_hp) are in the opposite state. This happens to slots whose
+    encryption context was last toggled by PC deposit/withdraw — a fresh
+    savestate captured before the first battle transition catches the
+    extension mid-recompute, with max_hp still plaintext while the header is
+    encrypted (or vice versa). We compose a "best of both" result by
+    preferring each field from the source where it reads sane.
 
     Returns (status, level, cur_hp, max_hp).
     """
@@ -249,8 +269,32 @@ def _resolve_party_extension(
     elif _ext_sane(secondary):
         src = secondary
     else:
-        # Neither looks right — return primary and hope for the best
-        src = primary
+        # Neither source is fully sane — likely a mid-recompute mixed state.
+        # Compose field-by-field from whichever source reads sane for that field.
+        p_status = struct.unpack_from("<I", primary, 0)[0]
+        p_level = primary[4]
+        p_hp = struct.unpack_from("<H", primary, 6)[0]
+        p_max = struct.unpack_from("<H", primary, 8)[0]
+
+        s_status = struct.unpack_from("<I", secondary, 0)[0]
+        s_level = secondary[4]
+        s_hp = struct.unpack_from("<H", secondary, 6)[0]
+        s_max = struct.unpack_from("<H", secondary, 8)[0]
+
+        level = p_level if _level_sane(p_level) else (s_level if _level_sane(s_level) else p_level)
+        max_hp = p_max if _max_hp_sane(p_max) else (s_max if _max_hp_sane(s_max) else p_max)
+        # cur_hp must not exceed max_hp — apply that constraint on top of range.
+        if _hp_sane(p_hp) and p_hp <= max_hp:
+            cur_hp = p_hp
+        elif _hp_sane(s_hp) and s_hp <= max_hp:
+            cur_hp = s_hp
+        else:
+            cur_hp = p_hp
+        # Status is opaque; pick whichever half matches our chosen level byte
+        # (assume bytes 0-7 are a single unit — if the level came from the
+        # primary, status also comes from the primary).
+        status = p_status if level == p_level else s_status
+        return status, level, cur_hp, max_hp
 
     status = struct.unpack_from("<I", src, 0)[0]
     return status, src[4], struct.unpack_from("<H", src, 6)[0], struct.unpack_from("<H", src, 8)[0]

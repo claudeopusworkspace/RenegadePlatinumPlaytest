@@ -181,6 +181,33 @@ def _classify_stop(vals: list[int]) -> str:
     return "AUTO_ADVANCE"
 
 
+def _is_orphan_name_text(text: str) -> bool:
+    """Return True if `text` looks like a bare species/move/trainer-class name
+    that got scraped from a scratch buffer between real macro lines.
+
+    The battle poll loop picks the memory slot with the most decoded chars
+    each tick. After a faint/level-up/trainer-send macro clears, a short
+    name-cache slot ("Water Pulse", "Makuhita", "Bug Catcher") briefly
+    becomes the top match before the next full macro populates. Real macro
+    narration always contains either a newline (multi-line box) or terminal
+    punctuation (`.` `!` `?`); bare name caches contain neither.
+
+    Examples we filter out (from session 9 logs):
+      "Water Pulse", "Makuhita", "Monferno", "Drowzee", "Slowpoke",
+      "Bug Catcher", "Buneary".
+    """
+    if not text:
+        return False
+    if "\n" in text:
+        return False
+    if any(ch in text for ch in ".!?,;:…"):
+        return False
+    # Real one-word battle text is vanishingly rare. A bare name is <= 24 chars
+    # (longest vanilla trainer-class label is "Galactic Commander" at 18);
+    # cap conservatively to avoid false positives on future lines.
+    return len(text) <= 24
+
+
 def _format_log(log: list[dict], final_state: str) -> str:
     """Format battle log as readable string."""
     lines = ["=== Battle Log ==="]
@@ -305,7 +332,8 @@ class BattleTracker:
 
                 if stop == "AUTO_ADVANCE":
                     seen_auto = True
-                    log.append({"text": text, "stop": stop})
+                    if not _is_orphan_name_text(text):
+                        log.append({"text": text, "stop": stop})
                 elif seen_auto or stop == "WAIT_FOR_ACTION":
                     # WAIT_FOR_ACTION ([FFFE][0200]) is a definitive action
                     # prompt — always return it, even without prior AUTO_ADVANCE.
