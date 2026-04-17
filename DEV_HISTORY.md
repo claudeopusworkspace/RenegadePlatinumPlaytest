@@ -2,6 +2,118 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: QA run-3 closeout — BUG-009/010/011 (2026-04-17 session 10)
+
+### Summary
+Closed the remaining three open bugs from the qa-run-3 backlog (BUG-009,
+BUG-010, BUG-011), re-verified BUG-007 stays deferred (cosmetic, root
+cause already documented), and wrote 13 new regression tests across 3
+test classes. Full suite stays green.
+
+### BUG-009: `[01E0][01E1]` "Pokémon" ligature leak
+- **Observation** (session 9): trainer-class strings in the Cheryl battle
+  rendered as `[01E0][01E1] Trainer Cheryl` — two raw hex codes leaking
+  into `battle_turn` log + `post_battle_dialogue`.
+- **Root cause:** ROM file 619 (trainer classes) stores "Pokémon Trainer",
+  "Pokémon Breeder", and "Pokémon Ranger" as `[0x01E0][0x01E1]` + space +
+  suffix. The 2-byte pair renders the stylized "Pokémon" sprite glyph
+  in-game. Our decoder had no mapping.
+- **Fix:** added two `CHAR_MAP` entries in `renegade_mcp/text_encoding.py`
+  — `0x01E0 → "Pokémon"` and `0x01E1 → ""`. The pair decodes as one word
+  and the ROM's trailing space reads naturally as "Pokémon Trainer".
+- **Tests:** `TestQaBug009PokemonLigatureLeak` (4) — 3 unit cases
+  (ligature + Breeder + full Cheryl send-in line) + 1 integration
+  driving two turns of the Cheryl battle from
+  `eterna_forest_entered_south` and asserting no bracketed leaks plus a
+  "Pokémon Trainer" spot-check.
+
+### BUG-010: `read_party` garbled `max_hp=37988` for PC-round-tripped slot
+- **Observation** (session 9): on fresh load of
+  `eterna_forest_entered_south`, Shinx slot 3 returned `max_hp=37988`.
+  Other slots and other fields were sane; the in-game party menu showed
+  Shinx at 21/21.
+- **Root cause:** the party extension (bytes 136-236 of the slot struct)
+  captures **a mixed encryption state** in this specific save: bytes 0-7
+  (status/level/cur_hp) and bytes 8-9 (max_hp) end up in opposite
+  states. Applying PRNG decryption yields valid level/cur_hp but garbage
+  max_hp; leaving raw yields garbage level/cur_hp but valid max_hp.
+  Neither source passes the old `_ext_sane` full-record check, so the
+  fallback returned primary's garbage max_hp. This happens after PC
+  deposit/withdraw because the PC code path resets the extension's
+  per-byte encryption state, and a save captured before the first battle
+  transition catches it mid-recompute.
+- **Fix:** `party._resolve_party_extension` now composes field-by-field
+  when neither source is fully sane. Per-field predicates (`_level_sane`,
+  `_hp_sane`, `_max_hp_sane`) select the correct half; `status` follows
+  the level byte under the assumption that bytes 0-7 are a single
+  encrypted unit. The happy path (both sources consistent) is unchanged.
+- **Tests:** `TestQaBug010MaxHpMixedStateRecovery` (3) — 1 unit case
+  that synthesizes the live state (plaintext tail + encrypted header),
+  1 integration verifying Shinx reads `HP 21/21` on fresh load,
+  1 sanity case asserting Monferno/Vaporeon/Burmy are unaffected.
+
+### BUG-011: orphan species / move / trainer-class log entries
+- **Observation** (session 9): battle logs included bare single-word
+  entries like `"Slowpoke"`, `"Makuhita"`, `"Water Pulse"`, `"Bug
+  Catcher"` sandwiched between normal macro lines. Occurred in
+  `battle_turn` log output and in the `battle_log` returned by
+  `seek_encounter` / `interact_with`.
+- **Root cause:** the battle text poll loop picks the memory slot with
+  the highest decoded-char count each ~15-frame tick. Between a macro
+  clearing and the next macro populating, a short name-cache buffer
+  briefly becomes the top match and gets emitted as its own
+  `AUTO_ADVANCE` log entry. Real narration always carries either a
+  newline (multi-line box) or terminal punctuation (`.` `!` `?`); bare
+  name caches carry neither.
+- **Fix:** `battle_tracker._is_orphan_name_text()` filter — drop
+  `AUTO_ADVANCE` entries with no newline, no terminal punctuation
+  (`.!?,;:…`), and ≤24 chars. Applied in both `BattleTracker.poll`
+  (in-battle log) and `turn._wait_for_action_prompt` (battle-intro log
+  used by encounter detection). The helper is shared between the two
+  paths; `WAIT_FOR_ACTION` / `WAIT_FOR_INPUT` entries are never filtered
+  so real action prompts and ability-announcement boxes keep their
+  behavior.
+- **Tests:** `TestQaBug011OrphanNameFilter` (6) — 5 unit cases
+  (species/class/move orphans + empty edge + guard that real lines
+  aren't false-positive-filtered) + 1 integration replaying the
+  Slowpoke wild encounter from `forest_exit_route205_north_post_cheryl`.
+
+### QA BUG-007: still deferred
+Investigated one more time. Fix options remain (a) per-var-id
+substitution layer that reads game state to fill unresolved tokens, and
+(b) read text buffer at a later pipeline stage after the game's
+substitution pass. (a) is risky — many code paths rely on stripping
+`[VAR]…` working correctly; (b) needs a text-buffer survey not yet done.
+Cosmetic-only (user sees `"Obtained the !"` instead of
+`"Obtained the TM76!"`), so leaving deferred for a future session.
+
+### Touch points
+- `renegade_mcp/text_encoding.py` — 2 CHAR_MAP entries.
+- `renegade_mcp/battle_tracker.py` — `_is_orphan_name_text` helper +
+  filter call in `BattleTracker.poll`.
+- `renegade_mcp/turn.py` — import `_is_orphan_name_text`, filter call
+  in `_wait_for_action_prompt`.
+- `renegade_mcp/party.py` — per-field sanity predicates + mixed-state
+  composition path in `_resolve_party_extension`.
+- `tests/test_qa_bugfixes.py` — 3 new test classes (13 tests).
+
+### Save states introduced / imported
+- `bug009_cheryl_post_drifloon_ko` — checkpoint right after Drifloon KO
+  in Cheryl battle, for ad-hoc live verification of the ligature fix.
+- `bug011_cheryl_post_wailmer_ko` — switch-prompt state after Wailmer KO
+  with Vaporeon's level-up consumed.
+- Imported from QA: `bug008_cheryl_trainer_01e0_01e1_codes`,
+  `bug_shinx_max_hp_garbled_read_party`, `eterna_forest_entered_south`,
+  `forest_exit_route205_north_post_cheryl`,
+  `eterna_forest_cheryl_doubles_mid_battle_buneary_paras`.
+
+### Test stats
+- New tests: 13 (4 + 3 + 6).
+- `test_qa_bugfixes.py` file total: 70 tests, all green.
+- Full suite at session end: **369 tests, all green** (13m38s).
+
+---
+
 ## Dev Session: FR-004 — Unified use_item dispatcher (2026-04-17c)
 
 ### Summary

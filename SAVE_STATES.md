@@ -47,6 +47,13 @@
 | `debug_heal_party_dialogue_stuck` | Eterna City PC, pre-heal. heal_party doesn't dismiss final "We hope to see you again!" text. |
 | `debug_deposit_extra_a_press` | Eterna City PC storage menu. deposit_pokemon presses extra A before navigating to target slot. |
 | `qol_battle_wipe_blackout_handling` | Post-wipe blackout state. Used for developing auto-blackout handling in battle_turn. |
+| `bug008_cheryl_trainer_01e0_01e1_codes` | QA save, mid-Cheryl battle in Eterna Forest. **BUG-009 repro** — `battle_turn` log lines containing `"Pokémon Trainer Cheryl"` leak as `[01E0][01E1] Trainer Cheryl`. Loaded state is early-conversation; trigger the full battle from `eterna_forest_entered_south` instead for deterministic repro. |
+| `bug_shinx_max_hp_garbled_read_party` | QA save, Eterna Forest (29, 86) facing up. **BUG-010 repro companion** — `read_party` reported Shinx slot 3 `max_hp=37988` on fresh load. Primary repro state is `eterna_forest_entered_south`; this one is a secondary observation point. |
+| `eterna_forest_entered_south` | Eterna Forest entry, Monferno Lv27 lead, 4 Pokemon party incl. Shinx slot 3 (PC-round-tripped). **BUG-010 primary repro** — fresh load shows Shinx `max_hp=37988` pre-fix. Also used as BUG-009 entry (navigate to Cheryl at (28,83) to start the Pokémon Trainer-prefixed battle). |
+| `forest_exit_route205_north_post_cheryl` | Route 205 north grass, 4 Pokemon party, post-Cheryl checkpoint. **BUG-011 primary repro** — `seek_encounter` surfaces an orphan `"Slowpoke"` log entry before `"A wild Slowpoke appeared!"` pre-fix. |
+| `eterna_forest_cheryl_doubles_mid_battle_buneary_paras` | QA save, mid-Cheryl double battle with wild Buneary + Paras. Imported for future doubles-flow regression — not yet referenced in tests. |
+| `bug009_cheryl_post_drifloon_ko` | Playtest-created, Cheryl battle right after Drifloon KO, Wailmer incoming. Ad-hoc checkpoint kept for future Cheryl-line text investigations. |
+| `bug011_cheryl_post_wailmer_ko` | Playtest-created, switch-prompt state post-Wailmer KO with Vaporeon's level-up consumed. Checkpoint for revisiting post-level-up log flows if needed. |
 
 ## Test Suite
 
