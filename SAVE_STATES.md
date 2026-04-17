@@ -20,7 +20,8 @@
 | `eterna_city_monferno_grind_complete` | Eterna City Pokemon Center. Luxray Lv30, Monferno Lv25, rest Lv24-25. Route 205 grind done. Pre-Gardenia. |
 | `pre_gardenia_rematch_v2` | Eterna City overworld, south of Pokemon Center. Full team healed. About to enter gym for Gardenia rematch. |
 | `post_gardenia_forest_badge` | Eterna Gym interior, post-Gardenia dialogue. Forest Badge + TM86 Grass Knot obtained. |
-| `eterna_city_post_gardenia_team_updated` | **CURRENT** — Eterna City Pokemon Center. 2 Badges (Coal + Forest). Charmeleon deposited, Swinub ✨ withdrawn. Monferno has Charcoal, Swinub has Exp. Share. |
+| `eterna_city_post_gardenia_team_updated` | Eterna City Pokemon Center. 2 Badges (Coal + Forest). Charmeleon deposited, Swinub ✨ withdrawn. Monferno has Charcoal, Swinub has Exp. Share. |
+| `eterna_city_galactic_building_doorstep` | **CURRENT** — Eterna City at (304, 520), one tile SW of T.G. Eterna Bldg warp (305, 519). Grunt NPC at (305, 520). Ready to enter Team Galactic HQ. Same team as prior state. |
 
 ## Debug & Testing
 

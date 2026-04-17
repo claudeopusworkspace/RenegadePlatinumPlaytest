@@ -27,6 +27,11 @@ checkpoints/
 # Session recordings (MelonMCP HLS + session capture, mp4/json)
 recordings/
 
+# MelonMCP streaming journal + renderer artifacts (ephemeral, PID-suffixed)
+.melonds_journal_*.jsonl
+.renderer_*.log
+.renderer_frame_*
+
 # Auto-grind session logs
 logs/
 

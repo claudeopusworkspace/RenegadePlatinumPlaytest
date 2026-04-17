@@ -2,6 +2,49 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: Decouple test suite from live emulator (2026-04-16b)
+
+### Summary
+Stood up a second melonDS process dedicated to the test suite, listening on its own bridge socket. `pytest` now runs against the standalone emulator by default, leaving the emulator Claude Code drives for interactive play entirely untouched. Full suite (**330 tests, 11:27**) ran concurrently with an agent-driven navigation task on the live emulator — both finished cleanly with zero interference.
+
+### Problem
+The test suite and interactive play shared a single melonDS process. Running pytest in a session with an active emulator would corrupt test state (or the playthrough), and a known bug caused `load_state` to hang indefinitely when invoked concurrently. The operational rule was "don't touch the emulator while pytest is running" — fine for small runs, painful for a 12-minute full suite.
+
+### Architecture
+MelonMCP's bridge is just a Unix domain socket the client connects to — nothing about it is coupled to Claude Code's MCP stdio layer. The server-side bridge path is controlled by `MELONDS_BRIDGE_SOCK` (`server.py:169-172`), and the client-side search respects both the env var and a list of well-known socket paths (`client.py:237-262`). This made it trivial to spin up a second emulator on a different socket.
+
+### Implementation
+- **`scripts/start_test_emulator.py`** — standalone bootstrap. Imports `EmulatorState` + `BridgeServer` directly (bypassing the FastMCP stdio layer), initializes the engine, loads the ROM, starts the bridge on `.melonds_test_bridge.sock`, and blocks on a `threading.Event` until SIGTERM/SIGINT. Dedicated `melonds_test_mcp.log` file so it doesn't trample the live emulator's log.
+- **`tests/conftest.py`** — added `.melonds_test_bridge.sock` as the first entry in the melonds backend's socket search list. Pytest picks up the standalone when it's running, falls back to the live `.melonds_bridge.sock` otherwise. No env-var wrangling.
+- **`.gitignore`** — added `melonds_test_mcp.log*` and `.melonds_test_bridge.sock` to the existing log/socket entries.
+- **`CLAUDE.md`** — documented the two-terminal workflow in the Test Suite section.
+
+Both emulators share the same `data_dir` (`/workspace/RenegadePlatinumPlaytest`), so savestates, macros, ROM, and romdata are all visible to both. Only the live socket is written. Checkpoints go to a shared `checkpoints/` directory — in practice this hasn't caused issues since each process keeps its own in-memory ring buffer and hash collisions on state-derived filenames are vanishingly unlikely, but if future test churn evicts a checkpoint the live process still has a handle to, we'd need to split the checkpoint directories.
+
+### Stress test
+With both emulators running in parallel:
+- **Live emulator** (CC session) — loaded `eterna_city_post_gardenia_team_updated`. Agent task (general-purpose subagent) navigated from Eterna Pokemon Center to the Team Galactic Eterna Building doorstep, saved a new save state. 26s wall time, 7 tool calls. Reported no hangs or unexpected responses.
+- **Test emulator** (standalone) — ran full suite: `330 passed in 687.68s (0:11:27)`, exit 0.
+
+**Post-run verification**: live emulator's trainer status and map position matched exactly where the agent left it — money $9,218, badges 2, position (304, 520) Eterna City. Frame count 1363 (all from agent activity). Zero test-induced state leaked across.
+
+### New save state
+- `eterna_city_galactic_building_doorstep` — one tile SW of T.G. Eterna Bldg warp (305, 519). Ready for the next play session's Forest Badge follow-up objective.
+
+### Stale guidance corrected
+- **`feedback_no_parallel_emu`** memory — rewritten to describe the new model: prefer the standalone, fall back to shared-process rules only when it's not running.
+- **`feedback_disable_stream_for_tests`** memory — recovery instruction tweaked to distinguish the standalone process from the live MCP server.
+- **CLAUDE.md** — Test Suite section gained a "Dedicated test emulator" subsection with the two-terminal recipe.
+
+### Files changed
+- `scripts/start_test_emulator.py` (new)
+- `tests/conftest.py` (socket search list)
+- `CLAUDE.md` (Test Suite section)
+- `.gitignore` (log + socket)
+- `DEV_HISTORY.md` (this entry)
+
+Commit `a39a84f` landed the core decoupling; this session added verification + docs.
+
 ## Dev Session: Fix + test all 7 QA bugs (2026-04-15b)
 
 ### Summary

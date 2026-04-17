@@ -256,7 +256,7 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 
 - **Character**: CLAUDE | **Rival**: WOJ
 - **Badges**: 2 (Coal, Forest)
-- **Location**: Eterna City Pokemon Center. Save state: `eterna_city_post_gardenia_team_updated`.
+- **Location**: Eterna City at (304, 520), doorstep of Team Galactic Eterna Building. Save state: `eterna_city_galactic_building_doorstep`.
 - **Luxray** Lv30 — Jolly, Guts. Scope Lens. Spark / Bite / Howl / Ice Fang.
 - **Grotle** Lv24 — Naughty, Overgrow. Muscle Band. Bulldoze / Cut / Bullet Seed / Razor Leaf.
 - **Prinplup** Lv25 — Lax, Vital Spirit. Metal Claw / Growl / Bubble Beam / Icy Wind.
