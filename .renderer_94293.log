@@ -1,0 +1,28 @@
+19:10:41 [renderer] INFO melonds_mcp.renderer: Renderer starting: rom=/workspace/RenegadePlatinumPlaytest/RenegadePlatinum.nds port=18091 frame_file=/workspace/RenegadePlatinumPlaytest/.renderer_frame_94293 initial_state=None server_pid=94293
+19:10:41 [renderer] INFO melonds_mcp.emulator: Initializing melonDS engine
+19:10:41 [renderer] INFO melonds_mcp.emulator: melonDS initialized successfully (JIT: True)
+19:10:41 [renderer] INFO melonds_mcp.emulator: Loading ROM: /workspace/RenegadePlatinumPlaytest/RenegadePlatinum.nds
+19:10:42 [renderer] INFO melonds_mcp.emulator: ROM loaded successfully: RenegadePlatinum.nds
+19:10:42 [renderer] INFO melonds_mcp.streamer: ffmpeg started (pid 3432)
+19:10:42 [renderer] INFO melonds_mcp.streamer: Frame writer thread starting
+19:10:42 [renderer] INFO melonds_mcp.streamer: HLS streamer started on http://0.0.0.0:18091 (hls dir: /tmp/melonds_hls_o3evc2r0)
+19:10:42 [renderer] INFO melonds_mcp.renderer: HLS streamer started on port 18091 (blocking mode)
+19:10:42 [renderer] INFO melonds_mcp.recorder: Recorder ffmpeg started (pid 3436)
+19:10:42 [renderer] INFO melonds_mcp.recorder: Recorder writer thread starting
+19:10:42 [renderer] INFO melonds_mcp.recorder: Session recorder started: /workspace/RenegadePlatinumPlaytest/recordings/20260417_001042.mp4 (tmp: /tmp/melonds_rec_tsaf051d)
+19:10:42 [renderer] INFO melonds_mcp.renderer: Session recorder started, output dir: /workspace/RenegadePlatinumPlaytest/recordings, name: unnamed
+19:10:42 [renderer] INFO melonds_mcp.journal: Journal reader opened /workspace/RenegadePlatinumPlaytest/.melonds_journal_94293.jsonl
+19:10:42 [renderer] INFO melonds_mcp.renderer: Journal reader connected, entering replay loop
+19:10:42 [renderer] INFO melonds_mcp.streamer: video pipe buffer set to 1048576 bytes
+19:10:42 [renderer] INFO melonds_mcp.recorder: Recorder FIFOs opened
+19:10:42 [renderer] INFO melonds_mcp.streamer: audio pipe buffer set to 1048576 bytes
+19:10:42 [renderer] INFO melonds_mcp.streamer: Both FIFOs opened for writing
+19:10:47 [renderer] INFO melonds_mcp.renderer: Renderer received shutdown entry
+19:10:47 [renderer] INFO melonds_mcp.recorder: Recorder stopping (wrote 0 frames)
+19:10:47 [renderer] INFO melonds_mcp.recorder: Recorder writer thread exiting (wrote 0 frames)
+19:10:47 [renderer] INFO melonds_mcp.recorder: Session recorder stopped: /workspace/RenegadePlatinumPlaytest/recordings/20260417_001042.mp4
+19:10:47 [renderer] INFO melonds_mcp.journal: Journal file cleaned up: /workspace/RenegadePlatinumPlaytest/.melonds_journal_94293.jsonl
+19:10:47 [renderer] INFO melonds_mcp.streamer: HLS streamer shutting down (wrote 0 frames, dropped 0)
+19:10:47 [renderer] INFO melonds_mcp.streamer: Frame writer thread exiting (wrote 0 frames)
+19:10:48 [renderer] INFO melonds_mcp.streamer: HLS streamer stopped
+19:10:48 [renderer] INFO melonds_mcp.renderer: Renderer exiting
