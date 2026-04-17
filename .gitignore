@@ -32,10 +32,12 @@ logs/
 
 # MCP server logs (rotated)
 melonds_mcp.log*
+melonds_test_mcp.log*
 desmume_mcp.log*
 
 # IPC bridge sockets
 .melonds_bridge.sock
+.melonds_test_bridge.sock
 .desmume_bridge.sock
 
 # Battery save (exported from emulator, large binary)

@@ -302,6 +302,20 @@ Tests load save states, call implementation functions directly (bypassing MCP pr
 
 **Run tests after any change to `turn.py`, `auto_grind.py`, `navigation.py`, or `battle_tracker.py`.**
 
+### Dedicated test emulator (decoupled from the live session)
+
+The test suite can run against its own melonDS process so it doesn't fight the emulator Claude Code is driving for interactive play.
+
+```bash
+# Terminal 1 — start the standalone test emulator (blocks; Ctrl-C to stop):
+.venv/bin/python scripts/start_test_emulator.py
+
+# Terminal 2 — run the suite:
+.venv/bin/python -m pytest tests/ -v
+```
+
+The standalone listens on `.melonds_test_bridge.sock` (a different socket from the live `.melonds_bridge.sock`). `tests/conftest.py` prefers the test socket when it's present and falls back to the live one otherwise — no env vars required. Both emulators share the same `data_dir` (savestates, ROM, macros), so tests see the same checkpoint inventory the live emu sees.
+
 ## Tips
 
 - Save state frequently — this is a difficulty hack, expect challenges.

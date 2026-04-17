@@ -31,10 +31,15 @@ sys.path.insert(0, "/workspace/MelonMCP")
 sys.path.insert(0, "/workspace/DesmumeMCP")
 sys.path.insert(0, "/workspace/RenegadePlatinumPlaytest")
 
-# Backend socket configs (same order as connection.py)
+# Backend socket configs (same order as connection.py).
+# The test-dedicated socket is listed first so pytest binds to the standalone
+# emulator (scripts/start_test_emulator.py) when it's running, leaving the
+# interactive Claude Code emulator untouched. Falls back to the live sockets
+# if no standalone test emulator is up.
 _BACKENDS = {
     "melonds": {
         "sockets": [
+            "/workspace/RenegadePlatinumPlaytest/.melonds_test_bridge.sock",
             "/workspace/RenegadePlatinumPlaytest/.melonds_bridge.sock",
             "/workspace/MelonMCP/.melonds_bridge.sock",
         ],
