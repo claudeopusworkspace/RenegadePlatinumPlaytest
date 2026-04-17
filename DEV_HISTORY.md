@@ -2,6 +2,63 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: FR-004 — Unified use_item dispatcher (2026-04-17c)
+
+### Summary
+Closed FR-004 by generalizing `use_item` into the single entry point for every
+field-usable bag item. Deleted the `use_field_item`, `use_key_item`, and
+`teach_tm` MCP tool wrappers. New signature is
+`use_item(item_name, party_slot=-1, forget_move=-1)` and dispatches on the
+item's `fieldUseFunc`.
+
+### Scope decisions (agreed with Woj up front)
+- **Supported shapes:** no-target (Repel / flutes / Escape Rope / Honey /
+  Bicycle / the BAG_MESSAGE key items), party-target (Medicine, healing
+  Berries, evolution stones, Gracidea), party + optional forget-move
+  (TMs & HMs — delegates to `teach_tm`, which stays as an internal module).
+- **Rejected shapes** with specific guidance: fishing rods → point to
+  `seek_encounter(rod=...)`; mail → point to `give_item`; modal-UI key
+  items (Town Map, Journal, Pal Pad, Poffin Case, Poké Radar, Explorer
+  Kit, Vs. Seeker, Vs. Recorder, Sprayduck, Mulch, Azure Flute) →
+  unsupported, drive manually. Context-gated preconditions (facing Honey
+  Tree, cave-only for Escape Rope, outdoors-only for Bicycle) logged to
+  backlog as deferred.
+- **Evolution-stone compat pre-check** skipped for this pass. The game's
+  own "had no effect" path is detected after USE (no wasted stone either
+  way). ROM-extracted evo table for preemptive rejection can be added
+  later if wasted stones become a real concern.
+
+### Implementation details
+- `renegade_mcp/use_item.py` rewritten (696 lines): primitives → bag
+  lookup → `use_item` dispatcher → per-flow handlers
+  (`_flow_no_target_message`, `_flow_escape_rope`, `_flow_bicycle`,
+  `_flow_party_medicine`, `_flow_evo_stone`) → internal `activate_key_item`
+  helper kept for `fishing.py`.
+- Bag lookup scans every pocket (pocket name comes from the bag, not the
+  func) so items like Coin Case / Fashion Case / Seal Case in Key Items
+  route correctly despite sharing `FUNC_BAG_MESSAGE` with Items-pocket
+  flutes/repels.
+- TM/HM fallback: if the bag search misses, check whether the name matches
+  a move taught by a TM/HM in the bag; delegate to `teach_tm` so callers
+  can pass `"Rock Smash"` instead of `"HM06"`.
+- Evo-stone post-USE: poll up to ~720 frames for "is evolving" / "What?"
+  markers using the existing `_is_evolution_text_on_screen` helper. If
+  detected, dismiss with B and wait passively for "evolved into …" (up to
+  ~40s); otherwise treat as incompatible and close the menus.
+- `navigation.py` bike auto-mount switched from the deleted `use_key_item`
+  to `use_item(emu, "Bicycle")`.
+
+### Tests
+- `tests/test_item_tools.py` restructured: `TestUseFieldItem` →
+  `TestUseItemNoTarget`; new `TestUseItemRejections` (fishing-rod pointer,
+  modal-UI rejection, missing party_slot); `TestTeachTm` →
+  `TestUseItemTmHm` routed through the unified dispatcher + new
+  missing-party-slot rejection case.
+- `tests/test_bicycle.py` and `tests/test_cycling_road.py` updated to call
+  `use_item(emu, "Bicycle")`.
+- Full regression: 67 passed across
+  `test_item_tools / test_bicycle / test_fishing / test_cycling_road` (~2 min).
+
 ## Dev Session: FR-003 + FR-005 (2026-04-17b)
 
 ### Summary

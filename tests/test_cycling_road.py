@@ -346,12 +346,12 @@ class TestBikeSlopeTraversal:
         """Walking player auto-mounts bicycle when slope is in the BFS path."""
         from renegade_mcp.addresses import addr
         from renegade_mcp.navigation import _navigate_to_impl
-        from renegade_mcp.use_item import use_key_item
+        from renegade_mcp.use_item import use_item
 
         # Dismount properly via the game's Bicycle key item
         cycling = emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")
         assert cycling != 0, "Precondition: save state should start on bicycle"
-        dismount = use_key_item(emu, "Bicycle")
+        dismount = use_item(emu, "Bicycle")
         assert dismount.get("success"), f"Dismount failed: {dismount}"
         cycling = emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")
         assert cycling == 0, "Precondition: player should be walking after dismount"

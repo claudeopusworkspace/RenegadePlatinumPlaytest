@@ -330,8 +330,8 @@ def _execute_path(
                 from renegade_mcp.addresses import addr
                 cycling = bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short"))
                 if not cycling:
-                    from renegade_mcp.use_item import use_key_item
-                    mount_result = use_key_item(emu, "Bicycle")
+                    from renegade_mcp.use_item import use_item
+                    mount_result = use_item(emu, "Bicycle")
                     if mount_result.get("success"):
                         active_hold = BIKE_HOLD_FRAMES
                         cycling = True

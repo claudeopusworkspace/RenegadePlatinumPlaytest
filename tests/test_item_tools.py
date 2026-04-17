@@ -1,4 +1,4 @@
-"""Tests for item tools: use_item, use_field_item, use_medicine, take_item, give_item, teach_tm.
+"""Tests for item tools: unified use_item, use_medicine, take_item, give_item.
 
 State-changing menu interactions — retries for UI timing.
 """
@@ -56,25 +56,65 @@ class TestUseItem:
 
 
 # ---------------------------------------------------------------------------
-# use_field_item
+# use_item — no-target flows
 # ---------------------------------------------------------------------------
 
-class TestUseFieldItem:
-    """Use no-target field items (Repel, etc.)."""
+class TestUseItemNoTarget:
+    """No-target field items dispatched through the unified use_item."""
 
     @retry_on_rng("route216_grass_swinub_hunt")
     def test_use_repel(self, emu: EmulatorClient):
         """Use Repel — success."""
-        from renegade_mcp.use_item import use_field_item
-        result = use_field_item(emu, "Repel")
+        from renegade_mcp.use_item import use_item
+        result = use_item(emu, "Repel")
         assert "error" not in result
+        assert result.get("kind") == "bag_message"
 
     def test_hold_only_item_rejected(self, emu: EmulatorClient):
-        """Hold-only item (Silk Scarf) rejected by validation."""
+        """Hold-only item (Silk Scarf) rejected with a give_item pointer."""
         load_state(emu, "eterna_city_shiny_swinub_in_party")
-        from renegade_mcp.use_item import use_field_item
-        result = use_field_item(emu, "Silk Scarf")
+        from renegade_mcp.use_item import use_item
+        result = use_item(emu, "Silk Scarf")
         assert "error" in result
+        assert "give_item" in result["error"]
+
+
+class TestUseItemRejections:
+    """Unsupported flows return clear, pointer-style errors."""
+
+    def test_fishing_rod_points_to_seek_encounter(self, emu: EmulatorClient):
+        """Using a fishing rod via use_item points the caller at seek_encounter."""
+        load_state(emu, "eterna_city_shiny_swinub_in_party")
+        from renegade_mcp.use_item import use_item
+        # At this point in the game we may not have a rod; the error should
+        # still resolve correctly regardless of whether the item is in the bag.
+        from renegade_mcp.bag import read_bag
+        has_rod = any(
+            it["name"] == "Good Rod"
+            for p in read_bag(emu) for it in p["items"]
+        )
+        result = use_item(emu, "Good Rod")
+        if has_rod:
+            assert "error" in result
+            assert "seek_encounter" in result["error"]
+        else:
+            assert "error" in result and "not found" in result["error"].lower()
+
+    def test_modal_ui_rejected(self, emu: EmulatorClient):
+        """Town Map is a modal UI and is rejected."""
+        load_state(emu, "eterna_city_shiny_swinub_in_party")
+        from renegade_mcp.use_item import use_item
+        result = use_item(emu, "Town Map")
+        assert "error" in result
+        assert "not supported" in result["error"].lower()
+
+    def test_missing_party_slot_rejected(self, emu: EmulatorClient):
+        """Party-target item without party_slot returns an error."""
+        load_state(emu, "test_damaged_party_overworld")
+        from renegade_mcp.use_item import use_item
+        result = use_item(emu, "Potion")   # no party_slot
+        assert "error" in result
+        assert "party_slot" in result["error"]
 
 
 # ---------------------------------------------------------------------------
@@ -215,19 +255,18 @@ class TestGiveItem:
 # teach_tm
 # ---------------------------------------------------------------------------
 
-class TestTeachTm:
-    """Teach TM/HM to a party Pokemon."""
+class TestUseItemTmHm:
+    """TM/HM teaching via the unified use_item dispatcher."""
 
     @retry_on_rng("eterna_city_shiny_swinub_in_party")
     def test_teach_tm_with_forget(self, emu: EmulatorClient):
         """Teach Rock Smash (HM06) to Machop — replaces Focus Energy."""
-        from renegade_mcp.teach_tm import teach_tm
+        from renegade_mcp.use_item import use_item
         from renegade_mcp.party import read_party
         # Machop (slot 1) knows: Low Kick, Brick Break, Focus Energy, Knock Off
-        # forget_move=2 forgets Focus Energy
-        result = teach_tm(emu, "HM06", party_slot=1, forget_move=2)
-        assert "error" not in result, f"teach_tm errored: {result.get('error')}"
-        # Verify Machop now knows Rock Smash
+        result = use_item(emu, "HM06", party_slot=1, forget_move=2)
+        assert "error" not in result, f"use_item(TM) errored: {result.get('error')}"
+        assert result.get("kind") == "tm_hm"
         party = read_party(emu)
         machop_moves = [m["name"] for m in party[1]["moves"]]
         assert "Rock Smash" in machop_moves, (
@@ -237,12 +276,8 @@ class TestTeachTm:
     def test_incompatible_pokemon_rejected(self, emu: EmulatorClient):
         """Incompatible Pokemon returns error before UI interaction."""
         load_state(emu, "eterna_city_shiny_swinub_in_party")
-        from renegade_mcp.teach_tm import teach_tm
-        # Stealth Rock (TM76) — Swinub (slot 5) likely can't learn it
-        # If this specific combo IS compatible, the test is still valuable:
-        # it either proves incompatibility is rejected, or proves learning works
-        result = teach_tm(emu, "TM76", party_slot=5)
-        # Result should be clear: either error (incompatible) or success
+        from renegade_mcp.use_item import use_item
+        result = use_item(emu, "TM76", party_slot=5)
         assert "error" in result or "success" in str(result).lower(), (
             f"Expected clear error or success, got: {result}"
         )
@@ -250,13 +285,20 @@ class TestTeachTm:
     @retry_on_rng("eterna_city_shiny_swinub_in_party")
     def test_tm_by_move_name(self, emu: EmulatorClient):
         """TM lookup by move name resolves correctly."""
-        from renegade_mcp.teach_tm import teach_tm
+        from renegade_mcp.use_item import use_item
         from renegade_mcp.party import read_party
-        # Use move name "Rock Smash" instead of "HM06"
-        result = teach_tm(emu, "Rock Smash", party_slot=1, forget_move=2)
-        assert "error" not in result, f"teach_tm by name errored: {result.get('error')}"
+        result = use_item(emu, "Rock Smash", party_slot=1, forget_move=2)
+        assert "error" not in result, f"use_item(move-name) errored: {result.get('error')}"
         party = read_party(emu)
         machop_moves = [m["name"] for m in party[1]["moves"]]
         assert "Rock Smash" in machop_moves, (
             f"Rock Smash should be learned via name lookup, got: {machop_moves}"
         )
+
+    def test_tm_missing_party_slot_rejected(self, emu: EmulatorClient):
+        """TM/HM without party_slot returns a specific error."""
+        load_state(emu, "eterna_city_shiny_swinub_in_party")
+        from renegade_mcp.use_item import use_item
+        result = use_item(emu, "HM06")
+        assert "error" in result
+        assert "party_slot" in result["error"]

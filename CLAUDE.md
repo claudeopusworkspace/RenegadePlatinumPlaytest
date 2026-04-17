@@ -283,8 +283,23 @@ See GAME_HISTORY.md for full details (defeated trainers, story progress, box con
 2. `read_bag` — all items across all pockets
 
 ### Using items (overworld)
-1. `use_item("Potion", 0)` — uses a single Medicine item on the specified party slot (0-indexed)
-2. `use_medicine()` — **preferred for bulk healing**. Dry-run returns a plan, `confirm=True` executes. Handles HP, status, and revival optimally.
+`use_item` is the single entry point for every field-usable bag item. It
+reads the item's `fieldUseFunc` and dispatches automatically:
+
+1. `use_item("Potion", party_slot=0)` — party-target items (Medicine, healing
+   Berries, evolution stones, Gracidea). `party_slot` required.
+2. `use_item("Repel")` — no-target items (Repel/flutes/Escape Rope/Honey/Bicycle).
+3. `use_item("HM06", party_slot=1, forget_move=2)` — TMs & HMs. Accepts the
+   TM label (`HM06`, `TM76`) or the move name (`Rock Smash`). `forget_move`
+   required when the Pokemon knows 4 moves; pass `-1` to cancel teaching.
+4. `use_medicine()` — **preferred for bulk healing**. Dry-run returns a plan,
+   `confirm=True` executes.
+
+Rejected with a pointer error (by design — out of scope for `use_item`):
+fishing rods (use `seek_encounter(rod=...)`), mail (use `give_item`),
+modal-UI key items (Town Map, Journal, Pal Pad, Poffin Case, Poké Radar,
+Explorer Kit, Vs. Seeker, Vs. Recorder, Sprayduck, Mulch, Azure Flute —
+drive manually with `press_buttons`).
 
 ### Reordering party (overworld)
 1. `reorder_party(0, 2)` — swap slot 0 and slot 2. Navigates pause menu automatically.

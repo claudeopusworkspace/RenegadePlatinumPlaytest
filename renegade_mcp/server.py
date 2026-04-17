@@ -806,55 +806,43 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     @renegade_tool
-    def use_item(item_name: str, party_slot: int = 0) -> dict[str, Any]:
-        """Use a Medicine pocket item on a party Pokemon in the overworld.
+    def use_item(
+        item_name: str, party_slot: int = -1, forget_move: int = -1
+    ) -> dict[str, Any]:
+        """Use any field-usable item from the overworld bag.
 
-        Opens the pause menu, navigates to Bag → Medicine pocket, selects the
-        item, uses it on the target party member, and closes all menus.
+        Dispatches based on the item's fieldUseFunc. Supported flows:
+
+          • No-target — Repel / Max Repel / Super Repel / Black Flute /
+            White Flute / Silver Wing / Coin Case / Fashion Case / Seal
+            Case / Escape Rope / Honey / Bicycle. `party_slot` is ignored.
+
+          • Party-target — Medicine (Potion, Antidote, Revive, ...),
+            healing Berries, evolution stones, Gracidea. Requires
+            `party_slot` (0-5).
+
+          • TMs & HMs — delegates to the TM-teach flow. Requires
+            `party_slot`; pass `forget_move` (0-3) when the Pokemon
+            already knows 4 moves (or -1 to cancel teaching).
+
+        Rejected with a specific error:
+          • Fishing rods → use `seek_encounter(rod=...)` instead.
+          • Mail → `use_item` does not compose letters; attach with `give_item`.
+          • Modal-UI items (Town Map, Journal, Pal Pad, Poffin Case, Poké
+            Radar, Explorer Kit, Vs. Seeker, Vs. Recorder, Sprayduck, Mulch,
+            Azure Flute) — drive manually with `press_buttons`.
 
         Args:
-            item_name: Item name (e.g. "Potion", "Antidote"). Case-insensitive.
-            party_slot: Party index 0-5 (0 = first Pokemon).
+            item_name: Item name (e.g. "Potion", "Repel", "Fire Stone",
+                "HM06", "Stealth Rock"). Case-insensitive.
+            party_slot: Party index 0-5 (required for party-target items and TMs).
+            forget_move: Move slot 0-3 for TMs/HMs when the Pokemon knows
+                4 moves (or -1 to cancel teaching). Ignored for non-TM items.
         """
         from renegade_mcp.use_item import use_item as _use_item
 
         emu = get_client()
-        return _use_item(emu, item_name, party_slot)
-
-    @mcp.tool()
-    @renegade_tool
-    def use_field_item(item_name: str) -> dict[str, Any]:
-        """Use a field item (Repel, Escape Rope, Honey, etc.) from the Items pocket.
-
-        For items that activate directly without targeting a party Pokemon.
-        Opens pause menu → Bag → Items pocket → select item → USE → dismiss.
-        Pre-validates that the item is field-usable (rejects hold-only items
-        like Silk Scarf). For Medicine items, use use_item() instead.
-
-        Args:
-            item_name: Item name (e.g. "Repel", "Escape Rope"). Case-insensitive.
-        """
-        from renegade_mcp.use_item import use_field_item as _use_field_item
-
-        emu = get_client()
-        return _use_field_item(emu, item_name)
-
-    @mcp.tool()
-    @renegade_tool
-    def use_key_item(item_name: str) -> dict[str, Any]:
-        """Use a key item from the Key Items pocket.
-
-        Currently supports: Bicycle (mount/dismount toggle).
-        Opens pause menu → Bag → Key Items pocket → select item → USE.
-        Menu closes automatically after use.
-
-        Args:
-            item_name: Item name (e.g. "Bicycle"). Case-insensitive.
-        """
-        from renegade_mcp.use_item import use_key_item as _use_key_item
-
-        emu = get_client()
-        return _use_key_item(emu, item_name)
+        return _use_item(emu, item_name, party_slot, forget_move)
 
     @mcp.tool()
     @renegade_tool
@@ -885,29 +873,6 @@ def create_server() -> FastMCP:
 
         emu = get_client()
         return _use_medicine(emu, confirm, exclude_items, priority)
-
-    @mcp.tool()
-    @renegade_tool
-    def teach_tm(
-        tm_name: str, party_slot: int = 0, forget_move: int | None = None
-    ) -> dict[str, Any]:
-        """Teach a TM or HM move to a party Pokemon from the overworld.
-
-        Opens pause menu → Bag → TMs & HMs → select TM → USE → dialogue →
-        party select → move-forget flow → close menus. Pre-validates that
-        the Pokemon can learn the move using ROM compatibility data.
-
-        Args:
-            tm_name: TM/HM label (e.g. "HM06", "TM76") or move name
-                     (e.g. "Rock Smash", "Stealth Rock"). Case-insensitive.
-            party_slot: Party index 0-5 (0 = first Pokemon).
-            forget_move: Move slot 0-3 to forget (required when Pokemon
-                         knows 4 moves). Pass -1 to cancel without teaching.
-        """
-        from renegade_mcp.teach_tm import teach_tm as _teach_tm
-
-        emu = get_client()
-        return _teach_tm(emu, tm_name, party_slot, forget_move)
 
     @mcp.tool()
     @renegade_tool

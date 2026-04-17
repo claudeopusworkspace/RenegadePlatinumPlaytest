@@ -1,4 +1,4 @@
-"""Tests for bicycle features: use_key_item, cycling state, bike-aware navigation.
+"""Tests for bicycle features: use_item("Bicycle"), cycling state, bike-aware navigation.
 
 State-changing menu interactions — retries for UI timing.
 """
@@ -14,18 +14,18 @@ from helpers import do_load_state as load_state, retry_on_rng
 
 
 # ---------------------------------------------------------------------------
-# use_key_item — Bicycle mount/dismount
+# use_item — Bicycle mount/dismount
 # ---------------------------------------------------------------------------
 
-class TestUseKeyItemBicycle:
-    """Mount and dismount the Bicycle via use_key_item."""
+class TestUseItemBicycle:
+    """Mount and dismount the Bicycle via use_item."""
 
     @retry_on_rng("test_eterna_city_overworld")
     def test_mount_bicycle(self, emu: EmulatorClient):
         """Mounting bicycle outdoors sets on_bicycle=True."""
-        from renegade_mcp.use_item import use_key_item
+        from renegade_mcp.use_item import use_item
 
-        result = use_key_item(emu, "Bicycle")
+        result = use_item(emu, "Bicycle")
         assert result.get("success") is True, f"Expected success, got: {result}"
         assert result["on_bicycle"] is True
         assert "Mounted" in result["formatted"]
@@ -33,12 +33,12 @@ class TestUseKeyItemBicycle:
     @retry_on_rng("test_eterna_city_overworld")
     def test_dismount_bicycle(self, emu: EmulatorClient):
         """Mounting then dismounting toggles back to walking."""
-        from renegade_mcp.use_item import use_key_item
+        from renegade_mcp.use_item import use_item
 
-        mount = use_key_item(emu, "Bicycle")
+        mount = use_item(emu, "Bicycle")
         assert mount.get("success") is True
 
-        dismount = use_key_item(emu, "Bicycle")
+        dismount = use_item(emu, "Bicycle")
         assert dismount.get("success") is True, f"Dismount failed: {dismount}"
         assert dismount["on_bicycle"] is False
         assert "Dismounted" in dismount["formatted"]
@@ -46,9 +46,9 @@ class TestUseKeyItemBicycle:
     def test_bicycle_indoors_rejected(self, emu: EmulatorClient):
         """Using bicycle indoors returns error and cleans up menus."""
         load_state(emu, "eterna_city_post_gardenia_team_updated")  # inside PC
-        from renegade_mcp.use_item import use_key_item
+        from renegade_mcp.use_item import use_item
 
-        result = use_key_item(emu, "Bicycle")
+        result = use_item(emu, "Bicycle")
         assert result.get("success") is False
         assert "error" in result
         assert "indoors" in result["error"].lower() or "didn't change" in result["error"].lower()
@@ -56,9 +56,9 @@ class TestUseKeyItemBicycle:
     def test_nonexistent_key_item_rejected(self, emu: EmulatorClient):
         """Using a key item not in the bag returns error."""
         load_state(emu, "eterna_city_post_gardenia_team_updated")
-        from renegade_mcp.use_item import use_key_item
+        from renegade_mcp.use_item import use_item
 
-        result = use_key_item(emu, "Super Rod")
+        result = use_item(emu, "Super Rod")
         assert result.get("success") is False
         assert "error" in result
         assert "not found" in result["error"].lower()
@@ -66,9 +66,9 @@ class TestUseKeyItemBicycle:
     def test_unsupported_key_item_rejected(self, emu: EmulatorClient):
         """Using an unsupported key item (Town Map) returns error."""
         load_state(emu, "eterna_city_post_gardenia_team_updated")
-        from renegade_mcp.use_item import use_key_item
+        from renegade_mcp.use_item import use_item
 
-        result = use_key_item(emu, "Town Map")
+        result = use_item(emu, "Town Map")
         assert result.get("success") is False
         assert "error" in result
         assert "not supported" in result["error"].lower()
@@ -93,9 +93,9 @@ class TestCyclingGearAddr:
     def test_cycling_gear_on_after_mount(self, emu: EmulatorClient):
         """CYCLING_GEAR_ADDR is 1 after mounting bicycle."""
         from renegade_mcp.addresses import addr
-        from renegade_mcp.use_item import use_key_item
+        from renegade_mcp.use_item import use_item
 
-        use_key_item(emu, "Bicycle")
+        use_item(emu, "Bicycle")
         cycling = emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")
         assert cycling == 1, f"Expected 1 (cycling), got {cycling}"
 
@@ -119,9 +119,9 @@ class TestTrainerStatusBicycle:
     def test_on_bicycle_true_when_cycling(self, emu: EmulatorClient):
         """on_bicycle is True after mounting bicycle."""
         from renegade_mcp.trainer import read_trainer_status
-        from renegade_mcp.use_item import use_key_item
+        from renegade_mcp.use_item import use_item
 
-        use_key_item(emu, "Bicycle")
+        use_item(emu, "Bicycle")
         status = read_trainer_status(emu)
         assert status["on_bicycle"] is True
         assert "Bicycle: ON" in status["formatted"]
@@ -153,9 +153,9 @@ class TestBikeNavigation:
         """Biking navigate moves exactly the requested tiles (no overshoot)."""
         from renegade_mcp.map_state import read_player_state
         from renegade_mcp.navigation import navigate_manual
-        from renegade_mcp.use_item import use_key_item
+        from renegade_mcp.use_item import use_item
 
-        use_key_item(emu, "Bicycle")
+        use_item(emu, "Bicycle")
         _, x_before, y_before, _ = read_player_state(emu)
         result = navigate_manual(emu, "d5")
         _, x_after, y_after, _ = read_player_state(emu)
@@ -169,9 +169,9 @@ class TestBikeNavigation:
         """navigate_to on bike reaches target with 0 repaths."""
         from renegade_mcp.map_state import read_player_state
         from renegade_mcp.navigation import navigate_to
-        from renegade_mcp.use_item import use_key_item
+        from renegade_mcp.use_item import use_item
 
-        use_key_item(emu, "Bicycle")
+        use_item(emu, "Bicycle")
         _, _, y_before, _ = read_player_state(emu)
         target_y = y_before + 8
         result = navigate_to(emu, 305, target_y)
@@ -196,8 +196,8 @@ class TestBikeNavigation:
     def test_get_move_hold_cycling(self, emu: EmulatorClient):
         """_get_move_hold returns BIKE_HOLD_FRAMES when cycling."""
         from renegade_mcp.navigation import _get_move_hold, BIKE_HOLD_FRAMES
-        from renegade_mcp.use_item import use_key_item
+        from renegade_mcp.use_item import use_item
 
-        use_key_item(emu, "Bicycle")
+        use_item(emu, "Bicycle")
         hold = _get_move_hold(emu)
         assert hold == BIKE_HOLD_FRAMES == 4
