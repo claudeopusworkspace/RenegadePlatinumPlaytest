@@ -454,29 +454,34 @@ def buy_item(
         _press(emu, ["a"])               # text finishes → YES/NO prompt
         _press(emu, ["a"])               # select YES → "Here you are! Thank you!"
 
-        # ── Post-purchase dialogue ──
-        # Standard buy: 2 pages ("Here you are!" + "You put away the [item]...")
-        # Premier Ball bonus (10+ Poké Balls): 4 pages (+2 for bonus text).
-        # Poll msgBox to consume ALL pages rather than hardcoding press count.
-        from renegade_mcp.dialogue import _find_script_manager, _read_script_state
-        for _ in range(10):  # safety cap — never more than ~10 pages
-            emu.advance_frames(60)
-            mgr = _find_script_manager(emu)
-            if mgr is None:
-                break
-            ss = _read_script_state(emu, mgr)
-            if not ss["is_msg_box_open"]:
-                break
-            emu.press_buttons(["a"], frames=8)
-            emu.advance_frames(_TEXT_WAIT)
-        emu.advance_frames(_MENU_WAIT)   # settle back to item list
+        # ── Post-purchase dialogue + exit ──
+        # Shop dialog pages aren't tracked by the ScriptManager (is_msg_box_open
+        # stays False throughout the shop UI), so we drive the exit with a fixed
+        # B-press sequence. Each B with a _MENU_WAIT pause is enough to fully
+        # render AND dismiss one page.
+        #
+        # Standard post-YES sequence (2 post-purchase pages + 1 exit):
+        #   B → "Here you are!" → "You put away..." (rendered + money deducted)
+        #   B → dismiss dialog → item list (selected item highlighted)
+        #   B → item list → BUY/SELL/SEE YA main menu (cursor on BUY)
+        #   down → SELL
+        #   down → SEE YA!
+        #   A → "Please come again!"
+        #   A → overworld
+        #
+        # Premier Ball bonus (10+ Poké Balls bought) adds two extra pages
+        # before the item list, so two additional B presses are needed.
+        n_b_presses = 3  # standard 2-page flow + 1 to exit to main menu
+        if item_name.lower().endswith("ball") and quantity >= 10:
+            n_b_presses += 2  # Premier Ball bonus pages
 
-        # ── Exit shop: B → See Ya ──
-        _press(emu, ["b"], _MENU_WAIT)   # back to Buy/Sell/See Ya
-        _press(emu, ["down"], wait=30)   # → SELL
-        _press(emu, ["down"], wait=30)   # → SEE YA!
-        _press(emu, ["a"])               # "Please come again!"
-        _press(emu, ["a"], _SETTLE_WAIT) # dismiss farewell, back to overworld
+        for _ in range(n_b_presses):
+            _press(emu, ["b"], wait=_MENU_WAIT)
+
+        _press(emu, ["down"], wait=30)        # BUY → SELL
+        _press(emu, ["down"], wait=30)        # SELL → SEE YA!
+        _press(emu, ["a"], wait=_TEXT_WAIT)   # select SEE YA → "Please come again!"
+        _press(emu, ["a"], wait=_SETTLE_WAIT) # dismiss farewell, back to overworld
 
     # ── Verify purchase ──
     new_status = read_trainer_status(emu)

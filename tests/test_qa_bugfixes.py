@@ -49,6 +49,14 @@ Save states:
   bug_qa_battle_turn_stuck_after_double_ko_doubles:
     - Doubles target-pick submenu with Monferno acting; partner Shinx 0 HP.
     - Used for QA BUG-004 (doubles detection + target-pick recovery).
+
+  fr001_repro_growlithe_battle_prompt:
+    - Mid-battle vs wild Growlithe on Route 202, action prompt up.
+    - Used for QA BUG-005 (text-placeholder leak in dialogue/battle output).
+
+  jubilife_mart_after_buy_5potions:
+    - Inside Jubilife Mart, player in overworld, 0 badges, ¥1,948.
+    - Used for QA BUG-006 (buy_item exit-to-overworld regression).
 """
 
 from __future__ import annotations
@@ -634,4 +642,123 @@ class TestQaBug004DoublesDetectionSpeciesCount:
         assert azurill_post < azurill_pre or state == "BATTLE_ENDED", (
             f"Azurill HP unchanged ({azurill_pre} → {azurill_post}); "
             f"Scratch didn't land. state={state}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-005: ROM text-variable placeholders leak through dialogue output
+# ---------------------------------------------------------------------------
+
+class TestQaBug005TextPlaceholderLeak:
+    """Decoders strip Gen 4 VAR blocks (FFFE id count args) and resolve
+    known glyph codes (0x25BD line-break, 0x01A8 currency) instead of
+    surfacing raw [VAR]/[FFFE]/[XXXX] placeholders to callers."""
+
+    def test_battle_prompt_is_clean(self, emu: EmulatorClient):
+        """read_dialogue(region='battle') returns no raw control tokens.
+
+        Pre-fix: "What will Chimchar do?[VAR][0200][0001][0000]"
+        Post-fix: "What will Chimchar do?"
+        """
+        from renegade_mcp.dialogue import read_dialogue
+
+        load_state(emu, "fr001_repro_growlithe_battle_prompt")
+        result = read_dialogue(emu, "battle")
+        text = result.get("text", "")
+        assert text == "What will Chimchar do?", (
+            f"Battle prompt should be clean, got: {text!r}"
+        )
+        # Belt-and-braces: no raw bracketed tokens anywhere in the output.
+        assert "[" not in text, f"Raw control token leaked: {text!r}"
+
+    def test_var_block_consumer_consumes_count_plus_three(self):
+        """_consume_var_block advances past FFFE + var_id + arg_count + args."""
+        from renegade_mcp.text_encoding import CTRL_VAR, _consume_var_block
+
+        # [VAR][0200][0001][0000] = FFFE, id=0200, count=1, arg=0000 → 4 tokens
+        vals = [CTRL_VAR, 0x0200, 0x0001, 0x0000]
+        assert _consume_var_block(vals, 0) == 4
+
+        # [VAR][0103][0002][0000][0000] = FFFE, id=0103, count=2, 2 args → 5 tokens
+        vals = [CTRL_VAR, 0x0103, 0x0002, 0x0000, 0x0000]
+        assert _consume_var_block(vals, 0) == 5
+
+        # Corrupt arg_count is clamped (safety): 0xFFFF args would otherwise
+        # swallow the rest of the buffer. Treated as count=0.
+        vals = [CTRL_VAR, 0x0200, 0xFFFF, 0x41, 0x42, 0x43]
+        # 0xFFFF > 8 → treated as 0 args → advances 3 tokens.
+        assert _consume_var_block(vals, 0) == 3
+
+    def test_text_encoding_decode_values_strips_var(self):
+        """decode_values(): VAR blocks stripped, other chars pass through."""
+        from renegade_mcp.text_encoding import CTRL_VAR, decode_values
+
+        # "H" (0x0132) + [VAR][0200][0001][0000] + "i" (0x014D)
+        vals = [0x0132, CTRL_VAR, 0x0200, 0x0001, 0x0000, 0x014D]
+        lines = decode_values(vals)
+        assert lines == ["Hi"], f"Got: {lines!r}"
+
+    def test_line_break_0x25bd_becomes_newline(self):
+        """0x25BD line-break (the one that used to show as [25BD]) becomes \\n."""
+        from renegade_mcp.text_encoding import CTRL_LINE_BREAK, decode_values
+
+        # "A" + line-break + "B"
+        vals = [0x012B, CTRL_LINE_BREAK, 0x012C]
+        lines = decode_values(vals)
+        assert lines == ["A", "B"], f"Got: {lines!r}"
+
+    def test_currency_glyph_0x01a8_becomes_dollar(self):
+        """0x01A8 (P-with-stroke / Pokémon-currency) renders as '$'."""
+        from renegade_mcp.text_encoding import decode_values
+
+        # "$" (0x01A8) + "1" (0x0162) + "0" (0x0161) + "0" (0x0161)
+        vals = [0x01A8, 0x0162, 0x0161, 0x0161]
+        lines = decode_values(vals)
+        assert lines == ["$100"], f"Got: {lines!r}"
+
+    def test_battle_log_is_clean_after_seek_encounter(self, emu: EmulatorClient):
+        """battle_turn output has no [VAR]/[FFFE]/[XXXX] in any log entry."""
+        from renegade_mcp.turn import battle_turn
+
+        load_state(emu, "fr001_repro_growlithe_battle_prompt")
+        result = battle_turn(emu, move_index=0)
+        log_entries = result.get("log", [])
+        for entry in log_entries:
+            text = entry.get("text", "") if isinstance(entry, dict) else str(entry)
+            assert "[FFFE]" not in text and "[VAR]" not in text, (
+                f"Control token leaked in battle log: {text!r}"
+            )
+            # Any raw hex placeholder would have the form [XXXX]. Allow
+            # nothing bracketed at all.
+            import re
+            assert not re.search(r"\[[0-9A-F]{4}\]", text), (
+                f"Raw hex placeholder leaked: {text!r}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-006: buy_item leaves player stuck in shop UI on "How many?" prompt
+# ---------------------------------------------------------------------------
+
+class TestQaBug006BuyItemExit:
+    """After buy_item completes, game must be back in full overworld control
+    — not sitting on the post-purchase quantity prompt or item list."""
+
+    @retry_on_rng("jubilife_mart_after_buy_5potions")
+    def test_buy_item_returns_to_overworld(self, emu: EmulatorClient):
+        """Pre-fix: tool returned success but game sat on "Potion? Certainly.
+        How many would you like?" quantity prompt — 3 B-presses shy of overworld.
+
+        Post-fix: 3 B-presses advance both post-purchase dialog pages plus the
+        item-list → main-menu step, then down×2 + A×2 exits through SEE YA!.
+        """
+        from renegade_mcp.dialogue import read_dialogue
+        from renegade_mcp.shop import buy_item
+
+        result = buy_item(emu, "Potion", quantity=1, badge_count=0)
+        assert "error" not in result, f"buy_item error: {result.get('error')}"
+
+        dlg = read_dialogue(emu, "overworld")
+        assert dlg.get("text", "(no active text)") == "(no active text)", (
+            f"Expected no active text after buy_item, got: {dlg.get('text')!r}"
         )

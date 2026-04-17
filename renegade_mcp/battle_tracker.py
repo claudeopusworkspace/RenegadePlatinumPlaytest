@@ -10,7 +10,7 @@ import re
 import struct
 from typing import TYPE_CHECKING, Any
 
-from renegade_mcp.text_encoding import CHAR_MAP, CTRL_END, CTRL_NEWLINE, CTRL_PAGE_BREAK, CTRL_VAR
+from renegade_mcp.text_encoding import CHAR_MAP, CTRL_END, CTRL_LINE_BREAK, CTRL_NEWLINE, CTRL_PAGE_BREAK, CTRL_VAR, _consume_var_block
 
 # Matches [FFFE] plus up to 3 following [XXXX] argument tokens (decoded u16 vars)
 _FFFE_TOKEN_RE = re.compile(r"\[FFFE\](?:\[[0-9A-F]{4}\]){0,3}")
@@ -34,20 +34,32 @@ NO_TEXT_EXIT_THRESHOLD = 20  # consecutive None scans before declaring battle ov
 
 
 def _decode_text(vals: list[int]) -> tuple[str, list[int]]:
-    """Decode 16-bit values up to END marker. Returns (text, vals_up_to_end)."""
+    """Decode 16-bit values up to END marker. Returns (text, vals_up_to_end).
+
+    Strips Gen 4 VAR blocks (``FFFE <id> <count> <args>``) from the rendered
+    text so callers don't see raw ``[FFFE][XXXX]...`` placeholders. The raw
+    vals list is still returned intact for downstream pattern matching
+    (e.g. action-prompt detection scans for the FFFE/0200 marker).
+    """
     out = ""
-    for i, v in enumerate(vals):
+    i = 0
+    end_idx = len(vals)
+    while i < len(vals):
+        v = vals[i]
         if v == CTRL_END:
-            return out, vals[:i]
-        elif v == CTRL_NEWLINE:
-            out += "\n"
-        elif v == CTRL_PAGE_BREAK:
+            end_idx = i
+            break
+        if v == CTRL_VAR:
+            i = _consume_var_block(vals, i)
+            continue
+        if v == CTRL_NEWLINE or v == CTRL_PAGE_BREAK or v == CTRL_LINE_BREAK:
             out += "\n"
         elif v in CHAR_MAP:
             out += CHAR_MAP[v]
         else:
             out += f"[{v:04X}]"
-    return out, vals
+        i += 1
+    return out, vals[:end_idx]
 
 
 def _scan_markers(data: bytes, base_addr: int) -> dict[str, str]:

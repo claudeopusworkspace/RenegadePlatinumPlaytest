@@ -2,6 +2,52 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: QA BUG-005/006 — text decoder + shop exit (2026-04-16c)
+
+### Summary
+Two items originally filed as QA feature requests (FR-001 and FR-002 from the 2026-04-15 QA run) were reclassified as bugs after live-verified reproduction — leaky text decoders and a buy_item that stopped one state short of overworld. Both fixed, 7 regression tests added.
+
+### Reclassification
+- **FR-002 → BUG-006**: `buy_item` returns `success: true` but leaves the game on the "Potion? Certainly. How many would you like?" quantity prompt. Live-verified from QA save `jubilife_mart_after_buy_5potions` (copied permanently into Playtest savestates).
+- **FR-001 → BUG-005**: `read_dialogue` / `battle_turn` surface raw `[VAR][XXXX]...` / `[FFFE]...` / `[25BD]` / `[01A8]` tokens in their output. Saved `fr001_repro_growlithe_battle_prompt` — one-call repro: `read_dialogue(advance=False, region="battle")` returns `"What will Chimchar do?[VAR][0200][0001][0000]"`.
+
+Both QA-project entries moved from `FEATURE_REQUESTS.md` to `BUG_LOG.md` with precise repro steps.
+
+### Fixes
+
+**QA BUG-006 — `buy_item` exits shop cleanly:**
+- Root cause: the post-purchase poll loop in `shop.py::buy_item` gated on `ScriptManager.is_msg_box_open`, but the Gen 4 shop UI doesn't drive the script manager for its dialog pages — so the loop ran zero iterations. The hardcoded exit (1 B + 2 down + 2 A) was then 2 presses short, landing on "You put away..." instead of the main menu. The final A re-selected Potion from the item list → stuck at "Potion? Certainly. How many?".
+- Manual frame-by-frame trace from a `debug_post_yes` save state: 3 B-presses with 300f waits each cleanly unwind the shop UI — B1 advances "Here you are!" → "You put away..." (rendered + money deducted), B2 dismisses dialog → item list, B3 item list → BUY/SELL/SEE YA main menu.
+- Fix: replaced broken poll loop with 3 fixed B-presses. Premier Ball bonus case (10+ Poké Balls bought) conditionally adds 2 extra B-presses for the bonus text pages.
+
+**QA BUG-005 — text-code decoder unified:**
+- Root cause: three separate decoders (`text_encoding.decode_values`, `dialogue._decode_values`, `battle_tracker._decode_text`) each had a partial take on control-code handling. None understood the Gen 4 VAR block format (`FFFE <var_id> <arg_count> <args×n>` — a total of 3 + arg_count tokens), so VAR blocks fell through as raw `[FFFE][XXXX][XXXX][XXXX]` placeholder sequences. Similarly, 0x25BD line-break and 0x01A8 currency glyph weren't mapped anywhere.
+- Fix: added `_consume_var_block(values, i)` shared helper in `text_encoding.py` with a defensive arg-count clamp (>8 treated as 0 to prevent runaway on corrupt data); plumbed into all three decoders. Registered `0x25BD` as `CTRL_LINE_BREAK` → `"\n"` in `TEXT_CONTROL`, added `0x01A8` → `"$"` in `CHAR_MAP`.
+
+### Tests Added (7 tests in `tests/test_qa_bugfixes.py`)
+
+- **BUG-005 (6 tests):**
+  - Integration: `read_dialogue(region="battle")` from the FR-001 save state returns clean "What will Chimchar do?" (no brackets anywhere); battle log after `battle_turn` has no `[FFFE]` / `[VAR]` / `[XXXX]` tokens.
+  - Unit: `_consume_var_block` advances past FFFE + id + count + args for 1-arg and 2-arg variants; clamps corrupt `arg_count=0xFFFF` to 0 (stops it from swallowing the buffer). `decode_values` strips VAR blocks between regular characters. 0x25BD → newline (split into separate lines). 0x01A8 → `$` (renders as "$100" for currency).
+- **BUG-006 (1 test):** load `jubilife_mart_after_buy_5potions` → `buy_item("Potion", 1)` → `read_dialogue` returns `"(no active text)"`. Wrapped in `retry_on_rng` since the save-state load is deterministic but the shop flow relies on timing.
+
+### Files Changed
+- `renegade_mcp/text_encoding.py` — added `CTRL_LINE_BREAK` (0x25BD) → `"\n"`, `CHAR_MAP[0x01A8]` → `"$"`, shared `_consume_var_block` helper, VAR-stripping in `decode_values`.
+- `renegade_mcp/dialogue.py` — `_decode_values` uses `_consume_var_block`, treats 0x25BD as line-break.
+- `renegade_mcp/battle_tracker.py` — `_decode_text` uses `_consume_var_block`, maps 0x25BD alongside existing page-break / newline.
+- `renegade_mcp/shop.py` — `buy_item` post-purchase sequence: 3 B-presses (300f each) + existing down×2 + A×2. Premier Ball bonus adds 2 extra Bs.
+- `tests/test_qa_bugfixes.py` — 2 new test classes (`TestQaBug005TextPlaceholderLeak`, `TestQaBug006BuyItemExit`), 7 tests total. Docstring updated with the two new save states.
+
+### Save States
+Two QA-project save states copied permanently into `/workspace/RenegadePlatinumPlaytest/savestates/` for the test suite:
+- `jubilife_mart_after_buy_5potions.mst` — player inside Jubilife Mart, money ¥1,948.
+- `fr001_repro_growlithe_battle_prompt.mst` — mid-battle vs wild Growlithe on Route 202.
+
+### Verification
+- Shop tool subsuite (12 tests) green post-fix.
+- BUG-005/006 regression classes (7 tests) green.
+- Full suite: `337 passed in 692.72s (11:32)` against the standalone test emulator. No regressions.
+
 ## Dev Session: Decouple test suite from live emulator (2026-04-16b)
 
 ### Summary

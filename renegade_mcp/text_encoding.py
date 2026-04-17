@@ -56,6 +56,9 @@ CHAR_MAP[0x01C0] = ";"
 CHAR_MAP[0x01C3] = "%"
 CHAR_MAP[0x01C4] = ":"
 
+# Currency glyph (₽-like P-with-stroke). Rendered as "$" for ASCII output.
+CHAR_MAP[0x01A8] = "$"
+
 # Gender symbols used in battle text (different codepoints from 0x0189/0x018A)
 CHAR_MAP[0x2467] = "\u2642"  # ♂
 CHAR_MAP[0x2469] = "\u2640"  # ♀
@@ -66,12 +69,14 @@ CTRL_END = 0xFFFF
 CTRL_VAR = 0xFFFE
 CTRL_NEWLINE = 0xE000
 CTRL_PAGE_BREAK = 0x25BC
+CTRL_LINE_BREAK = 0x25BD  # alternate line-break used in battle narration
 
 TEXT_CONTROL: dict[int, str] = {
     CTRL_END: "[END]",
     CTRL_VAR: "[VAR]",
     CTRL_NEWLINE: "\n",
     CTRL_PAGE_BREAK: "\n---\n",
+    CTRL_LINE_BREAK: "\n",
 }
 
 
@@ -108,19 +113,47 @@ def decode_gen4_text(data: bytes, offset: int, max_len: int = 20) -> str:
     return "".join(chars)
 
 
+def _consume_var_block(values: list[int], i: int) -> int:
+    """Given an index `i` pointing at CTRL_VAR (0xFFFE), return the index of
+    the first value AFTER the variable block.
+
+    Gen 4 VAR format: ``FFFE <var_id> <arg_count> <args × arg_count>`` —
+    total 3 + arg_count tokens consumed. Unknown/corrupt blocks are clamped
+    so one bad arg_count can't swallow the rest of the buffer.
+    """
+    if i + 2 >= len(values):
+        return len(values)
+    arg_count = values[i + 2]
+    # Defensive clamp: real VAR blocks rarely have more than 3 args.
+    # Anything larger is probably corrupt data or a misaligned decode.
+    if arg_count > 8:
+        arg_count = 0
+    return min(i + 3 + arg_count, len(values))
+
+
 def decode_values(values: list[int]) -> list[str]:
-    """Decode a list of 16-bit values into text lines, splitting on newlines."""
+    """Decode a list of 16-bit values into text lines, splitting on newlines.
+
+    Strips Gen 4 VAR blocks (``FFFE <id> <count> <args>``) rather than
+    surfacing them as raw ``[FFFE][XXXX]...`` placeholder tokens.
+    """
     lines: list[str] = []
     current = ""
-    for val in values:
+    i = 0
+    while i < len(values):
+        val = values[i]
         if val == CTRL_END:
             break
+        if val == CTRL_VAR:
+            i = _consume_var_block(values, i)
+            continue
         ch = decode_char(val)
         if ch == "\n" or ch == "\n---\n":
             lines.append(current)
             current = ""
         else:
             current += ch
+        i += 1
     if current:
         lines.append(current)
     return lines

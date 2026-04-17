@@ -12,7 +12,7 @@ from __future__ import annotations
 import struct
 from typing import TYPE_CHECKING, Any
 
-from renegade_mcp.text_encoding import CHAR_MAP, CTRL_END, CTRL_PAGE_BREAK, CTRL_NEWLINE, decode_char
+from renegade_mcp.text_encoding import CHAR_MAP, CTRL_END, CTRL_LINE_BREAK, CTRL_NEWLINE, CTRL_PAGE_BREAK, CTRL_VAR, _consume_var_block, decode_char
 
 if TYPE_CHECKING:
     from melonds_mcp.client import EmulatorClient
@@ -118,26 +118,36 @@ def _find_active_slots(data: bytes, base_addr: int) -> list[tuple]:
 
 
 def _decode_values(values: list[int]) -> list[str]:
-    """Decode 16-bit values into text lines."""
+    """Decode 16-bit values into text lines.
+
+    Strips Gen 4 VAR blocks (``FFFE <id> <count> <args>``) rather than
+    surfacing them as raw ``[VAR][XXXX]...`` placeholder tokens.
+    """
     lines = []
     current_line = ""
+    i = 0
 
-    for val in values:
+    while i < len(values):
+        val = values[i]
         if val == CTRL_END:
             if current_line:
                 lines.append(current_line)
                 current_line = ""
             break
-        elif val == CTRL_PAGE_BREAK:
+        if val == CTRL_VAR:
+            i = _consume_var_block(values, i)
+            continue
+        if val == CTRL_PAGE_BREAK:
             if current_line:
                 lines.append(current_line)
             lines.append("---")
             current_line = ""
-        elif val == CTRL_NEWLINE:
+        elif val == CTRL_NEWLINE or val == CTRL_LINE_BREAK:
             lines.append(current_line)
             current_line = ""
         else:
             current_line += decode_char(val)
+        i += 1
 
     if current_line:
         lines.append(current_line)
