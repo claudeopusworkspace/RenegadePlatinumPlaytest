@@ -123,6 +123,25 @@ TEXT_ADVANCE_WAIT = 120  # frames between B presses during text advancement
 
 # ── Helpers ──
 
+def _switch_to_zero_error(emu: EmulatorClient) -> str:
+    """Build the FR-005 rejection message for switch_to=0.
+
+    Names the active battler species and clarifies that switch_to uses
+    party-slot numbering (0-5 matching read_party order), not battle-slot
+    numbering (where slot 2 is the doubles partner).
+    """
+    from renegade_mcp.addresses import addr
+    from renegade_mcp.data import species_names
+    data = emu.read_memory_block(addr("BATTLE_BASE"), BATTLE_SLOT_SIZE)
+    species_id = struct.unpack_from("<H", data, 0x00)[0]
+    species = species_names().get(species_id, f"#{species_id}") if species_id else "active battler"
+    return (
+        f"switch_to=0 is your active battler ({species}). "
+        f"switch_to uses party-slot numbering (0-5, matching read_party order), "
+        f"not battle-slot numbering. Use 1-5 to swap in a different party Pokemon."
+    )
+
+
 def _is_battle_over(emu: EmulatorClient) -> bool:
     """Check if the battle has ended.
 
@@ -846,6 +865,7 @@ def _poll_after_action(emu: EmulatorClient, prompt_log: list[dict]) -> dict[str,
 def battle_turn(
     emu: EmulatorClient, move_index: int = -1, switch_to: int = -1,
     forget_move: int = -2, target: int = -1, run: bool = False,
+    use_item: str = "", party_slot: int = -1,
 ) -> dict[str, Any]:
     """Execute a battle action: move, switch, run, flee, keep battling, or handle move learning.
 
@@ -856,6 +876,9 @@ def battle_turn(
         switch_to (1-5): Use POKEMON to switch voluntarily.
         run=True: Attempt to flee (wild battles only). Returns BATTLE_ENDED on
             success, WAIT_FOR_ACTION on failure (enemy gets a free turn).
+        use_item (str): Use a bag item. For healing items pass party_slot (0-5);
+            for X items in doubles pass target (0=first active, 1=second active).
+            Delegates to use_battle_item. Consumes the trainer's turn.
         target (doubles only): 0=first enemy (slot 1), 1=second enemy (slot 3), 2=self/ally. -1=auto (first enemy).
 
     Faint in wild battle (FAINT_SWITCH — "Use next Pokemon?"):
@@ -886,6 +909,7 @@ def battle_turn(
     has_move = move_index >= 0
     has_switch = switch_to >= 0
     has_forget = forget_move >= -1  # -1 = skip, 0-3 = forget slot
+    has_item = bool(use_item)
 
     # 1. Detect current game state
     with phase("bt_wait_action_prompt"):
@@ -905,19 +929,24 @@ def battle_turn(
     if pt == "ACTION":
         if has_forget:
             return {"error": "Not at a move learning prompt. Use move_index or switch_to."}
-        if run:
+        if has_item:
+            if has_move or has_switch or run:
+                return {"error": "Specify use_item alone — cannot combine with move_index, switch_to, or run."}
+        elif run:
             if has_move or has_switch:
                 return {"error": "Specify run=True alone — cannot combine with move_index or switch_to."}
         elif has_move and has_switch:
             return {"error": "Specify move_index OR switch_to, not both."}
         elif not has_move and not has_switch:
-            return {"error": "Must specify move_index (0-3), switch_to (1-5), or run=True."}
+            return {"error": "Must specify move_index (0-3), switch_to (1-5), use_item (bag item name), or run=True."}
         if has_move and move_index > 3:
             return {"error": f"move_index must be 0-3, got {move_index}"}
         if has_switch and switch_to == 0:
-            return {"error": "switch_to=0 is the active battler. Use 1-5 to switch to a different Pokemon."}
+            return {"error": _switch_to_zero_error(emu)}
         if has_switch and switch_to > 5:
             return {"error": f"switch_to must be 1-5, got {switch_to}"}
+    elif has_item:
+        return {"error": f"Can't use an item in {pt} state. Items are only usable at the main action prompt."}
     elif pt in ("FAINT_SWITCH", "SWITCH_PROMPT"):
         if has_forget:
             return {"error": f"Not at a move learning prompt. Currently in {pt} state."}
@@ -927,7 +956,7 @@ def battle_turn(
         if has_move and has_switch:
             return {"error": "Specify move_index OR switch_to, not both."}
         if has_switch and switch_to == 0:
-            return {"error": "switch_to=0 is the active battler. Use 1-5 to switch to a different Pokemon."}
+            return {"error": _switch_to_zero_error(emu)}
         if has_switch and switch_to > 5:
             return {"error": f"switch_to must be 1-5, got {switch_to}"}
     elif pt == "FAINT_FORCED":
@@ -938,7 +967,7 @@ def battle_turn(
         if not has_switch:
             return {"error": "Must switch in a trainer battle — specify switch_to (1-5)."}
         if has_switch and switch_to == 0:
-            return {"error": "switch_to=0 is the active battler. Use 1-5 to switch to a different Pokemon."}
+            return {"error": _switch_to_zero_error(emu)}
         if switch_to > 5:
             return {"error": f"switch_to must be 1-5, got {switch_to}"}
     elif pt == "MOVE_LEARN":
@@ -949,7 +978,16 @@ def battle_turn(
 
     # 3. Execute the appropriate flow
     with phase("bt_execute_flow"):
-        if pt == "ACTION" and run:
+        if pt == "ACTION" and has_item:
+            # Delegate to use_battle_item and return early — the battle_turn
+            # enrichment passes (MOVE_LEARN, SWITCH_PROMPT, blackout) don't
+            # apply to item use. Preserves use_battle_item's own formatted
+            # output (e.g. "Used Potion on Monferno. HP: 10→25.").
+            from renegade_mcp.use_battle_item import use_battle_item as _use_battle_item
+            result = _use_battle_item(emu, use_item, party_slot, target)
+            result["battle_state"] = battle_summary(read_battle(emu))
+            return result
+        elif pt == "ACTION" and run:
             result = _execute_run(emu, prompt)
         elif pt == "ACTION":
             result = _execute_action(emu, prompt, move_index, switch_to, has_move, target)

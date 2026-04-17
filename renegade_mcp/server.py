@@ -420,11 +420,12 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     @renegade_tool
-    def battle_turn(move_index: int = -1, switch_to: int = -1, forget_move: int = -2, target: int = -1, run: bool = False, force: bool = False) -> dict[str, Any]:
-        """Execute a full battle turn: use a move, switch Pokemon, or run.
+    def battle_turn(move_index: int = -1, switch_to: int = -1, forget_move: int = -2, target: int = -1, run: bool = False, force: bool = False, use_item: str = "", party_slot: int = -1) -> dict[str, Any]:
+        """Execute a full battle turn: use a move, switch Pokemon, use an item, or run.
 
         Combines battle_init + action + battle_poll into one call.
-        Specify exactly one action: move_index to fight, switch_to to swap, or run to flee.
+        Specify exactly one action: move_index to fight, switch_to to swap, use_item to
+        use a bag item, or run to flee.
 
         **Type effectiveness check**: When using a move, the tool checks the move's
         type against the target's types. If the move would be IMMUNE (0x) or NOT VERY
@@ -433,13 +434,19 @@ def create_server() -> FastMCP:
 
         Actions:
         - move_index (0-3): Tap FIGHT, select the move (top-left, top-right, bottom-left, bottom-right).
-        - switch_to (1-5): Tap POKEMON, navigate to party slot, confirm switch. Slot 0 is the active battler.
+        - switch_to (1-5): Tap POKEMON, navigate to the given **party slot** (0-5, matching read_party
+          order — NOT battle-slot numbering). Slot 0 is rejected because it's the active battler.
+        - use_item (str): Use a bag item (name, case-insensitive). Delegates to use_battle_item.
+          For healing items pass party_slot (0-5); for X items in doubles pass target (0=first
+          active, 1=second active). Escape items (Poke Doll) need neither. Consumes the turn.
         - run (True): Attempt to flee a wild battle. Returns BATTLE_ENDED on success,
           WAIT_FOR_ACTION on failure (enemy gets a free turn). Rejects trainer battles.
         - forget_move (0-3): At MOVE_LEARN prompt, forget this move slot and learn the new move.
         - forget_move=-1: At MOVE_LEARN prompt, skip learning the new move.
-        - target (doubles only): Target for the move. 0=left enemy, 1=right enemy, 2=self/ally.
-          -1 (default) auto-targets the first enemy. Only used when move_index is set.
+        - target (doubles only): For move actions, 0=left enemy, 1=right enemy, 2=self/ally.
+          For use_item on X items in doubles, 0=first active, 1=second active.
+          -1 (default) auto-targets. Ignored in singles.
+        - party_slot (0-5): Required when use_item is a healing item. Ignored otherwise.
         - force (bool): Skip the type effectiveness warning and execute anyway.
 
         Accuracy awareness: when active Pokemon has Acc stages <= -2, returns
@@ -471,7 +478,7 @@ def create_server() -> FastMCP:
             if warning is not None:
                 return warning
 
-        return _battle_turn(emu, move_index=move_index, switch_to=switch_to, forget_move=forget_move, target=target, run=run)
+        return _battle_turn(emu, move_index=move_index, switch_to=switch_to, forget_move=forget_move, target=target, run=run, use_item=use_item, party_slot=party_slot)
 
     # ── Catch ──
 
@@ -500,10 +507,14 @@ def create_server() -> FastMCP:
     @mcp.tool()
     @renegade_tool
     def use_battle_item(item_name: str, party_slot: int = -1, target: int = -1) -> dict[str, Any]:
-        """Use an item from the bag during battle.
+        """Use an item from the bag during battle. (Equivalent to battle_turn(use_item=...)).
 
         Must be at the action prompt. Navigates BAG → pocket → item → USE → target.
         Consumes the trainer's turn (item use replaces a move).
+
+        This is a thin wrapper around the same code path that powers
+        `battle_turn(use_item=...)`. Both tools are kept for convenience — prefer
+        `battle_turn` when chaining actions, and `use_battle_item` for one-off calls.
 
         Item categories (auto-detected from ROM data):
         - Healing items (Potion, Antidote, Revive, etc.): party_slot required (0-5).

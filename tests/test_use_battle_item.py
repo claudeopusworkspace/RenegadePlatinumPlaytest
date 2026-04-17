@@ -138,3 +138,78 @@ class TestBattleBagPockets:
 
         assert "error" in result
         assert "Potion" in result["error"]  # should list available items
+
+
+# ---------------------------------------------------------------------------
+# FR-003: battle_turn(use_item=...) delegation path
+# ---------------------------------------------------------------------------
+
+class TestFr003BattleTurnUseItemDelegation:
+    """battle_turn(use_item=...) delegates to use_battle_item."""
+
+    def test_potion_via_battle_turn_heals(self, emu: EmulatorClient):
+        """battle_turn(use_item='Potion', party_slot=0) matches direct use_battle_item behavior."""
+        load_state(emu, STATE_DAMAGED)
+        from renegade_mcp.turn import battle_turn
+        result = battle_turn(emu, use_item="Potion", party_slot=0)
+
+        assert result["success"] is True, f"Expected success, got: {result}"
+        assert result["final_state"] == "WAIT_FOR_ACTION"
+        assert result["old_hp"] == 38
+        assert result["new_hp"] != 38, f"HP should have changed, got {result['new_hp']}"
+
+    def test_battle_state_is_appended(self, emu: EmulatorClient):
+        """battle_turn wraps use_battle_item's result with a fresh battle_state."""
+        load_state(emu, STATE_DAMAGED)
+        from renegade_mcp.turn import battle_turn
+        result = battle_turn(emu, use_item="Potion", party_slot=0)
+
+        assert "battle_state" in result, f"Expected battle_state, got keys: {list(result)}"
+        # There must be at least one player battler in the summary.
+        players = [b for b in result["battle_state"] if b.get("side") == "player"]
+        assert players, f"No player battlers in battle_state: {result['battle_state']}"
+
+    def test_use_item_healing_requires_party_slot(self, emu: EmulatorClient):
+        """Healing item through battle_turn needs party_slot (delegated validation)."""
+        load_state(emu, STATE_DAMAGED)
+        from renegade_mcp.turn import battle_turn
+        result = battle_turn(emu, use_item="Potion")
+
+        assert result.get("success") is False
+        assert "party_slot" in result.get("error", "").lower()
+
+    def test_use_item_rejects_combined_move_index(self, emu: EmulatorClient):
+        """use_item combined with move_index is rejected before any action runs."""
+        load_state(emu, STATE_DAMAGED)
+        from renegade_mcp.turn import battle_turn
+        result = battle_turn(emu, use_item="Potion", party_slot=0, move_index=0)
+
+        assert "error" in result, f"Expected error, got: {result}"
+        assert "use_item" in result["error"].lower()
+
+    def test_use_item_rejects_combined_switch_to(self, emu: EmulatorClient):
+        """use_item combined with switch_to is rejected."""
+        load_state(emu, STATE_DAMAGED)
+        from renegade_mcp.turn import battle_turn
+        result = battle_turn(emu, use_item="Potion", party_slot=0, switch_to=1)
+
+        assert "error" in result, f"Expected error, got: {result}"
+        assert "use_item" in result["error"].lower()
+
+    def test_use_item_rejects_combined_run(self, emu: EmulatorClient):
+        """use_item combined with run=True is rejected."""
+        load_state(emu, STATE_DAMAGED)
+        from renegade_mcp.turn import battle_turn
+        result = battle_turn(emu, use_item="Potion", party_slot=0, run=True)
+
+        assert "error" in result, f"Expected error, got: {result}"
+        assert "use_item" in result["error"].lower()
+
+    def test_use_item_poke_ball_rejected(self, emu: EmulatorClient):
+        """Poke Balls through battle_turn(use_item=...) still point at throw_ball."""
+        load_state(emu, STATE_DAMAGED)
+        from renegade_mcp.turn import battle_turn
+        result = battle_turn(emu, use_item="Poké Ball", party_slot=0)
+
+        assert result.get("success") is False
+        assert "throw_ball" in result.get("error", "").lower()

@@ -2,6 +2,40 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: FR-003 + FR-005 (2026-04-17b)
+
+### Summary
+Two QoL feature requests from the 2026-04-17 QA triage closed: FR-005 (low) improves the `battle_turn(switch_to=0)` rejection message, and FR-003 (medium) folds `use_battle_item` into `battle_turn` as a fifth action type. FR-004 (generalize `use_item`) deferred pending a decomp investigation of non-medicine item types.
+
+### FR-005 — Active battler species in switch_to=0 error
+- **Before:** `"switch_to=0 is the active battler. Use 1-5 to switch to a different Pokemon."`
+- **After:** `"switch_to=0 is your active battler (Monferno). switch_to uses party-slot numbering (0-5, matching read_party order), not battle-slot numbering. Use 1-5 to swap in a different party Pokemon."`
+- Implementation: new `_switch_to_zero_error(emu)` helper in `turn.py` reads battle slot 0's species from `BATTLE_BASE` and formats the message. Replaces the string literal in all three validation branches (ACTION / SWITCH_PROMPT / FAINT_FORCED).
+- `server.py` docstring for `switch_to` param also updated to flag the party-slot vs battle-slot distinction.
+
+### FR-003 — `battle_turn(use_item=...)` delegation
+- Added `use_item: str = ""` and `party_slot: int = -1` parameters to both `turn.battle_turn` and the MCP wrapper. When `use_item` is set at the ACTION prompt, the turn delegates to `use_battle_item(emu, use_item, party_slot, target)` and early-returns with `battle_state` appended — skipping the enrichment passes (MOVE_LEARN / SWITCH_PROMPT / blackout) which don't apply to item use. Preserves `use_battle_item`'s own formatted output (e.g. `"Used Potion on Monferno. HP: 10→25."`).
+- Validation: `use_item` is mutex with `move_index` / `switch_to` / `run`; rejected outside the ACTION prompt with a state-named error.
+- Standalone `use_battle_item` tool kept for back-compat — docstring updated to note it's the same code path as `battle_turn(use_item=...)`.
+
+### Tests Added (10 tests)
+- `tests/test_qa_bugfixes.py::TestFr005SwitchToZeroErrorMessage` (3): species-name presence, party-slot clarifying language, direct helper unit test.
+- `tests/test_use_battle_item.py::TestFr003BattleTurnUseItemDelegation` (7): heal-via-battle_turn, battle_state appended, healing-requires-party_slot propagated, three mutex rejections (move_index / switch_to / run), Poke Ball → throw_ball rejection still fires through the delegation.
+
+Existing tests pass unchanged:
+- `TestBug009BattleItemTarget` (4) — direct `use_battle_item` path still green.
+- `TestUseBattleItemHealing` / `TestUseBattleItemValidation` / `TestBattleBagPockets` (9) — back-compat direct calls.
+- Full `test_battle.py` (50+) and `test_auto_grind_v2.py` (5) — no regressions in upstream callers.
+
+### Files Changed
+- `renegade_mcp/turn.py` — `_switch_to_zero_error` helper; `battle_turn` signature + docstring + ACTION/SWITCH_PROMPT/FAINT_FORCED validation + use_item delegation path.
+- `renegade_mcp/server.py` — MCP `battle_turn` wrapper signature, docstring, and pass-through to impl; `use_battle_item` docstring noting the merger.
+- `tests/test_qa_bugfixes.py` — `TestFr005SwitchToZeroErrorMessage` (3).
+- `tests/test_use_battle_item.py` — `TestFr003BattleTurnUseItemDelegation` (7).
+
+### Next Session Plan
+FR-004 (generalize `use_item` to Items pocket / dedicated `evolve_with_stone`) awaits a decomp pass on item type handling — e.g. how evolution stones (`field_use=0` stone class), Escape Rope (`field_use=0` escape class), and Fluffy Tail (overworld-only) branch in the `ItemData.fieldUseFunc` dispatch. Once we know the dispatch shape, the generalize-vs-dedicated decision gets easier.
+
 ## Dev Session: QA BUG-008 hex-code leaks + BUG-007 root-cause (2026-04-17)
 
 ### Summary

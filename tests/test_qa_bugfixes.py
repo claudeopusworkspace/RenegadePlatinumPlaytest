@@ -904,3 +904,46 @@ class TestQaBug008HexFormatCodeLeak:
         assert "KEY ITEMS Pocket" in all_text, (
             f"Expected 'KEY ITEMS Pocket' with stripped icon in:\n{all_text!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# FR-005: battle_turn(switch_to=0) error names the active battler
+# ---------------------------------------------------------------------------
+
+class TestFr005SwitchToZeroErrorMessage:
+    """switch_to=0 rejection includes active-battler species + slot-numbering clarification."""
+
+    def test_error_names_active_battler_species(self, emu: EmulatorClient):
+        """Error message includes the current active battler's species name."""
+        load_state(emu, "test_bug009_roark_battle_monferno_lead")
+        from renegade_mcp.turn import battle_turn
+        result = battle_turn(emu, switch_to=0)
+
+        assert "error" in result, f"Expected error response, got: {result}"
+        assert "Monferno" in result["error"], (
+            f"Expected 'Monferno' in error (active battler), got: {result['error']!r}"
+        )
+
+    def test_error_clarifies_party_slot_numbering(self, emu: EmulatorClient):
+        """Error explains switch_to uses party-slot numbering, not battle-slot."""
+        load_state(emu, "test_bug009_roark_battle_monferno_lead")
+        from renegade_mcp.turn import battle_turn
+        result = battle_turn(emu, switch_to=0)
+
+        assert "error" in result
+        msg = result["error"]
+        assert "party" in msg.lower(), (
+            f"Expected 'party' reference in error message, got: {msg!r}"
+        )
+        assert "1-5" in msg, f"Expected '1-5' hint in error message, got: {msg!r}"
+
+    def test_helper_builds_message_with_species(self, emu: EmulatorClient):
+        """Direct unit test of the _switch_to_zero_error helper."""
+        load_state(emu, "test_bug009_roark_battle_monferno_lead")
+        from renegade_mcp.turn import _switch_to_zero_error
+        msg = _switch_to_zero_error(emu)
+
+        assert "Monferno" in msg, f"Expected 'Monferno' in helper output, got: {msg!r}"
+        assert "active battler" in msg.lower(), (
+            f"Expected 'active battler' phrasing in helper output, got: {msg!r}"
+        )
