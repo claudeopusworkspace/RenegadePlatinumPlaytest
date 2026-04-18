@@ -2687,3 +2687,52 @@ The BUG-002 save state was captured AFTER the Yes/No prompt had been answered YE
 - Full suite: `329 passed in 766.95s`.
 - BUG-004 full-flow test (`test_battle_turn_resolves_target_pick_with_scratch`) confirms the fix works end-to-end: stuck submenu unsticks, Scratch lands, HP drops.
 
+
+---
+
+## Session: 2026-04-18 — Frame Optimization (battle/switch/blackout flows)
+
+### Context
+Woj flagged two slow-to-watch playback patterns: `read_dialogue` → battle transition wait, and the forced-switch prompt when a Pokemon faints ("~50-60 seconds on the choose-Pokemon screen"). Benchmark = relevant tests must all pass AND be faster.
+
+### Baseline (standalone test emulator, before any change)
+- **Battle-test subset** (test_battle_turn + test_battle_trainer + test_battle_move_learn + test_battle_tracker + test_blackout + test_battle_catch, 60 tests): **121.11s / 119.91s** (two runs, ~1% variance).
+- Slowest: trainer_full_battle 9.13s, trainer_post_battle_dialogue 9.12s, blackout tests ~6.8s each, fight_until_ko 6.65s, skip_move_learn_at_prompt2 5.25s.
+
+### Approach
+Walked the hot-path with an exploration agent to enumerate every `advance_frames()` magic number in `turn.py` / `battle_tracker.py` / `dialogue.py`, then bisected the biggest offenders empirically (tests are the ground truth).
+
+### Changes (turn.py)
+1. **Split `PROMPT_SETTLE` (600f)**. The constant was doing double duty: (a) "UI buttons are interactive" after prompt-text detection, and (b) "game needs full animation to process the move swap" after FORGET. Only (b) is actually animation-bound. Introduced `PROMPT_UI_READY = 350` for the 5 UI-ready sites (FAINT_SWITCH, FAINT_FORCED, SWITCH_PROMPT, decline-then-move, MOVE_LEARN pre-tap). Kept `PROMPT_SETTLE = 600` for post-FORGET animation and overworld Yes/No text pages.
+   - Bisected 600 → 450 → 400 → 350 successfully. 300 broke `test_accept_switch_at_prompt` (YES tap didn't register at SWITCH_PROMPT).
+   - Net: saves 250f per faint/switch/move-learn prompt hit.
+
+2. **`_handle_blackout` condition-based Phase 1 exit.**
+   - Per-press `advance_frames(180) → 90`; phase 2 retry pre-wait `120 → 60`.
+   - Added early-exit: each iteration of the 20-iteration safety loop now calls `_find_script_manager` + `_read_script_state`; breaks as soon as a dialogue message box is open (Nurse Joy's greeting), so phase 2 picks up without burning ~3600 frames unconditionally.
+   - Net: 4 blackout tests dropped 6.8s → 4.4s each (~35% per test, -9.4s total).
+
+3. **Post-battle overworld settle `180 → 60`.** `advance_dialogue` already polls for `is_msg_box_open` internally; the full 180f pad was over-defensive.
+
+### Failed experiments (reverted)
+- **180 → 120 in move-learn text-dismiss loops** (`_skip_move_learn_flow`, `_learn_move_flow`, `_clear_overworld_move_learn_text`, `_wait_for_evolution` error branch): the B-press loop was advancing text pages; pressing B too soon meant the poll had to wait longer for text to re-stabilize, and several tests regressed 1-2s despite the frame savings on paper (notably `test_trainer_full_battle` 8.5 → 9.7s). Reverted.
+- **`RECOVERY_WAIT` 300 → 150** in `_recover_from_level_up`: same dynamic — reducing the per-press wait pushed the work into the tracker's poll window and net was neutral/negative. Reverted.
+
+**Lesson learned** (saved to memory): reducing "wait before poll" is safe when the poll can detect the condition; reducing "wait between B presses advancing sequential text pages" regresses because the next B press lands on an animation frame and subsequent polls have to spin longer to re-catch up.
+
+### Verification
+- **Battle-test subset: 121.11s → 107.08s (-12.1%).**
+- Full suite: **369/369 passing in 719.35s.** No regressions.
+- Per-test wins (baseline → after):
+  - test_blackout.* ×4: 6.8s → 4.4s each (-35% per test)
+  - test_trainer_full_battle: 9.13s → 8.47s
+  - test_trainer_post_battle_dialogue: 9.12s → 8.50s
+  - test_fight_until_ko: 6.65s → 6.26s
+  - test_decline_switch_and_continue: 4.83s → 4.62s
+  - test_forget_move_and_learn: 4.56s → 4.15s
+
+### Files Changed
+- `renegade_mcp/turn.py` — new `PROMPT_UI_READY` constant; 5 `PROMPT_SETTLE → PROMPT_UI_READY` substitutions; `_handle_blackout` rewritten with early-exit; one 180→60 in post-battle overworld settle.
+
+### Commit
+- `3bb23d4` perf(turn): reduce frame waste in switch/faint/blackout flows
