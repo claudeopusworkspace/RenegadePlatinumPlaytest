@@ -352,6 +352,47 @@ def detect_shift(emu: Any) -> int:
     return save_delta
 
 
+def revalidate(emu: Any) -> bool:
+    """Cheap check: does the cached save-block delta still point at a valid
+    player name? If not, re-run detect_shift automatically. Safe to call on
+    every tool invocation.
+
+    Returns True if the cached deltas are (now) valid, False if revalidation
+    AND re-detection both failed (e.g. game has no save loaded yet — leave
+    the caller to surface the error downstream).
+
+    Rationale: `load_state` goes through the raw MelonMCP tool which doesn't
+    know about renegade's address system, so it can't invalidate cached
+    deltas. Without this hook, switching save states from different save
+    files leaves a stale delta in place and every addr() lookup returns
+    garbage offsets. Rather than wrapping load_state (which leaks the
+    concern into every caller), we self-heal at the get_client() boundary.
+    """
+    delta = _deltas.get("save_block")
+    if delta is not None:
+        # Fast path: one-character check. If the first char of the player
+        # name is a valid Gen4 name char, assume the delta is still good.
+        # Full _name_length_at does up to 8 reads; we only need 1 for the
+        # common case.
+        name_addr = _DESMUME["SAVE_BLOCK_BASE"] + delta + PLAYER_NAME_OFFSET
+        first = _read_canary(emu, name_addr, "short")
+        if first is not None and _is_valid_name_char(first):
+            return True
+
+    # Either no delta cached, or the cached delta no longer points at a
+    # valid name. Try to re-detect.
+    try:
+        detect_shift(emu)
+        return True
+    except RuntimeError:
+        # No valid save-block signature anywhere in scan range. This
+        # happens pre-save (Pokemon logo screen, fresh boot). Clear the
+        # stale delta so addr() raises a useful error rather than silently
+        # returning garbage.
+        reset()
+        return False
+
+
 def addr(name: str) -> int:
     """Get a resolved heap address by name.
 

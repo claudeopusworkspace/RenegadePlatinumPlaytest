@@ -70,6 +70,11 @@ class BridgeConnection:
         if self._client is not None:
             try:
                 self._client.get_frame_count()
+                # Self-heal stale heap-shift deltas. Raw MelonMCP load_state
+                # doesn't invalidate the cache, so a save file with a different
+                # heap layout would otherwise leave addr() returning garbage.
+                from renegade_mcp.addresses import revalidate
+                revalidate(self._client)
                 return self._client
             except Exception:
                 self._client = None
