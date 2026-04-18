@@ -147,11 +147,16 @@ def _read_canary(emu: Any, addr: int, size: str = "long") -> int | None:
 def _name_length_at(emu: Any, addr: int) -> int:
     """Return the length of a valid Gen4 player name at `addr`, or 0 if none.
 
-    A name is a run of letter/digit chars followed by a 0xFFFF terminator
-    (or the full 7-char cap). Additionally requires that the u16 immediately
-    *before* `addr` is NOT a valid name char — this disambiguates between
-    the true name start and later positions inside the same name (e.g.
-    "CLAUDE" would otherwise also match starting at "LAUDE", "AUDE", etc.).
+    A name is a run of 1..7 letter/digit chars followed by a 0xFFFF terminator.
+    Additionally requires that the u16 immediately *before* `addr` is NOT a
+    valid name char — this disambiguates between the true name start and
+    later positions inside the same name (e.g. "CLAUDE" would otherwise also
+    match starting at "LAUDE", "AUDE", etc.).
+
+    Strictly requires the terminator: 8+ consecutive name chars are rejected.
+    Without this, 8-char Pokémon species/nicknames in the party block (e.g.
+    "Monferno", "Bronzong") score higher than the real 1-7 char player name
+    and make detect_shift pick the wrong heap delta.
     """
     # Reject mid-name positions: char before start must not be a letter/digit.
     prev = _read_canary(emu, addr - 2, "short")
@@ -172,8 +177,8 @@ def _name_length_at(emu: Any, addr: int) -> int:
         if not _is_valid_name_char(c):
             return 0
         length += 1
-    # Hit max length without terminator — accept as 7-char name.
-    return length
+    # _NAME_MAX_CHARS (7) chars without terminator — not a player name.
+    return 0
 
 
 def _has_valid_name_at(emu: Any, addr: int) -> bool:
@@ -370,13 +375,11 @@ def revalidate(emu: Any) -> bool:
     """
     delta = _deltas.get("save_block")
     if delta is not None:
-        # Fast path: one-character check. If the first char of the player
-        # name is a valid Gen4 name char, assume the delta is still good.
-        # Full _name_length_at does up to 8 reads; we only need 1 for the
-        # common case.
+        # Full name-length validation (up to 8 reads). A one-char check was
+        # too lenient — any random byte that happens to look like a letter
+        # would mask a stale delta, even though the bytes after are garbage.
         name_addr = _DESMUME["SAVE_BLOCK_BASE"] + delta + PLAYER_NAME_OFFSET
-        first = _read_canary(emu, name_addr, "short")
-        if first is not None and _is_valid_name_char(first):
+        if _name_length_at(emu, name_addr) > 0:
             return True
 
     # Either no delta cached, or the cached delta no longer points at a
