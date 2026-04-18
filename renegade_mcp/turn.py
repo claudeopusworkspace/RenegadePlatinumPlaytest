@@ -115,7 +115,8 @@ EVOLUTION_MAX_CHUNKS = 40   # 40 seconds max wait for animation
 
 # Timing
 ACTION_SETTLE = 120   # frames before first tap (covers send-out animations)
-PROMPT_SETTLE = 600   # frames before tapping switch/faint prompts (melonDS: buttons render ~600f after text detection)
+PROMPT_SETTLE = 600   # animation-bound waits: post-FORGET animation, overworld Yes/No text pages
+PROMPT_UI_READY = 350 # frames before tapping switch/faint/move-learn prompts (buttons render ~350f after text)
 TAP_WAIT = 60         # frames between sequential taps
 DPAD_WAIT = 30        # frames between D-pad presses
 ACTION_PROMPT_MAX_POLLS = 120  # polls waiting for "What will X do?" (~30 sec)
@@ -222,23 +223,31 @@ def _handle_blackout(emu: "EmulatorClient") -> list[str]:
     3. Warp to Pokemon Center + Nurse Joy healing dialogue
     4. Free movement
 
-    Presses B periodically to dismiss text and waits for the overworld
-    to settle. Returns collected dialogue lines.
+    Presses B periodically to dismiss text, but exits Phase 1 as soon as a
+    dialogue message box opens (Nurse Joy's greeting) so Phase 2 can pick
+    up without burning the full 20-iteration safety loop.
     """
-    from renegade_mcp.dialogue import advance_dialogue
+    from renegade_mcp.dialogue import (
+        advance_dialogue, _find_script_manager, _read_script_state,
+    )
 
     dialogue: list[str] = []
 
-    # Phase 1: Wait through the blackout fade + scurry text.
-    # Press B periodically to dismiss any text that appears.
-    for _ in range(20):  # ~60 seconds max
+    # Phase 1: Press B through blackout fade + scurry text + warp.
+    # Break out once a message box is open so advance_dialogue can take over.
+    for _ in range(20):  # safety cap (~20 * 90 = 1800 frames max)
         emu.press_buttons(["b"], frames=8)
-        emu.advance_frames(180)
+        emu.advance_frames(90)
+        mgr = _find_script_manager(emu)
+        if mgr is not None:
+            ss = _read_script_state(emu, mgr)
+            if ss["is_msg_box_open"]:
+                break
 
     # Phase 2: Dismiss Nurse Joy dialogue via advance_dialogue.
     # The warp animation may still be settling, so retry a few times.
     for _ in range(3):
-        emu.advance_frames(120)
+        emu.advance_frames(60)
         adv = advance_dialogue(emu)
         if adv["status"] != "no_dialogue" and adv.get("conversation"):
             dialogue.extend(adv["conversation"])
@@ -1038,8 +1047,10 @@ def battle_turn(
         from renegade_mcp.battle import read_battle as _rb
         if not _rb(emu):
             with phase("bt_post_battle_dialogue"):
-                # We're in the overworld — check for pending dialogue
-                emu.advance_frames(180)  # wait for overworld to settle
+                # We're in the overworld — check for pending dialogue.
+                # advance_dialogue polls for msg_box_open internally, so we just
+                # need enough settle time for the ScriptManager to become valid.
+                emu.advance_frames(60)
                 from renegade_mcp.dialogue import advance_dialogue
                 adv = advance_dialogue(emu)
                 if adv["status"] != "no_dialogue" and adv.get("conversation"):
@@ -1250,7 +1261,7 @@ def _execute_faint_switch(
     emu: EmulatorClient, prompt: dict, switch_to: int, has_switch: bool,
 ) -> dict[str, Any]:
     """Wild faint: send replacement or flee."""
-    emu.advance_frames(PROMPT_SETTLE)
+    emu.advance_frames(PROMPT_UI_READY)
     if has_switch:
         _prompt_switch_flow(emu, switch_to)
         return _poll_after_action(emu, prompt["log"])
@@ -1272,7 +1283,7 @@ def _execute_forced_switch(
     emu: EmulatorClient, prompt: dict, switch_to: int,
 ) -> dict[str, Any]:
     """Trainer faint: must send replacement."""
-    emu.advance_frames(PROMPT_SETTLE)
+    emu.advance_frames(PROMPT_UI_READY)
     _forced_switch_flow(emu, switch_to)
     return _poll_after_action(emu, prompt["log"])
 
@@ -1281,7 +1292,7 @@ def _execute_switch_prompt(
     emu: EmulatorClient, prompt: dict, switch_to: int, has_switch: bool,
 ) -> dict[str, Any]:
     """Trainer switch prompt: swap Pokemon or keep battling."""
-    emu.advance_frames(PROMPT_SETTLE)
+    emu.advance_frames(PROMPT_UI_READY)
     if has_switch:
         _prompt_switch_flow(emu, switch_to)
     else:
@@ -1298,7 +1309,7 @@ def _execute_switch_prompt_then_move(
     shorthand for: decline switch → wait for action prompt → use move N.
     """
     # Step 1: Decline the switch (same as bare _execute_switch_prompt)
-    emu.advance_frames(PROMPT_SETTLE)
+    emu.advance_frames(PROMPT_UI_READY)
     _decline_flow(emu)
 
     # Step 2: Poll for next state after declining
@@ -1367,7 +1378,7 @@ def _execute_move_learn(
 
     # Wait for bottom-screen buttons to render (text detected in memory
     # before UI is interactive — same pattern as SWITCH_PROMPT).
-    emu.advance_frames(PROMPT_SETTLE)
+    emu.advance_frames(PROMPT_UI_READY)
 
     if forget_move == -1:
         evolving = _skip_move_learn_flow(emu, at_prompt2=at_prompt2)
