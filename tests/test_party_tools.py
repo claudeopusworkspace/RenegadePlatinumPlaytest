@@ -246,3 +246,137 @@ class TestQaBug010MaxHpMixedStateRecovery:
             assert mon["max_hp"] == wants["max_hp"], (
                 f"{name} max_hp: got {mon['max_hp']}, expected {wants['max_hp']}"
             )
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-015 — read_party battle enrichment (UI slot / role / live HP)
+# ---------------------------------------------------------------------------
+# Pre-fix: read_party returned the persistent party slot order with stale
+# HP during battle, with no signal that the UI ordering had been remapped
+# by BattleContext.partyOrder. Callers had to consult battle_turn's
+# enriched party array to learn where each mon sat in the battle grid.
+# Fix: read_party now adds `battle_ui_slot`, `battle_role`, and refreshes
+# the active battler's hp/status from the BattleMon struct.
+
+class TestQaBug015ReadPartyBattleEnrichment:
+    """Battle enrichment fields on read_party."""
+
+    def test_overworld_read_party_has_no_battle_fields(
+        self, emu: EmulatorClient
+    ):
+        """Outside battle there's no partyOrder to read — read_party must
+        not invent battle_ui_slot/battle_role fields."""
+        from renegade_mcp.party import read_party
+        load_state(emu, "qa_session12_route216_entry")
+
+        party = read_party(emu)
+        assert party, "Expected non-empty party from session12 save"
+        for p in party:
+            assert "battle_ui_slot" not in p, (
+                f"Overworld read leaked battle_ui_slot on {p['name']!r}: "
+                f"{p.get('battle_ui_slot')}"
+            )
+            assert "battle_role" not in p, (
+                f"Overworld read leaked battle_role on {p['name']!r}"
+            )
+
+    def test_in_battle_read_party_tags_active_and_bench(
+        self, emu: EmulatorClient
+    ):
+        """After switching Vaporeon in vs Ace Trainer Blake, read_party must
+        tag Vaporeon (persistent slot 1) as battle_ui_slot=0/role=active
+        and Monferno (persistent slot 0) as battle_ui_slot=1/role=bench —
+        matching the post-switch partyOrder [1,0,...]."""
+        from renegade_mcp.party import read_party
+        from renegade_mcp.interaction import interact_with
+        from renegade_mcp.turn import battle_turn
+
+        load_state(emu, "qa_session12_route216_entry")
+        enc = interact_with(emu, object_index=1)
+        assert enc.get("encounter", {}).get("encounter") == "battle"
+
+        switch = battle_turn(emu, switch_to=1)
+        assert switch["final_state"] == "WAIT_FOR_ACTION"
+
+        party = read_party(emu)
+        by_name = {p["name"]: p for p in party}
+
+        vap = by_name.get("Vaporeon")
+        mon = by_name.get("Monferno")
+        assert vap is not None and mon is not None, (
+            f"Expected Vaporeon + Monferno in party: {[p['name'] for p in party]}"
+        )
+        # Persistent slot numbers remain the same (stable identifier).
+        assert vap["slot"] == 1, f"Vaporeon persistent slot: {vap['slot']}"
+        assert mon["slot"] == 0, f"Monferno persistent slot: {mon['slot']}"
+        # UI slot must flip post-switch.
+        assert vap["battle_ui_slot"] == 0, (
+            f"Vaporeon battle_ui_slot: {vap['battle_ui_slot']} (expected 0 "
+            f"— active after switch_to=1)"
+        )
+        assert mon["battle_ui_slot"] == 1, (
+            f"Monferno battle_ui_slot: {mon['battle_ui_slot']} (expected 1 "
+            f"— bench after switch_to=1)"
+        )
+        # Roles reflect on-field status.
+        assert vap["battle_role"] == "active"
+        assert mon["battle_role"] == "bench"
+
+    def test_in_battle_active_hp_is_live_not_stale(
+        self, emu: EmulatorClient
+    ):
+        """The active battler's HP in read_party must match the BattleMon
+        struct — the pre-BUG-015 bug surfaced the stale party-block HP."""
+        from renegade_mcp.party import read_party
+        from renegade_mcp.interaction import interact_with
+        from renegade_mcp.turn import battle_turn
+        from renegade_mcp.battle import read_battle
+
+        load_state(emu, "qa_session12_route216_entry")
+        enc = interact_with(emu, object_index=1)
+        assert enc.get("encounter", {}).get("encounter") == "battle"
+
+        # Switch in Vaporeon so Porygon's free Charge Beam hits her.
+        switch = battle_turn(emu, switch_to=1)
+        assert switch["final_state"] == "WAIT_FOR_ACTION"
+
+        battlers = read_battle(emu)
+        active = next((b for b in battlers if b.get("side") == "player"
+                       and b.get("slot") == 0), None)
+        assert active is not None, "No player-active battler"
+        live_hp = active["hp"]
+
+        party = read_party(emu)
+        vap = next((p for p in party if p["name"] == "Vaporeon"), None)
+        assert vap is not None and vap["battle_role"] == "active"
+        assert vap["hp"] == live_hp, (
+            f"BUG-015 regression: active Vaporeon read_party hp={vap['hp']}, "
+            f"BattleMon hp={live_hp}."
+        )
+
+    def test_in_battle_formatted_shows_ui_slot_and_role(
+        self, emu: EmulatorClient
+    ):
+        """format_party's output must surface battle_ui_slot + role when the
+        entries carry them — callers and users rely on the formatted
+        string for quick disambiguation."""
+        from renegade_mcp.party import read_party, format_party
+        from renegade_mcp.interaction import interact_with
+        from renegade_mcp.turn import battle_turn
+
+        load_state(emu, "qa_session12_route216_entry")
+        enc = interact_with(emu, object_index=1)
+        assert enc.get("encounter", {}).get("encounter") == "battle"
+        battle_turn(emu, switch_to=1)
+
+        party = read_party(emu)
+        formatted = format_party(party)
+        assert "[in battle" in formatted, (
+            f"Expected in-battle header in formatted output:\n{formatted}"
+        )
+        assert "UI 0 · active" in formatted, (
+            f"Expected 'UI 0 · active' label on active battler:\n{formatted}"
+        )
+        assert "UI 1 · bench" in formatted, (
+            f"Expected 'UI 1 · bench' on the swapped-out mon:\n{formatted}"
+        )

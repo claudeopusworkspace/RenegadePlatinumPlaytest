@@ -451,12 +451,47 @@ def _read_species_array(emu: EmulatorClient) -> list[int]:
 
 # ── Party Reading ──
 
+def _read_battle_context(emu: EmulatorClient) -> dict[str, Any] | None:
+    """Snapshot BattleContext.partyOrder + live active-battler HP/status.
+
+    Returns None when not in a battle. Used to enrich read_party() output so
+    callers can tell which persistent slot is the on-field Pokemon and see
+    the active mon's live HP (the party block isn't refreshed in real time
+    during battle — QA BUG-015).
+    """
+    from renegade_mcp.addresses import addr
+    end_flag = emu.read_memory_range(addr("BATTLE_END_FLAG_ADDR"), size="byte", count=1)
+    if end_flag[0] != 0:
+        return None
+
+    ui_order = list(emu.read_memory_range(addr("PARTY_ORDER_ADDR"), size="byte", count=6))
+    if not any(0 <= v < PARTY_MAX_SLOTS for v in ui_order):
+        return None  # partyOrder not initialized yet (battle init in flight)
+
+    # Read active-battler BattleMon for live HP/status. Slot 0 = player active.
+    # Import lazily to avoid a cycle (battle.py imports party.py indirectly
+    # via battle_summary helpers).
+    from renegade_mcp.battle import read_battle
+    battlers = read_battle(emu)
+    return {
+        "ui_order": ui_order,
+        "battlers": battlers,
+    }
+
+
 def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
     """Read all party slots from memory. Returns list of Pokemon dicts.
 
     Checks encryption-state flags on each slot, so reads are reliable whether
     the game has data encrypted (normal) or in a decryption context (party
     screen open, battle init, etc.). No refresh/sync step needed.
+
+    During battle, each entry gains a `battle_ui_slot` field (position in the
+    battle party grid, 0-5) and `battle_role` ("active" or "bench"). The
+    active battler's `hp`/`max_hp`/`status_conditions` are refreshed from the
+    live BattleMon struct — the party block is not updated in real time
+    during battle (QA BUG-015). `slot` remains the persistent party index so
+    callers keyed off stable identifiers stay valid.
     """
     sp_names = species_names()
     mv_names = move_names()
@@ -565,6 +600,58 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
 
         party.append(pokemon)
 
+    # Battle enrichment: add UI slot + live HP for active battler.
+    battle_ctx = _read_battle_context(emu)
+    if battle_ctx is not None:
+        ui_order = battle_ctx["ui_order"]
+        battlers = battle_ctx["battlers"]
+        # Map BattleMon slot -> battler dict (slot 0 = player active,
+        # slot 2 = player partner in doubles).
+        player_active_slots: dict[int, dict[str, Any]] = {}
+        for b in battlers:
+            if b.get("side") == "player" and b.get("slot") in (0, 2):
+                player_active_slots[b["slot"]] = b
+        # Singles: persistent slot at ui_order[0] is the on-field active.
+        # Doubles: ui_order[0] + partner slot (first non-active on player
+        # side — Gen 4 keeps it in the second battler-indexed partyOrder
+        # array; we approximate with "matches slot 2's species").
+        active_persistent: set[int] = {ui_order[0]}
+        partner_mon = player_active_slots.get(2)
+        if partner_mon is not None:
+            # Find the persistent slot whose species matches the partner's
+            # species. (Doubles partyOrder indexing requires partyOrder[2]
+            # which we don't read here — this heuristic is good enough for
+            # the common "one of each species" case.)
+            for p in party:
+                if p.get("species_id") == partner_mon.get("species_id") or (
+                    p.get("name") == partner_mon.get("species")
+                    or p.get("name") == partner_mon.get("nickname")
+                ):
+                    active_persistent.add(p["slot"])
+                    break
+
+        for p in party:
+            slot = p["slot"]
+            if slot in ui_order:
+                p["battle_ui_slot"] = ui_order.index(slot)
+            else:
+                p["battle_ui_slot"] = -1
+            is_active = slot in active_persistent
+            p["battle_role"] = "active" if is_active else "bench"
+            if is_active:
+                # Refresh HP + status from the live BattleMon struct.
+                battle_slot = 0 if slot == ui_order[0] else 2
+                mon = player_active_slots.get(battle_slot)
+                if mon:
+                    p["hp"] = mon.get("hp", p["hp"])
+                    p["max_hp"] = mon.get("max_hp", p["max_hp"])
+                    battle_status = mon.get("status")
+                    if battle_status:
+                        p["status_conditions"] = [battle_status]
+                    elif not battle_status and p.get("status_conditions"):
+                        # Status was cured mid-battle; trust BattleMon.
+                        p["status_conditions"] = []
+
     return party
 
 
@@ -587,7 +674,11 @@ def format_party(party: list[dict[str, Any]]) -> str:
     if not party:
         return "Party is empty!"
 
-    lines = [f"=== Party ({len(party)} Pokemon) ==="]
+    in_battle = any("battle_ui_slot" in p for p in party)
+    header = f"=== Party ({len(party)} Pokemon) ==="
+    if in_battle:
+        header += "  [in battle — UI slot / role shown per entry]"
+    lines = [header]
     for p in party:
         nature_str = f" ({p['nature']})" if p.get("nature", "?") != "?" else ""
         level_str = f"Lv{p['level']}" if p["level"] >= 0 else "Lv?"
@@ -607,7 +698,12 @@ def format_party(party: list[dict[str, Any]]) -> str:
             status_conds = ["Fainted"] + status_conds
         status_str = f"  ⚠ {', '.join(status_conds)}" if status_conds else ""
         partial_tag = " [stale data]" if p.get("partial") else ""
-        lines.append(f"  {p['slot']}. {p['name']}{shiny_tag} {level_str}{nature_str}{ability_str}  {hp_str}{status_str}{partial_tag}")
+        battle_tag = ""
+        if "battle_ui_slot" in p:
+            ui_slot = p["battle_ui_slot"]
+            role = p.get("battle_role", "bench")
+            battle_tag = f" [UI {ui_slot} · {role}]" if ui_slot >= 0 else f" [{role}]"
+        lines.append(f"  {p['slot']}. {p['name']}{shiny_tag} {level_str}{nature_str}{ability_str}  {hp_str}{status_str}{partial_tag}{battle_tag}")
 
         if p.get("partial"):
             lines.append("     (moves/IVs/EVs unavailable — encrypted data stale)")
