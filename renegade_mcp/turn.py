@@ -18,6 +18,7 @@ from renegade_mcp.battle_tracker import (
     _tracker,
     _classify_stop,
     _is_orphan_name_text,
+    _is_level_summary_artifact,
     _scan_for_new_text,
     _scan_markers,
     POLL_FRAMES,
@@ -666,10 +667,14 @@ def _wait_for_action_prompt(emu: EmulatorClient) -> dict[str, Any]:
                 if text != prev_text:
                     prev_text = text
                     # Drop orphan name-cache entries that briefly become the top
-                    # marker between real macro lines (BUG-011). WAIT_FOR_INPUT
-                    # is still logged so ability-announcement boxes keep their
-                    # B-press dismissal path.
-                    if stop != "AUTO_ADVANCE" or not _is_orphan_name_text(text):
+                    # marker between real macro lines (BUG-011), plus level-up
+                    # summary UI labels (BUG-016). WAIT_FOR_INPUT is still
+                    # logged so ability-announcement boxes keep their B-press
+                    # dismissal path.
+                    if stop != "AUTO_ADVANCE" or (
+                        not _is_orphan_name_text(text)
+                        and not _is_level_summary_artifact(text)
+                    ):
                         log.append({"text": text, "stop": stop})
 
                 # Dismiss text that waits for B (ability announcements, etc.)

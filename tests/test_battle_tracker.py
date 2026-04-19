@@ -70,6 +70,58 @@ class TestQaBug011OrphanNameFilter:
         # Very long strings (>24 chars) are not orphans even if no punctuation.
         assert _is_orphan_name_text("a" * 30) is False
 
+    # ──────────────────────────────────────────────────────────────────────
+    # QA BUG-016 — mid-battle level-up UI label leak
+    # ──────────────────────────────────────────────────────────────────────
+    # Session-12 observations:
+    #   "Mothim@\nLv. 23"  (Natu fight, Mothim 22→23)
+    #   "Sp. Def"           (Togetic fight, Monferno 29→30 stat gain)
+    # Source: ROM file 368 indices 944/945/946 (party-panel label) and 947
+    # (standalone stat name token). These are summary-UI labels scraped
+    # from the battle scan buffer — not narration.
+
+    def test_bug016_level_summary_label_with_at_sign_is_filtered(self):
+        from renegade_mcp.battle_tracker import _is_level_summary_artifact
+        assert _is_level_summary_artifact("Mothim@\nLv. 23") is True
+        assert _is_level_summary_artifact("Monferno@\nLv. 30!") is True
+
+    def test_bug016_level_summary_label_with_star_is_filtered(self):
+        from renegade_mcp.battle_tracker import _is_level_summary_artifact
+        assert _is_level_summary_artifact("Mothim*\nLv. 23") is True
+
+    def test_bug016_level_summary_label_without_marker_is_filtered(self):
+        from renegade_mcp.battle_tracker import _is_level_summary_artifact
+        assert _is_level_summary_artifact("Vaporeon\nLv. 17") is True
+
+    def test_bug016_standalone_stat_names_filtered(self):
+        from renegade_mcp.battle_tracker import _is_level_summary_artifact
+        for stat in ("Sp. Def", "Sp. Atk", "Attack", "Defense",
+                     "Speed", "HP", "accuracy", "evasion"):
+            assert _is_level_summary_artifact(stat) is True, (
+                f"Expected stat-name artifact filter to catch: {stat!r}"
+            )
+
+    def test_bug016_real_level_up_narration_not_filtered(self):
+        """The actual narration line 'Monferno grew to\\nLv. 30!' must survive
+        — it carries the verb 'grew to' between the nickname and the newline."""
+        from renegade_mcp.battle_tracker import _is_level_summary_artifact
+        real_lines = [
+            "Monferno grew to\nLv. 30!",
+            "Mothim grew to\nLv. 23!",
+            "Monferno's Sp. Def\nrose!",
+            "The foe's Porygon's\nSp. Atk rose!",
+            "What will Monferno do?",
+            "Vaporeon used\nWater Pulse!",
+        ]
+        for line in real_lines:
+            assert _is_level_summary_artifact(line) is False, (
+                f"False positive — would filter real line: {line!r}"
+            )
+
+    def test_bug016_empty_text_not_filtered(self):
+        from renegade_mcp.battle_tracker import _is_level_summary_artifact
+        assert _is_level_summary_artifact("") is False
+
     def test_slowpoke_orphan_dropped_from_seek_encounter_log(
         self, emu: EmulatorClient
     ):

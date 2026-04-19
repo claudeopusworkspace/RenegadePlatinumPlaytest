@@ -208,6 +208,43 @@ def _is_orphan_name_text(text: str) -> bool:
     return len(text) <= 24
 
 
+# QA BUG-016: Mid-battle level-up scans pick up the party-panel summary UI
+# labels written alongside the narration. ROM file 368 indices 944/945/946
+# drive the "<nickname>[marker?]\nLv. <num>" label, and index 947 writes a
+# bare stat-name to the buffer (rendered visually as "<stat> rose by <n>!"
+# in the summary graphics, but only the stat-name token reaches the text
+# scan region). These aren't narration lines — strip them from the log.
+_LEVEL_SUMMARY_RE = re.compile(r"^[A-Za-z0-9.'\u00e9\u2640\u2642\- ]{1,10}[@*]?\nLv\. \d{1,3}!?$")
+
+_STAT_LABEL_ARTIFACTS: set[str] = {
+    "HP", "Attack", "Defense", "Speed",
+    "Sp. Atk", "Sp. Def", "Sp. Attack", "Sp. Defense",
+    "accuracy", "evasion",
+}
+
+
+def _is_level_summary_artifact(text: str) -> bool:
+    """Filter mid-battle level-up UI labels (QA BUG-016).
+
+    Returns True for two leak patterns observed during a mid-battle level-up:
+    * ``"<nickname>@\\nLv. 23"`` / ``"<nickname>*\\nLv. 23"`` — the party-panel
+      summary label (ROM file 368 indices 944/945, with color-format VAR
+      blocks stripped by the decoder, leaving the literal @/*).
+    * ``"Sp. Def"`` / ``"Attack"`` / etc. — the standalone stat-name token
+      from index 947, which drives the "<stat> rose by N!" summary line.
+    Neither carries actionable narration; the "grew to Lv. N!" and "rose by"
+    messages are separate scan-buffer entries.
+    """
+    if not text:
+        return False
+    stripped = text.strip()
+    if stripped in _STAT_LABEL_ARTIFACTS:
+        return True
+    if _LEVEL_SUMMARY_RE.match(stripped):
+        return True
+    return False
+
+
 def _format_log(log: list[dict], final_state: str) -> str:
     """Format battle log as readable string."""
     lines = ["=== Battle Log ==="]
@@ -332,7 +369,7 @@ class BattleTracker:
 
                 if stop == "AUTO_ADVANCE":
                     seen_auto = True
-                    if not _is_orphan_name_text(text):
+                    if not _is_orphan_name_text(text) and not _is_level_summary_artifact(text):
                         log.append({"text": text, "stop": stop})
                 elif seen_auto or stop == "WAIT_FOR_ACTION":
                     # WAIT_FOR_ACTION ([FFFE][0200]) is a definitive action
