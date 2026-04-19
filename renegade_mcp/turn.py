@@ -602,6 +602,25 @@ def _wait_for_action_prompt(emu: EmulatorClient) -> dict[str, Any]:
     log: list[dict] = []
     prev_text: str | None = None
 
+    # Fast-path: if a player Pokemon is already fainted and the battle is
+    # still live, we may be at the FAINT_SWITCH / FAINT_FORCED party grid
+    # with no action-prompt text marker coming — polling for one burns the
+    # full 30s timeout before the identical fallback at the bottom catches
+    # it. But in doubles, a fainted partner can coexist with a live ACTION
+    # prompt for the surviving slot, so only skip the poll when no action
+    # marker is visible yet.
+    if not _is_battle_over(emu) and _any_player_fainted(emu):
+        data = emu.read_memory_block(_scan_start(), SCAN_SIZE)
+        has_action_marker = False
+        if data:
+            for _, _, vals, _ in _scan_for_new_text(data, _scan_start(), {}):
+                if _classify_stop(vals) == "WAIT_FOR_ACTION":
+                    has_action_marker = True
+                    break
+        if not has_action_marker:
+            prompt_type = _classify_faint_type(emu, log)
+            return {"ready": True, "log": log, "prompt_type": prompt_type}
+
     for _ in range(ACTION_PROMPT_MAX_POLLS):
         data = emu.read_memory_block(_scan_start(), SCAN_SIZE)
         if data:
