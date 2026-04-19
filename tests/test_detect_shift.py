@@ -259,3 +259,99 @@ class TestQaBug012RevalidateCrossSaveSwitch:
         _deltas["field_ow"] = probe
         assert revalidate(emu) is True
         assert get_delta("save_block") == good_delta
+
+
+class TestQaBug013ShortPlayerNameDecoy:
+    """Regression guard for RenegadePlatinumQA BUG-013.
+
+    When the real player name is shorter than a valid-looking Gen4 name-char
+    run elsewhere in RAM (typically a ROM text-buffer substring like "Knot"
+    from "Destiny Knot"), the name_length × 10 scoring made the decoy win.
+    The fix gates candidates on save-block structural invariants: party
+    count ∈ [0, 6] and money ≤ 999,999. Decoys sitting in random RAM reliably
+    fail those gates.
+
+    Live repro capture: QA session 11, player name "WOJ" at delta=-0x20,
+    decoy "Knot" at delta=-0x100 with party_count=36,299,880 and money=
+    $36,302,676.
+    """
+
+    def test_detect_shift_rejects_knot_decoy_mid_session(
+        self, emu: EmulatorClient
+    ):
+        """The live mid-session desync state must resolve to the real delta,
+        not the Knot text-buffer decoy."""
+        load_state(emu, "bug_013_mid_session_desync_post_gym_guide")
+        from renegade_mcp.addresses import reset, detect_shift, get_delta
+        reset()
+        detect_shift(emu)
+        delta = get_delta("save_block")
+        assert delta == -0x20, (
+            f"Expected real delta -0x20 (player 'WOJ'), got {delta:+#x}. "
+            "Pre-fix this state locked onto -0x100 (decoy 'Knot')."
+        )
+
+        # Downstream reads must be sane.
+        from renegade_mcp.trainer import read_trainer_status
+        status = read_trainer_status(emu)
+        assert 0 < status["money"] < 1_000_000, (
+            f"money={status['money']} — decoy delta produced $36,302,676"
+        )
+        assert 0 <= status["badges"] <= 8
+
+    def test_detect_shift_rejects_knot_decoy_cold_start(
+        self, emu: EmulatorClient
+    ):
+        """Cold-start repro (session 11 eterna_cycle_shop entry) — the first
+        detect_shift after init+load_rom+load_state must still pick the real
+        delta, not the Knot decoy."""
+        load_state(emu, "bug_012_regression_post_load_eterna_cycle_shop_session11")
+        from renegade_mcp.addresses import reset, detect_shift, get_delta
+        reset()
+        detect_shift(emu)
+        delta = get_delta("save_block")
+        assert delta == -0x20, f"Expected -0x20, got {delta:+#x}"
+
+        from renegade_mcp.trainer import read_trainer_status
+        status = read_trainer_status(emu)
+        assert 0 < status["money"] < 1_000_000
+        assert status["badges"] == 1  # Coal badge at Eterna
+
+    def test_save_block_structural_ok_gates_decoy(self, emu: EmulatorClient):
+        """Unit-level guard: the structural gate must reject delta=-0x100
+        (garbage money/party_count) and accept delta=-0x20 (real save block)
+        against the QA bug capture."""
+        load_state(emu, "bug_013_mid_session_desync_post_gym_guide")
+        from renegade_mcp.addresses import _save_block_structural_ok
+        assert _save_block_structural_ok(emu, -0x100) is False, (
+            "Knot decoy at -0x100 has party_count=36M and money=$36M — "
+            "structural gate must reject it."
+        )
+        assert _save_block_structural_ok(emu, -0x20) is True, (
+            "Real WOJ save block at -0x20 must pass the structural gate."
+        )
+
+    def test_revalidate_rejects_decoy_with_matching_name(
+        self, emu: EmulatorClient
+    ):
+        """revalidate() with a cached decoy delta must fall through to
+        re-detection even when a valid-looking name sits at that delta —
+        the structural gate trips and forces a re-scan."""
+        load_state(emu, "bug_013_mid_session_desync_post_gym_guide")
+        from renegade_mcp.addresses import (
+            _deltas, detect_shift, get_delta, reset, revalidate,
+        )
+        reset()
+        detect_shift(emu)
+        good_delta = get_delta("save_block")
+        assert good_delta == -0x20
+
+        # Install the decoy delta. Its name read ("Knot") is still a valid
+        # Gen4 name — only the structural gate disqualifies it.
+        _deltas["save_block"] = -0x100
+        _deltas["field_ow"] = -0x100
+        assert revalidate(emu) is True
+        assert get_delta("save_block") == good_delta, (
+            "revalidate should have re-detected after the structural gate "
+            "caught the stale decoy delta."
+        )

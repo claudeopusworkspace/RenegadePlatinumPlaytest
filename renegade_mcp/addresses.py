@@ -47,6 +47,17 @@ _NAME_CHAR_MAX = 0x016A
 _NAME_TERMINATOR = 0xFFFF
 _NAME_MAX_CHARS = 7  # Platinum caps player name at 7 chars
 
+# Structural canaries inside the save block (offsets from SAVE_BLOCK_BASE).
+# Gate detect_shift/revalidate candidates — any delta where these are out of
+# range is not a real save block, even if the name offset happens to decode
+# as a valid Gen4 name. BUG-013: a 4-char decoy like "Knot" (a substring of
+# "Destiny Knot" in a ROM text buffer) otherwise outscored a legit 3-char
+# player name via _name_length_at × 10 scoring.
+_MONEY_OFFSET = 0x7C            # u32
+_PARTY_COUNT_OFFSET = 0x9C      # matches ENCRYPTED_PARTY_COUNT - SAVE_BLOCK_BASE
+_MONEY_MAX = 999_999            # Platinum money cap
+_PARTY_MAX = 6
+
 
 def _is_valid_name_char(v: int) -> bool:
     """True if v is a Gen4 charmap code for a letter or digit."""
@@ -186,6 +197,25 @@ def _has_valid_name_at(emu: Any, addr: int) -> bool:
     return _name_length_at(emu, addr) > 0
 
 
+def _save_block_structural_ok(emu: Any, cand: int) -> bool:
+    """True if the candidate delta passes hard save-block invariants.
+
+    Platinum caps party count at 6 and money at 999,999. Any delta where
+    either is out of range is not a real save block, even if a valid-looking
+    Gen4 name happens to sit at `+0x68`. This disqualifies ROM text-buffer
+    decoys (BUG-013: "Knot" substring of "Destiny Knot" at delta=-0x100,
+    where party_count read as 36,299,880 and money as $36,302,676).
+    """
+    sb_ref = _DESMUME["SAVE_BLOCK_BASE"]
+    pc = _read_canary(emu, sb_ref + _PARTY_COUNT_OFFSET + cand, "long")
+    if pc is None or not (0 <= pc <= _PARTY_MAX):
+        return False
+    money = _read_canary(emu, sb_ref + _MONEY_OFFSET + cand, "long")
+    if money is None or not (0 <= money <= _MONEY_MAX):
+        return False
+    return True
+
+
 # ── Per-group detection ──
 
 def _detect_save_block_delta(emu: Any) -> int:
@@ -211,6 +241,13 @@ def _detect_save_block_delta(emu: Any) -> int:
         if name_len == 0:
             continue
 
+        # Structural gate: disqualify candidates whose party_count or money
+        # are outside Platinum's hard invariants. Without this, short-name
+        # decoys like "Knot" (from "Destiny Knot" in a ROM text buffer) can
+        # outscore the real player name when it's shorter (BUG-013).
+        if not _save_block_structural_ok(emu, cand):
+            continue
+
         # Score: name length dominates (longer = more likely the real start),
         # plus small bonuses for secondary canaries matching.
         score = name_len * 10
@@ -234,7 +271,8 @@ def _detect_save_block_delta(emu: Any) -> int:
             f"Could not detect save-block heap shift. Scanned deltas "
             f"{_SCAN_MIN:+#x}..{_SCAN_MAX:+#x} (step {_SCAN_STEP}) for player-name "
             f"signature at SAVE_BLOCK_BASE + 0x{PLAYER_NAME_OFFSET:x} but found "
-            "no valid Gen4-encoded name. Has the game finished name entry?"
+            "no valid Gen4-encoded name with sane party_count/money. "
+            "Has the game finished name entry?"
         )
 
     # Prefer: highest score (longest name + most secondary canaries), then smallest |delta|.
@@ -378,8 +416,15 @@ def revalidate(emu: Any) -> bool:
         # Full name-length validation (up to 8 reads). A one-char check was
         # too lenient — any random byte that happens to look like a letter
         # would mask a stale delta, even though the bytes after are garbage.
+        # Also require party_count/money to pass structural invariants
+        # (BUG-013): decoy text-buffer substrings can keep a stale delta
+        # looking "valid" to a pure name check while every other field reads
+        # garbage.
         name_addr = _DESMUME["SAVE_BLOCK_BASE"] + delta + PLAYER_NAME_OFFSET
-        if _name_length_at(emu, name_addr) > 0:
+        if (
+            _name_length_at(emu, name_addr) > 0
+            and _save_block_structural_ok(emu, delta)
+        ):
             return True
 
     # Either no delta cached, or the cached delta no longer points at a

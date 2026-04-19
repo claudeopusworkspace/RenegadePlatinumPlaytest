@@ -2,6 +2,45 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: QA BUG-013 — short-player-name decoy (2026-04-19)
+
+### Summary
+BUG-012's fix made `name_length × 10` dominate delta scoring, which worked
+when the decoy was a *longer* name (8-char species nicknames outscoring a
+7-char player name). QA's playthrough uses the 3-char player name "WOJ" —
+and a ROM text buffer in main RAM contains "Destiny Knot", whose 4-char
+substring `"Knot"` sat at delta=-0x100 and scored 42 vs the real "WOJ"
+at delta=-0x20 (score 33). The secondary canaries at the decoy were
+wildly wrong (party_count=36,299,880, money=$36,302,676 — the reported
+"always $36,302,676" fingerprint) but the old scoring treated garbage
+canaries as *missed bonuses*, not disqualifications.
+
+### Fix
+`renegade_mcp/addresses.py` — new `_save_block_structural_ok(emu, cand)`
+gate: `party_count ∈ [0, 6]` AND `money ≤ 999,999` (Platinum hard
+invariants). Applied in two places:
+- `_detect_save_block_delta` — skip any delta failing the gate during
+  the scan, so the "Knot" decoy never enters the candidate set.
+- `revalidate` — require the cached delta to still pass the gate, not
+  just the name check. A decoy whose "name" read still matches gets
+  re-detected instead of staying stuck (addresses the mid-session
+  desync where the cache wouldn't self-heal).
+
+### Tests (4 new in `TestQaBug013ShortPlayerNameDecoy`)
+- `test_detect_shift_rejects_knot_decoy_mid_session` — live repro state
+  `bug_013_mid_session_desync_post_gym_guide` resolves to -0x20 not -0x100
+- `test_detect_shift_rejects_knot_decoy_cold_start` — the cold-start
+  regression capture also resolves correctly
+- `test_save_block_structural_ok_gates_decoy` — unit-level gate: -0x100
+  rejected (garbage pc/money), -0x20 accepted
+- `test_revalidate_rejects_decoy_with_matching_name` — install -0x100
+  manually, confirm revalidate re-detects to -0x20
+
+Full detect_shift suite (18 tests) green. Pre-starter, BUG-012 name-length
+cap, cross-save-switch, and group-delta tests unaffected.
+
+---
+
 ## Dev Session: Test-suite reorganization (2026-04-17 session 11)
 
 ### Summary
