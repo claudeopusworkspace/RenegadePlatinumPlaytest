@@ -577,17 +577,21 @@ def navigate_manual(emu: EmulatorClient, directions_str: str, flee_encounters: b
             directions = directions[:step_idx + 1]
 
     total_path = _summarize_path(directions)
+    from renegade_mcp.phase_timer import phase
+
     total_steps = 0
     flee_log: list[dict[str, Any]] = []
     remaining = directions
     hold = _get_move_hold(emu)
 
     for _ in range(MAX_FLEE_ENCOUNTERS if flee_encounters else 1):
-        stopped_early, steps_taken, _, nav_info = _execute_path(emu, remaining, track_npcs=True, hold_frames=hold)
+        with phase("nav_execute_path"):
+            stopped_early, steps_taken, _, nav_info = _execute_path(emu, remaining, track_npcs=True, hold_frames=hold)
         total_steps += steps_taken
 
         # Post-navigation: poll for encounter or dialogue (also serves as settle)
-        encounter = _post_nav_check(emu)
+        with phase("nav_post_check"):
+            encounter = _post_nav_check(emu)
 
         if not flee_encounters or encounter is None:
             break

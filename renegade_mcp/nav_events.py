@@ -120,12 +120,17 @@ def _post_nav_check(emu: EmulatorClient) -> dict[str, Any] | None:
 
     Returns None if neither is detected within 300 frames.
     """
+    from renegade_mcp.phase_timer import phase
+
     for _ in range(POST_NAV_MAX_POLLS):
         # Check for battle encounter
-        battlers = read_battle(emu)
+        with phase("npc_read_battle"):
+            battlers = read_battle(emu)
         if battlers:
-            prompt_result = _wait_for_action_prompt(emu)
-            battle_state = read_battle(emu)
+            with phase("npc_wait_action_prompt"):
+                prompt_result = _wait_for_action_prompt(emu)
+            with phase("npc_read_battle"):
+                battle_state = read_battle(emu)
             result: dict[str, Any] = {
                 "encounter": "battle",
                 "battle_log": prompt_result["log"],
@@ -140,34 +145,44 @@ def _post_nav_check(emu: EmulatorClient) -> dict[str, Any] | None:
             return result
 
         # Check for overworld dialogue
-        dialogue = read_dialogue(emu, region="overworld")
+        with phase("npc_read_dialogue"):
+            dialogue = read_dialogue(emu, region="overworld")
         if dialogue["region"] != "none":
             # Validate: text buffer can contain stale data during NPC approach
             # animations. Only trust it when msgBox=1 (dialogue box visible).
-            mgr = _find_script_manager(emu)
+            with phase("npc_script_state"):
+                mgr = _find_script_manager(emu)
+                if mgr is not None:
+                    ss = _read_script_state(emu, mgr)
             if mgr is not None:
-                ss = _read_script_state(emu, mgr)
                 if not ss["is_msg_box_open"]:
                     # msgBox=0: text is pre-positioned, not yet displayed.
                     # If a script is running, keep polling — dialogue will
                     # appear once the approach animation finishes.
                     if ss["ctx0_ptr"]:
-                        ctx0 = _read_context_state(emu, ss["ctx0_ptr"])
+                        with phase("npc_script_state"):
+                            ctx0 = _read_context_state(emu, ss["ctx0_ptr"])
                         if ctx0["state"] in (CTX_RUNNING, CTX_WAITING):
-                            emu.advance_frames(POST_NAV_POLL_FRAMES)
+                            with phase("npc_poll_advance"):
+                                emu.advance_frames(POST_NAV_POLL_FRAMES)
                             continue
                     # No active script — stale buffer data, skip.
-                    emu.advance_frames(POST_NAV_POLL_FRAMES)
+                    with phase("npc_poll_advance"):
+                        emu.advance_frames(POST_NAV_POLL_FRAMES)
                     continue
 
             # msgBox is open — real dialogue. Auto-advance.
-            adv_result = advance_dialogue(emu)
+            with phase("npc_advance_dialogue"):
+                adv_result = advance_dialogue(emu)
 
             # After dialogue, check if it transitioned into a battle
-            battlers = read_battle(emu)
+            with phase("npc_read_battle"):
+                battlers = read_battle(emu)
             if battlers:
-                prompt_result = _wait_for_action_prompt(emu)
-                battle_state = read_battle(emu)
+                with phase("npc_wait_action_prompt"):
+                    prompt_result = _wait_for_action_prompt(emu)
+                with phase("npc_read_battle"):
+                    battle_state = read_battle(emu)
                 result: dict[str, Any] = {
                     "encounter": "battle",
                     "dialogue": adv_result,
@@ -187,7 +202,8 @@ def _post_nav_check(emu: EmulatorClient) -> dict[str, Any] | None:
                 "dialogue": adv_result,
             }
 
-        emu.advance_frames(POST_NAV_POLL_FRAMES)
+        with phase("npc_poll_advance"):
+            emu.advance_frames(POST_NAV_POLL_FRAMES)
 
     return None
 

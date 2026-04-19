@@ -363,27 +363,43 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
     def _wait_for_msgbox_or_script_end() -> str | None:
         """When isMsgBoxOpen==0, wait to see if text comes back or script ends.
 
-        Returns "completed" if script truly ended, None if text came back.
-        Also detects event animation text (TextPrinter active without message
-        box — e.g., gym puzzle "The fountain's water level dropped!").
+        Returns "completed" if script truly ended OR a battle started (the
+        overworld dialogue has handed off to the battle engine and text won't
+        come back). Returns None if overworld text came back.
         """
         from renegade_mcp.addresses import addr as _resolve
+        from renegade_mcp.phase_timer import phase
         tp_base = _resolve("TP_BASE")
-        result = emu.advance_frames_until(
-            max_frames=MAX_ANIM_POLLS * ANIM_POLL,
-            conditions=[
-                # Condition 0: script ended (magic word gone)
-                {"type": "value", "address": mgr, "size": "long",
-                 "operator": "!=", "value": SM_MAGIC},
-                # Condition 1: message box opened
-                {"type": "value", "address": mgr + SM_OFF_MSGBOX, "size": "byte",
-                 "operator": "==", "value": 1},
-                # Condition 2: TextPrinter active with state >= 1 (event text)
-                {"type": "value", "address": tp_base + TP_OFF_STATE, "size": "byte",
-                 "operator": ">=", "value": 1},
-            ],
-            poll_interval=ANIM_POLL,
-        )
+        battle_end_flag = _resolve("BATTLE_END_FLAG_ADDR")
+        battle_base = _resolve("BATTLE_BASE")
+        # Fast-path: the battle engine may have already taken over the frame
+        # since the last loop iteration. battleEndFlag is cleared to 0 when
+        # a battle starts and the first BattleMon (player active slot) gets
+        # populated with nonzero species. Both together = live battle; exit
+        # immediately instead of burning the 50s animation timeout waiting
+        # for overworld signals that will never come. We require BOTH because
+        # flag == 0 alone false-positives on brand-new saves (never battled),
+        # and species != 0 alone false-positives on stale data left over from
+        # a prior battle.
+        if (emu.read_memory(battle_end_flag, size="byte") == 0
+                and emu.read_memory(battle_base, size="short") != 0):
+            return "completed"
+        with phase("ad_wait_msgbox_or_end"):
+            result = emu.advance_frames_until(
+                max_frames=MAX_ANIM_POLLS * ANIM_POLL,
+                conditions=[
+                    # Condition 0: script ended (magic word gone)
+                    {"type": "value", "address": mgr, "size": "long",
+                     "operator": "!=", "value": SM_MAGIC},
+                    # Condition 1: message box opened
+                    {"type": "value", "address": mgr + SM_OFF_MSGBOX, "size": "byte",
+                     "operator": "==", "value": 1},
+                    # Condition 2: TextPrinter active with state >= 1 (event text)
+                    {"type": "value", "address": tp_base + TP_OFF_STATE, "size": "byte",
+                     "operator": ">=", "value": 1},
+                ],
+                poll_interval=ANIM_POLL,
+            )
         if not result["triggered"]:
             return "completed"  # script alive but no text after long wait
         idx = result["condition_index"]
@@ -444,21 +460,23 @@ def advance_dialogue(emu: EmulatorClient) -> dict[str, Any]:
 
         # ── RUNNING: animation/movement/fanfare — wait passively ──
         if ctx["state"] == CTX_RUNNING:
-            anim_result = emu.advance_frames_until(
-                max_frames=MAX_ANIM_POLLS * ANIM_POLL,
-                conditions=[
-                    # Condition 0: script ended
-                    {"type": "value", "address": mgr, "size": "long",
-                     "operator": "!=", "value": SM_MAGIC},
-                    # Condition 1: msg box closed during animation
-                    {"type": "value", "address": mgr + SM_OFF_MSGBOX, "size": "byte",
-                     "operator": "!=", "value": 1},
-                    # Condition 2: context left RUNNING state
-                    {"type": "value", "address": ctx_ptr + CTX_OFF_STATE, "size": "byte",
-                     "operator": "!=", "value": CTX_RUNNING},
-                ],
-                poll_interval=ANIM_POLL,
-            )
+            from renegade_mcp.phase_timer import phase as _phase
+            with _phase("ad_ctx_running_wait"):
+                anim_result = emu.advance_frames_until(
+                    max_frames=MAX_ANIM_POLLS * ANIM_POLL,
+                    conditions=[
+                        # Condition 0: script ended
+                        {"type": "value", "address": mgr, "size": "long",
+                         "operator": "!=", "value": SM_MAGIC},
+                        # Condition 1: msg box closed during animation
+                        {"type": "value", "address": mgr + SM_OFF_MSGBOX, "size": "byte",
+                         "operator": "!=", "value": 1},
+                        # Condition 2: context left RUNNING state
+                        {"type": "value", "address": ctx_ptr + CTX_OFF_STATE, "size": "byte",
+                         "operator": "!=", "value": CTX_RUNNING},
+                    ],
+                    poll_interval=ANIM_POLL,
+                )
             if anim_result["triggered"]:
                 idx = anim_result["condition_index"]
                 if idx == 0:
