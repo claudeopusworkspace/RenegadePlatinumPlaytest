@@ -118,6 +118,57 @@ class TestViewMap:
 
 
 # ---------------------------------------------------------------------------
+# FR-006: render_map walkable-floor / cave-floor distinctness + legend
+# ---------------------------------------------------------------------------
+
+class TestFr006FloorLegend:
+    """render_map distinguishes void, walkable ground, and cave floor, and
+    surfaces the walkable glyphs in the legend so a reader can tell
+    sparse-land rooms are traversable."""
+
+    def test_cave_floor_renders_as_middle_dot(self):
+        """behavior=0x08 no longer renders as ' ' (was visually ambiguous with void)."""
+        from renegade_mcp.map_state import render_map
+        # Single 1x1 grid of cave_floor — val nonzero so void branch doesn't fire.
+        terrain = [[0x0008]]
+        out = render_map(terrain, objects=[], player_local_x=-1, player_local_y=-1, facing=0)
+        first_line = out.splitlines()[0]
+        assert first_line == '·', f"cave floor should render as '·', got {first_line!r}"
+
+    def test_walkable_ground_renders_as_underscore(self):
+        """behavior=0x00 still renders as '_'."""
+        from renegade_mcp.map_state import render_map
+        terrain = [[0x0100]]  # high byte nonzero so val != 0, behavior == 0x00
+        out = render_map(terrain, objects=[], player_local_x=-1, player_local_y=-1, facing=0)
+        assert out.splitlines()[0] == '_'
+
+    def test_void_stays_dot(self):
+        """val==0 still renders as '.' — keeps outside-map distinct from floor."""
+        from renegade_mcp.map_state import render_map
+        terrain = [[0x0000]]
+        out = render_map(terrain, objects=[], player_local_x=-1, player_local_y=-1, facing=0)
+        assert out.splitlines()[0] == '.'
+
+    def test_floor_glyphs_in_legend(self):
+        """When walkable-ground or cave-floor tiles appear, the legend documents them."""
+        from renegade_mcp.map_state import render_map
+        terrain = [[0x0100, 0x0008]]  # one ground tile, one cave-floor tile
+        out = render_map(terrain, objects=[], player_local_x=-1, player_local_y=-1, facing=0)
+        legend = next((ln for ln in out.splitlines() if ln.startswith("Key:")), None)
+        assert legend is not None, f"legend missing: {out!r}"
+        assert "_=ground" in legend, legend
+        assert "·=cave_floor" in legend, legend
+
+    def test_cave_floor_and_void_are_visually_distinct(self):
+        """A row of [void, floor, void] produces three different-looking chars."""
+        from renegade_mcp.map_state import render_map
+        terrain = [[0x0000, 0x0008, 0x0000]]
+        out = render_map(terrain, objects=[], player_local_x=-1, player_local_y=-1, facing=0)
+        first_line = out.splitlines()[0]
+        assert first_line == '.·.', first_line
+
+
+# ---------------------------------------------------------------------------
 # map_name
 # ---------------------------------------------------------------------------
 

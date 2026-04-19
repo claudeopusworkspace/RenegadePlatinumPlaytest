@@ -952,8 +952,9 @@ def render_map(
 ) -> str:
     """Render a compact 1-char-per-tile ASCII map.
 
-    Symbols: ^v<> player, A-Za-z NPCs, # wall, _ walkable, . void,
-    ≈ water, " grass, 0-9 elevation, /\\ ramps, ][ directional blocks.
+    Symbols: ^v<> player, A-Za-z NPCs, # wall, _ walkable floor,
+    · cave floor, . void (outside map), ≈ water, " grass,
+    0-9 elevation, /\\ ramps, ][ directional blocks.
     Hex behaviors mapped to single chars with a key when present.
 
     The terrain grid IS the viewport — render it all, no cropping needed.
@@ -962,7 +963,9 @@ def render_map(
     """
     # 1-char behavior symbols for common hex behaviors
     _BEHAVIOR_CHAR: dict[int, str] = {
+        0x00: '_',  # walkable ground
         0x02: '"', 0x03: '"',  # grass
+        0x08: '·',  # cave / dungeon floor (distinct from '.' void)
         0x10: '≈', 0x13: '≈', 0x15: '≈',  # water
         0x20: '=', 0x21: ',',  # ice, sand
         0x30: ']', 0x31: '[',  # directional blocks
@@ -1051,10 +1054,6 @@ def render_map(
                 ch = str(level_map[key][0])
             elif val == 0:
                 ch = '.'
-            elif behavior == 0x00:
-                ch = '_'
-            elif behavior == 0x08:
-                ch = ' '
             elif behavior in _BEHAVIOR_CHAR:
                 ch = _BEHAVIOR_CHAR[behavior]
                 behaviors_seen[behavior] = "passable"
