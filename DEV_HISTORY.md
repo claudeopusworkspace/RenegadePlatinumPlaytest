@@ -2,6 +2,95 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: QA BUG-014 / BUG-015 / BUG-016 — battle-UI slot indirection + level-up summary artifacts (2026-04-19 session 12)
+
+### Summary
+Three related issues surfaced by QA session 12 on Route 216 vs Ace
+Trainer Blake. All three revolve around the Gen 4 battle engine's
+`partyOrder[4][6]` indirection table — the engine does *not* physically
+reorder party-block entries when you switch, it updates this UI→persistent
+slot map at `0x022C5B60`.
+
+### BUG-014: `use_battle_item(party_slot=N)` misroutes after a switch
+**Root cause.** `use_battle_item` tapped `PARTY_TOUCH_XY[party_slot]`
+directly, treating the caller's `party_slot` as a UI position. After
+switching Vaporeon (persistent slot 1) in, partyOrder became `[1, 0, …]`;
+tapping UI pos 1 hit the now-benched Monferno instead. Pre-switch the
+identity map hid the bug.
+
+**Fix** (`renegade_mcp/use_battle_item.py`).
+- `_read_party_order(emu)` + `_persistent_to_ui_pos(slot, ui_order)` —
+  translate persistent slot → current UI position before tapping.
+- `is_active_target` flips on UI pos 0 (singles active); drives HP
+  verification path + the `role` label in the response.
+- Active-battler HP verified via BattleMon (live). Bench HP is marked
+  "unverifiable" — the party block isn't updated in real time during
+  battle (see BUG-015), so a before/after diff is unreliable.
+- Response carries `role: "active"|"bench"` so callers don't have to
+  infer target state from the formatted string.
+
+### BUG-015: `read_party` opaque to in-battle UI order
+**Root cause.** Same partyOrder indirection — `read_party` reads the
+persistent party block and has no signal that UI position ≠ persistent
+slot during battle. Active battler HP is also stale because mid-battle
+HP lives in the BattleMon struct, not the party block.
+
+**Fix** (`renegade_mcp/party.py`).
+- `_read_battle_context(emu)` snapshots partyOrder + live BattleMon when
+  battleEndFlag=0.
+- Each party entry gains `battle_ui_slot` (UI grid position) and
+  `battle_role` (`"active"` / `"bench"`).
+- Active battler's `hp` / `max_hp` / `status_conditions` are overridden
+  from the BattleMon. Persistent `slot` is unchanged — stable callers
+  keep working.
+- `format_party` surfaces `[UI N · role]` tags + in-battle header.
+
+### BUG-016: Level-up summary UI labels leak into battle log
+**Root cause.** During a mid-battle level-up the party panel writes its
+summary labels to the text scan region alongside the narration:
+- ROM file 368 index 944: `{NAME}{COLOR_ON}@{COLOR_OFF}\nLv. {LEVEL}`
+  — the "@" is a literal sprite glyph; the decoder strips the color
+  VAR blocks and leaves `"Mothim@\nLv. 23"`.
+- ROM file 368 index 947: a bare stat-name VAR that drives the
+  "stat rose by N!" graphic — only the stat-name token leaks through
+  (`"Sp. Def"`, `"Attack"`, etc.).
+The real "grew to Lv. N!" and "<stat> rose!" lines are separate scan
+entries (templates 3 and 750–755 respectively) and render cleanly.
+
+**Fix** (`renegade_mcp/battle_tracker.py`).
+- New `_is_level_summary_artifact()` filter — regex for `<name>[@*]?\nLv. <num>`
+  capped at 10 chars (Gen 4 nickname max) to avoid swallowing narration
+  like `"Monferno grew to\nLv. 30!"` + a whitelist of standalone stat
+  labels. Wired into both `BattleTracker.poll` and
+  `turn._wait_for_action_prompt` alongside BUG-011's orphan-name filter.
+
+### Tests (17 new)
+- `TestQaBug014UseItemPartySlotAfterSwitch` in
+  `tests/test_use_battle_item.py` — 3 unit (identity map, post-switch
+  swap, missing-slot guard) + 2 integration (post-switch Super Potion
+  heals active Vaporeon; identity-map slot 0 still targets active as
+  before) + persistent→UI translation edge case.
+- `TestQaBug015ReadPartyBattleEnrichment` in `tests/test_party_tools.py`
+  — 4 tests: overworld has no battle fields, UI slot/role tagging after
+  a switch, active HP matches BattleMon (not party block), formatted
+  output shows `[UI N · role]` tags.
+- `test_bug016_*` under `TestQaBug011OrphanNameFilter` in
+  `tests/test_battle_tracker.py` — 6 tests: `@`/`*`/no-marker label
+  patterns filtered, every standalone stat-name filtered, real
+  level-up narration not filtered, empty text edge case.
+
+### Imported save states
+- `saves/qa_session12.sav` (copied from `/workspace/RenegadePlatinumQA/
+  RenegadePlatinum.sav`, `chmod 444`).
+- `savestates/qa_session12_route216_entry.mst` — Route 216 (375,403),
+  Blake reachable at object_index=1, Monferno asleep slot 0, Vaporeon
+  slot 1, Mothim slot 2 (Toxic, 30/67), Shinx slot 3.
+- `savestates/qa_session12_route216_post_blake.mst` — post-fight state
+  for future BUG-016 re-triggering if a live level-up integration test
+  is ever added.
+
+---
+
 ## Dev Session: QA BUG-013 — short-player-name decoy (2026-04-19)
 
 ### Summary
