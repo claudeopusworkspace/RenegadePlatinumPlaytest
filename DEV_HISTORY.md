@@ -2736,3 +2736,108 @@ Walked the hot-path with an exploration agent to enumerate every `advance_frames
 
 ### Commit
 - `3bb23d4` perf(turn): reduce frame waste in switch/faint/blackout flows
+
+
+---
+
+## Session: 2026-04-19 — Trainer-spot + faint-switch frame optimization
+
+### Context
+Continuing the 2026-04-18 frame-optimization thread. Woj flagged two more
+visually stalling flows: (1) trainer spots the player via navigate /
+navigate_to → ~50s idle pause before the first action prompt, and
+(2) active Pokemon faints and `battle_turn(switch_to=N)` sits on the party
+grid for ~45s. Both turned out to be polling loops waiting for signals
+that the game had already moved past — "look where no one's home" bugs.
+
+### Approach
+For each: write a frame-budget regression test first (failing), run it
+with `--benchmark` to pin the offending phase, fix at the identified
+site, re-run to confirm, full suite for regressions.
+
+### Bug 1 — Trainer-spot dialogue hang (~50s)
+- **Repro**: `route211_west_pre_trainer` → `navigate_manual("l")` →
+  `battle_turn` → 5654 frames / 94s.
+- **Bisected** (phase markers added to navigation.py + nav_events.py +
+  dialogue.py):
+  - `nav_post_check` = 3797 frames.
+  - `npc_advance_dialogue` = 3632 frames — 96% of nav's time.
+  - `ad_wait_msgbox_or_end` = 3446 frames over 11 calls — the final call
+    burned the full MAX_ANIM_POLLS × ANIM_POLL = 3000f / 50s timeout.
+- **Root cause**: once the pre-battle dialogue hands off to the battle
+  engine, `_wait_for_msgbox_or_script_end`'s three exit conditions
+  (script magic gone, overworld msgBox re-open, overworld TextPrinter
+  active) all stay false — battle text runs through its own buffer and
+  the overworld ScriptManager magic persists. The function just times
+  out before advance_dialogue can see the battle is live and return.
+- **Fix** (`dialogue.py`): two-read fast-path at helper entry — if
+  `BATTLE_END_FLAG_ADDR == 0` AND `BATTLE_BASE` species is nonzero,
+  battle engine has taken over; return `"completed"` immediately. Both
+  conditions together avoid false-positives on brand-new saves (flag
+  untouched at 0) and on stale battler data from prior battles (species
+  left over in RAM).
+- **Savings**: `npc_advance_dialogue` 3632 → 631 (−50s); total flow
+  5654 → ~2650 (−50s).
+- **Commit**: `9fa8c4f` perf(dialogue): skip 50s animation wait once
+  battle engine takes over.
+
+### Bug 2 — Faint-switch action-prompt hang (~45s)
+- **Repro**: `bug_qa_auto_grind_faint_switch_stuck` →
+  `battle_turn(switch_to=1)` → 2678 frames / 44.6s.
+- **Bisected**: `bt_wait_action_prompt` = 1800 frames, exactly
+  `ACTION_PROMPT_MAX_POLLS × POLL_FRAMES = 120 × 15`, i.e. the full
+  polling timeout.
+- **Root cause**: the initial `_wait_for_action_prompt` call at the top
+  of `battle_turn` scans the text buffer for a "What will X do?" marker
+  that is never emitted at the FAINT party grid. The function has a
+  fallback at the bottom that correctly classifies FAINT_SWITCH /
+  FAINT_FORCED — but only after the full 30s timeout.
+- **Fix** (`turn.py`): fast-path at entry — if `_any_player_fainted(emu)`
+  AND no WAIT_FOR_ACTION marker is already visible, classify via
+  `_classify_faint_type` immediately. The marker pre-scan is required
+  to avoid a doubles regression: slot 2 can be fainted while slot 0
+  still has a live ACTION prompt (caught by
+  `test_battle_turn_resolves_target_pick_with_scratch`).
+- **Savings**: `bt_wait_action_prompt` 1800 → 0 (−30s); total flow
+  2678 → 1268 (−23s wall, -30s game time).
+- **Commit**: `b8ed3c7` perf(turn): fast-path faint classification to
+  skip 30s action-prompt poll.
+
+### Observability
+Added phase markers (zero cost when PhaseTimer is inactive):
+- `nav_execute_path`, `nav_post_check` — `navigation.py::navigate_manual`.
+- `npc_read_battle`, `npc_read_dialogue`, `npc_script_state`,
+  `npc_poll_advance`, `npc_advance_dialogue`, `npc_wait_action_prompt`
+  — `nav_events.py::_post_nav_check`.
+- `ad_wait_msgbox_or_end`, `ad_ctx_running_wait` —
+  `dialogue.py::advance_dialogue`.
+
+These let future benchmark runs break nav + dialogue time into sub-phases
+the same way `bt_*` already does for `battle_turn`.
+
+### New Tests
+- `tests/test_battle_trainer_spot.py` — 3600-frame (60s) regression guard
+  for spotted-trainer intros on `route211_west_pre_trainer`.
+- `tests/test_battle_faint_switch_budget.py` — 2400-frame (40s) regression
+  guard for faint → switch flows on `bug_qa_auto_grind_faint_switch_stuck`.
+
+### Verification
+- Full suite: **375/375 passing in 720.76s** (12:00). +1 test vs.
+  previous baseline (374 → 375).
+- Target tests: two new, both initially failing at baseline, both
+  passing after fixes.
+
+### Files Changed
+- `renegade_mcp/dialogue.py` — fast-path in
+  `_wait_for_msgbox_or_script_end` + phase markers.
+- `renegade_mcp/turn.py` — fast-path in `_wait_for_action_prompt`.
+- `renegade_mcp/navigation.py` — phase markers.
+- `renegade_mcp/nav_events.py` — phase markers.
+- `tests/test_battle_trainer_spot.py` — new.
+- `tests/test_battle_faint_switch_budget.py` — new.
+
+### Commits
+- `9fa8c4f` perf(dialogue): skip 50s animation wait once battle engine
+  takes over
+- `b8ed3c7` perf(turn): fast-path faint classification to skip 30s
+  action-prompt poll
