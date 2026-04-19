@@ -81,6 +81,32 @@ def _press(emu: EmulatorClient, buttons: list[str], wait: int = TAP_WAIT) -> Non
     emu.advance_frames(wait)
 
 
+def _read_party_order(emu: EmulatorClient) -> list[int]:
+    """Read BattleContext.partyOrder[0] — UI position → persistent party slot map.
+
+    The Gen 4 engine doesn't physically reorder the party block during a
+    battle switch; instead it updates this indirection table so the battle
+    UI (party grid, switch/item target screens) can display the post-switch
+    layout. Returns a 6-element list where index is UI position and value
+    is the persistent party slot of the Pokemon shown there.
+    """
+    from renegade_mcp.addresses import addr
+    return list(emu.read_memory_range(addr("PARTY_ORDER_ADDR"), size="byte", count=6))
+
+
+def _persistent_to_ui_pos(party_slot: int, ui_order: list[int]) -> int:
+    """Translate a persistent party slot to its battle-grid UI position.
+
+    Returns -1 when the slot isn't currently in the party (should not happen
+    for a sane caller with a 6-slot partyOrder, but guards against corrupted
+    reads mid-animation).
+    """
+    try:
+        return ui_order.index(party_slot)
+    except ValueError:
+        return -1
+
+
 def use_battle_item(
     emu: EmulatorClient,
     item_name: str,
@@ -92,7 +118,11 @@ def use_battle_item(
     Args:
         emu: Emulator client.
         item_name: Item name (case-insensitive).
-        party_slot: For healing items (battleUseFunc=2): party member to target (0-5).
+        party_slot: For healing items (battleUseFunc=2): persistent party slot
+            to target (0-5, matching read_party order). After a mid-battle
+            switch, the active battler's persistent slot is the one that
+            Pokemon had at battle start, NOT UI position 0 — this tool reads
+            BattleContext.partyOrder to translate persistent → UI position.
         target: For X items in doubles: 0=first active, 1=second active. Ignored in singles.
 
     Returns dict with success, item, final_state, and formatted message.
@@ -127,21 +157,40 @@ def use_battle_item(
     if party_slot > 5:
         return _error(f"party_slot must be 0-5, got {party_slot}")
 
-    # Snapshot battle HP before item use (for healing verification)
-    # NOTE: read_party reads the save block which is NOT updated during battle.
-    # read_battle reads the live BattleMon structs (active battlers only).
+    # Resolve target UI position + active/bench classification for healing items
+    ui_order: list[int] = []
+    target_ui_pos = -1
+    is_active_target = False
+    if battle_use == 2:
+        ui_order = _read_party_order(emu)
+        target_ui_pos = _persistent_to_ui_pos(party_slot, ui_order)
+        if target_ui_pos < 0:
+            return _error(
+                f"party_slot {party_slot} is not in the current partyOrder "
+                f"{ui_order} — party block and battle context disagree."
+            )
+        # In singles, UI pos 0 is the sole active battler. Doubles additionally
+        # has a player-side partner — which UI position hosts the partner is
+        # battler-view-dependent, so we only guarantee the singles active check
+        # here. (Bench verification via read_party stays correct for doubles.)
+        is_active_target = (target_ui_pos == 0)
+
+    # Snapshot battle HP before item use (for healing verification).
+    # Active battler: live HP comes from the BattleMon struct (read_battle).
+    # Bench: the party block isn't refreshed in real time during battle
+    # (QA BUG-015), so a before/after diff is unreliable — we mark the
+    # result "HP unverifiable" and trust the UI tap. Callers that need
+    # confirmation can re-read the party block after the battle ends.
     old_hp = -1
     old_max_hp = -1
-    if battle_use == 2 and party_slot >= 0:
+    if battle_use == 2 and is_active_target:
         from renegade_mcp.battle import read_battle
         battlers = read_battle(emu)
         for b in battlers:
-            if b.get("side") == "player" and b.get("slot") == party_slot:
+            if b.get("side") == "player" and b.get("slot") == 0:
                 old_hp = b.get("hp", -1)
                 old_max_hp = b.get("max_hp", -1)
                 break
-        # For non-active party members, old_hp stays -1 — HP verification
-        # is skipped (read_battle only contains active battlers)
 
     # ── Step 1: Tap BAG on action screen ──
     _tap(emu, BAG_XY[0], BAG_XY[1])
@@ -168,10 +217,10 @@ def use_battle_item(
 
     # ── Step 6: Handle targeting ──
     if battle_use == 2:
-        # Healing item — party selection screen appears
-        # Wait a bit for the screen transition
+        # Healing item — party selection screen appears. Tap by UI position
+        # (resolved from persistent party_slot via partyOrder above).
         emu.advance_frames(TAP_WAIT)
-        tx, ty = PARTY_TOUCH_XY[party_slot]
+        tx, ty = PARTY_TOUCH_XY[target_ui_pos]
         _tap(emu, tx, ty)
 
     elif battle_use == 0:
@@ -240,58 +289,66 @@ def use_battle_item(
     # final state (X items / escape items).
 
     if battle_use == 2 and party_slot >= 0:
-        from renegade_mcp.battle import read_battle
-        battlers_after = read_battle(emu)
+        # Resolve target name for the response. Active battler: read_battle has
+        # species/nickname. Bench: read_party for the name (HP is *not*
+        # re-read — see the pre-item comment; the party block is stale
+        # mid-battle for switched-out mons).
         target_name = f"Slot {party_slot}"
-        # Find the battler matching party_slot (only works for active battlers)
-        for b in battlers_after:
-            if b.get("side") == "player" and b.get("slot") == party_slot:
-                target_name = b.get("nickname") or b.get("species", target_name)
-                break
-
-        if old_hp >= 0:
-            # Active battler — verify HP changed via battle data
-            new_hp = -1
+        new_hp = -1
+        if is_active_target:
+            from renegade_mcp.battle import read_battle
+            battlers_after = read_battle(emu)
             for b in battlers_after:
-                if b.get("side") == "player" and b.get("slot") == party_slot:
+                if b.get("side") == "player" and b.get("slot") == 0:
+                    target_name = b.get("nickname") or b.get("species", target_name)
                     new_hp = b.get("hp", -1)
                     break
-            if new_hp >= 0:
-                hp_changed = new_hp != old_hp
-                if hp_changed:
-                    msg = (
-                        f"Used {item_name} on {target_name}. "
-                        f"HP: {old_hp} -> {new_hp}/{old_max_hp}. State: {final_state}."
-                    )
-                    return {
-                        "success": True,
-                        "item": item_name,
-                        "target": target_name,
-                        "party_slot": party_slot,
-                        "old_hp": old_hp,
-                        "new_hp": new_hp,
-                        "final_state": final_state,
-                        "formatted": msg,
-                    }
-                else:
-                    msg = (
-                        f"Item use may have failed — {target_name} HP unchanged "
-                        f"({old_hp}/{old_max_hp}). The item may have had no effect "
-                        f"or the UI navigation missed. State: {final_state}."
-                    )
-                    return {
-                        "success": False,
-                        "item": item_name,
-                        "target": target_name,
-                        "party_slot": party_slot,
-                        "hp": old_hp,
-                        "final_state": final_state,
-                        "formatted": msg,
-                    }
+        else:
+            from renegade_mcp.party import read_party
+            for p in read_party(emu):
+                if p.get("slot") == party_slot:
+                    target_name = p.get("name", target_name)
+                    break
 
-        # Bench Pokemon — can't verify HP from battle data, trust the UI tap
+        role_label = "active" if is_active_target else "bench"
+        if old_hp >= 0 and new_hp >= 0:
+            hp_changed = new_hp != old_hp
+            if hp_changed:
+                msg = (
+                    f"Used {item_name} on {target_name} ({role_label}). "
+                    f"HP: {old_hp} -> {new_hp}/{old_max_hp}. State: {final_state}."
+                )
+                return {
+                    "success": True,
+                    "item": item_name,
+                    "target": target_name,
+                    "party_slot": party_slot,
+                    "role": role_label,
+                    "old_hp": old_hp,
+                    "new_hp": new_hp,
+                    "final_state": final_state,
+                    "formatted": msg,
+                }
+            else:
+                msg = (
+                    f"Item use may have failed — {target_name} ({role_label}) HP unchanged "
+                    f"({old_hp}/{old_max_hp}). The item may have had no effect "
+                    f"or the UI navigation missed. State: {final_state}."
+                )
+                return {
+                    "success": False,
+                    "item": item_name,
+                    "target": target_name,
+                    "party_slot": party_slot,
+                    "role": role_label,
+                    "hp": old_hp,
+                    "final_state": final_state,
+                    "formatted": msg,
+                }
+
+        # HP couldn't be snapshotted on at least one side — trust the UI tap.
         msg = (
-            f"Used {item_name} on {target_name} (bench — HP unverifiable). "
+            f"Used {item_name} on {target_name} ({role_label} — HP unverifiable). "
             f"State: {final_state}."
         )
         return {
@@ -299,6 +356,7 @@ def use_battle_item(
             "item": item_name,
             "target": target_name,
             "party_slot": party_slot,
+            "role": role_label,
             "final_state": final_state,
             "formatted": msg,
         }

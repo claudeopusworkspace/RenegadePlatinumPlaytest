@@ -276,3 +276,116 @@ class TestBug009BattleItemTarget:
         assert result["final_state"] == "WAIT_FOR_ACTION", (
             f"Expected WAIT_FOR_ACTION, got {result['final_state']}"
         )
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-014 — party_slot resolution after an in-battle switch
+# ---------------------------------------------------------------------------
+# Pre-fix: use_battle_item tapped PARTY_TOUCH_XY[party_slot] directly, so
+# party_slot was treated as a UI position. After switching Vaporeon (party
+# slot 1) in, partyOrder = [1,0,…] → UI pos 1 becomes the benched Monferno,
+# and use_battle_item(party_slot=1) healed Monferno instead of Vaporeon.
+# Fix: read BattleContext.partyOrder and translate persistent party slot →
+# UI position before tapping.
+#
+# Save state `qa_session12_route216_entry` — Route 216 just outside the
+# Mt. Coronet exit, Ace Trainer Blake at (355,402). Walking west and
+# interacting with the trainer starts the Porygon battle used in the QA
+# repro.
+
+class TestQaBug014UseItemPartySlotAfterSwitch:
+    """party_slot is interpreted as a persistent party slot (read_party
+    order), not UI position — survives mid-battle switches."""
+
+    def test_persistent_to_ui_pos_identity_pre_switch(self):
+        """Pre-switch partyOrder is [0,1,2,3,4,5] — persistent == UI."""
+        from renegade_mcp.use_battle_item import _persistent_to_ui_pos
+        ident = [0, 1, 2, 3, 4, 5]
+        for slot in range(6):
+            assert _persistent_to_ui_pos(slot, ident) == slot
+
+    def test_persistent_to_ui_pos_post_switch_swap(self):
+        """After switching persistent slot 1 in, partyOrder = [1,0,…].
+        The tool must translate persistent slot 1 → UI pos 0, and
+        persistent slot 0 → UI pos 1."""
+        from renegade_mcp.use_battle_item import _persistent_to_ui_pos
+        swapped = [1, 0, 2, 3, 4, 5]
+        assert _persistent_to_ui_pos(1, swapped) == 0  # Vaporeon (was slot 1) now at UI 0
+        assert _persistent_to_ui_pos(0, swapped) == 1  # Monferno (was slot 0) now at UI 1
+        assert _persistent_to_ui_pos(2, swapped) == 2  # untouched
+
+    def test_persistent_to_ui_pos_missing_slot_returns_negative(self):
+        from renegade_mcp.use_battle_item import _persistent_to_ui_pos
+        # party_slot outside the current partyOrder (e.g. party has 4 mons;
+        # slots 4/5 occupy placeholder indices still readable, but any
+        # value not present should return -1).
+        partyOrder = [0, 1, 2, 3, 4, 5]
+        assert _persistent_to_ui_pos(7, partyOrder) == -1
+
+    def test_post_switch_super_potion_heals_active_battler(
+        self, emu: EmulatorClient
+    ):
+        """Full integration for BUG-014: enter Blake's battle with Monferno
+        active (persistent slot 0), switch in Vaporeon (persistent slot 1),
+        and use a Super Potion on party_slot=1. Vaporeon must end up
+        healed — not Monferno, the bench Pokemon at post-switch UI pos 1."""
+        load_state(emu, "qa_session12_route216_entry")
+        from renegade_mcp.interaction import interact_with
+        from renegade_mcp.turn import battle_turn
+        from renegade_mcp.use_battle_item import use_battle_item
+        from renegade_mcp.battle import read_battle
+
+        # Walk to Blake and start the fight.
+        enc = interact_with(emu, object_index=1)
+        assert enc.get("encounter", {}).get("encounter") == "battle", (
+            f"Expected Blake to trigger a battle, got: {enc!r}"
+        )
+
+        # Switch to Vaporeon (persistent slot 1) so the party swap is in
+        # effect. This makes partyOrder = [1,0,2,3] — the case that used
+        # to misroute the heal.
+        switch_result = battle_turn(emu, switch_to=1)
+        assert switch_result["final_state"] == "WAIT_FOR_ACTION"
+        battlers = read_battle(emu)
+        active = next((b for b in battlers if b.get("side") == "player"
+                       and b.get("slot") == 0), None)
+        assert active is not None, "No player-active battler after switch"
+        assert active["species"] == "Vaporeon", (
+            f"Expected Vaporeon active post-switch, got {active['species']!r}"
+        )
+        vaporeon_hp_pre = active["hp"]
+
+        # Use a Super Potion on persistent slot 1 — should heal the
+        # now-active Vaporeon. Before the BUG-014 fix this silently healed
+        # the benched Monferno (UI pos 1) instead.
+        result = use_battle_item(emu, "Super Potion", party_slot=1)
+        assert result.get("success") is True, f"Failed: {result!r}"
+        assert result.get("party_slot") == 1
+        # The resolved target name must be Vaporeon's nickname/species,
+        # not Monferno (the pre-fix misroute).
+        target = result.get("target", "")
+        assert "Monferno" not in target, (
+            f"BUG-014 regression: heal routed to Monferno (bench) — "
+            f"target reported as {target!r}."
+        )
+        assert result.get("role") == "active", (
+            f"party_slot=1 is the active battler post-switch; got role="
+            f"{result.get('role')!r}."
+        )
+        # old_hp captured pre-item must match the pre-switch active HP.
+        assert result.get("old_hp") == vaporeon_hp_pre, (
+            f"old_hp mismatch — expected {vaporeon_hp_pre}, got "
+            f"{result.get('old_hp')}"
+        )
+
+    def test_pre_switch_slot_0_still_targets_active(self, emu: EmulatorClient):
+        """Regression sanity: when partyOrder is the identity map, passing
+        party_slot=0 still targets the active battler (no change from the
+        pre-fix behavior for the simple case)."""
+        load_state(emu, STATE_DAMAGED)
+        from renegade_mcp.use_battle_item import use_battle_item
+        result = use_battle_item(emu, "Potion", party_slot=0)
+        assert result.get("role") == "active", (
+            f"Expected active for slot 0 with identity partyOrder, got "
+            f"role={result.get('role')!r}"
+        )
