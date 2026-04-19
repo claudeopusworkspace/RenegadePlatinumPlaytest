@@ -1498,14 +1498,26 @@ def _enrich_switch_result(result: dict[str, Any], emu: EmulatorClient) -> None:
 def _get_move_learn_info(emu: EmulatorClient) -> tuple[int, int] | None:
     """Identify which party slot is learning a move and which move.
 
-    Reads BattleContext.taskData pointer → tmpData to get the move ID and
-    the lower-bound party search index.  Combines with levelUpMons bitmask
-    to find the exact party slot currently in the move-learn flow.
+    Reads BattleContext.taskData pointer → tmpData to get the move ID being
+    learned and the EXP task's lower-bound scan index.
+
+    levelUpMons is a cumulative |= bitmask for the whole battle (decomp:
+    battle_script.c line 10090, never cleared after a level-up). When an
+    earlier party member leveled up in the same battle, its bit stays set
+    even after it's been processed — so "lowest set bit >= slot_lower"
+    incorrectly points to the earlier mon (BUG-018 repro: Monferno leveled
+    to 31 early, Mothim fainted it, Mothim later hit Lv29 → Poison Powder
+    prompt, both bits 0 and 2 set, scan returned 0).
+
+    Fix: cross-reference each candidate slot's species learnset — only the
+    mon whose learnset has (current_level, move_id) is actually in the
+    move-learn flow. Fall back to the scan heuristic if no learnset match.
 
     Returns (party_slot, move_id) or None if the EXP task isn't active.
     """
     # Read taskData pointer (non-null when EXP distribution task is active)
     from renegade_mcp.addresses import addr
+    from renegade_mcp.data import level_up_moves
     task_ptr = emu.read_memory(addr("TASK_DATA_PTR_ADDR"), size="long")
     if not task_ptr:
         return None
@@ -1523,12 +1535,44 @@ def _get_move_learn_info(emu: EmulatorClient) -> tuple[int, int] | None:
     if not (1 <= move_id <= 467 and 0 <= slot_lower <= 5):
         return None
 
-    # Find the lowest set bit >= slot_lower — that's the current mon
+    # Learnset cross-reference: pick the slot whose species learns *this*
+    # move at its *current* level. This disambiguates stale bits that
+    # accumulated from earlier level-ups in the same battle.
+    party = read_party(emu)
+    party_by_slot = {p["slot"]: p for p in party}
+    learnset_matches: list[int] = []
+    for i in range(6):
+        if not (level_up_mask & (1 << i)):
+            continue
+        mon = party_by_slot.get(i)
+        if mon is None:
+            continue
+        pairs = level_up_moves(mon["species_id"])
+        if any(lv == mon["level"] and mid == move_id for lv, mid in pairs):
+            learnset_matches.append(i)
+
+    if len(learnset_matches) == 1:
+        return (learnset_matches[0], move_id)
+    if len(learnset_matches) > 1:
+        # Multiple species happen to learn the same move at the same level.
+        # Prefer the first match at/after the scan index — that's the slot
+        # the EXP task loop is currently visiting.
+        for i in learnset_matches:
+            if i >= slot_lower:
+                return (i, move_id)
+        return (learnset_matches[0], move_id)
+
+    # No learnset match (unknown species, ROM data gap, custom movepool).
+    # Fall back to the scan heuristic: lowest set bit >= slot_lower.
     for i in range(slot_lower, 6):
         if level_up_mask & (1 << i):
             return (i, move_id)
 
-    # Fallback: if bitmask doesn't match (shouldn't happen), use slot_lower
+    # Final fallback: scan from 0 (stale slot_lower).
+    for i in range(6):
+        if level_up_mask & (1 << i):
+            return (i, move_id)
+
     return (slot_lower, move_id)
 
 

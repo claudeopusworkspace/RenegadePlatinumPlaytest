@@ -73,11 +73,15 @@ class TestDynamicBlockTracking:
     """_execute_path tracks dynamically blocked tiles for repathing."""
 
     def test_clock_hand_dynamic_blocks(self, emu: EmulatorClient):
-        """Navigate through rotated clock puzzle discovers blocked tiles.
+        """Navigate from the west-side L1 floor through the clock gym to the exit.
 
-        Bug: 3D BFS planned a path through disconnected L2 clock tiles.
-        Player got stuck, repaths found the same bad tiles repeatedly.
-        Fix: blocked tiles are tracked and excluded from subsequent repaths.
+        Originally motivated by the "3D BFS plans through disconnected L2 clock
+        tiles, stuck on repeat" bug — the dynamic_blocks repath loop exists as
+        a last-resort safety net. After the BUG-017 fix, the 3D BFS can now
+        cross small-step L0↔L1 transitions directly, so a clean L1-perimeter
+        path is usually found on the first try (0 repaths). This test keeps
+        the progress assertion (player exits the clock area toward the warp)
+        so the repath safety net is still exercised if it's ever needed.
         """
         load_state(emu, "bug_navigate_to_clock_hand_passability")
         from renegade_mcp.navigation import navigate_to
@@ -88,13 +92,9 @@ class TestDynamicBlockTracking:
         assert state["map_id"] == 67
         assert state["px"] == 2 and state["py"] == 8
 
-        # Navigate to exit — should use repaths to discover blocked tiles
-        # and eventually route around the clock area
+        # Navigate to exit
         result = navigate_to(emu, 11, 27, flee_encounters=True)
-
-        # Should have repaths > 0 (dynamic blocks discovered)
-        repaths = result.get("repaths", 0)
-        assert repaths > 0, "Expected repaths from dynamic block discovery"
+        assert "error" not in result, f"Unexpected error: {result.get('error')}"
 
         # Player should have moved significantly past the clock area
         final = result.get("final", {})

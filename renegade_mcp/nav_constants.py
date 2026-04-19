@@ -138,6 +138,14 @@ DIRECTIONAL_BLOCKS: dict[int, str] = {
 _3D_MAX_DEPTH = 5       # max ramp transitions in a single path search
 _3D_TIMEOUT = 300       # wall-clock seconds before aborting 3D search
 
+# Height units: 16 = one full tile height. Small dips (L0 grass/puddles in
+# Eterna Gym, cracked/sunken floor tiles in gyms) sit a few units below the
+# walking plane and are crossed in-game without a ramp animation. Treat two
+# levels whose heights differ by at most this many units as walkable from
+# each other without a dedicated ramp — otherwise the 3D BFS refuses to
+# cross a 2-unit dip like the L0 strip at row 20 of Eterna Gym (map 67).
+STEPPABLE_HEIGHT = 4
+
 # ── Door transition polling ──
 DOOR_TRANSITION_POLLS = 30   # polls to wait for map transition (30 * 15 = 450 frames)
 DOOR_POLL_FRAMES = 15

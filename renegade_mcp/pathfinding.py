@@ -23,6 +23,7 @@ from renegade_mcp.nav_constants import (
     HM_OBSTACLES,
     LEDGE_DIRECTIONS,
     PUZZLE_OBSTACLES,
+    STEPPABLE_HEIGHT,
     TERRAIN_OBSTACLE_INFO,
     TERRAIN_OBSTACLES,
     WARP_PASSABLE,
@@ -451,14 +452,30 @@ def _bfs_pathfind_level(
 
     level_map = elevation["level_map"]
     ramp_tiles = elevation["ramp_tiles"]
+    height_by_level = {lv["level"]: lv["height"] for lv in elevation["levels"]}
+    current_height = height_by_level.get(current_level)
+
+    def _steppable(other_level: int) -> bool:
+        if current_height is None:
+            return False
+        oh = height_by_level.get(other_level)
+        if oh is None:
+            return False
+        return abs(oh - current_height) <= STEPPABLE_HEIGHT
 
     def _tile_on_level(tx: int, ty: int, level: int) -> bool:
         key = (tx, ty)
         if key in ramp_tiles:
             ri = ramp_tiles[key]
-            return level in (ri["from_level"], ri["to_level"])
+            if level in (ri["from_level"], ri["to_level"]):
+                return True
+            # Ramp endpoints out of reach normally, but accept when either end
+            # is a small step (shallow L0 dip, sunken floor) from `level`.
+            return _steppable(ri["from_level"]) or _steppable(ri["to_level"])
         if key in level_map:
-            return level in level_map[key]
+            if level in level_map[key]:
+                return True
+            return any(_steppable(lv) for lv in level_map[key])
         # No elevation data → accessible on any level
         return True
 

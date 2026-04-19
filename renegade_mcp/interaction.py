@@ -167,9 +167,15 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
     Coordinate mode (x, y): targets a specific tile directly (for PCs, bookshelves, etc.).
     """
     # Lazy imports to avoid circular dependencies
+    from renegade_mcp.map_state import (
+        analyze_elevation, get_land_data_id, parse_bdhc, read_player_height,
+    )
     from renegade_mcp.nav_events import _post_nav_check, _try_flee_encounter
     from renegade_mcp.navigation import navigate_to
-    from renegade_mcp.pathfinding import _bfs_pathfind, _build_multi_chunk_terrain, _build_terrain_info
+    from renegade_mcp.pathfinding import (
+        _bfs_pathfind, _bfs_pathfind_3d, _build_multi_chunk_elevation,
+        _build_multi_chunk_terrain, _build_terrain_info, _height_to_level,
+    )
 
     hold_frames = _get_move_hold(emu)
     has_object = object_index >= 0
@@ -252,6 +258,46 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
         width, height = 32, 32
         grid_ox, grid_oy = origin_x, origin_y
 
+    # ── Load elevation data so paths respect L2/L3 gym puzzles ──
+    elevation = None
+    player_level = None
+    if is_global and chunked:
+        elevation = _build_multi_chunk_elevation(
+            emu, map_id, terrain_info, grid_ox, grid_oy, width, height,
+        )
+        if elevation is not None:
+            player_level = _height_to_level(
+                read_player_height(emu), elevation,
+                tile_x=rel_px, tile_y=rel_py,
+            )
+    else:
+        land_id = get_land_data_id(emu, map_id, px, py)
+        if land_id is not None:
+            bdhc = parse_bdhc(land_id)
+            if bdhc is not None:
+                elevation = analyze_elevation(bdhc, state["terrain"])
+                if elevation is not None:
+                    player_level = _height_to_level(
+                        read_player_height(emu), elevation,
+                        tile_x=rel_px, tile_y=rel_py,
+                    )
+    use_3d = elevation is not None and player_level is not None
+
+    def _path_to(ax: int, ay: int) -> list[str] | None:
+        if use_3d:
+            p = _bfs_pathfind_3d(
+                terrain_info, npc_set, elevation,
+                rel_px, rel_py, ax, ay, player_level,
+                width=width, height=height,
+            )
+            if p is not None:
+                return p
+            # 3D BFS failed (disconnected level) — fall back to 2D
+        return _bfs_pathfind(
+            terrain_info, npc_set, rel_px, rel_py, ax, ay,
+            width=width, height=height,
+        )
+
     # ── Find shortest path to any adjacent tile ──
     candidates = []
     for dx, dy, face_dir in _ADJACENT_OFFSETS:
@@ -263,8 +309,7 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
             continue
         if (adj_x, adj_y) in npc_set:
             continue
-        path = _bfs_pathfind(terrain_info, npc_set, rel_px, rel_py,
-                             adj_x, adj_y, width=width, height=height)
+        path = _path_to(adj_x, adj_y)
         if path is not None:
             candidates.append((len(path), path, adj_x, adj_y, face_dir))
 
@@ -284,8 +329,7 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
             far_passable, _ = terrain_info[far_y][far_x]
             if not far_passable or (far_x, far_y) in npc_set:
                 continue
-            path = _bfs_pathfind(terrain_info, npc_set, rel_px, rel_py,
-                                 far_x, far_y, width=width, height=height)
+            path = _path_to(far_x, far_y)
             if path is not None:
                 candidates.append((len(path), path, far_x, far_y, face_dir))
 
@@ -320,6 +364,9 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
             "grid_ox": grid_ox,
             "grid_oy": grid_oy,
         }
+        if use_3d:
+            repath_ctx["elevation"] = elevation
+            repath_ctx["emu"] = emu
         stopped_early, steps_taken, repaths_used, nav_info = _execute_path(
             emu, best_path, repath_ctx=repath_ctx, hold_frames=hold_frames,
         )

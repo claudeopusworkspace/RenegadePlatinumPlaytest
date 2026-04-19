@@ -2,6 +2,112 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: QA BUG-017 / BUG-018 — Eterna Gym 3D pathfinding + MOVE_LEARN mis-attribution (2026-04-19 session 14)
+
+### BUG-017: `navigate_to` / `interact_with` fail to route around a blocked clock arm
+**Root cause.** Eterna Gym's BDHC defines an L0 strip (height = -2) at
+row 20 that separates the upper clock area (L1) from the south-warp
+perimeter (L1). In-game the 2-unit dip is just a grass step — the engine
+crosses it without a ramp animation — but `_bfs_pathfind_level`'s
+`_tile_on_level` only accepted tiles whose `level_map[tile]` listed the
+current level exactly, or ramp tiles whose endpoints matched. L0 has no
+ramp connector, so L1 BFS treated it as impassable and the only route
+between clock and warp was the south-arm L2 ramp at col 11. When that
+arm's fountain was active, the dynamic-block repath loop ran against
+the same bad tile 15× and gave up at `warp_failed, repaths: 15`. The
+"teleport to (15, 13)" the QA report described was an artifact of the
+path-string summary, not a real teleport — the player just never left
+the east arm.
+
+**Fix.**
+- `renegade_mcp/nav_constants.py` — new constant
+  `STEPPABLE_HEIGHT = 4`. Accepts the L0↔L1 small-step dip (diff 2)
+  while keeping L1↔L2 (diff 16) ramp-only. Scoped at 4 so a future map
+  with stacked half-tile heights doesn't accidentally collapse into a
+  single level group.
+- `renegade_mcp/pathfinding.py` — `_bfs_pathfind_level._tile_on_level`
+  now treats a neighbour as same-level if its defined elevation is
+  within `STEPPABLE_HEIGHT` of the BFS's current level height. Same
+  check is applied to ramp tiles so a small-step ramp doesn't get
+  rejected because neither endpoint equals the current level.
+- `renegade_mcp/interaction.py` — `interact_with` was 2D-only; loaded
+  BDHC (single-chunk or multi-chunk), cached `player_level`, and wired
+  `_bfs_pathfind_3d` into the `_path_to(adj_x, adj_y)` helper. Falls
+  back to 2D when elevation data isn't available. `repath_ctx` also
+  gets `elevation` + `emu` so `_try_repath` has the same info.
+
+**Tests (5 new in `tests/test_qa_bug017_clock_navigation.py`).**
+- Save-state sanity (map 67, player at (15, 13)).
+- `STEPPABLE_HEIGHT` bounds: covers L0/L1 diff, rejects L1/L2 diff.
+- L1 BFS from (4, 13) to (11, 27) crosses row 20 (explicit y-trace).
+- `navigate_to(11, 27)` from bug state exits to Eterna City (map 65).
+- `interact_with(object_index=4)` on the east Breeder succeeds
+  (adjacent reached, no stopped_early-without-dialogue).
+
+`tests/test_3d_nav_fallback.py::test_clock_hand_dynamic_blocks` updated
+to reflect the cleaner behaviour (3D BFS now plans the correct outer
+path directly instead of relying on the dynamic-block safety net).
+
+### BUG-018: Mid-battle `MOVE_LEARN` mis-attributes the learning mon
+**Root cause.** `_get_move_learn_info` matched "lowest set bit >=
+`tmpData[GET_EXP_PARTY_SLOT]`" in the `levelUpMons` bitmask. Two decomp
+facts make that wrong in multi-level-up battles:
+- `levelUpMons` is cumulative (`battle_script.c:10090`:
+  `levelUpMons |= FlagIndex(slot)`) with no paired clear. Every mon
+  that leveled up in the current battle has its bit set for the rest
+  of the battle, even after it finishes processing or faints.
+- `tmpData[GET_EXP_PARTY_SLOT]` is the **scan start index** for the
+  for-loop in `BattleScript_GetExpTask`, only advanced at
+  `SEQ_GET_EXP_CHECK_DONE` (line 10415, `slot + 1`) *after* a slot's
+  move-learns are handled. During a mid-processing prompt the index
+  still points at or below the current slot.
+
+So in the QA Gardenia repro, Monferno leveled 30 → 31 early and
+fainted; Mothim leveled 28 → 29 later and hit the Poison Powder
+prompt; `levelUpMons = 0b00000101`, `tmpData[6] = 0`; the old heuristic
+returned slot 0 (Monferno) instead of slot 2 (Mothim).
+
+**Fix** (`renegade_mcp/turn.py::_get_move_learn_info`). For each slot
+with a bit set, check the species' level-up learnset
+(`renegade_mcp/data.py::level_up_moves`) for `(current_level, move_id)`.
+Exactly one match → that's the learning mon. Monferno Lv31's learnset
+contains Slack Off, not Poison Powder, so it's filtered out; Mothim
+Lv29 matches Poison Powder and wins. If multiple matches exist
+(unlikely — would need two party members of the same species and level
+learning the same move), prefer the first at-or-above the scan index.
+No matches → fall back to the old scan heuristic (handles species with
+gaps in ROM learnset data).
+
+**Tests (8 new in
+`tests/test_qa_bug018_move_learn_identification.py`).** Memory and
+`read_party` are monkeypatched — replaying the live Gardenia scenario
+would be fragile and isn't necessary to exercise the disambiguation
+logic.
+- Canonical Monferno/Mothim repro — both bits set, correct slot 2.
+- Single level-up still resolves correctly (no false positives on the
+  learnset check when only one bit is set but species doesn't actually
+  learn the move).
+- No-learnset-match fallback uses the scan index.
+- Null taskData pointer returns None without touching party.
+- Zero `levelUpMons` mask returns None.
+- Out-of-range move id returns None.
+- Stale `slot_lower = 0` no longer shadows the real learning mon.
+- Decomp audit: `levelUpMons` still has exactly one `|=` write and no
+  clears in `battle_script.c` — a grep-style regression guard against
+  a future decomp upgrade silently changing the semantics.
+
+### Imported save states
+- `savestates/bug_navigate_eterna_gym_clock_tile_stuck.mst` (copied
+  from QA project — primary BUG-017 repro).
+- `savestates/session14_pre_gardenia_healed_stocked.mst` (copied from
+  QA; pre-Gardenia state — canonical BUG-018 scenario needs a full
+  Gardenia replay to trigger, so not directly used by the mocked
+  BUG-018 tests but kept alongside for a future live-repro test).
+- `savestates/session13_end_gym_healed_post_lass.mst` (copied from QA;
+  cleaner alternate BUG-017 repro after Lass + east Breeder defeats).
+
+---
+
 ## Dev Session: QA BUG-014 / BUG-015 / BUG-016 — battle-UI slot indirection + level-up summary artifacts (2026-04-19 session 12)
 
 ### Summary
