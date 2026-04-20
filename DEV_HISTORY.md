@@ -4,6 +4,18 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: BUG-032 closed + housekeeping (2026-04-20 session 22)
+
+### BUG-032 closed as no-repro-after-BUG-029
+
+Re-ran the `bug_wayward_cave_pokeball_mislabeled` repro from (30, 23).  `read_objects` confirms all three targets (indices 1/2/3) are genuine Pokeballs: `gfx_id=87`, `trainer_type=0`, `movement_type=none`, distinct item-script IDs (7040/7041/7042).  `view_map` names them correctly; no mislabel.
+
+The session-20 misdiagnosis came from the `navigate_to` failure diagram: `N` in that grid is drawn for *any* entry in `npc_set` (`pathfinding.py:188-213`) — NPCs, Strength boulders, **and Pokeballs**.  The `diagram_key` label says `N=NPC`, which primed the filer to read the Pokeball-N as a Kadabra NPC.
+
+BUG-029's elevation-aware BFS now correctly marks all three Pokeballs as `unreachable` (different plateau level, reachable only via an alternate cave entrance).  The *observable* symptom — "I can't interact with a Pokeball shown on my map" — is expected behavior for unreachable items.
+
+**Small follow-up noted** (not filed as a bug, captured here): the `diagram_key=\"N=NPC\"` wording is the trap that caused the misdiagnosis.  Next time we touch `pathfinding.py`, change it to `N=obstacle` or split renders per obstacle type.  Deferred — not worth its own session.
+
 ## Dev Session: BUG-029 + BUG-030 + BUG-031 cleared (2026-04-20 session 21)
 
 Cleared three of the four navigation bugs filed in session 20.  BUG-032 deferred pending a framing conversation with Woj.  Full suite: **115/115 passing** across nav + map tools; no regressions.

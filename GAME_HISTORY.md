@@ -813,7 +813,7 @@ Four-Pokemon team in Renegade Platinum (vs. vanilla's two):
 - **BUG-029** `view_map` marks under-bridge pickup as reachable (Cycling Road elevation ignored by BFS).
 - **BUG-030** `navigate_to` routes through bridge tiles when player is under the bridge.
 - **BUG-031** `navigate_to` bike-slope traversal fails going UP (tuned for descent-only; first ascent in the playthrough).
-- **BUG-032** `view_map` labels Mira's Kadabra NPC as "Pokeball" (sprite-label table mismatched).
+- **BUG-032** ~~`view_map` labels Mira's Kadabra NPC as "Pokeball"~~ — closed session 22 as no-repro; the three "Pokeballs" at (22,9) / (31,16) / (33,8) are real items (gfx 87), just on a different elevation plateau.
 - **FR-009** `use_item("Repel")` misreports already-active Repel as `"menu flow may have gone wrong"` — confusing when the tool actually worked.
 - Every bug has a named repro save state in `savestates/`.
 
