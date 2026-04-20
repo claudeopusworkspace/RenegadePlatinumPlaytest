@@ -176,6 +176,24 @@ if TYPE_CHECKING:
     from melonds_mcp.client import EmulatorClient
 
 
+def _attach_warp_hint(
+    result: dict[str, Any], terrain_info: list, sx: int, sy: int,
+) -> None:
+    """If (sx, sy) is a directional warp tile, attach a 'note' telling the
+    caller to press the warp direction instead of trying to walk through it."""
+    if not (0 <= sy < len(terrain_info) and 0 <= sx < len(terrain_info[0])):
+        return
+    _, start_behavior = terrain_info[sy][sx]
+    direction = DIRECTIONAL_WARP.get(start_behavior)
+    if direction is None:
+        return
+    result["note"] = (
+        f"You are standing on a directional warp tile.  "
+        f"Trigger it with `press_buttons(['{direction}'])` "
+        f"to transition, then navigate from the other side."
+    )
+
+
 # ── NPC tracking and dynamic repathing ──
 
 def _read_npc_positions(emu: EmulatorClient) -> dict[int, tuple[int, int]]:
@@ -407,13 +425,9 @@ def _execute_path(
                             "x": obs_gx, "y": obs_gy,
                         })
                     else:
-                        # BUG-031: fast-gear run-up didn't clear the slope.
-                        # Happens on Wayward Cave's ascent slopes (tested on
-                        # `bug_wayward_cave_bike_slope_up` — the same helper
-                        # works on Route 207's slope from the identical
-                        # starting pattern, so the difference is engine-side,
-                        # not in the traversal inputs). Record so navigate_to
-                        # can surface a clear error instead of a silent stop.
+                        # Engine refuses this slope (seen on some ascent
+                        # slopes). Surface it as a structured error rather
+                        # than stopping silently.
                         nav_info["blocked_reason"] = "bike_slope_traversal_failed"
                         nav_info["bike_slope_position"] = {"x": obs_gx, "y": obs_gy}
 
@@ -937,12 +951,9 @@ def _navigate_to_impl(
             )
 
         if path_3d is None:
-            # 3D pathfinding failed. We can still fall back to 2D BFS for
-            # cases the 3D pass can't handle (HM-obstacle crossings, etc.),
-            # but we need to reject 2D paths that step across incompatible
-            # elevation layers — otherwise they trigger Cycling Road
-            # auto-slides from under-bridge positions (BUG-030) or walk
-            # off bridges onto under-bridge ground.
+            # Fall back to 2D BFS (still needed for HM-obstacle crossings),
+            # but retain the elevation data so we can reject paths that
+            # cross layers (bridge ↔ under-bridge ground).
             is_3d = False
             elevation_for_validation = elevation
             elevation = None
@@ -1060,14 +1071,9 @@ def _navigate_to_impl(
         else:
             path = clean_path
 
-    # ── Validate 2D fallback paths against elevation layers ──
-    # BUG-030: 2D BFS routes happily through bridge tiles over ground-level
-    # tiles. On maps where 3D elevation was available but 3D BFS failed,
-    # the fallback 2D path might step between incompatible levels. Reject
-    # those paths and return an elevation-aware error instead.
-    # Skip validation when the chosen path is an HM-obstacle path — Surf,
-    # Rock Climb, and Waterfall legitimately move the player across
-    # elevation layers as part of their traversal.
+    # Reject 2D-fallback paths that cross elevation layers (e.g. bridge over
+    # ground). HM-obstacle paths — Surf, Rock Climb, Waterfall — are exempt
+    # because they legitimately cross layers as part of their traversal.
     path_uses_hm_crossing = (
         obs_path is not None and path is obs_path
         and any(ob["type"] in AUTO_NAVIGATE_TYPES for ob in obs_crossed)
@@ -1075,37 +1081,26 @@ def _navigate_to_impl(
     if (
         elevation_for_validation is not None
         and path is not None
-        and path_3d is None  # we're on the 2D fallback branch
+        and path_3d is None
         and not path_uses_hm_crossing
         and not _validate_path_elevation(
             path, elevation_for_validation, bfs_sx, bfs_sy, player_level,
         )
     ):
         manhattan = abs(bfs_tx - bfs_sx) + abs(bfs_ty - bfs_sy)
-        on_warp_dir = None
-        if 0 <= bfs_sy < len(terrain_info) and 0 <= bfs_sx < len(terrain_info[0]):
-            _, start_behavior = terrain_info[bfs_sy][bfs_sx]
-            on_warp_dir = DIRECTIONAL_WARP.get(start_behavior)
         result: dict[str, Any] = {
             "error": (
                 f"No reasonable path at your current elevation "
-                f"(level {player_level}). The 2D fallback would cross "
-                "incompatible layers (e.g. onto a bridge above you, "
-                "or off a bridge onto under-bridge ground). Try "
-                "navigating to a ramp or warp first, or use `navigate` "
-                "with explicit directions."
+                f"(level {player_level}).  The 2D fallback would step "
+                "between incompatible layers.  Try a ramp or warp first, "
+                "or use `navigate` with explicit directions."
             ),
             "start": _pos_with_map(px, py, map_id),
             "target": {"x": target_x, "y": target_y},
             "player_level": player_level,
             "manhattan": manhattan,
         }
-        if on_warp_dir is not None:
-            result["note"] = (
-                f"You are standing on a directional warp tile.  "
-                f"Trigger it with `press_buttons(['{on_warp_dir}'])` "
-                f"to transition, then navigate from the other side."
-            )
+        _attach_warp_hint(result, terrain_info, bfs_sx, bfs_sy)
         return result
 
     # ── Check if target tile is a door/warp ──
@@ -1136,12 +1131,6 @@ def _navigate_to_impl(
         manhattan = abs(bfs_tx - bfs_sx) + abs(bfs_ty - bfs_sy)
         limit = max(manhattan * 5, manhattan + 30)
         if len(path) > limit:
-            # Check if the player is currently standing on a directional warp
-            # tile — if so, they almost certainly want to trigger it.
-            on_warp_dir = None
-            if 0 <= bfs_sy < len(terrain_info) and 0 <= bfs_sx < len(terrain_info[0]):
-                _, start_behavior = terrain_info[bfs_sy][bfs_sx]
-                on_warp_dir = DIRECTIONAL_WARP.get(start_behavior)
             target_gx = bfs_tx + repath_ox
             target_gy = bfs_ty + repath_oy
             result: dict[str, Any] = {
@@ -1156,12 +1145,7 @@ def _navigate_to_impl(
                 "path_length": len(path),
                 "manhattan": manhattan,
             }
-            if on_warp_dir is not None:
-                result["note"] = (
-                    f"You are standing on a directional warp tile.  "
-                    f"Trigger it with `press_buttons(['{on_warp_dir}'])` "
-                    f"to transition, then navigate from the other side."
-                )
+            _attach_warp_hint(result, terrain_info, bfs_sx, bfs_sy)
             return result
 
     if path is None:

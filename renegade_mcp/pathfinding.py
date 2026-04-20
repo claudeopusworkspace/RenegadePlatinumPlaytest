@@ -759,16 +759,8 @@ def _validate_path_elevation(
             return False
         return abs(ha - hb) <= STEPPABLE_HEIGHT
 
-    def _closest_level(target: int, candidates) -> int:
-        th = height_by_level.get(target, 0)
-        return min(
-            candidates,
-            key=lambda lv: abs(height_by_level.get(lv, 0) - th),
-        )
-
-    # current_levels is a set because while on ramp/multi-level tiles the
-    # player's effective level is ambiguous — they commit to one end only
-    # when they step onto a tile that forces a specific level.
+    # current_levels is a set: on ramp/multi-level tiles the player's
+    # effective level is ambiguous until a forcing single-level tile.
     current_levels: set[int] = {start_level}
     cx, cy = start_x, start_y
     deltas = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
