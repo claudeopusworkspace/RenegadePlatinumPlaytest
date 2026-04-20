@@ -4,6 +4,40 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: QA BUG-026 — use_battle_item throws Poké Ball instead of healing (2026-04-20 session 19)
+
+Fixed the session-18-filed BUG-026. The tool reliably threw the last-used Poké Ball at the opposing trainer on any `battle_turn(use_item="Super Potion", party_slot=N)` call — silently consuming the turn, lying in the `formatted` field, and exposing the active Pokemon to a free enemy attack.
+
+**Root cause — three stacked timing/coordinate bugs.** Reproduced on `bug_battle_turn_use_item_throws_pokeball` and traced step-by-step by tapping the sequence manually and screenshotting between each tap:
+
+1. **First BAG tap at (45, 170) was dropped.** The "What will Luxray do?" prompt text is still printing when `use_battle_item` runs, and the game ignores touch input during the print. The tool's 60-frame wait after the tap wasn't long enough to notice the tap failed.
+2. **Pocket tap at (64, 44) landed on FIGHT.** With the bag still not open, (64, 44) is inside the action-screen's FIGHT button. Move select opened.
+3. **The PREV_PAGE × 5 spam at (20, 172) cascaded into a Poké Ball throw.** Tap 1 hit CANCEL on move select (back to action); tap 2 hit the BAG button (x=20, y=172 is inside BAG's rect); tap 3 was spent on the bag-open transition; **tap 4 landed on the bag menu's "Last Used Item" button** `{152, 191, 0, 207}` — which from session 17's Larvitar catch had `lastUsedItem = Poké Ball`; tap 5 confirmed USE and the ball flew.
+
+The decomp reference in `ref/pokeplatinum/src/battle_sub_menus/battle_bag.c` confirmed the coordinates — our `POCKET_TAP_XY` and `_BIT_TO_POCKET` tables both match the ROM's `sMenuTouchRects` and `sBattlePocketIndexes`. The bug wasn't in the static mapping, it was entirely in the timing assumption that the bag would be on-screen by frame 60.
+
+**Fix (`renegade_mcp/use_battle_item.py`).**
+
+- `PROMPT_SETTLE_WAIT = 60` before the first BAG tap — lets "What will X do?" finish printing so the tap registers.
+- `SCREEN_WAIT = 150` for the BAG→menu and menu→pocket transitions (the fades take ~90-110 frames). Stops the "pocket" tap from landing on FIGHT and the page-reset taps from hitting LAST_USED_ITEM.
+- Bench-heal post-party-tap B-press: the "X's HP was restored by N points" confirmation on a bench target waits for user input and — per a live memory scan — never writes its text into the region `_scan_for_new_text` reads. Without a B press, `_wait_for_action_prompt` trips on the stale pre-turn "What will X do?" WAIT_FOR_ACTION marker still in memory and returns immediately. Active heals don't need this because their narration overwrites the stale marker at the same address before the tracker runs (verified on `battle_item_debug_damaged` — at `_wait_for_action_prompt` entry the buffer holds `"Used the Potion!"` at `0x2301bc0`, not the stale action prompt).
+
+**Tests.** 7 new in `test_qa_bug026_use_item_throws_pokeball.py`:
+- Log doesn't contain "blocked the Ball" / "thief" rejection lines (core invariant).
+- Formatted field doesn't contradict the log.
+- Final state is WAIT_FOR_ACTION.
+- Enemy Fake Out appears (proves the turn actually progressed past the heal).
+- Last log entry is the fresh action prompt.
+- Bench role metadata reports `role="bench"`, `target="Monferno"`, `party_slot=3`.
+- `battle_turn(use_item=...)` wrapper is also safe.
+
+Broader sweep: 169 tests passed across BUG-022, use_battle_item, and all battle-related suites — no regressions. The active-heal path (BUG-022's `battle_item_debug_damaged` state) still captures `"Used the Potion!"` narration correctly, which was briefly broken by an over-eager unconditional B-press before the fix was gated on `not is_active_target`.
+
+### Also noted in this fix
+
+- **Address `0x2301bc0` is the game's primary battle text slot.** It's where action prompts, move narration, item-use narration, and faint messages all land in turn. If you see a stale-text-in-buffer problem, check this address first.
+- **Bench heals need a different dismissal path than active heals.** Not just a timing difference — a *what-text-the-tracker-can-see* difference. Keep this in mind if we extend `use_battle_item` to other bench-target items (Full Restore, Revive, etc.).
+
 ## Dev Session: BUG-025 + BUG-026 filed during playtest (2026-04-20 session 18)
 
 Two playtest-surfaced bugs documented with repro save states and file pointers. No code changes this session — both are open and awaiting fix.

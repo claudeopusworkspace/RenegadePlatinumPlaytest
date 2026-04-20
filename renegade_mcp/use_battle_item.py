@@ -19,10 +19,16 @@ if TYPE_CHECKING:
     from melonds_mcp.client import EmulatorClient
 
 # ── Timing ──
-TAP_WAIT = 60         # frames between taps (matches catch.py)
+TAP_WAIT = 60         # frames between taps within the same screen
 PAGE_WAIT = 30        # frames between page nav taps (lighter UI operation)
 ANIM_WAIT = 300       # frames for item animation + text
 DISMISS_WAIT = 120    # frames after B press to dismiss text
+# Screen-transition waits. Action→bag and bag→pocket fade + sprite load take
+# ~90-110 frames; 60f leaves the tool tapping pocket coords while the action
+# screen is still responsive (so (64,44) hits FIGHT, (20,172) hits BAG/LAST_USED
+# on the way back out — which triggers the last-used Poké Ball, not a heal).
+SCREEN_WAIT = 150
+PROMPT_SETTLE_WAIT = 60  # let "What will X do?" text finish so BAG tap registers
 
 # ── Action screen (bottom screen) ──
 BAG_XY = (45, 170)    # BAG button on battle action screen (from catch.py)
@@ -193,11 +199,16 @@ def use_battle_item(
                 break
 
     # ── Step 1: Tap BAG on action screen ──
-    _tap(emu, BAG_XY[0], BAG_XY[1])
+    # Pre-settle so "What will X do?" text finishes printing first —
+    # otherwise the BAG tap is dropped and the tool ends up tapping on the
+    # action screen (FIGHT at 64,44 → move select → CANCEL back → BAG →
+    # bag menu → LAST_USED_ITEM at 20,172 → throws the last-used ball).
+    emu.advance_frames(PROMPT_SETTLE_WAIT)
+    _tap(emu, BAG_XY[0], BAG_XY[1], wait=SCREEN_WAIT)
 
     # ── Step 2: Tap the correct pocket ──
     px, py = POCKET_TAP_XY[pocket_idx]
-    _tap(emu, px, py)
+    _tap(emu, px, py, wait=SCREEN_WAIT)
 
     # ── Step 3: Navigate to correct page ──
     # Reset to page 0 by tapping Prev Page (MAX_PAGES-1) times
@@ -222,6 +233,16 @@ def use_battle_item(
         emu.advance_frames(TAP_WAIT)
         tx, ty = PARTY_TOUCH_XY[target_ui_pos]
         _tap(emu, tx, ty)
+        if not is_active_target:
+            # Bench heals end on an "X's HP was restored" confirmation that
+            # blocks on user input and never lands in the text buffer
+            # `_scan_for_new_text` reads — so `_wait_for_action_prompt`'s
+            # own auto-B dismissal can't fire and the poll trips on the
+            # stale pre-turn "What will X do?" still sitting in memory
+            # (BUG-026). Active heals don't need this: their narration
+            # overwrites the stale marker before the tracker runs.
+            emu.advance_frames(ANIM_WAIT)
+            _press(emu, ["b"], wait=DISMISS_WAIT)
 
     elif battle_use == 0:
         # X item / stat booster
