@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from helpers import do_load_state
+from helpers import do_load_state, retry_on_rng
 from renegade_mcp.navigation import seek_encounter
 
 
@@ -81,3 +81,28 @@ class TestFishingPositioning:
         do_load_state(emu, "e4_pokemon_league_outdoor")
         result = seek_encounter(emu, rod="Old Rod")
         assert result["result"] == "encounter", f"Expected encounter, got: {result}"
+
+
+class TestQaBug027SeekEncounterBlocked:
+    """Regression: seek_encounter must walk multi-tile paths to grass on bike.
+
+    Repro: Route 207 (306, 714) on bicycle, grass patch ~15 tiles SW.  The
+    pre-fix naive press-and-check loop got desynced by the bike slope at
+    (306, 718–719) (auto-slide moved 2 tiles per press), overshot the turn
+    point, and reported blocked after 8 steps.  Fix: delegate the walk to
+    pacing tile to `_navigate_to_impl`, which handles bike slopes, facing
+    turns, and repaths.
+    """
+
+    @retry_on_rng("bug_seek_encounter_blocked_route207_bike")
+    def test_reaches_grass_through_bike_slope(self, emu):
+        """seek_encounter should not hit `blocked` while navigating to grass."""
+        do_load_state(emu, "bug_seek_encounter_blocked_route207_bike",
+                      redetect_shift=True)
+        result = seek_encounter(emu)
+        assert result["result"] != "blocked", (
+            f"seek_encounter blocked en route to grass: {result}"
+        )
+        # Either an encounter fires mid-walk, or we start pacing and encounter
+        # there, or the Repel-wore-off dialogue interrupts — all are progress.
+        assert result["result"] in {"encounter", "max_steps"}, result

@@ -422,27 +422,44 @@ def seek_encounter(emu: EmulatorClient, cave: bool = False,
     tile_a, tile_b, dir_a_to_b, path_to_a = pair
     dir_b_to_a = OPPOSITE_DIR[dir_a_to_b]
     steps_taken = 0
+
+    # Walk to first pacing tile via navigate_to — handles bike slopes,
+    # facing turns, HM obstacles, repaths, and encounters along the way.
+    # The naive press-and-check loop this replaces failed on bike slopes
+    # (auto-slide desynced the step counter) and facing turns (first press
+    # just rotated the character, flagged as blocked).
+    if path_to_a:
+        from renegade_mcp.navigation import _navigate_to_impl
+        tile_a_global_x = origin_x + tile_a[0]
+        tile_a_global_y = origin_y + tile_a[1]
+        nav_result = _navigate_to_impl(emu, tile_a_global_x, tile_a_global_y)
+        nav_enc = nav_result.get("encounter")
+        if nav_enc is not None:
+            return {"result": "encounter",
+                    "steps_taken": nav_result.get("steps", len(path_to_a)),
+                    "encounter": nav_enc}
+        if "error" in nav_result:
+            final_map, final_x, final_y = _read_position(emu)
+            return {"result": "blocked",
+                    "steps_taken": nav_result.get("steps", 0),
+                    "position": _pos_with_map(final_x, final_y, final_map),
+                    "note": f"Could not reach pacing tile: {nav_result['error']}"}
+        steps_taken = nav_result.get("steps", 0)
+
+    # Dismount bicycle before pacing.  The bike's 4-frame per-tile hold is
+    # too short to reliably turn AND move in a single press, so alternating
+    # directions (which pacing does every step) produces bogus movement —
+    # pressing "up" while coasting south can still advance south one tile.
+    # On foot (16f hold), direction changes are clean.
+    from renegade_mcp.addresses import addr
+    from renegade_mcp.use_item import use_item
+    if bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")):
+        use_item(emu, "Bicycle")
     hold = _get_move_hold(emu)
 
-    # Walk to first pacing tile if needed
-    for direction in path_to_a:
-        if steps_taken >= SEEK_MAX_STEPS:
-            break
-        old_map, old_x, old_y = _read_position(emu)
-        emu.advance_frames(hold, buttons=[direction])
-        emu.advance_frames(WAIT_FRAMES)
-        new_map, new_x, new_y = _read_position(emu)
-        steps_taken += 1
-
-        if (old_x, old_y, old_map) == (new_x, new_y, new_map):
-            encounter = _post_nav_check(emu)
-            if encounter is not None:
-                return {"result": "encounter", "steps_taken": steps_taken,
-                        "encounter": encounter}
-            return {"result": "blocked", "steps_taken": steps_taken,
-                    "position": _pos_with_map(new_x, new_y, new_map)}
-
-    # Pace back and forth
+    # Pace back and forth.  Allow one retry per step — the first press in a
+    # new direction can rotate the character without moving (facing turn),
+    # which on its own isn't a genuine block.
     current_dir = dir_a_to_b
 
     while steps_taken < SEEK_MAX_STEPS:
@@ -453,12 +470,17 @@ def seek_encounter(emu: EmulatorClient, cave: bool = False,
         steps_taken += 1
 
         if (old_x, old_y, old_map) == (new_x, new_y, new_map):
-            encounter = _post_nav_check(emu)
-            if encounter is not None:
-                return {"result": "encounter", "steps_taken": steps_taken,
-                        "encounter": encounter}
-            return {"result": "blocked", "steps_taken": steps_taken,
-                    "position": _pos_with_map(new_x, new_y, new_map)}
+            # Possible facing turn — retry once before treating as blocked.
+            emu.advance_frames(hold, buttons=[current_dir])
+            emu.advance_frames(WAIT_FRAMES)
+            new_map, new_x, new_y = _read_position(emu)
+            if (old_x, old_y, old_map) == (new_x, new_y, new_map):
+                encounter = _post_nav_check(emu)
+                if encounter is not None:
+                    return {"result": "encounter", "steps_taken": steps_taken,
+                            "encounter": encounter}
+                return {"result": "blocked", "steps_taken": steps_taken,
+                        "position": _pos_with_map(new_x, new_y, new_map)}
 
         current_dir = dir_b_to_a if current_dir == dir_a_to_b else dir_a_to_b
 
