@@ -626,3 +626,80 @@ Grind session on Route 205 to level Chimchar/Monferno via Exp. Share while Luxio
 - **Items obtained**: Forest Badge, TM86 Grass Knot, $3,120
 - **Bugs noted**: interact_with didn't trigger Gardenia dialogue (navigated but no A press), double level-up stuck after move-learn prompt (manual B needed)
 - **Next**: Team Galactic Eterna Building (requires Forest Badge). Shroomish on Route 203 wants Oran Berry (come back later). Keep an eye out for Flying types.
+
+## Chapter N: Team Galactic Eterna Building & Commander Jupiter (2026-04-19, Session 16)
+
+### Galactic HQ Entrance
+- Started at Eterna City doorstep of the T.G. Eterna Building (save state `eterna_city_galactic_building_doorstep`).
+- Grunt blocking the door demanded Forest-Badge Pokemon: **Ledian Lv24** (Bug/Flying) — Luxray Spark one-shot STAB SE. **Ariados Lv24** (Bug/Poison, Swarm) — Leech Life SE chunked Luxray to 26 HP; switched in Monferno (Fire resists Bug) who tanked Leech Life NVE and KO'd with Flame Wheel. Monferno leveled to **Lv27, declined Flamethrower** (Careful nature + 2 SpA IV makes physical Flame Wheel stronger).
+- Healed at Pokemon Center before entering.
+
+### Inside the Building — Looker Cameo + Stair Puzzle
+- Grunt M at the entry was actually **Looker** in disguise (International Police). Hinted that one of the two staircases on floor 1 is a trap, "the crooks of Team Galactic don't appear smart" so there should be an easy tell.
+- **Stair map learned the hard way**: Each of floors 2–3 has 4 walled sections, and only the correct combination of stairs advances you up. The building is a Metroidvania-style maze:
+  - Floor 1 (map 72): 2 stairs (14,6), (20,6). Both legitimate — each leads to a different section of floor 2.
+  - Floor 2 (map 73): 4 stairs. 2 go back down to floor 1; 2 go up to floor 3.
+  - Floor 3 (map 74): 4 stairs. 2 go back down; 2 go up to floor 4.
+  - Floor 4 (map 75): 2 stairs (3,3), (8,3). Jupiter's arena is in the right section, reachable only by entering floor 4 via the (3,3) warp, which requires the floor-3 (14,3) stair.
+- **view_map limitation noticed**: Jupiter visible in the ASCII render but walled off from my entry section — logged as **FR-007** (dim unreachable tiles) since it misled me into thinking Jupiter was reachable.
+
+### Trainers Cleared
+- **Grunt F Brooke** (Ekans Lv23, Glameow Lv23, Nidoran F Lv23 w/ Toxic Spikes, Stunky Lv23 Aftermath) — Luxray Spark sweep. Ekans' Intimidate dropped Atk; still fine.
+- **Grunt M** (Koffing Lv23 Levitate/Self-Destruct, Nidoran M Lv23, Stunky Lv23 Aftermath) — Spark paralyzed Koffing immediately, fully para'd, won without a Self-Destruct fire.
+- **Grunt M Croagunk** (Croagunk Lv24, Golbat Lv24) — Spark OHKO on both. Luxray leveled to **Lv31**. Golbat Spark was 2x STAB SE.
+- **Grunt F** (Cleffa Lv23 Fairy) — Spark instead of Bite (Dark→Fairy NVE).
+- **Scientist Travon** (Drowzee Lv24 Psychic, **Metang Lv24** Steel/Psychic w/ Iron Fist+Iron Defense, Kadabra Lv24 Magic Guard). 
+  - Drowzee: Luxray's Dark type made Psychic moves immune; Bite 2x SE OHKO.
+  - **Metang clutch**: Iron Defense'd turn 1. Taunted it to stop stall. Attrition fight — ended with both Monferno and Metang at 2 HP, **Mach Punch priority** sealing the KO.
+  - Kadabra: Luxray switched in, Bite 2x SE OHKO (Dark immune to Psychic).
+- **Grunt F** (Houndour Lv23 Dark/Fire Intimidate, Skorupi Lv23 Poison/Bug Sniper, Beautifly Lv23 Bug/Flying) — Luxray Spark for Houndour, Monferno Flame Wheel 2x SE on Skorupi (Swinub leveled to Lv22, learned **Mud Bomb** replacing Endure — Timid nature favors special STAB), Flame Wheel **4x SE** OHKO on Beautifly.
+
+### Pickups on the Upper Floors
+- **TM73 Thunder Wave** (Pokeball floor 2).
+- **Wise Glasses** (+10% SpA damage, Pokeball floor 3).
+- **TM16 Light Screen** + **TM33 Reflect** (Pokeballs adjacent to Jupiter's arena).
+
+### Commander Jupiter (Save state: `eterna_galactic_hq_pre_jupiter`)
+Four-Pokemon team in Renegade Platinum (vs. vanilla's two):
+1. **Golbat Lv26** — Wing Attack / Giga Drain / Leech Life / Confuse Ray. Inner Focus.
+2. **Skuntank Lv27** — Poison Jab / Night Slash / Focus Energy / Torment. Aftermath, **Sitrus Berry**.
+3. **Tangela Lv26** — Giga Drain / Shock Wave / Leech Seed / Sleep Powder. Chlorophyll.
+4. **Sableye Lv26** — Fake Out / Shadow Claw / Knock Off / Shadow Sneak. Magic Guard, **Sitrus Berry**.
+
+#### Battle Play-by-Play
+- **Luxray vs Golbat**: Leech Life SE first, then Spark 2x STAB SE KO'd. Swinub leveled to **Lv23** from Exp Share.
+- **Monferno vs Skuntank** (switched for 2x SE Fighting on Dark, misjudged matchup): Low Kick turn 1 (Skuntank Focus Energy'd). Mach Punch priority turn 2 — Skuntank Sitrus restored, then KO'd Monferno with Poison Jab. **Monferno down.**
+- **Luxray (71 HP) vs Skuntank (70)**: Spark 48 damage, Skuntank landed **Torment**. With Bite off-limits (just used on Golbat KO earlier, Torment from last Luxray move carried), Ice Fang finished — **Aftermath** dropped Luxray to 46 HP. **Skuntank down.**
+- **Luxray vs Tangela**: Realized Spark is NVE vs Grass (0.5x) — thanks to the effectiveness-warning guardrail. Alternated **Bite → Ice Fang → Bite** under Torment. Sleep Powder missed twice! Luxray leveled to **Lv32**.
+- **Machop switched in vs Sableye** — picked for "Fighting 2x SE on Dark." **Wrong: Fighting is IMMUNE to Ghost**, so Brick Break was 0x on Dark/Ghost Sableye. Fell back to Knock Off (Dark, removes Sitrus Berry). Shadow Claw (not immune vs Fighting — Ghost moves do hit Fighting normally) crit-chunked Machop to 11 HP.
+- **Switch-to-fainted bug hit here** — called `battle_turn(switch_to=4)` (targeting fainted Monferno slot). UI silently stuck on party summary screen; manual B-press + touch to Luxray to recover. Logged as **FR-008**.
+- **Luxray finish**: switched in, ate Shadow Sneak NVE (14 dmg), Ice Fang chunked Sableye to 31, then **Spark STAB OHKO** (Torment had cleared on switch-out) for the win!
+
+**VICTORY!** Defeated Commander Jupiter. Won $2160.
+
+#### Battle MVPs
+- **Luxray**: 3 KOs (Golbat, Tangela, Sableye) + level to 32. Spark/Bite/Ice Fang rotation through Torment held up.
+- **Monferno**: 1 KO-ish contribution (Skuntank chip). Sacrificed for team.
+- **Machop**: Knock Off stripped Sableye's Sitrus Berry — crucial for the final OHKO math.
+
+### Post-Jupiter: Clefairy Rescued + Bike Shop Surprise
+- Jupiter retreated; the Bike Shop owner (Pokefan M with Clefairy) was freed.
+- **Cynthia encounter** outside the Cycle Shop: offered the **Pokémon Egg** (Togepi). Party full — had to decline initially.
+- **Cycle Shop owner**: planned to give us the Bicycle... "Oh, what's that? You already own this exact bicycle?" — **Renegade Platinum twist**: we got a Bicycle much earlier (likely from Mom at session start or a Renegade Mart). Instead he gave his Clefairy's found rare stone: **Dawn Stone** (evolves Kirlia F → Gallade or Snorunt F → Froslass).
+- Deposited **Machop Lv25** to PC Box 1 (making room for the egg + future Flying type). Returned to Cynthia, **accepted the Togepi Egg** into party slot 5.
+
+### Tool Issues Logged
+- **FR-007** (`project_tool_improvements.md`): `view_map` should visually distinguish unreachable tiles — jupiter visible in ASCII but walled off, caused wasted navigation attempts.
+- **FR-008** (`project_tool_improvements.md`): `battle_turn(switch_to=N)` must reject fainted Pokemon. Silently stuck on party summary screen. Also, error message for "switch to active battler" uses wrong slot indexing (said Machop was slot 0 when read_party had Machop at slot 3).
+
+### Session Summary
+- **Badges**: 2 (Coal + Forest) — no new badge this session (Galactic HQ isn't gym-gated).
+- **Money**: ~$24,780 (post-Jupiter $2160 + trainers).
+- **Team**: Luxray Lv32, Grotle Lv24, Prinplup Lv25, Monferno Lv27 (Charcoal), Swinub ✨ Lv23 (Exp. Share), **Togepi Egg** (party slot).
+- **PC**: Machop Lv25 deposited for later.
+- **Location**: Eterna City Cycle Shop interior. Save states: `eterna_galactic_hq_pre_jupiter`, `eterna_galactic_hq_post_jupiter`, `eterna_post_jupiter_post_cynthia_egg`.
+- **New trainers defeated**: 4 Galactic Grunts + Scientist Travon + **Commander Jupiter**.
+- **Moves learned**: Swinub — Mud Bomb (replaced Endure). Monferno declined Flamethrower.
+- **Items obtained**: TM73 Thunder Wave, Wise Glasses, TM16 Light Screen, TM33 Reflect, Dawn Stone, Togepi Egg.
+- **Notable mistakes**: Forgot Fighting→Ghost = 0x (immune, not 2x). Forgot Electric→Grass = 0.5x (NVE). Both caught by the effectiveness-warning guardrail mid-call.
+- **Next**: Head south to Cycling Road (Route 206) / Route 207 to hunt a Flying type for the open party slot. Egg needs ~5000 steps to hatch. Then return to Cynthia's house? Talk to the Move Relearner? Explore Eterna Forest exit to Hearthome direction.
