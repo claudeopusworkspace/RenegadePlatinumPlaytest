@@ -106,6 +106,23 @@ def _try_flee_encounter(
         return encounter, flee_entry
 
 
+def _find_hatching_egg_slot(emu: EmulatorClient) -> int | None:
+    """Return the party slot index holding an egg (if any), else None.
+
+    Used to distinguish the game's egg-hatch "Oh?" prompt from a regular
+    NPC dialogue that happens to say "Oh?".  Multiple eggs in the party
+    is rare; we return the first one encountered.
+    """
+    from renegade_mcp.party import read_party
+
+    result = read_party(emu)
+    members = result if isinstance(result, list) else result.get("party", [])
+    for member in members:
+        if member.get("is_egg"):
+            return member.get("slot")
+    return None
+
+
 def _post_nav_check(emu: EmulatorClient) -> dict[str, Any] | None:
     """Check for battle encounter or overworld dialogue after navigation.
 
@@ -171,7 +188,14 @@ def _post_nav_check(emu: EmulatorClient) -> dict[str, Any] | None:
                         emu.advance_frames(POST_NAV_POLL_FRAMES)
                     continue
 
-            # msgBox is open — real dialogue. Auto-advance.
+            # msgBox is open — real dialogue. If the text is the egg-hatch
+            # trigger "Oh?" and the party has an egg, capture the hatching
+            # slot now — by the time advance_dialogue finishes (~60 sec for
+            # the full hatch animation), is_egg will already have flipped.
+            egg_slot_before = None
+            if dialogue.get("text") == "Oh?":
+                egg_slot_before = _find_hatching_egg_slot(emu)
+
             with phase("npc_advance_dialogue"):
                 adv_result = advance_dialogue(emu)
 
@@ -196,6 +220,16 @@ def _post_nav_check(emu: EmulatorClient) -> dict[str, Any] | None:
                 if prompt_result.get("state"):
                     result["final_state"] = prompt_result["state"]
                 return result
+
+            # Classify egg hatch: captured before advance_dialogue because
+            # the egg flag flips during the hatch animation.  Without the
+            # egg check we'd misclassify any NPC "Oh?" as a hatch.
+            if egg_slot_before is not None:
+                return {
+                    "encounter": "egg_hatch",
+                    "hatching_slot": egg_slot_before,
+                    "dialogue": adv_result,
+                }
 
             return {
                 "encounter": "dialogue",

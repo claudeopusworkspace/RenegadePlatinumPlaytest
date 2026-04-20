@@ -487,3 +487,43 @@ class TestQaBug024SideWarpCluster:
             f"Player moved from ({x_before},{y_before}) to ({x_after},{y_after}) "
             f"despite refused navigation."
         )
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-023: egg-hatch "Oh?" misclassified as trainer/NPC dialogue
+# ---------------------------------------------------------------------------
+
+class TestQaBug023EggHatchClassification:
+    """Regression: navigate_to distinguishes egg-hatch from NPC dialogue.
+
+    Before this fix, walking on Cycling Road with an egg at hatch threshold
+    returned `encounter.encounter == "dialogue"` with `text == "Oh?"` — the
+    only way for a caller to know it was a hatch was to string-match "Oh?".
+
+    Fix: nav_events._post_nav_check captures the party's egg slot *before*
+    calling advance_dialogue (the egg flag flips during the ~60-second
+    hatch animation).  If the dialogue text is "Oh?" and the party has
+    an egg, returns encounter="egg_hatch" with hatching_slot=<index>.
+    """
+
+    @retry_on_rng("route206_pre_togepi_hatch")
+    def test_egg_hatch_classified_distinctly(self, emu: EmulatorClient):
+        """navigate_to returns encounter=egg_hatch, not dialogue."""
+        from renegade_mcp.navigation import _navigate_to_impl
+
+        result = _navigate_to_impl(emu, 304, 640)
+        encounter = result.get("encounter", {})
+        assert encounter.get("encounter") == "egg_hatch", (
+            f"Expected encounter=egg_hatch, got: {encounter}"
+        )
+
+    @retry_on_rng("route206_pre_togepi_hatch")
+    def test_egg_hatch_reports_hatching_slot(self, emu: EmulatorClient):
+        """egg_hatch response identifies which party slot is hatching."""
+        from renegade_mcp.navigation import _navigate_to_impl
+
+        result = _navigate_to_impl(emu, 304, 640)
+        encounter = result.get("encounter", {})
+        assert encounter.get("hatching_slot") == 5, (
+            f"Expected hatching_slot=5 (Togepi), got: {encounter}"
+        )

@@ -412,6 +412,7 @@ def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
         "spa": (iv_raw >> 20) & 0x1F,
         "spd": (iv_raw >> 25) & 0x1F,
     }
+    is_egg = bool((iv_raw >> 30) & 1)
 
     return {
         "pid": pid,
@@ -428,6 +429,7 @@ def _decode_encrypted_pokemon(raw: bytes) -> dict[str, Any] | None:
         "nature_idx": nature_idx,
         "ivs": ivs,
         "evs": evs,
+        "is_egg": is_egg,
         "ext_status": ext_status,
         "ext_level": ext_level,
         "ext_cur_hp": ext_cur_hp,
@@ -594,6 +596,7 @@ def read_party(emu: EmulatorClient) -> list[dict[str, Any]]:
             "exp": decoded.get("exp", 0),
             "ivs": decoded.get("ivs", {}),
             "evs": decoded.get("evs", {}),
+            "is_egg": decoded.get("is_egg", False),
         }
         if partial:
             pokemon["partial"] = True

@@ -380,3 +380,38 @@ class TestQaBug015ReadPartyBattleEnrichment:
         assert "UI 1 · bench" in formatted, (
             f"Expected 'UI 1 · bench' on the swapped-out mon:\n{formatted}"
         )
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-023: is_egg flag in read_party (prerequisite for egg-hatch classifier)
+# ---------------------------------------------------------------------------
+
+class TestIsEggFlag:
+    """read_party exposes is_egg, extracted from Block B bit 30 of the IV u32."""
+
+    @retry_on_rng("route206_pre_togepi_hatch")
+    def test_is_egg_true_for_unhatched_egg(self, emu: EmulatorClient):
+        """Togepi egg in slot 5 should report is_egg=True."""
+        from renegade_mcp.party import read_party
+
+        result = read_party(emu)
+        members = result if isinstance(result, list) else result["party"]
+        slot5 = next(m for m in members if m["slot"] == 5)
+        assert slot5.get("is_egg") is True, (
+            f"Expected is_egg=True for Togepi egg, got: {slot5}"
+        )
+
+    @retry_on_rng("route206_pre_togepi_hatch")
+    def test_is_egg_false_for_regular_pokemon(self, emu: EmulatorClient):
+        """Non-egg party members should report is_egg=False."""
+        from renegade_mcp.party import read_party
+
+        result = read_party(emu)
+        members = result if isinstance(result, list) else result["party"]
+        for member in members:
+            if member["slot"] == 5:
+                continue  # Togepi egg — skip
+            assert member.get("is_egg") is False, (
+                f"Expected is_egg=False for slot {member['slot']} "
+                f"({member['name']}), got: {member.get('is_egg')}"
+            )
