@@ -665,16 +665,20 @@ def _wait_for_action_prompt(emu: EmulatorClient) -> dict[str, Any]:
                 stop = _classify_stop(vals)
 
                 if text != prev_text:
-                    prev_text = text
                     # Drop orphan name-cache entries that briefly become the top
                     # marker between real macro lines (BUG-011), plus level-up
                     # summary UI labels (BUG-016). WAIT_FOR_INPUT is still
                     # logged so ability-announcement boxes keep their B-press
                     # dismissal path.
-                    if stop != "AUTO_ADVANCE" or (
-                        not _is_orphan_name_text(text)
-                        and not _is_level_summary_artifact(text)
-                    ):
+                    is_filtered = stop == "AUTO_ADVANCE" and (
+                        _is_orphan_name_text(text)
+                        or _is_level_summary_artifact(text)
+                    )
+                    # QA BUG-019: filtered entries must NOT advance prev_text,
+                    # otherwise a real narration line that sandwiches a filtered
+                    # one gets logged twice during double battles.
+                    if not is_filtered:
+                        prev_text = text
                         log.append({"text": text, "stop": stop})
 
                 # Dismiss text that waits for B (ability announcements, etc.)
@@ -697,6 +701,35 @@ def _wait_for_action_prompt(emu: EmulatorClient) -> dict[str, Any]:
 
     state = "BATTLE_ENDED" if _is_battle_over(emu) else "NO_ACTION_PROMPT"
     return {"ready": False, "log": log, "state": state}
+
+
+def _merge_log_dedupe_multiline(existing: list[dict], extra: list[dict]) -> None:
+    """Append ``extra`` entries to ``existing`` in place, dropping exact
+    multi-line AUTO_ADVANCE duplicates of text already in ``existing``.
+
+    QA BUG-019: when ``_tracker.poll`` ends while a narration marker is still
+    in memory and the doubles / NO_TEXT recovery path calls
+    ``_wait_for_action_prompt``, the stale marker re-scans and logs the same
+    multi-line event text ("The foe's X fainted!", "Y gained Exp.",
+    "Z used Move!") a second time. Single-line emphasis ("A critical hit!",
+    "It's super effective!") is left untouched — those can legitimately
+    repeat within a doubles turn.
+    """
+    seen_multiline = {
+        e["text"] for e in existing
+        if e.get("stop") == "AUTO_ADVANCE" and "\n" in e.get("text", "")
+    }
+    for entry in extra:
+        text = entry.get("text", "")
+        if (
+            entry.get("stop") == "AUTO_ADVANCE"
+            and "\n" in text
+            and text in seen_multiline
+        ):
+            continue
+        existing.append(entry)
+        if entry.get("stop") == "AUTO_ADVANCE" and "\n" in text:
+            seen_multiline.add(text)
 
 
 # ── Action flows ──
@@ -881,7 +914,7 @@ def _poll_after_action(emu: EmulatorClient, prompt_log: list[dict]) -> dict[str,
         with phase("bt_no_text_recovery"):
             prompt = _wait_for_action_prompt(emu)
             if prompt["ready"]:
-                result["log"].extend(prompt["log"])
+                _merge_log_dedupe_multiline(result["log"], prompt["log"])
                 result["final_state"] = prompt["prompt_type"]
 
     # Level-up recovery: another Pokemon (e.g. Exp Share holder) may level up
@@ -894,8 +927,11 @@ def _poll_after_action(emu: EmulatorClient, prompt_log: list[dict]) -> dict[str,
         with phase("bt_level_up_recovery"):
             result = _recover_from_level_up(emu, result)
 
-    # Then prepend prompt log for complete display
-    result["log"] = prompt_log + result.get("log", [])
+    # Then prepend prompt log for complete display (dedup multi-line dups —
+    # QA BUG-019).
+    merged: list[dict] = list(prompt_log)
+    _merge_log_dedupe_multiline(merged, result.get("log", []))
+    result["log"] = merged
     return result
 
 
@@ -1208,7 +1244,11 @@ def _execute_action(
         result = _tracker.poll(emu, auto_press=True)
     # Classify on poll-only log (avoids stale prompt text contamination)
     result["final_state"] = _classify_final_state(emu, result)
-    result["log"] = prompt["log"] + result.get("log", [])
+    # QA BUG-019: dedupe stale multi-line narration carried across from the
+    # pre-action prompt log when the same text surfaces again in the poll.
+    merged: list[dict] = list(prompt["log"])
+    _merge_log_dedupe_multiline(merged, result.get("log", []))
+    result["log"] = merged
 
     # Move-blocked recovery: Torment/Disable/Encore/Taunt reject the move at
     # the UI level, leaving the game in the move selection submenu.  Press B to
@@ -1234,7 +1274,7 @@ def _execute_action(
             # Poll missed the partner prompt — do a fresh scan
             prompt2 = _wait_for_action_prompt(emu)
             if prompt2["ready"]:
-                result["log"].extend(prompt2["log"])
+                _merge_log_dedupe_multiline(result["log"], prompt2["log"])
                 result["final_state"] = prompt2["prompt_type"]
                 # Re-check for narration to classify correctly
                 poll_entries = [e for e in result.get("log", []) if e not in prompt["log"]]
@@ -1257,7 +1297,7 @@ def _execute_action(
             # Fresh scan for any prompt the tracker missed
             prompt2 = _wait_for_action_prompt(emu)
             if prompt2["ready"]:
-                result["log"].extend(prompt2["log"])
+                _merge_log_dedupe_multiline(result["log"], prompt2["log"])
                 result["final_state"] = prompt2["prompt_type"]
         if result["final_state"] == "TIMEOUT":
             result = _recover_from_level_up(emu, result)
@@ -1441,7 +1481,7 @@ def _recover_from_level_up(emu: EmulatorClient, result: dict[str, Any]) -> dict[
         poll = _tracker.poll(emu, auto_press=False)
 
         if poll["final_state"] == "WAIT_FOR_ACTION":
-            result["log"].extend(poll.get("log", []))
+            _merge_log_dedupe_multiline(result["log"], poll.get("log", []))
             # Check for evolution "What?" before classifying
             evo = _handle_evolution_what(emu, result)
             if evo is not None:
@@ -1450,7 +1490,7 @@ def _recover_from_level_up(emu: EmulatorClient, result: dict[str, Any]) -> dict[
             return result
 
         if poll["final_state"] != "NO_TEXT":
-            result["log"].extend(poll.get("log", []))
+            _merge_log_dedupe_multiline(result["log"], poll.get("log", []))
 
         if _is_battle_over(emu):
             result["final_state"] = "BATTLE_ENDED"

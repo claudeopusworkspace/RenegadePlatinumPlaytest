@@ -337,6 +337,15 @@ class BattleTracker:
         prev_text = None
         seen_auto = False
         consecutive_none = 0
+        # QA BUG-019: double-battle narration sometimes re-surfaces the same
+        # multi-line event text ("The foe's X fainted!", "Y gained N Exp.",
+        # "Z used Move!") at a different marker after interstitial text,
+        # defeating the prev_text consecutive-dedupe. Track multi-line
+        # narration already logged in this poll and skip exact repeats.
+        # Single-line emphasis ("A critical hit!", "It's super effective!")
+        # is intentionally left unfiltered — those CAN legitimately appear
+        # twice in one double-battle turn.
+        logged_multiline: set[str] = set()
 
         for poll in range(MAX_POLLS):
             emu.advance_frames(POLL_FRAMES)
@@ -365,11 +374,29 @@ class BattleTracker:
             stop = _classify_stop(vals)
 
             if text and text != prev_text:
-                prev_text = text
+                # QA BUG-019: only advance prev_text for text we actually
+                # act on. A filtered entry (orphan name / level-summary
+                # artifact) sandwiched between two identical real entries
+                # used to unconditionally overwrite prev_text, defeating
+                # the consecutive-same-text dedupe and causing double-
+                # battle narration like "The foe's Ekans fainted!" or
+                # "Vaporeon used Aurora Beam!" to appear twice in the log.
+                is_filtered = stop == "AUTO_ADVANCE" and (
+                    _is_orphan_name_text(text) or _is_level_summary_artifact(text)
+                )
+                if not is_filtered:
+                    prev_text = text
 
                 if stop == "AUTO_ADVANCE":
                     seen_auto = True
-                    if not _is_orphan_name_text(text) and not _is_level_summary_artifact(text):
+                    if is_filtered:
+                        pass
+                    elif "\n" in text and text in logged_multiline:
+                        # QA BUG-019: same multi-line narration already logged.
+                        pass
+                    else:
+                        if "\n" in text:
+                            logged_multiline.add(text)
                         log.append({"text": text, "stop": stop})
                 elif seen_auto or stop == "WAIT_FOR_ACTION":
                     # WAIT_FOR_ACTION ([FFFE][0200]) is a definitive action
