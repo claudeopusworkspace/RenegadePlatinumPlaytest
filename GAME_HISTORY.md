@@ -743,3 +743,42 @@ Four-Pokemon team in Renegade Platinum (vs. vanilla's two):
 - **Items obtained**: Explorer Kit.
 - **Location**: Route 207 tall grass (295, 721). Save state: `route207_larvitar_caught`.
 - **Next session**: Heal at Eterna PC, consider party-rotating Larvitar into slot for training, continue south to Oreburgh Gate / Route 208 / Hearthome.
+
+## Session 18 (2026-04-20): Oreburgh heal run, Route 207 trainer cluster, bike-slope + use_item bugs
+
+### Heal run south, not Eterna
+- Planned to heal at Eterna PC (per end-of-session-17 notes), but on reading the geography it was faster to head *south* through Route 207's bike slopes to Oreburgh City. `navigate_to` bike-slope *descent* handler worked cleanly — we coasted down from (299, 730) to (299, 743) straight into Oreburgh.
+- `heal_party` auto-navigated to the Oreburgh PC from street level. Full heal restored everyone including Prinplup (11/75 → 75/75).
+- PokéMart stock at badge threshold 2: Poké Ball, Potion, Super Potion, Antidote, Parlyz Heal, Awakening, Burn/Ice Heal, Escape Rope, Repel + Oreburgh specialties (Heal Ball, Net Ball, Tunnel Mail). Bought **10 Super Potions (¥7,000) and 5 Repels (¥1,750)**. Money ¥21,394 → ¥12,644.
+
+### Route 207 trainer cluster
+- Re-crossed the bike slope heading *north*. First attempt on foot failed silently (see BUG-025 below) — mounting the Bicycle + retry worked in one call with `obstacles_cleared: bike_slope`.
+- Grabbed the **Hard Stone** (Pokeball at (291, 711)) — perfect hold item for Larvitar/Tyranitar down the line. Fought off two wild interrupts on the way (Rhyhorn, Machop — both one-shot).
+- **Picnicker Lauren** — Smoochum Lv24 (Bite 2x SE), Treecko Lv24 (Ice Fang 4x SE), Snubbull Lv24 (Prinplup Metal Claw crit SE).
+- **Camper Anthony** — Magby Lv24 (Spark OHKO, Luxray burned from Flame Body), Trapinch Lv24 Bug/Ground (switched to Monferno, Flame Wheel SE), Charmander Lv24 (switched to Prinplup, Bubble Beam SE).
+- **Hiker Kevin** — Dunsparce Lv25 ×2. First Dunsparce took two Crunches from Luxray. Second Dunsparce KO'd Grotle after a Body Slam + paralysis + Bullet Seed 3-hit sequence; Monferno Mach Punch finished it. First faint of the session.
+- **Youngster Austin** — Lombre Lv25 (Luxray Crunch OHKO), Gligar Lv25 (Swinub Avalanche 4x OHKO). Burned Luxray clutched the Crunch KO with 6 HP remaining.
+
+### Level-ups & moves
+- **Luxray Lv32 → 33** — learned **Crunch** (Dark, 80 pwr, 20% Def drop); replaced Bite.
+- **Prinplup Lv25 → 26** — learned **Scald** (Water, 80 pwr, 30% burn chance, STAB); replaced Bubble Beam.
+- **Swinub Lv24 → 25** — learned **Avalanche** (Ice, 60 pwr, 120 if hit first); replaced Powder Snow.
+
+### Bike slope workflow (take-aways for future sessions)
+- Route 207's bike slope pair is at (306, 718) top / (306, 719) bottom. **Ascending requires the Bicycle** — the navigate_to slope handler will silently fail (15 repaths, stall at (306, 720)) if you're on foot.
+- Protocol: before any `navigate_to` whose BFS path crosses a slope tile, call `use_item("Bicycle")` to mount. Bike slopes still render as `\` / `/` in `view_map`.
+- Descent still works fine on foot (the game just slides you south) but keep the bike on for symmetry — avoids a stall if you ever want to turn back.
+
+### Tool bugs logged
+- **BUG-025** (`bug_bike_slope_north_climb_fail`): `navigate_to` stalls silently on bike-slope ascent when `on_bicycle=False`. 15 repaths, ends at (306, 720) with no error. Verified workaround: mount the bike via `use_item("Bicycle")` and retry — the same call succeeds with `obstacles_cleared: [{"type":"bike_slope","tiles":2,"x":306,"y":719}]`. Suggested fix: auto-mount bike for slope obstacles the way `navigate_to` already auto-Surfs for water.
+- **BUG-026** (`bug_battle_turn_use_item_throws_pokeball`): Mid-trainer-battle, `battle_turn(use_item="Super Potion", party_slot=3)` threw a Poké Ball at the enemy Lombre (`"The Trainer blocked the Ball!"`) instead of healing our Pokemon. Tool's `formatted` field falsely claimed `"Used Super Potion on Monferno"` — no heal occurred and pre/post read_party showed identical HP. Likely the bag pocket tab navigation landed on Poké Balls instead of Medicine. Also noted a possibly-related qty drift: `use_item("Repel")` reported `old_qty:14 → 13` right after buying 5 Repels when we should have had 9. Filed high-priority — silently consumes the turn and lies about the action.
+- Also observed a text code leak: `"Hit 3 time[01B9]s/!"` in Bullet Seed log — another glyph code that should be stripped by `text_encoding.py` (family of BUG-005/008/009).
+
+### Session Summary
+- **Badges**: 2 (unchanged).
+- **Money**: ¥12,644 → ¥13,828 after trainer prize money (Lauren $384, Anthony unknown, Kevin $800, Austin $400).
+- **Party**: Luxray Lv33, Grotle Lv24, Prinplup Lv26, Monferno Lv27, Swinub ✨ Lv25, Togepi Lv1. All healed at end.
+- **PC Box 1**: Machop Lv25, Larvitar Lv9 (unchanged).
+- **Items obtained**: Hard Stone (route drop), Super Potion (route drop). 10 Super Potions + 10 Repels in bag.
+- **Location**: Route 207 (306, 714), on bicycle, Repel active. Save state: `route207_north_of_slope_session18_end`.
+- **Next session**: Push north toward Mt. Coronet. Remaining Route 207 trainers: Hiker at (329, 715), two more to scout further up. Pokeball at (323, 730) still uncollected. Consider rotating Larvitar into party for training before Mt. Coronet (currently Lv9 vs Mt. Coronet wilds at Lv14-16).

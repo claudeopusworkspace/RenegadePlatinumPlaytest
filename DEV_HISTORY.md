@@ -4,6 +4,53 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: BUG-025 + BUG-026 filed during playtest (2026-04-20 session 18)
+
+Two playtest-surfaced bugs documented with repro save states and file pointers. No code changes this session — both are open and awaiting fix.
+
+### BUG-025: navigate_to silently stalls on bike-slope ascent when not on bicycle
+
+**Symptom.** From Route 207 (299, 730) on foot, called `navigate_to(305, 715)` to cross the bike-slope pair at (306, 718–719). Tool ran 15 repaths and terminated at (306, 720) — one tile south of the slope bottom — with no error, no warning, and no mention of the bicycle requirement. Path returned: `up x10 -> right x5 -> up -> right -> up x4 -> right -> up x5 -> left`, 58 steps.
+
+**Verified root cause.** The slope traversal handler requires the bicycle. After `use_item("Bicycle")` + retrying the same `navigate_to(305, 715)` call from (306, 725), it succeeded in one pass: `up x10 -> left`, 13 steps, `obstacles_cleared: [{"type":"bike_slope","tiles":2,"x":306,"y":719}]`, 1 repath. The 5-tile runway south wasn't the issue — bicycle mount state was.
+
+**Repro save.** `bug_bike_slope_north_climb_fail` — Route 207 (299, 730) facing right, on foot, full 6-Pokemon healed team. Reload and call `navigate_to(305, 715)` → stalls. `use_item("Bicycle")` then retry → succeeds.
+
+**Fix options (preferred order).**
+1. **Auto-mount bicycle** when BFS path crosses a bike-slope tile and the Bicycle is in key items — mirrors the existing auto-Surf / auto-Waterfall / auto-Rock-Climb flows. Consistent UX, no caller cognitive load.
+2. **Refuse early** with a clear error if a slope tile is on the path and `on_bicycle == False`. Strictly a bugfix; worse ergonomics than (1) but safer on surprises.
+3. At minimum surface `obstacle_blocked: "bike_slope_requires_bicycle"` in the result so callers can detect the failure mode instead of parsing a stopped-early coordinate.
+
+**File pointer.** `renegade_mcp/navigation/` — same module family as the existing slope-descent handler. The south→north branch is the broken/missing one. Also check BFS passability: if the slope tile is marked passable on foot, the tool plans a path it cannot execute.
+
+### BUG-026: battle_turn(use_item="Super Potion") throws a Poké Ball at the enemy trainer
+
+**Symptom.** Mid-battle vs Youngster Austin's Lombre, Luxray active at 19/109 burned. Called `battle_turn(use_item="Super Potion", party_slot=3)` intending to heal Monferno (slot 3). Tool log:
+```
+"The Trainer blocked the Ball!"
+"Don't be a thief!"
+"The foe's Lombre used Fake Out!"
+"Luxray is hurt by its burn!"
+```
+The game actually attempted a **Poké Ball throw** at the opposing trainer — rejected with the canonical "thief" message — then the turn proceeded with Lombre attacking. No Super Potion was used. Pre-call Monferno 24/78; post-call still 24/78 (verified via `read_party`).
+
+**Worse: the tool lied in the formatted field.** It returned `"Used Super Potion on Monferno (bench — HP unverifiable)"` — confidently asserting a heal that never happened, while the `log` field showed the Poké Ball throw. Callers relying on the formatted summary would never know.
+
+**Repro save.** `bug_battle_turn_use_item_throws_pokeball` — mid-battle vs Youngster Austin's Lombre Lv25, Luxray Lv33 active at 38/109 burned (pre-Fake Out), full 6-mon party with Monferno 24/78 in party slot 3. Reload and call `battle_turn(use_item="Super Potion", party_slot=3)` → Poké Ball thrown.
+
+**Hypotheses.**
+- Pocket tab index off-by-one after an earlier in-battle bag action (e.g., a previous turn touched Items/Medicine/Poké Balls in a specific order that offset the cursor).
+- Item-position calculation using stale quantities. Noted during this same session: `use_item("Repel")` out-of-battle reported `old_qty:14 → 13` right after buying 5 Repels when we should have had 9. A possible parallel qty-cache bug in the same code family.
+- Unconditional "first usable ball-like item" fallback when the item-name lookup misses.
+
+**File pointers.** `renegade_mcp/use_battle_item.py` (in-battle item dispatch) + `renegade_mcp/turn.py` where `battle_turn` delegates to it. Also audit the bag pocket-tab routing — Items, Medicine, and Poké Balls are on different tabs and the navigation must pick the right one based on `fieldUseFunc` / ItemData lookups, not on bag-scroll order.
+
+**Priority: high.** Silently consumes the turn, hits the player with opponent moves, and lies about what happened. Any autonomous play that uses in-battle Super Potion is currently unsafe.
+
+### Also noted (not its own bug entry)
+
+- **Text glyph leak `[01B9]`** in Bullet Seed multi-hit narration: `"Hit 3 time[01B9]s/!"`. Same family as the resolved BUG-005/008/009 (hex codes slipping past `text_encoding.CHAR_MAP`). Bundle into the next glyph-leak cleanup pass — check all multi-hit-counter strings in ROM.
+
 ## Dev Session: QA BUG-022 — battle_turn(use_item=...) missing `log` field (2026-04-19 session 17)
 
 QA surfaced BUG-022: `battle_turn(use_item=...)` returned a response with

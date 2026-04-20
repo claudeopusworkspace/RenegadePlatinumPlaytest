@@ -256,17 +256,17 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 
 - **Character**: CLAUDE | **Rival**: WOJ
 - **Badges**: 2 (Coal, Forest)
-- **Location**: Route 207 tall grass (295, 721). Save state: `route207_larvitar_caught`. Prinplup at 11/75 — needs to heal back at Eterna PC.
-- **Luxray** Lv32 — Jolly, Guts. Scope Lens. Spark / Bite / Howl / Ice Fang.
+- **Location**: Route 207 (306, 714) — just past the bike slope, on the bicycle, Repel active. Save state: `route207_north_of_slope_session18_end`. Full team healed.
+- **Luxray** Lv33 — Jolly, Guts. Scope Lens. Spark / **Crunch** / Howl / Ice Fang.
 - **Grotle** Lv24 — Naughty, Overgrow. Muscle Band. Bulldoze / Cut / Bullet Seed / Razor Leaf.
-- **Prinplup** Lv25 — Lax, Vital Spirit. Metal Claw / Growl / Bubble Beam / Icy Wind. **HP 11/75.**
+- **Prinplup** Lv26 — Lax, Vital Spirit. Metal Claw / Growl / **Scald** / Icy Wind.
 - **Monferno** Lv27 — Careful, Iron Fist. Charcoal. Low Kick / Mach Punch / Flame Wheel / Taunt.
-- **Swinub** ✨ Lv24 — Timid, Thick Fat. Exp. Share. Powder Snow / Ice Shard / Bulldoze / Mud Bomb.
-- **Togepi** Lv1 — Timid, Serene Grace. Growl / Charm / Extrasensory / Disarming Voice. (Hatched this session.)
-- **PC Box 1**: Machop Lv25, **Larvitar Lv9** (Rock/Ground, Guts — caught on Route 207).
+- **Swinub** ✨ Lv25 — Timid, Thick Fat. Exp. Share. **Avalanche** / Ice Shard / Bulldoze / Mud Bomb.
+- **Togepi** Lv1 — Timid, Serene Grace. Growl / Charm / Extrasensory / Disarming Voice.
+- **PC Box 1**: Machop Lv25, Larvitar Lv9 (Rock/Ground, Guts).
 - **HM plan**: Prinplup→Empoleon (Surf, Waterfall). Togepi→Togekiss (Fly). Grotle→Torterra / Swinub→Mamoswine / Larvitar→Tyranitar (Rock Climb options).
-- **Notable items**: Explorer Kit (got this session), Dawn Stone, Wise Glasses, TM16 Light Screen, TM33 Reflect, TM73 Thunder Wave, Oval Stone, Fire Stone, Sun Stone, Never-Melt Ice.
-- **Next**: Heal at Eterna PC. Rotate Larvitar into party for training? Continue south to Oreburgh Gate / Route 208 / Hearthome. Shroomish on Route 203 wants an Oran Berry (come back later).
+- **Notable items**: Explorer Kit, **Hard Stone** (new — boost Rock moves, save for Larvitar/Tyranitar), Dawn Stone, Wise Glasses, TM16 Light Screen, TM33 Reflect, TM73 Thunder Wave, Oval Stone, Fire Stone, Sun Stone, Never-Melt Ice. Bag stocked: 10 Super Potions, 10 Repels.
+- **Next**: Push north on Route 207 to Mt. Coronet entrance. Still want to find a Flying-type scout (Togepi → Togekiss is the long-term plan). Rotate Larvitar into party for training? Shroomish on Route 203 wants an Oran Berry (come back later).
 
 See GAME_HISTORY.md for full details (defeated trainers, story progress, box contents, items).
 
