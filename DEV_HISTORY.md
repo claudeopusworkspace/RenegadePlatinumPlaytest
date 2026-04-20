@@ -2,6 +2,125 @@
 
 Chronological log of tool development, bug fixes, and MCP improvements — separate from gameplay in GAME_HISTORY.md.
 
+## Dev Session: QA BUG-019 / BUG-020 / BUG-021 — double-battle log dedupe + trainer-class/flavor-NPC metadata (2026-04-19 session 15)
+
+Triaged the three new QA reports from session 15. All three are log /
+view-metadata cosmetic issues — no gameplay impact — but all three bite
+downstream parsers or completionist planners. Importing the QA save
+states as `qa_session15_galactic_bldg_pre_stairs` and
+`qa_session15_route211_west_entry` (battery save backed up read-only as
+`saves/qa_session15.sav`).
+
+### BUG-019: Double-battle log duplicates multi-line narration
+**Root cause.** Two independent sources of duplication:
+1. `BattleTracker.poll` unconditionally advanced `prev_text` even for
+   AUTO_ADVANCE entries it was filtering out (BUG-011 orphan names,
+   BUG-016 level-summary artifacts). A filtered entry between two real
+   repeats of the same text defeated the consecutive-same dedupe.
+2. **Bigger source** — when `_tracker.poll` returns (WAIT_FOR_ACTION /
+   TIMEOUT / NO_TEXT) with narration markers still live in the battle
+   text region, `turn.py`'s doubles / recovery path calls
+   `_wait_for_action_prompt` and extends `result["log"]` with whatever
+   the second scanner picks up. Those stale markers get re-logged
+   verbatim.
+
+Confirmed by instrumenting `BattleTracker.poll` to log every
+`logged_multiline.add` — live repro produced exactly one "Aurora Beam!"
+in the tracker's log, but a second entry appeared after the extend.
+Removing the instrumentation after the diagnosis.
+
+**Fix.**
+- `renegade_mcp/battle_tracker.py::BattleTracker.poll` — gate the
+  `prev_text = text` assignment on `not is_filtered`, and track
+  multi-line AUTO_ADVANCE entries in a per-poll `logged_multiline` set.
+  Single-line emphasis ("A critical hit!", "It's super effective!") is
+  deliberately not deduped — those legitimately repeat in doubles.
+- `renegade_mcp/turn.py::_merge_log_dedupe_multiline` — new helper
+  that appends an extra log list to an existing one while skipping
+  exact multi-line AUTO_ADVANCE duplicates of entries already present.
+  Non-AUTO_ADVANCE stops (WAIT_FOR_ACTION / WAIT_FOR_INPUT) always pass
+  through so partner re-prompts aren't suppressed. Applied at every
+  cross-scanner extend site: `_poll_after_action` NO_TEXT recovery,
+  doubles partner-prompt recovery, `_execute_action`'s prompt+poll
+  merge, and the level-up recovery's trailing prepend.
+
+7 regression tests in `tests/test_qa_bug019_double_battle_log_dedupe.py`
+(6 unit tests for `_merge_log_dedupe_multiline` semantics — dup drop,
+legit single-line repeats, different-mon / different-exp values pass
+through, empty extras, prompt-stop preservation — plus 1 meta-test
+asserting the BUG-011/BUG-016 filter invariants stay stable, because
+the tracker's prev_text guard depends on them).
+
+### BUG-020: `view_map` reported sprite class, not trainer class
+**Root cause.** `map_state.py` built `object.name` from
+`GFX_NAMES[graphics_id]` (the overworld sprite class). The
+authoritative in-battle trainer class lives in `trdata.narc`: each
+trainer record's byte 1 is a class index into ROM message file 619.
+Route 211 W's Alexandra has `graphics_id: OBJ_EVENT_GFX_ACE_TRAINER_F`
+(sprite "Ace Trainer F") but `script: TRAINER_BIRD_KEEPER_ALEXANDRA`
+→ trainer 76 → class 30 = "Bird Keeper". Vanilla Platinum inherits the
+same re-skin, so this isn't Renegade-specific.
+
+**Fix.**
+- `data/trainer_classes.json` — pre-built from the 1066 trdata.narc
+  records × 105 class names in ROM file 619. Ships as a plain
+  `{trainer_id: {class_id, class_name}}` map.
+- `renegade_mcp/trainer.py::lookup_trainer_class` — cached singleton
+  loader returning the real class for a trainer id (or None for
+  unknown ids, so the caller can fall back gracefully).
+- `renegade_mcp/map_state.py` — when the trainer id resolves and the
+  sprite name differs from the trainer class, override `name` with
+  the class, preserve the original via `sprite_name`, and surface
+  `trainer_class` explicitly. Matching sprite+class pairs skip the
+  extra fields to avoid noise.
+
+7 regression tests in `tests/test_qa_bug020_view_map_trainer_class.py`
+(5 lookup-table units + 2 live view_map integration — Alexandra
+sprite/class override and Ninja Boy matching-pair negative case).
+
+### BUG-021: `view_map` flagged a flavor-only NPC as defeated trainer
+**Root cause.** `TRAINER_HIKER_LOUIS` at (377, 529) has a real 3-mon
+party in trdata.narc (Graveler / Onix / Golem @ Lv19) and a
+`TRAINER_TYPE_NORMAL` zone_event header with `script:
+TRAINER_HIKER_LOUIS` → trainer id 326. In Renegade Platinum the field
+script was rewritten to skip the battle and emit a flavor line; a
+story-side script pre-sets trainer 326's defeat flag (bit 1686 in
+VarsFlags) so the NPC's LOS trigger silently no-ops. Verified cold:
+bit 1686 = 0 in `twinleaf_outside_house_post_mom`,
+bit 1686 = 1 in `qa_session15_route211_west_entry`, with no Hiker
+battle between those save states. So `is_trainer_defeated` was
+technically correct — the game really does treat him as defeated — but
+`trainer=true defeated=true` on an unexplored map misled the QA
+operator and would confuse any completionist tool.
+
+**Fix.**
+- `data/rp_flavor_trainers.json` — curated
+  `{map_id: [trainer_ids]}` allowlist. Starts narrow with just
+  `{"365": [326]}`; header comment documents how to extend.
+- `renegade_mcp/trainer.py::is_flavor_trainer` — cached
+  `(map_id, trainer_id)` membership check.
+- `renegade_mcp/map_state.py` — when a resolved trainer id hits the
+  allowlist, suppress `trainer` / `trainer_id` / `defeated` and set
+  `flavor_npc: true` instead. Non-flavor trainers get the full
+  metadata (including BUG-020's new `trainer_class` / `sprite_name`
+  fields) unchanged.
+
+6 regression tests in `tests/test_qa_bug021_flavor_trainer_suppression.py`
+(4 allowlist semantic units + 2 live view_map integration — Louis
+flavor suppression + Alexandra metadata unchanged). Additional flavor
+NPCs discovered in future QA runs go straight into the JSON file, no
+code change needed.
+
+### Verification
+- `tests/test_qa_bug019_*` — 7 passed.
+- `tests/test_qa_bug020_*` — 7 passed.
+- `tests/test_qa_bug021_*` — 6 passed.
+- `tests/test_battle_turn.py`, `test_battle_tracker.py`,
+  `test_battle_move_learn.py`, `test_battle_event_text.py` — 51 passed
+  (no regressions).
+- `tests/test_navigation.py`, `test_qa_bug017_*`, `test_qa_bug018_*`
+  — 35 passed (no regressions).
+
 ## Dev Session: QA BUG-017 / BUG-018 — Eterna Gym 3D pathfinding + MOVE_LEARN mis-attribution (2026-04-19 session 14)
 
 ### BUG-017: `navigate_to` / `interact_with` fail to route around a blocked clock arm
