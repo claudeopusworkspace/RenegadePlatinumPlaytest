@@ -1057,7 +1057,15 @@ def _navigate_to_impl(
     # can find a technically valid path that loops all the way around the
     # overworld to reach the other side of the gate.  The correct action is
     # to trigger the warp, not walk 93 tiles for a 7-tile trip.
-    if path is not None and len(path) > 0:
+    # Exception: when the chosen path traverses an HM tile (Rock Climb
+    # descent, Surf, Waterfall), the path legitimately can be long because
+    # the player is in a region whose only exits are HM tiles.  Skip the
+    # cap in that case.
+    path_uses_hm = (
+        obs_path is not None and path is obs_path
+        and any(ob["type"] in AUTO_NAVIGATE_TYPES for ob in obs_crossed)
+    )
+    if path is not None and len(path) > 0 and not path_uses_hm:
         manhattan = abs(bfs_tx - bfs_sx) + abs(bfs_ty - bfs_sy)
         limit = max(manhattan * 5, manhattan + 30)
         if len(path) > limit:
