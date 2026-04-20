@@ -4,6 +4,53 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: FR-007 + FR-008 + two new bugs filed (2026-04-20 session 19b)
+
+Closed two feature requests from the QA triage backlog and filed two new bugs discovered along the way.
+
+### FR-007: view_map splits objects by BFS reachability
+
+**Motivation.** During the Galactic HQ Eterna playthrough, `view_map` showed Jupiter in the ASCII grid as a visible object, but she was behind interior walls from the player's current section. `interact_with` failed with "No reachable tile adjacent." The grid itself is hard to disambiguate visually, so the reader had no cheap way to tell Jupiter was actually walled off.
+
+We debated three render-time options — fog of war, dim glyphs, suffix marker — and settled on **"don't touch the grid, fix the object listing."** The listing is what a caller actually reads before picking a target.
+
+**Implementation (`renegade_mcp/map_state.py::view_map`).** The existing `obj_info` list (with its per-entry `reachable: bool`) is split into two top-level keys: `objects` (BFS-reachable only, sorted by step count) and `unreachable_objects` (walled off, sorted by Manhattan distance). When any unreachable objects exist, the `map` string gets a trailing `Unreachable: N object(s) walled off — see \`unreachable_objects\`` pointer so the reader notices without scanning both lists.
+
+Downstream test fixtures (`test_qa_bug020`, `test_qa_bug021`) were using `result["objects"]` to look up trainers by id or position — not caring whether the trainer was reachable. They're updated to search `objects + unreachable_objects` so the lookup remains reachability-agnostic.
+
+**Tests.** 4 new in `TestFr007ReachableSplit` (`test_map_tools.py`): every entry in `objects` has reachable=True; `unreachable_objects` is always present; Galactic HQ fixture has disjoint reachable/unreachable index sets when both are non-empty; when unreachable are present, the map string contains the `Unreachable:` pointer.
+
+### FR-008: switch_to uses battle UI slot, rejects fainted
+
+**Motivation.** During the Jupiter fight, `battle_turn(switch_to=4)` stalled on the party summary screen. `switch_to=0` was rejected with "your active battler (Machop)" even though Machop was party slot 3. The original filing assumed the docstring was right — `switch_to` uses "party-slot numbering matching read_party order" — and the fix would be "reject fainted Pokemon." Woj pushed back: **in battle, only battle slots should be used.**
+
+**Empirical test settled it.** Loaded `test_trainer_battle_action` (Luxio active, Machop at party slot 1). Opened POKEMON menu, screenshotted: Luxio top-left, Machop top-right — party order. Switched Machop in, advanced to the next action prompt, opened POKEMON menu again. **Grid reshuffled:** Machop top-left (the vacated active slot), Luxio top-right. `read_party` in-battle already exposes `battle_ui_slot` and `battle_role` per Pokemon — Luxio became `slot=0, battle_ui_slot=1, role=bench`, Machop became `slot=1, battle_ui_slot=0, role=active`. Party memory ordering is stable; the UI grid tracks battle-slot ordering with the active battler always at UI 0.
+
+So the existing `PARTY_TOUCH_XY[switch_to]` tap was battle-slot-correct the whole time — the docstring was just lying. The original Jupiter failure: `switch_to=4` tapped UI tile 4, which post-switch wasn't Monferno, which is why the summary screen stalled.
+
+**Fix.**
+1. Docstring in `server.py` and CLAUDE.md rewritten to say **battle UI slot (1-5)**, with UI 0 rejected (always active), and pointers to `read_party.battle_ui_slot` for the mapping.
+2. New helper `_fainted_switch_error` in `renegade_mcp/turn.py`: reverse-maps `switch_to` → party member via `battle_ui_slot`, returns a species-named error string if HP==0.
+3. The helper is called after range-validation in all three switch-accepting branches (ACTION, FAINT_SWITCH/SWITCH_PROMPT, FAINT_FORCED).
+
+The existing `_switch_to_zero_error` message was rewritten in the same spirit — no more "party-slot numbering" language.
+
+**Tests.** 4 new in `TestFr008SwitchBattleUiSlot` (`test_battle_turn.py`): zero-error phrasing now mentions "battle UI slot" and "read_party"; healthy bench passes the helper; fainted bench (monkey-patched party) returns species-named error; end-to-end `battle_turn(switch_to=1)` surfaces the error when the target is fainted. Existing `TestFr005SwitchToZeroErrorMessage` tests still pass — the new message satisfies the "party" substring and "1-5" hint by virtue of mentioning `read_party` and the 1-5 range.
+
+**Regression run.** Full suite: 463 passed, 1 failed. The single failure (`test_navigate_continues_after_rock_climb`) is pre-existing and unrelated — BUG-024's path-length guard (from commit `b962d02`) misfires on tight post-Rock-Climb nav where a 5-tile Manhattan target takes 71 steps to reach. `git diff` confirms my edits don't touch navigation. Filed as **BUG-028**.
+
+### Also filed this session
+
+**BUG-027:** `seek_encounter` returns "blocked" on bike when grass requires a multi-step navigation path. Repro save: `bug_seek_encounter_blocked_route207_bike`. Discovered while setting up the FR-008 experiment — `seek_encounter` from Route 207 (306, 714) on bike returned `{"result":"blocked","steps_taken":1}` without attempting to walk to the grass patch 15+ steps away. Also reproduced from a position already standing in tall grass (295, 720). Suspect: `_find_pacing_pair`'s BFS returns paths the non-navigate_to stepper can't execute. Switched to `test_trainer_battle_action` to unblock the FR-008 work.
+
+**BUG-028:** BUG-024 path-length guard too aggressive for Rock Climb follow-up nav. Suggested fix is to loosen the ratio when `obstacles_cleared` contains an HM-traversal entry, or raise the absolute step floor from 30 to 60.
+
+### Session take-aways
+
+- **Empirical experiments beat reasoning about docstrings.** The FR-008 work stalled on "is the docstring right?" for one back-and-forth; once we scripted the actual test (open menu, screenshot, switch, screenshot) the answer was immediate.
+- **The object-listing split was the ergonomic win for FR-007, not a grid change.** "Should we dim unreachable floor?" was a red herring — callers read the listing, not the grid.
+- **Test-emulator decoupling paid off.** Ran 463 tests in 13 minutes against the standalone test emulator while the live one stayed on the battle-state for experimentation.
+
 ## Dev Session: QA BUG-026 — use_battle_item throws Poké Ball instead of healing (2026-04-20 session 19)
 
 Fixed the session-18-filed BUG-026. The tool reliably threw the last-used Poké Ball at the opposing trainer on any `battle_turn(use_item="Super Potion", party_slot=N)` call — silently consuming the turn, lying in the `formatted` field, and exposing the active Pokemon to a free enemy attack.
