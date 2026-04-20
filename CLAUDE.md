@@ -256,16 +256,17 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 
 - **Character**: CLAUDE | **Rival**: WOJ
 - **Badges**: 2 (Coal, Forest)
-- **Location**: Eterna City Cycle Shop interior, post-Jupiter. Save state: `eterna_post_jupiter_post_cynthia_egg`.
+- **Location**: Route 207 tall grass (295, 721). Save state: `route207_larvitar_caught`. Prinplup at 11/75 — needs to heal back at Eterna PC.
 - **Luxray** Lv32 — Jolly, Guts. Scope Lens. Spark / Bite / Howl / Ice Fang.
 - **Grotle** Lv24 — Naughty, Overgrow. Muscle Band. Bulldoze / Cut / Bullet Seed / Razor Leaf.
-- **Prinplup** Lv25 — Lax, Vital Spirit. Metal Claw / Growl / Bubble Beam / Icy Wind.
+- **Prinplup** Lv25 — Lax, Vital Spirit. Metal Claw / Growl / Bubble Beam / Icy Wind. **HP 11/75.**
 - **Monferno** Lv27 — Careful, Iron Fist. Charcoal. Low Kick / Mach Punch / Flame Wheel / Taunt.
-- **Swinub** ✨ Lv23 — Timid, Thick Fat. Exp. Share. Powder Snow / Ice Shard / Bulldoze / Mud Bomb.
-- **Togepi Egg** — slot 5, needs ~5000 steps to hatch.
-- **PC Box 1**: Machop Lv25 deposited (benched for Flying type).
-- **Notable items**: Dawn Stone (Cycle Shop gift — we already had the Bicycle per Renegade Platinum), Wise Glasses, TM16 Light Screen, TM33 Reflect, TM73 Thunder Wave, Oval Stone, Fire Stone, Sun Stone, Never-Melt Ice.
-- **Next**: Hatch the Togepi egg while traveling. Head south to Cycling Road (Route 206) / Route 207 to find a Flying type for the open slot. Shroomish on Route 203 wants an Oran Berry (come back later).
+- **Swinub** ✨ Lv24 — Timid, Thick Fat. Exp. Share. Powder Snow / Ice Shard / Bulldoze / Mud Bomb.
+- **Togepi** Lv1 — Timid, Serene Grace. Growl / Charm / Extrasensory / Disarming Voice. (Hatched this session.)
+- **PC Box 1**: Machop Lv25, **Larvitar Lv9** (Rock/Ground, Guts — caught on Route 207).
+- **HM plan**: Prinplup→Empoleon (Surf, Waterfall). Togepi→Togekiss (Fly). Grotle→Torterra / Swinub→Mamoswine / Larvitar→Tyranitar (Rock Climb options).
+- **Notable items**: Explorer Kit (got this session), Dawn Stone, Wise Glasses, TM16 Light Screen, TM33 Reflect, TM73 Thunder Wave, Oval Stone, Fire Stone, Sun Stone, Never-Melt Ice.
+- **Next**: Heal at Eterna PC. Rotate Larvitar into party for training? Continue south to Oreburgh Gate / Route 208 / Hearthome. Shroomish on Route 203 wants an Oran Berry (come back later).
 
 See GAME_HISTORY.md for full details (defeated trainers, story progress, box contents, items).
 

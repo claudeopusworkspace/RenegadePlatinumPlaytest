@@ -703,3 +703,43 @@ Four-Pokemon team in Renegade Platinum (vs. vanilla's two):
 - **Items obtained**: TM73 Thunder Wave, Wise Glasses, TM16 Light Screen, TM33 Reflect, Dawn Stone, Togepi Egg.
 - **Notable mistakes**: Forgot Fighting→Ghost = 0x (immune, not 2x). Forgot Electric→Grass = 0.5x (NVE). Both caught by the effectiveness-warning guardrail mid-call.
 - **Next**: Head south to Cycling Road (Route 206) / Route 207 to hunt a Flying type for the open party slot. Egg needs ~5000 steps to hatch. Then return to Cynthia's house? Talk to the Move Relearner? Explore Eterna Forest exit to Hearthome direction.
+
+## Session 17 (2026-04-19): Explorer Kit, Togepi hatch, Cycling Road, Larvitar catch
+
+### Explorer Kit Gate at South Eterna
+- Tried to leave Eterna south — Pokemon Breeder F at (302, 565) blocks the route until we have an **Explorer Kit** ("You should have a word with the man next door to the Pokémon Center").
+- Found the **Underground Man** (Expert M) in the house immediately east of the Pokemon Center (Map 84, warp (310, 530)). He gives the Explorer Kit and mentors missions — declined the mentorship dialogue but walked away with the key item.
+- Key observation: `heal_party`'s auto-navigate is a great way to locate the PC when its door isn't obvious in `view_map`.
+
+### Cycling Road (Route 206)
+- Gate guard at south Eterna demands the bicycle — used `use_item("Bicycle")` to mount up.
+- **Cyclists defeated** (all one-shot by Luxray's Bite/Spark): Axel (Pichu/Pichu/Pikachu), James (Ponyta/Flaaffy), John (Farfetch'd — Spark 2x SE OHKO), Ryan (Luxio — Intimidate drop was irrelevant), Rachel (Jolteon — Volt Absorb, used Bite instead).
+- Luxray got paralyzed from Pichu's Static; Parlyz Heal + Super Potion fixed it.
+- **Togepi hatched** mid-ride on Route 206 (~step 5000+). Slot 5 Togepi Lv1 Timid, Serene Grace, knows Growl/Charm/Extrasensory/Disarming Voice. Friendship starts at 120.
+
+### Tool Bugs Logged
+- **BUG-023** (`route206_pre_togepi_hatch`): `navigate_to` misclassifies the egg-hatch "Oh?" overworld dialogue as a generic trainer/NPC `encounter: "dialogue"` — no distinct type. Expected: `encounter: "egg_hatch"` with hatching slot.
+- **BUG-024** (`route206_cyclingroad_end_nav_repro`): `navigate_to` wanders up 19 / right 3 / up 8 / right 4 / down 31 / right / down 11 / left 6 / up 8 / left 2 when targeting a warp tile that's part of a cluster of 10 identical-dest side-warps at the south end of Cycling Road's second gate. Manual `press_buttons(["down"], 120)` works fine.
+- **FR-009**: `auto_throw_ball` / `throw_ball` repeat mode — catching Larvitar required 8+ individual `throw_ball` calls with identical params.
+
+### Route 207 Scout + Larvitar Catch
+- Descended the first Cycling Road ramp through the dual-tunnel split (only x=300-301 or x=305-306 are passable; the middle is a wall).
+- Scouted 15 encounters via `auto_grind(iterations=15)` (no move_index = flee mode). Route 207 grass table: **Machop, Ponyta, Phanpy, Larvitar, Rhyhorn**. No Flying types.
+- Revised plan: Togepi → Togetic → **Togekiss (Fairy/Flying)** covers the Flying role. So we had room to go after Larvitar instead.
+- Reverted to the first Larvitar checkpoint (`9462ec09`, Larvitar Lv9 at full HP). Switched in Prinplup (safe bc Luxray's Bite would one-shot).
+- Ate Screech 4x (Def at -6), sandstorm damage, ~12 Poke Balls thrown — Larvitar broke free 8 times with a mix of 1/2/3/4-shake messages before finally staying in on the final ball.
+- **Larvitar (Rock/Ground, Guts ability) caught**, deposited to Box 1 alongside Machop.
+
+### HM Coverage Plan (for Woj's requirements)
+- **Surf + Waterfall**: Prinplup → Empoleon ✓
+- **Fly**: Togepi → Togetic → Togekiss ✓
+- **Rock Climb**: Grotle → Torterra (learnable) *or* Swinub → Mamoswine *or* Larvitar → Tyranitar — any of three options.
+
+### Session Summary
+- **Badges**: 2 (unchanged — no gym battles this session).
+- **Money**: ~$23,104 post-catch shopping not done.
+- **Party**: Luxray Lv32, Grotle Lv24, Prinplup Lv25 (11/75 HP — needs heal), Monferno Lv27, Swinub ✨ Lv24, Togepi Lv1.
+- **PC Box 1**: Machop Lv25, Larvitar Lv9 (NEW).
+- **Items obtained**: Explorer Kit.
+- **Location**: Route 207 tall grass (295, 721). Save state: `route207_larvitar_caught`.
+- **Next session**: Heal at Eterna PC, consider party-rotating Larvitar into slot for training, continue south to Oreburgh Gate / Route 208 / Hearthome.

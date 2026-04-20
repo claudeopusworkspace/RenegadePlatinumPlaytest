@@ -21,7 +21,9 @@
 | `pre_gardenia_rematch_v2` | Eterna City overworld, south of Pokemon Center. Full team healed. About to enter gym for Gardenia rematch. |
 | `post_gardenia_forest_badge` | Eterna Gym interior, post-Gardenia dialogue. Forest Badge + TM86 Grass Knot obtained. |
 | `eterna_city_post_gardenia_team_updated` | Eterna City Pokemon Center. 2 Badges (Coal + Forest). Charmeleon deposited, Swinub ✨ withdrawn. Monferno has Charcoal, Swinub has Exp. Share. |
-| `eterna_city_galactic_building_doorstep` | **CURRENT** — Eterna City at (304, 520), one tile SW of T.G. Eterna Bldg warp (305, 519). Grunt NPC at (305, 520). Ready to enter Team Galactic HQ. Same team as prior state. |
+| `eterna_city_galactic_building_doorstep` | Eterna City at (304, 520), one tile SW of T.G. Eterna Bldg warp (305, 519). Grunt NPC at (305, 520). Ready to enter Team Galactic HQ. |
+| `route206_post_togepi_hatch` | Cycling Road (304, 577) on bike, Togepi hatched from egg into slot 5 (Lv1 Timid, Serene Grace). Explorer Kit obtained. Full team healed. Heading south to Route 207. |
+| `route207_larvitar_caught` | **CURRENT** — Route 207 (295, 721) grass, Togepi Lv1 hatched, Larvitar Lv9 caught and sitting in PC Box 1 (slot 2, from the Renegade Platinum grass encounter table). Prinplup at 11/75 HP, rest healed. Explorer Kit obtained. 6 Cyclists defeated on the Cycling Road. Need to heal Prinplup and train Larvitar. |
 
 ## Debug & Testing
 
@@ -56,6 +58,8 @@
 | `bug011_cheryl_post_wailmer_ko` | Playtest-created, switch-prompt state post-Wailmer KO with Vaporeon's level-up consumed. Checkpoint for revisiting post-level-up log flows if needed. |
 | `qa_session16_map75_pre_jupiter_battle` | QA-imported (copied from QA session 16). Galactic Eterna Bldg top floor (map 75) at (21, 6), facing Jupiter at (14, 6). Monferno Lv33 75/99, party Vaporeon/Mothim/Shinx, Super Potion x9 in Medicine. Walk 6 tiles west + interact to engage Jupiter's Golbat. Source fixture for `bug022_jupiter_battle_pre_super_potion`. |
 | `bug022_jupiter_battle_pre_super_potion` | Frozen at Jupiter's battle action prompt after engaging from `qa_session16_map75_pre_jupiter_battle`. Monferno Lv33 75/99 vs Golbat Lv26. Used by `test_qa_bug022_battle_turn_use_item_log.py` to verify `battle_turn(use_item=...)` now surfaces the enemy's reciprocal action in the turn log. |
+| `route206_pre_togepi_hatch` | Route 206 Cycling Road (304, 576) on bicycle, post-Explorer-Kit. Togepi egg in slot 5 at hatch threshold (~5000 steps accumulated). **BUG-023 repro** — call `navigate_to(304, 640)` and after ~6 tiles south the egg hatch "Oh?" dialogue fires, but `navigate_to` classifies it as `encounter.encounter == "dialogue"` identical to a trainer/NPC encounter. Expected: distinct encounter type like `egg_hatch` so callers can differentiate. |
+| `route206_cyclingroad_end_nav_repro` | Route 206 (302, 681) on bicycle, just past the 2nd Cycling Road gate exit into Route 206 ground section. **BUG-024 repro** — call `navigate_to(302, 688)` (the warp destination south). The pathfinder wanders `up x19 -> right x3 -> up x8 -> right x4 -> down x31 -> right -> down x11 -> left x6 -> up x8 -> left x2` (12 "steps" reported but dozens of repath cycles) and ends at (299, 680) with `warp_failed`. Manual single-step navigation downward works fine. Likely caused by the side-warp tiles at y=681 re-triggering warp logic on every re-plan. |
 
 ## Test Suite
 
