@@ -4,6 +4,42 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: BUG-027 + BUG-028 fixed (2026-04-20 session 19c)
+
+Cleared both bugs filed at the end of session 19b.  Straightforward — each had a precise repro save state and a file:line pointer, so the work was about picking the right fix wedge rather than hunting for the root cause.
+
+### BUG-028: Rock Climb follow-up nav rejected by length guard
+
+**Root cause.** BUG-024's sanity cap `max(manhattan * 5, manhattan + 30)` assumed long detours only happen around side-warp clusters.  It didn't account for the player being stranded on a top-of-wall Rock Climb ledge whose only exit is back down the same wall.  Live repro: `hm_test_rock_climb_veilstone` → climb to (691, 614) → navigate to (688, 612) (5 Manhattan) → BFS finds a legitimate 71-step path back down the climb and around, but the guard refused it.
+
+Empirical check with the raw BFS primitives: `clean_path = None`, `obs_path = 71 tiles` crossing two `rock_climb` entries at (691, 615–616).  The obstacle path is the *only* way off the ledge.
+
+**Fix (`renegade_mcp/navigation.py`).** Skip the length guard when the chosen path is `obs_path` and any entry in `obs_crossed` is in `AUTO_NAVIGATE_TYPES` (rock_climb / water / waterfall).  Single condition, no threshold knobs to tune.  BUG-024's cycling-road-end scenario has no HM tiles on its path, so that regression test still trips the guard correctly.
+
+### BUG-027: `seek_encounter` blocked on bike en route to grass
+
+**Root cause — two stacked problems.**
+
+1. **Walk-to-pacing-tile phase ignored bike physics.**  The naive `press + check` loop at `fishing.py:428-443` pressed `down` one tile at a time.  At (306, 718) the bike hit a slope and auto-slid two tiles per press — the loop's step counter desynced, overshot the intended turn point, and eventually stalled against a wall.
+2. **Pacing on bike is fundamentally unreliable.**  With a 4-frame per-tile hold, alternating directions leaves residual momentum that carries the player one tile in the *old* direction even while pressing the *new* one.  Verified live: at (303, 721) pressing `up` moved the player to (303, 722) — physically impossible for a correct input pipeline.  Same test with the bicycle dismounted (16-frame hold): clean alternation between (303, 720) and (303, 721) forever.
+
+**Fix (`renegade_mcp/fishing.py::seek_encounter`).**
+- Replace the walk-to-pacing loop with a `_navigate_to_impl(global_x, global_y)` call.  Handles bike slopes, facing turns, HM obstacles, repaths, and mid-walk encounters (including the `Repel's effect wore off...` dialogue path — which `_post_nav_check` already classifies as `encounter=dialogue`).
+- Dismount the bicycle before the pacing loop if `CYCLING_GEAR_ADDR != 0`.  Re-read `_get_move_hold(emu)` after dismount so the hold frames switch from 4 → 16.
+- Add one facing-turn retry to the pacing loop itself: if a press doesn't change position, retry once before declaring blocked.  Cheap insurance and also helps the already-in-grass repro mentioned in the bug filing (`(295, 720)` — where the first press was a facing turn that logged as blocked immediately).
+
+**Regression test.** `TestQaBug027SeekEncounterBlocked::test_reaches_grass_through_bike_slope` in `test_fishing.py` — loads `bug_seek_encounter_blocked_route207_bike`, calls `seek_encounter`, asserts `result["result"] != "blocked"`.  Allows either `encounter` (Repel wore off mid-walk, wild Ponyta, wild Larvitar) or `max_steps` (200 steps without a hit) as valid outcomes.  Run live three times: two wild encounters + one Repel dialogue.
+
+### Verification
+- `test_hm_obstacles.py` + `test_cycling_road.py` (59 tests) — green, including `test_navigate_continues_after_rock_climb` and the full BUG-024 regression set.
+- `test_fishing.py` + `test_auto_grind_v2.py` (12 tests) — green, including the new BUG-027 test.
+- Full suite: **465 passed in 13:34** against the standalone test emulator.  Zero regressions.
+
+### Session take-aways
+- **When a sanity cap misfires, the distinguishing signal is usually already computed nearby.**  BUG-028's fix is a one-line exception using `obs_crossed`, which was already available in scope.  No need for a new traversal or a tunable threshold.
+- **Bike pacing is a genre-local landmine.**  Pokemon's input model distinguishes short (turn) and long (move) presses, and 4-frame bike holds sit right at the boundary.  Any future "alternating direction on bike" code should either dismount first or use a longer hold.  Straight-line nav on bike is fine because `_execute_path` doesn't change direction every step.
+- **`_navigate_to_impl` is the escape hatch for movement correctness.**  The walk-to-pacing-tile phase didn't need to understand slopes or HMs — it just needed to delegate.  Worth keeping this pattern in mind for any future tool that walks the player somewhere specific.
+
 ## Dev Session: FR-007 + FR-008 + two new bugs filed (2026-04-20 session 19b)
 
 Closed two feature requests from the QA triage backlog and filed two new bugs discovered along the way.
