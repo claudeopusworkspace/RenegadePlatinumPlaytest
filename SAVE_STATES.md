@@ -27,7 +27,11 @@
 | `oreburgh_pc_healed_session18` | Oreburgh City Pokemon Center (8, 6) inside. Full team healed post-Route 207 Larvitar hunt. 10 Super Potions + 5 Repels stocked; ¥12,644. |
 | `route207_post_hiker_kevin` | Route 207 (319, 716) on bicycle. Picnicker Lauren + Camper Anthony + Hiker Kevin defeated. Luxray Lv33 (learned Crunch), Prinplup Lv26 (learned Scald). Grotle fainted, party damaged — pre-Youngster Austin detour. |
 | `route207_all_nearby_trainers_defeated` | Route 207 (327, 715) on bicycle, next to Pokeball #2. All 4 Route 207 east-cluster trainers (Picnicker/Camper/Hiker/Youngster) defeated. Hard Stone collected. Full team still damaged — pre-heal trip. |
-| `route207_north_of_slope_session18_end` | **CURRENT** — Route 207 (306, 714) on the bicycle, Repel active, full healed party. Just crested the bike slope (BUG-025 workaround verified: mount bike before any north-crossing nav call). Session 18 wrap. Next: push north to Mt. Coronet entrance. |
+| `route207_north_of_slope_session18_end` | Route 207 (306, 714) on the bicycle, Repel active, full healed party. Just crested the bike slope (BUG-025 workaround verified: mount bike before any north-crossing nav call). Session 18 wrap. |
+| `wayward_cave_session20_end` | Wayward Cave upper secret room map 285 at (30, 23). Entered via the *west* Route 206 secret entrance at (299, 611). 2 badges, session 20 wrap. |
+| `session23_exited_secret_wayward` | Route 206 (299, 612) on bicycle, just exited the west secret entrance back to Route 206. Session 23 early — en route to the *east* main entrance. |
+| `session23_mira_defeated` | Wayward Cave main branch map 284 at (39, 42). Just defeated Mira in her trainer battle (Togetic Lv27 / Porygon2 Lv27 / Kadabra Lv28 / Haunter Lv27). Party fully healed by Mira's auto-heal. Luxray Lv34. Swinub fainted + revived via Revival Herb → reheal. Mira now follows us, asks us to help find her lost item deeper in the cave. |
+| `session23_end_with_mira` | **CURRENT** — Wayward Cave main map 284 at (42, 53) with Mira following (she's at (38, 42) standby). Party full HP. Mira auto-heals after every battle. Next: explore deeper into the cave (west / south paths) to find her lost item. **Blocked on map communication fidelity** — Woj paused to rethink how multi-level cave maps should render. |
 
 ## Debug & Testing
 

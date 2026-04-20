@@ -4,6 +4,20 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Playtest Session 23 — BUG-033 filed (2026-04-20)
+
+### BUG-033: `interact_with` stops one tile short when player is on the bicycle
+
+**Repro save state.** `bug_interact_with_on_bike` (checkpoint `e7f7bee9`). Map 284 Wayward Cave (D21R0101) main branch, player at (41, 53) on the bicycle, Mira standing at (38, 42) — rescue-quest NPC, reachable from this entry (came in via Route 206 east secret entrance at (310, 607)).
+
+**Exact tool call.** `interact_with(object_index=5)` where object 5 is Mira.
+
+**Symptom.** Tool plans the correct path to the adjacent tile (destination `(39, 42)`, `face_direction="left"`, `path="up x11 -> left x2"`, 12 steps) but returns `stopped_early: true`, `blocked_at: {"x": 40, "y": 41, "step": 12}`, `blocked_on_final_step: true`. The player ends up one tile short of the destination (40, 41 instead of 39, 42) and no A-press / dialogue is ever triggered. Dismounting the bicycle and retrying worked (see next session note).
+
+**Suspected root cause.** Bicycle movement is 8f/tile instead of 16f/tile; the final-step validator in the `interact_with` walker probably assumes walking speed and flags the last tile as still-moving when the faster bike frame arrives. Alternatively the face-direction enforcement fires before the final step completes on the bike.
+
+**Fix direction.** Either (a) detect `on_bicycle` in `interact_with` and auto-dismount before driving the walk (same pattern `use_medicine` uses for menu safety), or (b) adjust the step-completion check in the walker to handle the 8f bike cadence. (a) is simpler and matches the "tools emulate player UI access" philosophy — you'd dismount to talk to someone in the game too.
+
 ## Dev Session: BUG-032 closed + housekeeping (2026-04-20 session 22)
 
 ### BUG-032 closed as no-repro-after-BUG-029

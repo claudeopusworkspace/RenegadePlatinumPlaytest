@@ -256,18 +256,19 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 
 - **Character**: CLAUDE | **Rival**: WOJ
 - **Badges**: 2 (Coal, Forest)
-- **Location**: Wayward Cave upper room, (30, 23) on map 285. Save state: `wayward_cave_session20_end`. Full team healed, Repel active (6 left). Entered via the *secret* second entrance at (299, 611) on Route 206 west lower path — this is NOT where Mira is. The *main* entrance is visible from Route 207 near the Mt. Coronet warp, and the Psychic there blocks progress until we rescue Mira.
-- **Luxray** Lv33 — Jolly, Guts. Scope Lens. Spark / **Crunch** / Howl / Ice Fang.
+- **Location**: Wayward Cave main branch, (42, 53) on map 284 (D21R0101). Save state: `session23_end_with_mira`. Full team healed (Mira auto-heals after every battle). Entered via the *main* (east) Route 206 warp at (310, 607) — this is the correct entry to reach Mira. The west entrance at (299, 611) leads to the secret upper branch and cannot reach Mira.
+- **Luxray** Lv34 — Jolly, Guts. Scope Lens. Spark / **Crunch** / Howl / Ice Fang.
 - **Grotle** Lv24 — Naughty, Overgrow. Muscle Band. Bulldoze / Cut / Bullet Seed / Razor Leaf.
 - **Prinplup** Lv26 — Lax, Vital Spirit. Metal Claw / Growl / **Scald** / Icy Wind.
 - **Monferno** Lv27 — Careful, Iron Fist. Charcoal. Low Kick / Mach Punch / Flame Wheel / Taunt.
-- **Swinub** ✨ Lv25 — Timid, Thick Fat. Exp. Share. **Avalanche** / Ice Shard / Bulldoze / Mud Bomb.
+- **Swinub** ✨ Lv26 — Timid, Thick Fat. Exp. Share. **Avalanche** / Ice Shard / Bulldoze / Mud Bomb.
 - **Togepi** Lv1 — Timid, Serene Grace. Growl / Charm / Extrasensory / Disarming Voice.
 - **PC Box 1**: Machop Lv25, Larvitar Lv9 (Rock/Ground, Guts).
 - **HM plan**: Prinplup→Empoleon (Surf, Waterfall). Togepi→Togekiss (Fly). Grotle→Torterra / Swinub→Mamoswine / Larvitar→Tyranitar (Rock Climb options).
-- **Notable items**: Explorer Kit, **Hard Stone** (boost Rock moves, save for Larvitar/Tyranitar), Dawn Stone, Wise Glasses, **TM74 Gyro Ball** (new, Route 206 middle island), **PP Up** (new, east lower path), TM16 Light Screen, TM33 Reflect, TM73 Thunder Wave, Oval Stone, Fire Stone, Sun Stone, Never-Melt Ice. Bag: 10 Super Potions, 6 Repels.
-- **Defeated this session**: Hiker Justin (Route 207, Graveler + Sandslash), Hiker Theodore (Route 206 grass, Torkoal — Crunch crit OHKO).
-- **Next**: BUG-029 / BUG-030 / BUG-031 cleared in session 21; BUG-032 closed in session 22 as no-repro (fixed by BUG-029 elevation-aware BFS). Ready to resume playtest: exit this secret branch back to Route 206, enter the main Wayward Cave entrance from Route 207, rescue Mira's Kadabra, return to the Psychic to unlock Mt. Coronet.
+- **Notable items**: Explorer Kit, **Hard Stone** (boost Rock moves, save for Larvitar/Tyranitar), Dawn Stone, Wise Glasses, **TM74 Gyro Ball** (new, Route 206 middle island), **PP Up** (new, east lower path), TM16 Light Screen, TM33 Reflect, TM73 Thunder Wave, Oval Stone, Fire Stone, Sun Stone, Never-Melt Ice. Bag: 9 Super Potions, 6 Repels, **0 Revival Herbs** (used it on Luxray vs Mira's Kadabra — restock before Mt. Coronet).
+- **Defeated this session**: **Pokémon Trainer Mira** (Togetic Lv27 / Porygon2 Lv27 / Kadabra Lv28 / Haunter Lv27) — Renegade Platinum changes the Mira rescue quest into a trainer battle. Kadabra has Life Orb + Dazzling Gleam / Grass Knot / Psybeam / Recover and wipes most of the team; we won by reviving Luxray with a Revival Herb and Crunching the Kadabra SE.
+- **Mira follow state**: Mira is following the player in map 284 (standby at (38, 42)). She auto-heals the party after every battle and triggers "Are you leaving? I haven't found my item yet..." dialogue when approaching map exits. **Do not leave the cave until the item is found.**
+- **Next**: Navigation tooling doesn't communicate multi-level cave maps clearly — session 23 was cut short because I kept walking into cliff faces. Fix map-rendering first. Then: explore west/south from (42, 53) to find Mira's lost item deep in the cave, return to her, exit to Route 206, and finally clear the Route 207 Psychic to unlock Mt. Coronet.
 
 See GAME_HISTORY.md for full details (defeated trainers, story progress, box contents, items).
 

@@ -825,3 +825,40 @@ Four-Pokemon team in Renegade Platinum (vs. vanilla's two):
 - **Bag**: 10 Super Potions, 6 Repels (burned 4 across routing detours).
 - **Location**: Wayward Cave upper room, map 285 at (30, 23). Save state: `wayward_cave_session20_end`. **This is the secret branch, not the main Mira-quest branch.**
 - **Next session**: Gated on dev fixing BUG-029/030/031/032. Then: exit the secret branch back to Route 206, find the *main* Wayward Cave entrance near the Route 207 Mt. Coronet gate, rescue Mira's Kadabra, return to the Psychic, proceed into Mt. Coronet.
+
+## Session 23 (2026-04-20): Main Wayward Cave entry, Mira trainer battle, quest advanced
+
+### Exit secret branch → Route 206
+- Loaded `wayward_cave_session20_end` at Wayward Cave upper room (30, 23). Navigation into the upper-room maze was painful — spent time mashing east into cliff walls before Woj pointed out I'd been reading the map as 2D when the ">" / "^" tiles around me are elevation boundaries (ledges + cliff faces), not walkable directions. Retreated to the slope at (7, 26)-(7, 27) and rode back down to map 284.
+- Exited map 284 via the (30, 55) warp back to Route 206 (299, 612). The Cyclist F #29 does not actually block the warp — she patrols on the upper Cycling Road bridge while the warp and the player share the lower-path elevation. Woj clarified: "the cyclists are at the higher level, you're underneath the bridge."
+
+### Main Wayward Cave entrance is also on Route 206
+- Contrary to my session-20 write-up, the **main Wayward Cave entrance is NOT on Route 207** — it's a second warp on Route 206 at **(310, 607)**, on the *east* lower path (the opposite side of the Cycling Road bridge from the secret west entry at (299, 611)). Both entrances land in map 284 (`D21R0101`), the main cave floor, just at different sides of the interior wall. This is how we reached Mira — via (310, 607) → (41, 53).
+- Routing: from (299, 612) went right under the bridge pillars (raw right-hold is fine here — `navigate_to` kept tripping on the cycling-road tile-behavior guard), then up ~10 tiles through the narrow corridor beside the cliff, then `navigate_to(310, 607)` warp-entered cleanly.
+
+### Mira rescue quest — it's a trainer battle in Renegade Platinum
+- Approached Mira at (38, 42). First call was `interact_with(object_index=5)` on the bicycle — walked up to (40, 41) but stopped one tile short and never tapped A. Dismounted and retried; worked. Filed **BUG-033** with `bug_interact_with_on_bike` save state.
+- Mira is a **trainer battle** in this hack, not a passive escort: "Pokémon Trainer Mira sent out Togetic!" (after "Eek! Stay away from Mira!" flavor intro).
+  - **Togetic Lv27** (Fairy/Flying, Serene Grace, Sitrus Berry) — Dazzling Gleam / Air Cutter / Soft-Boiled / Sweet Kiss. Luxray Spark → SE → OHKO.
+  - **Porygon2 Lv27** (Normal, Trace → copied Guts, Expert Belt) — Tri Attack / Charge Beam / Signal Beam / Recover. Luxray Crunch x2 → KO. Took one Signal Beam SE (Bug → Dark) mid-trade.
+  - **Kadabra Lv28** (Psychic, Magic Guard, **Life Orb**) — Psybeam / Grass Knot / Dazzling Gleam / Recover. This is the nuke. Life Orb + STAB + SE coverage means most of our team can't survive a single hit:
+    - Luxray (Dark) → DG 2x SE → OHKO from 66 HP (the 66-HP chip from Porygon2's Signal Beam compounded it).
+    - Swinub (Ice/Ground) → Psybeam neutral but LO+STAB OHKO through our SpD 30. Lost the shiny Swinub to the switch.
+    - Prinplup (Water) → Grass Knot SE → one Super Potion + one Scald, then Psybeam OHKO'd. Scald *did* land the burn, but Magic Guard negates burn chip and Kadabra is a special attacker, so the burn did nothing.
+    - Grotle (Grass) → DG OHKO.
+    - **Winning play:** sent Grotle as faint-switch absorber, popped **Revival Herb on Luxray** (bench) — cost Grotle to Kadabra's DG, revived Luxray at full. Luxray switched in, ate one DG (109→50), Crunch SE OHKO'd Kadabra.
+  - **Haunter Lv27** (Ghost/Poison, Levitate, Spell Tag) — Shadow Ball / Double Team / Hypnosis / Curse. Luxray Crunch → SE Ghost → OHKO, no damage taken.
+- **Mira wins**: Luxray levelled to Lv34 from the Kadabra XP (870 EXP), +$3360 prize. Post-battle dialogue revealed the twist — Mira's distress signal was a cover; she'd actually dropped a valuable item deep in the cave and wants help finding it. Mira now **follows the player and auto-heals the party** after every battle (confirmed: Grotle/Prinplup/Swinub all revived + fully healed immediately post-Mira).
+
+### Wrap (Woj called session)
+- Navigation tooling isn't communicating multi-level maps clearly enough. Most of the session drained on me mis-reading elevation-as-wall and walking into cliff faces. Stopped to rethink map rendering before continuing the item hunt.
+
+### Session Summary
+- **Badges**: 2 (unchanged).
+- **Trainers defeated**: Pokémon Trainer Mira (Togetic/Porygon2/Kadabra/Haunter). +$3360.
+- **Items obtained**: None yet from Mira's item quest.
+- **Items used**: 1 Super Potion, 1 Revival Herb (0 remaining — may need to buy more before the next tough fight).
+- **Party**: Luxray **Lv34** (+1), Grotle Lv24, Prinplup Lv26, Monferno Lv27, Swinub ✨ Lv26, Togepi Lv1. Full HP (Mira auto-heal).
+- **Location**: Wayward Cave main branch map 284 (D21R0101) at (42, 53). Mira standing by at (38, 42). Save state: `session23_end_with_mira`.
+- **Bugs filed**: **BUG-033** (`interact_with` stops one tile short on the bicycle, repro `bug_interact_with_on_bike`).
+- **Next session**: blocked on map-tool redesign. Then: find Mira's lost item deeper in the cave (west/south corridors from the (42, 53) area are the unexplored parts), return to her, exit, finally unlock the Route 207 Psychic → Mt. Coronet.
