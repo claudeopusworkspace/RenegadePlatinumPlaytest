@@ -435,6 +435,50 @@ class TestQaBug025BikeSlopeAutoMount:
 
 
 # ---------------------------------------------------------------------------
+# BUG-031: bike-slope traversal fails on Wayward Cave ascent — must surface
+# a clear error rather than silently stopping
+# ---------------------------------------------------------------------------
+
+class TestBug031BikeSlopeTraversalFailure:
+    """Regression: when the fast-gear/run-up traversal doesn't clear a slope
+    (observed on Wayward Cave's north-bound slopes despite the same function
+    succeeding on Route 207 from an identical setup), navigate_to must return
+    a structured blocked_reason instead of a vague "Possible obstacle" note.
+    """
+
+    @retry_on_rng("bug_wayward_cave_bike_slope_up")
+    def test_clear_error_when_traversal_fails(self, emu: EmulatorClient):
+        """navigate_to(7, 18) surfaces bike_slope_traversal_failed reason."""
+        from renegade_mcp.navigation import _navigate_to_impl
+
+        result = _navigate_to_impl(emu, 7, 18)
+        assert result.get("stopped_early") is True, (
+            f"Expected stopped_early=True, got: {result}"
+        )
+        assert result.get("blocked_reason") == "bike_slope_traversal_failed", (
+            f"Expected blocked_reason=bike_slope_traversal_failed, got: "
+            f"{result.get('blocked_reason')!r} in {result}"
+        )
+        assert "bike_slope_position" in result, (
+            f"Expected bike_slope_position in result: {result}"
+        )
+
+    @retry_on_rng("bug_wayward_cave_bike_slope_up")
+    def test_player_not_stranded_mid_slope(self, emu: EmulatorClient):
+        """After a failed ascent, the player must end up on a normal passable
+        tile (not wedged on the slope itself)."""
+        from renegade_mcp.navigation import _navigate_to_impl, _read_position
+
+        _navigate_to_impl(emu, 7, 18)
+        _, fx, fy = _read_position(emu)
+        # Slope is at (7, 26-27). Player should be south of it (greater y).
+        assert fy >= 28, (
+            f"Player ended up at ({fx},{fy}); expected to be south of the "
+            f"slope (y >= 28)"
+        )
+
+
+# ---------------------------------------------------------------------------
 # QA BUG-024: navigate_to wanders on side-warp clusters (Cycling Road gate)
 # ---------------------------------------------------------------------------
 
@@ -456,14 +500,19 @@ class TestQaBug024SideWarpCluster:
 
     @retry_on_rng("route206_cyclingroad_end_nav_repro")
     def test_refuses_long_detour_to_warp_target(self, emu: EmulatorClient):
-        """(302, 681) → (302, 688) through the gate house returns clean error."""
+        """(302, 681) → (302, 688) through the gate house returns clean error.
+
+        Post-BUG-030: navigate_to no longer falls back to 2D BFS on elevated
+        maps, so the refusal now fires from the elevation path rather than
+        the sanity-cap step-count check. Same outcome (clean error, no
+        player movement, warp hint), different trigger point.
+        """
         from renegade_mcp.navigation import _navigate_to_impl
 
         result = _navigate_to_impl(emu, 302, 688)
         assert "error" in result, f"Expected error, got: {result}"
         assert "No reasonable path" in result["error"], result["error"]
         assert result.get("manhattan") == 7
-        assert result.get("path_length", 0) > 50
 
     @retry_on_rng("route206_cyclingroad_end_nav_repro")
     def test_hints_at_warp_direction_when_on_warp_tile(self, emu: EmulatorClient):

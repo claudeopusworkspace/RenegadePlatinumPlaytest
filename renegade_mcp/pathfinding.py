@@ -618,6 +618,256 @@ def _bfs_pathfind_3d(
     return _search(start_x, start_y, start_level, 0, frozenset())
 
 
+def _flood_fill_level(
+    terrain_info: list, npc_set: set, elevation: dict,
+    start_x: int, start_y: int, current_level: int,
+    width: int = 32, height: int = 32,
+) -> tuple[dict[tuple[int, int], int],
+           dict[object, tuple[int, tuple[int, int], int]]]:
+    """Flood-fill restricted to one elevation level.
+
+    Returns (reach, transitions) where:
+    - reach: {(x, y): steps} for every tile reachable on ``current_level``.
+    - transitions: {key: (steps, (x, y), other_level)} for each way to
+      cross to a different level from one of the reached tiles. Keys are
+      either ``ramp_index`` (int, for a ramp) or ``("ml", x, y, other_level)``
+      for a multi-level flat tile where the player can switch levels
+      (e.g. a bridge-over-ground overlap tile).
+
+    Uses the same level-compatibility rules as ``_bfs_pathfind_level``.
+    """
+    if not (0 <= start_x < width and 0 <= start_y < height):
+        return {}, {}
+
+    level_map = elevation["level_map"]
+    ramp_tiles = elevation["ramp_tiles"]
+    height_by_level = {lv["level"]: lv["height"] for lv in elevation["levels"]}
+    current_height = height_by_level.get(current_level)
+
+    def _steppable(other_level: int) -> bool:
+        if current_height is None:
+            return False
+        oh = height_by_level.get(other_level)
+        if oh is None:
+            return False
+        return abs(oh - current_height) <= STEPPABLE_HEIGHT
+
+    def _tile_on_level(tx: int, ty: int, level: int) -> bool:
+        key = (tx, ty)
+        if key in ramp_tiles:
+            ri = ramp_tiles[key]
+            if level in (ri["from_level"], ri["to_level"]):
+                return True
+            return _steppable(ri["from_level"]) or _steppable(ri["to_level"])
+        if key in level_map:
+            if level in level_map[key]:
+                return True
+            return any(_steppable(lv) for lv in level_map[key])
+        return True
+
+    reach: dict[tuple[int, int], int] = {(start_x, start_y): 0}
+    queue: deque[tuple[int, int, int]] = deque([(start_x, start_y, 0)])
+    transitions: dict[object, tuple[int, tuple[int, int], int]] = {}
+
+    def _record_transitions(tx: int, ty: int, steps: int) -> None:
+        # Ramp tile: record once per ramp index.
+        ri = ramp_tiles.get((tx, ty))
+        if ri is not None:
+            ramp_idx = ri["ramp_index"]
+            if ramp_idx not in transitions:
+                if ri["from_level"] == current_level:
+                    other = ri["to_level"]
+                elif ri["to_level"] == current_level:
+                    other = ri["from_level"]
+                else:
+                    other = None
+                if other is not None and other != current_level:
+                    transitions[ramp_idx] = (steps, (tx, ty), other)
+            return
+        # Multi-level flat tile: each "other" level is a separate transition.
+        lvls = level_map.get((tx, ty))
+        if lvls and len(lvls) > 1 and current_level in lvls:
+            for other_lv in lvls:
+                if other_lv == current_level:
+                    continue
+                key = ("ml", tx, ty, other_lv)
+                if key not in transitions:
+                    transitions[key] = (steps, (tx, ty), other_lv)
+
+    # Start tile may itself be a transition point.
+    _record_transitions(start_x, start_y, 0)
+
+    while queue:
+        x, y, d = queue.popleft()
+        for dx, dy, direction in BFS_MOVES:
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < width and 0 <= ny < height):
+                continue
+            if (nx, ny) in reach:
+                continue
+            if (nx, ny) in npc_set:
+                continue
+
+            passable, behavior = terrain_info[ny][nx]
+            if not passable:
+                continue
+
+            if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
+                continue
+            if behavior in LEDGE_DIRECTIONS and LEDGE_DIRECTIONS[behavior] != direction:
+                continue
+            _, src_behavior = terrain_info[y][x]
+            if src_behavior in DIRECTIONAL_BLOCKS and DIRECTIONAL_BLOCKS[src_behavior] == direction:
+                continue
+
+            if not _tile_on_level(nx, ny, current_level):
+                continue
+
+            nd = d + 1
+            reach[(nx, ny)] = nd
+            _record_transitions(nx, ny, nd)
+
+            queue.append((nx, ny, nd))
+
+    return reach, transitions
+
+
+def _validate_path_elevation(
+    path: list[str], elevation: dict,
+    start_x: int, start_y: int, start_level: int,
+) -> bool:
+    """Walk a 2D path simulating level transitions; reject if any step
+    jumps between incompatible elevation layers (e.g. under-bridge ground
+    up onto the bridge).
+
+    Permissive where the existing 3D BFS is permissive: no-data tiles are
+    accepted on any level, multi-level tiles act as implicit level
+    transitions, and small height differences (≤ STEPPABLE_HEIGHT) are
+    allowed.
+
+    Used to filter 2D-BFS fallback paths on 3D maps so BUG-030-style bridge
+    routing doesn't sneak through.
+    """
+    level_map = elevation["level_map"]
+    ramp_tiles = elevation["ramp_tiles"]
+    height_by_level = {lv["level"]: lv["height"] for lv in elevation["levels"]}
+
+    def _steppable(a: int, b: int) -> bool:
+        ha = height_by_level.get(a)
+        hb = height_by_level.get(b)
+        if ha is None or hb is None:
+            return False
+        return abs(ha - hb) <= STEPPABLE_HEIGHT
+
+    def _closest_level(target: int, candidates) -> int:
+        th = height_by_level.get(target, 0)
+        return min(
+            candidates,
+            key=lambda lv: abs(height_by_level.get(lv, 0) - th),
+        )
+
+    # current_levels is a set because while on ramp/multi-level tiles the
+    # player's effective level is ambiguous — they commit to one end only
+    # when they step onto a tile that forces a specific level.
+    current_levels: set[int] = {start_level}
+    cx, cy = start_x, start_y
+    deltas = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
+
+    for step in path:
+        dx, dy = deltas[step]
+        cx += dx
+        cy += dy
+        key = (cx, cy)
+
+        if key in ramp_tiles:
+            ri = ramp_tiles[key]
+            ends = {ri["from_level"], ri["to_level"]}
+            # Step is accepted if any current level matches a ramp end or
+            # is steppable into one.
+            allowed_ends = {
+                lv for lv in ends
+                if lv in current_levels or any(_steppable(cl, lv) for cl in current_levels)
+            }
+            if not allowed_ends:
+                return False
+            # After the ramp we could be at either ramp end.
+            current_levels = ends
+            continue
+
+        lvls = level_map.get(key)
+        if lvls is None:
+            continue  # No plate data — permissive.
+
+        compatible = set(lvls) & current_levels
+        if compatible:
+            current_levels = compatible
+            continue
+        # Try stepping via small height difference.
+        steppable_lvls = {
+            lv for lv in lvls
+            if any(_steppable(cl, lv) for cl in current_levels)
+        }
+        if steppable_lvls:
+            current_levels = steppable_lvls
+            continue
+        return False
+
+    return True
+
+
+def _bfs_reachable_3d(
+    terrain_info: list, npc_set: set, elevation: dict,
+    start_x: int, start_y: int, start_level: int,
+    width: int = 32, height: int = 32,
+    timeout: float = 1.5,
+) -> dict[tuple[int, int], int]:
+    """Hierarchical flood-fill across elevation levels via ramp transitions.
+
+    Returns {(x, y): min_steps} for every tile reachable from
+    (start_x, start_y) on start_level or any level reachable through ramps
+    and multi-level flat-tile transitions.
+
+    Iterative (not recursive): each (tile, level) combo is flood-filled at
+    most once across the whole search, bounded by O(tiles * levels). The
+    ``timeout`` parameter caps wall-clock time — default 1.5s is enough for
+    a Cycling-Road-sized 5x5-chunk grid and keeps ``view_map`` responsive.
+    """
+    deadline = time.monotonic() + timeout
+    reach: dict[tuple[int, int], int] = {}
+    visited_level_starts: set[tuple[int, int, int]] = set()
+
+    # Work queue: (flood_start_x, flood_start_y, level, base_steps).
+    # Each entry triggers one flood_fill_level pass on the level.
+    work: deque[tuple[int, int, int, int]] = deque(
+        [(start_x, start_y, start_level, 0)]
+    )
+    visited_level_starts.add((start_x, start_y, start_level))
+
+    while work:
+        if time.monotonic() > deadline:
+            break
+
+        sx, sy, level, base_steps = work.popleft()
+        level_reach, level_transitions = _flood_fill_level(
+            terrain_info, npc_set, elevation,
+            sx, sy, level, width=width, height=height,
+        )
+        for pos, s in level_reach.items():
+            total = base_steps + s
+            prev = reach.get(pos)
+            if prev is None or total < prev:
+                reach[pos] = total
+
+        for _key, (steps_to_t, (rx, ry), other_level) in level_transitions.items():
+            seed = (rx, ry, other_level)
+            if seed in visited_level_starts:
+                continue
+            visited_level_starts.add(seed)
+            work.append((rx, ry, other_level, base_steps + steps_to_t))
+
+    return reach
+
+
 def _build_multi_chunk_terrain(
     emu: EmulatorClient, map_id: int, px: int, py: int, target_x: int, target_y: int,
 ) -> tuple | None:

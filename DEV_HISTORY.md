@@ -4,6 +4,60 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: BUG-029 + BUG-030 + BUG-031 cleared (2026-04-20 session 21)
+
+Cleared three of the four navigation bugs filed in session 20.  BUG-032 deferred pending a framing conversation with Woj.  Full suite: **115/115 passing** across nav + map tools; no regressions.
+
+### BUG-029: `view_map` marks under-bridge pickup as reachable
+
+**Root cause.**  `view_map`'s BFS flood-fill (`_bfs_flood_fill` in `map_state.py`) never consumed BDHC elevation data on multi-chunk overworld maps — elevation was only loaded for single-chunk indoor maps (where `render_map` consumed it for `\/` glyph rendering).  On Cycling Road the player on the bridge ended up with a 2D-contiguous view of the under-bridge Pokeball because the bridge tile and the ground under it share the same `(x, y)` in the 2D grid.
+
+**Fix (`renegade_mcp/pathfinding.py` + `map_state.py`).**
+
+- `_flood_fill_level`: level-constrained flood-fill that mirrors `_bfs_pathfind_level`'s acceptance rules (ramp endpoints, steppable heights, multi-level tiles).  Returns `{(x, y): steps}` plus a `transitions` dict whose keys are either `ramp_index` (int) or `("ml", x, y, other_level)` — multi-level flat tiles act as implicit level-switch points.
+- `_bfs_reachable_3d`: hierarchical flood-fill across levels via ramp + multi-level transitions.  Rewritten as an iterative work-queue with a shared `visited_level_starts` set.  The first cut was recursive and blew up to 77 s on Cycling Road's 5×5 chunk grid (≈1800 multi-level tiles × 15 levels = exponential branching).  The iterative form runs in ~5 ms with a 1.5 s wall-clock cap.
+- `view_map`: on multi-chunk maps, build `_build_multi_chunk_terrain` + `_build_multi_chunk_elevation`, compute `player_level`, and run `_bfs_reachable_3d` instead of the 2D `_bfs_flood_fill`.  Translate reach set from mc-grid back to viewport-local for object reachability annotation.  Single-chunk maps still use the legacy 2D flood-fill (unchanged).
+
+**Trade-off.**  The 3D flood-fill is more conservative than the 2D one on Cycling Road — Cyclist C at (306, 675), physically reachable by sliding south from the bridge, now appears in `unreachable_objects`.  The 3D elevation layout has a L3↔L4 gap (heights 48 and 59, diff 11 vs `STEPPABLE_HEIGHT=4`) that the BFS can't bridge without explicit ramp data, and the Cycling Road's ramps don't fill the gap cleanly.  Net: bridge/ground errors fixed, some legitimately-reachable-via-slide targets false-unreachable.  Callers still see these in `unreachable_objects` and can `navigate_to` them (the slide handler handles the actual traversal).
+
+**Tests.**  `TestBug029ElevationReachability` (2 tests) — verifies the under-bridge Pokeball is unreachable and an on-bridge Cyclist is still reachable.  Uses a helper `_load_frozen` that skips the test helper's 60-frame settle, because the Cycling Road auto-slide drifts the player ~13 tiles south during that window.
+
+### BUG-030: `navigate_to` routes through bridge instead of under it
+
+**Root cause.**  Two stacked problems:
+1. When 3D BFS returned `None` on a multi-chunk map, `navigate_to` silently fell back to 2D BFS, which ignores elevation and returns paths that step from under-bridge ground up onto the bridge (or vice versa).
+2. `is_on_cycling_road`'s column-scan heuristic ("bridge body tile in player's Y-column → slide mode") fires for under-bridge players too, because the bridge body is literally above them in 2D space.  The subsequent dispatch into `_navigate_cycling_road` tried to slide, went south instead of west, and failed.
+
+**Fix 1: 2D-fallback path validator (`_validate_path_elevation`).**  When 3D BFS fails on a 3D map, we still run 2D BFS (needed for HM-obstacle crossings — Surf, Rock Climb, Waterfall — that the current 3D BFS can't handle).  But before executing the path, simulate it step-by-step and reject if any step transitions between incompatible elevation layers.  Permissive where `_bfs_pathfind_level` is permissive: no-data tiles are accepted, multi-level tiles act as implicit level-switches, `STEPPABLE_HEIGHT`-close transitions are allowed.  HM-obstacle paths are exempt — Surf/Rock Climb/Waterfall are the legitimate ways to cross elevation layers.
+
+Tracks `current_levels` as a set (not a single level) because while traversing ramps or multi-level tiles the player's "committed" level is ambiguous until a single-level tile forces the issue.
+
+**Fix 2: elevation gate on `is_on_cycling_road` column scan (`map_state.py`).**  The column-scan now requires `read_player_height(emu) >= 40`.  Cycling Road bridge body is at height 48 (L3); under-bridge ground is at 16 (L1).  The threshold of 40 keeps bridge-adjacent scenarios firing while keeping under-bridge players out of cycling mode.  Skipped gracefully when height read fails.
+
+**Also updated.**  `TestQaBug024SideWarpCluster` now fires from the 3D elevation path rather than the old 2D sanity-cap — same outcome (no player movement, warp hint, "No reasonable path" phrasing), different trigger point.  Dropped the `path_length > 50` assertion since we no longer build a 2D path to measure.
+
+**Test coverage caveat.**  No live under-bridge save state exists.  Unit tests in `TestBug030PathElevationValidator` (3 tests) cover the validator directly with synthetic elevation dicts (bridge-crossing-from-ground rejected, level-jump rejected, ramp transition accepted).  Full end-to-end repro blocked on creating a save state at the filing's (302, 654) under-bridge position; flagged for future session.
+
+### BUG-031: `navigate_to` bike-slope traversal fails going UP in Wayward Cave
+
+**Investigation.**  Wayward Cave slope pair at (7, 26)/(7, 27) and (7, 37)/(7, 38) has the same tile behaviors (0xD9 top / 0xDA bottom) and same BDHC ramp (R2→0, dir=south, 32-unit height delta) as Route 207's slope at (306, 718)/(306, 719) (R9→4, dir=south, 32-unit height delta).  Calling `_traverse_bike_slope` from the identical pre-slope position pattern:
+
+- **Route 207**: player moves from (306, 720) to (306, 714), tiles_moved=6.  Works.
+- **Wayward Cave**: player stuck at (7, 28), tiles_moved=0.  Fails.
+
+Same function, same inputs, different outcome.  Engine-side physics difference I couldn't pin down in this session — possibly related to the `R2-0 dir=north` ramp the Wayward Cave player starts on, or cave vs outdoor friction/acceleration tuning.  Worth revisiting with a ROM breakpoint on bike slope transitions if it starts blocking gameplay.
+
+**Fix (`renegade_mcp/navigation.py::_execute_path`).**  When `_traverse_bike_slope` returns blocked (`tiles_moved == 0`), record `nav_info["blocked_reason"] = "bike_slope_traversal_failed"` and `nav_info["bike_slope_position"]`.  These merge into the `navigate_to` result via the existing `result.update(nav_info)` pattern, so callers see a structured error instead of the prior generic "Possible obstacle" note.  This is the filing's option (c) — detect and report — rather than (a) refuse ascent unconditionally (which would break Route 207).
+
+**Tests.**  `TestBug031BikeSlopeTraversalFailure` (2 tests) — verifies the structured error is returned and the player doesn't end up wedged on a slope tile.  Route 207's slope tests (`TestBikeSlopeTraversal`, 6 tests) still pass — the new branch only fires on the blocked path.
+
+### Session take-aways
+
+- **BDHC elevation is multi-valued at (x, y).**  Bridge-over-ground tiles have plates at two heights for the same 2D footprint.  2D BFS flood-fill treats them as one tile; correct reachability needs a hierarchical level-indexed search.  The existing `_bfs_pathfind_level` had most of the pieces — extending it with multi-level transition tracking + a flood-fill wrapper was a couple hours of honest work.
+- **"Recursive 3D search" is a trap on dense overworld maps.**  First cut of `_bfs_reachable_3d` was depth-capped but unbounded-per-branch; it ran 77 s on Cycling Road.  The iterative work-queue form with a shared `visited_level_starts` set ran in 5 ms.  Any future "hierarchical with branching" code should default to iterative unless the search tree is provably small.
+- **Shared code paths hide physics-specific bugs.**  `_traverse_bike_slope` worked on every slope we'd hit until Wayward Cave.  Same behavior codes, same BDHC structure, different engine outcome.  Strategy here was "report the failure clearly, don't try to be clever" — the clear error unblocks the player to work around it manually rather than silently stalling.
+- **Test scaffolding leaks.**  `do_load_state`'s 60-frame settle advances the Cycling Road auto-slide by ~13 tiles, invalidating any save state that relies on a bridge-bound starting position.  Added a local `_load_frozen` helper; worth promoting to a shared helper if more bridge tests land.
+
 ## Playtest Session 20 — BUG-029 + BUG-030 + BUG-031 + BUG-032 + FR-009 filed (2026-04-20)
 
 Session cut short after a cascade of overlapping navigation bugs on Route 206 Cycling Road + Wayward Cave. The underlying theme: BFS reachability doesn't consistently respect elevation/bridge layering, and bike-slope traversal assumes descent-only. Bugs filed for the dev queue; playtest continuation blocked until fixes land.

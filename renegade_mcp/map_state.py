@@ -99,7 +99,10 @@ def is_on_cycling_road(emu: "EmulatorClient", target_x: int = -1, target_y: int 
 
     When target coordinates are provided, also checks if the path between player
     and target would cross bridge body tiles (0x71) — catches the case where the
-    player is just above the bridge but the target is on it.
+    player is just above the bridge but the target is on it. The column-scan
+    heuristic is gated on player *elevation* (BUG-030): under-bridge players
+    on ground tiles share the bridge's 2D column but are physically below it,
+    so the slide mode must not engage for them.
     """
     from renegade_mcp.addresses import addr
     cycling = emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")
@@ -130,16 +133,26 @@ def is_on_cycling_road(emu: "EmulatorClient", target_x: int = -1, target_y: int 
             if t_behavior in BIKE_BRIDGE_BEHAVIORS:
                 return True
 
-        # Check if any tile in the Y range between player and target is a bridge
-        # body tile (0x71) at the player's X column — catches approaching from above
-        min_y = min(ly, tly)
-        max_y = max(ly, tly)
-        check_x = lx  # scan along player's column
-        for scan_y in range(min_y, max_y + 1):
-            if 0 <= scan_y < len(terrain) and 0 <= check_x < len(terrain[scan_y]):
-                scan_b = terrain[scan_y][check_x] & 0x00FF
-                if scan_b == 0x71:  # bridge body = auto-slide
-                    return True
+        # Column-scan heuristic for "player about to step onto bridge body from
+        # above". Only valid when the player is actually at bridge elevation —
+        # an under-bridge player on ground shares the bridge's 2D column but is
+        # physically below it, and sliding would be wrong. Compare player
+        # height to typical bridge body height (>= 40 in fx32 units for Cycling
+        # Road's L3 bridge body). Skip scan if we can't read height.
+        try:
+            player_h = read_player_height(emu)
+        except Exception:
+            player_h = None
+
+        if player_h is None or player_h >= 40:
+            min_y = min(ly, tly)
+            max_y = max(ly, tly)
+            check_x = lx  # scan along player's column
+            for scan_y in range(min_y, max_y + 1):
+                if 0 <= scan_y < len(terrain) and 0 <= check_x < len(terrain[scan_y]):
+                    scan_b = terrain[scan_y][check_x] & 0x00FF
+                    if scan_b == 0x71:  # bridge body = auto-slide
+                        return True
 
     return False
 
@@ -1245,17 +1258,68 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
                             entry["sprite_name"] = sprite_name
         obj_info.append(entry)
 
-    # BFS flood-fill from player for reachability + step counts
-    npc_positions: set[tuple[int, int]] = set()
-    for obj in visible_objects:
-        if obj["index"] == 0:
-            continue
-        npc_positions.add((obj["local_x"], obj["local_y"]))
+    # BFS flood-fill from player for reachability + step counts.
+    # On multi-chunk elevated maps (Cycling Road, Mt. Coronet bridges, etc.)
+    # we use the 3D flood-fill so bridge-over-ground overlaps don't show
+    # under-bridge pickups as reachable from the bridge. Single-chunk maps
+    # continue to use the plain 2D flood-fill (elevation is already consumed
+    # by render_map for the glyphs, and indoor maps rarely have z-stacked
+    # reachability problems).
+    reachable_tiles: dict[tuple[int, int], int]
+    reach_3d: dict[tuple[int, int], int] | None = None
 
-    reachable_tiles = _bfs_flood_fill(
-        vp_terrain, player_grid_x, player_grid_y,
-        npc_positions, vp_w, vp_h,
-    )
+    if chunked:
+        from renegade_mcp.pathfinding import (
+            _build_multi_chunk_terrain,
+            _build_multi_chunk_elevation,
+            _bfs_reachable_3d,
+            _height_to_level,
+        )
+        mc_result = _build_multi_chunk_terrain(
+            emu, map_id, px, py,
+            vp_x + vp_w - 1, vp_y + vp_h - 1,
+        )
+        if mc_result is not None:
+            mc_terrain, mc_ox, mc_oy, mc_w, mc_h = mc_result
+            mc_elev = _build_multi_chunk_elevation(
+                emu, map_id, mc_terrain, mc_ox, mc_oy, mc_w, mc_h,
+            )
+            if mc_elev is not None:
+                mc_player_level = _height_to_level(
+                    read_player_height(emu), mc_elev,
+                    tile_x=px - mc_ox, tile_y=py - mc_oy,
+                )
+                if mc_player_level is not None:
+                    mc_npc_positions = {
+                        (obj["x"] - mc_ox, obj["y"] - mc_oy)
+                        for obj in visible_objects
+                        if obj["index"] != 0
+                    }
+                    reach = _bfs_reachable_3d(
+                        mc_terrain, mc_npc_positions, mc_elev,
+                        px - mc_ox, py - mc_oy, mc_player_level,
+                        width=mc_w, height=mc_h,
+                    )
+                    # Translate mc-grid → viewport-local
+                    dx = mc_ox - vp_x
+                    dy = mc_oy - vp_y
+                    reach_3d = {
+                        (gx + dx, gy + dy): s
+                        for (gx, gy), s in reach.items()
+                        if 0 <= gx + dx < vp_w and 0 <= gy + dy < vp_h
+                    }
+
+    if reach_3d is not None:
+        reachable_tiles = reach_3d
+    else:
+        npc_positions: set[tuple[int, int]] = {
+            (obj["local_x"], obj["local_y"])
+            for obj in visible_objects if obj["index"] != 0
+        }
+        reachable_tiles = _bfs_flood_fill(
+            vp_terrain, player_grid_x, player_grid_y,
+            npc_positions, vp_w, vp_h,
+        )
 
     # Annotate each object with reachability (min BFS steps to any adjacent tile)
     for o in obj_info:

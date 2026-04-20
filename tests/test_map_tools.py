@@ -241,6 +241,164 @@ class TestFr007ReachableSplit:
 
 
 # ---------------------------------------------------------------------------
+# BUG-029: view_map reachability respects BDHC elevation on multi-chunk maps
+# ---------------------------------------------------------------------------
+
+def _load_frozen(emu, name: str) -> None:
+    """Load a save state without advancing frames — needed on the Cycling
+    Road where the auto-slide would drift the player south during the
+    helper's 60-frame settle.
+    """
+    ext = ".mst"
+    path = f"/workspace/RenegadePlatinumPlaytest/savestates/{name}{ext}"
+    emu.load_state(path)
+    from renegade_mcp.addresses import reset, detect_shift
+    reset()
+    detect_shift(emu)
+
+
+class TestBug029ElevationReachability:
+    """Regression: view_map's reachability BFS must gate on elevation so
+    under-bridge objects are not reported as reachable from the bridge.
+
+    Save state ``bug_view_map_under_bridge_pokeball`` puts the player on the
+    Cycling Road slope (Map 350, level 6) with a Pokeball at (302, 652)
+    sitting on the ground plate below the bridge (level 1). Before this fix
+    the 2D flood-fill flowed through bridge tiles and the pickup showed
+    ``reachable: true, steps: 18``; ``navigate_to`` then tried to ride the
+    bridge and stalled.
+
+    These tests use ``_load_frozen`` rather than the standard helper because
+    the standard helper advances 60 frames to let the emulator settle — on
+    the Cycling Road slope that window is enough for the auto-slide to
+    carry the player ~13 tiles south, out of the intended test position.
+    """
+
+    SAVE_STATE = "bug_view_map_under_bridge_pokeball"
+
+    def test_under_bridge_pokeball_not_reachable(self, emu: EmulatorClient):
+        """Pokeball at (302, 652) sits on ground below the bridge."""
+        _load_frozen(emu, self.SAVE_STATE)
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        reachable = {(o["x"], o["y"]) for o in result["objects"]}
+        unreachable = {(o["x"], o["y"]) for o in result["unreachable_objects"]}
+        assert (302, 652) not in reachable, (
+            "Pokeball at (302, 652) is under the bridge — should not be "
+            "reachable from on-bridge player."
+        )
+        assert (302, 652) in unreachable, (
+            f"Pokeball at (302, 652) must appear in unreachable_objects; "
+            f"got unreachable={unreachable}"
+        )
+
+    def test_on_bridge_cyclist_still_reachable(self, emu: EmulatorClient):
+        """Cyclist at (299, 669) is on the bridge near the player —
+        elevation-aware BFS must still find them."""
+        _load_frozen(emu, self.SAVE_STATE)
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        reachable = {(o["x"], o["y"]) for o in result["objects"]}
+        assert (299, 669) in reachable, (
+            f"On-bridge Cyclist at (299, 669) should be reachable; "
+            f"reachable={reachable}"
+        )
+
+
+class TestBug030PathElevationValidator:
+    """Regression: the 2D-BFS-fallback path validator rejects paths that
+    step between incompatible elevation layers (BUG-030).
+
+    Unit test — does not require the under-bridge save state that the
+    original filing reproduced against. The validator itself is shared
+    by every 3D map, so we construct a minimal elevation dict with a
+    bridge-over-ground layout and verify the validator catches the
+    bridge-crossing path.
+    """
+
+    def test_validator_rejects_bridge_crossing_from_ground(self):
+        from renegade_mcp.pathfinding import _validate_path_elevation
+
+        # 3x5 grid: player at (1, 4) on L1 ground, target at (1, 0) on L1
+        # ground, with a bridge (L3) at y=1..3 overhead (multi-level tiles).
+        # A naive 2D path walks straight up through the bridge — which the
+        # game engine would treat as stepping onto the bridge body.
+        elevation = {
+            "level_map": {
+                (1, 0): [1],
+                (1, 1): [1, 3],
+                (1, 2): [1, 3],
+                (1, 3): [1, 3],
+                (1, 4): [1],
+            },
+            "ramp_tiles": {},
+            "ramps": [],
+            "levels": [
+                {"level": 1, "height": 16},
+                {"level": 3, "height": 48},
+            ],
+        }
+        path_valid = ["up", "up", "up", "up"]  # all stay on L1 (implicitly)
+        assert _validate_path_elevation(
+            path_valid, elevation, 1, 4, start_level=1,
+        ), "Path that stays on L1 through multi-level tiles must be accepted"
+
+    def test_validator_rejects_level_jump_to_ground(self):
+        """Path steps from L3 bridge body onto L1-only ground tile (no ramp)."""
+        from renegade_mcp.pathfinding import _validate_path_elevation
+
+        # Player starts at L3 on a bridge-body tile, walks north onto a
+        # L1-only tile (under-bridge ground) — physically impossible without
+        # a ramp.
+        elevation = {
+            "level_map": {
+                (1, 0): [1],      # ground only
+                (1, 1): [3],      # bridge body only
+            },
+            "ramp_tiles": {},
+            "ramps": [],
+            "levels": [
+                {"level": 1, "height": 16},
+                {"level": 3, "height": 48},
+            ],
+        }
+        path = ["up"]
+        assert not _validate_path_elevation(
+            path, elevation, 1, 1, start_level=3,
+        ), "Path that jumps L3→L1 without a ramp must be rejected"
+
+    def test_validator_accepts_ramp_transition(self):
+        """Path through a legitimate ramp between levels is accepted."""
+        from renegade_mcp.pathfinding import _validate_path_elevation
+
+        elevation = {
+            "level_map": {
+                (1, 0): [3],
+                (1, 2): [1],
+            },
+            "ramp_tiles": {
+                (1, 1): {
+                    "ramp_index": 0,
+                    "from_level": 3,
+                    "to_level": 1,
+                    "direction": "north",
+                    "col_range": (1, 1),
+                    "row_range": (1, 1),
+                },
+            },
+            "ramps": [],
+            "levels": [
+                {"level": 1, "height": 16},
+                {"level": 3, "height": 48},
+            ],
+        }
+        path = ["up", "up"]
+        assert _validate_path_elevation(
+            path, elevation, 1, 2, start_level=1,
+        ), "Path through a ramp tile connecting L1 and L3 must be accepted"
+
+
+# ---------------------------------------------------------------------------
 # map_name
 # ---------------------------------------------------------------------------
 

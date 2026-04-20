@@ -122,6 +122,7 @@ from renegade_mcp.pathfinding import (  # noqa: F401
     _height_to_level,
     _render_failure_diagram,
     _validate_path,
+    _validate_path_elevation,
 )
 
 # --- hm_traverse ---
@@ -405,6 +406,16 @@ def _execute_path(
                             "tiles": num_slopes,
                             "x": obs_gx, "y": obs_gy,
                         })
+                    else:
+                        # BUG-031: fast-gear run-up didn't clear the slope.
+                        # Happens on Wayward Cave's ascent slopes (tested on
+                        # `bug_wayward_cave_bike_slope_up` — the same helper
+                        # works on Route 207's slope from the identical
+                        # starting pattern, so the difference is engine-side,
+                        # not in the traversal inputs). Record so navigate_to
+                        # can surface a clear error instead of a silent stop.
+                        nav_info["blocked_reason"] = "bike_slope_traversal_failed"
+                        nav_info["bike_slope_position"] = {"x": obs_gx, "y": obs_gy}
 
             elif obs_info is not None:
                 is_surf = obs_info["type"] in SURF_TYPES
@@ -881,6 +892,7 @@ def _navigate_to_impl(
 
     # ── 3D elevation detection ──
     elevation = None
+    elevation_for_validation = None
     player_level = None
     is_3d = False
 
@@ -925,7 +937,14 @@ def _navigate_to_impl(
             )
 
         if path_3d is None:
+            # 3D pathfinding failed. We can still fall back to 2D BFS for
+            # cases the 3D pass can't handle (HM-obstacle crossings, etc.),
+            # but we need to reject 2D paths that step across incompatible
+            # elevation layers — otherwise they trigger Cycling Road
+            # auto-slides from under-bridge positions (BUG-030) or walk
+            # off bridges onto under-bridge ground.
             is_3d = False
+            elevation_for_validation = elevation
             elevation = None
             repath_ctx.pop("elevation", None)
             repath_ctx.pop("emu", None)
@@ -1040,6 +1059,54 @@ def _navigate_to_impl(
             }
         else:
             path = clean_path
+
+    # ── Validate 2D fallback paths against elevation layers ──
+    # BUG-030: 2D BFS routes happily through bridge tiles over ground-level
+    # tiles. On maps where 3D elevation was available but 3D BFS failed,
+    # the fallback 2D path might step between incompatible levels. Reject
+    # those paths and return an elevation-aware error instead.
+    # Skip validation when the chosen path is an HM-obstacle path — Surf,
+    # Rock Climb, and Waterfall legitimately move the player across
+    # elevation layers as part of their traversal.
+    path_uses_hm_crossing = (
+        obs_path is not None and path is obs_path
+        and any(ob["type"] in AUTO_NAVIGATE_TYPES for ob in obs_crossed)
+    )
+    if (
+        elevation_for_validation is not None
+        and path is not None
+        and path_3d is None  # we're on the 2D fallback branch
+        and not path_uses_hm_crossing
+        and not _validate_path_elevation(
+            path, elevation_for_validation, bfs_sx, bfs_sy, player_level,
+        )
+    ):
+        manhattan = abs(bfs_tx - bfs_sx) + abs(bfs_ty - bfs_sy)
+        on_warp_dir = None
+        if 0 <= bfs_sy < len(terrain_info) and 0 <= bfs_sx < len(terrain_info[0]):
+            _, start_behavior = terrain_info[bfs_sy][bfs_sx]
+            on_warp_dir = DIRECTIONAL_WARP.get(start_behavior)
+        result: dict[str, Any] = {
+            "error": (
+                f"No reasonable path at your current elevation "
+                f"(level {player_level}). The 2D fallback would cross "
+                "incompatible layers (e.g. onto a bridge above you, "
+                "or off a bridge onto under-bridge ground). Try "
+                "navigating to a ramp or warp first, or use `navigate` "
+                "with explicit directions."
+            ),
+            "start": _pos_with_map(px, py, map_id),
+            "target": {"x": target_x, "y": target_y},
+            "player_level": player_level,
+            "manhattan": manhattan,
+        }
+        if on_warp_dir is not None:
+            result["note"] = (
+                f"You are standing on a directional warp tile.  "
+                f"Trigger it with `press_buttons(['{on_warp_dir}'])` "
+                f"to transition, then navigate from the other side."
+            )
+        return result
 
     # ── Check if target tile is a door/warp ──
     target_behavior = None

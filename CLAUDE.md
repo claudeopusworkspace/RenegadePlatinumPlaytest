@@ -267,7 +267,7 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 - **HM plan**: Prinplup→Empoleon (Surf, Waterfall). Togepi→Togekiss (Fly). Grotle→Torterra / Swinub→Mamoswine / Larvitar→Tyranitar (Rock Climb options).
 - **Notable items**: Explorer Kit, **Hard Stone** (boost Rock moves, save for Larvitar/Tyranitar), Dawn Stone, Wise Glasses, **TM74 Gyro Ball** (new, Route 206 middle island), **PP Up** (new, east lower path), TM16 Light Screen, TM33 Reflect, TM73 Thunder Wave, Oval Stone, Fire Stone, Sun Stone, Never-Melt Ice. Bag: 10 Super Potions, 6 Repels.
 - **Defeated this session**: Hiker Justin (Route 207, Graveler + Sandslash), Hiker Theodore (Route 206 grass, Torkoal — Crunch crit OHKO).
-- **Next**: Session blocked on navigation bug cascade (BUG-029/030/031/032). Need those fixed before continuing the Wayward Cave exploration. Then: exit this secret branch back to Route 206, enter the main Wayward Cave entrance from Route 207, rescue Mira's Kadabra, return to the Psychic to unlock Mt. Coronet.
+- **Next**: BUG-029 / BUG-030 / BUG-031 cleared in session 21. BUG-032 deferred pending a framing conversation with Woj. Ready to resume playtest: exit this secret branch back to Route 206, enter the main Wayward Cave entrance from Route 207, rescue Mira's Kadabra, return to the Psychic to unlock Mt. Coronet.
 
 See GAME_HISTORY.md for full details (defeated trainers, story progress, box contents, items).
 
