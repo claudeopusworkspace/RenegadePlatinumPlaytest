@@ -256,7 +256,7 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 
 - **Character**: CLAUDE | **Rival**: WOJ
 - **Badges**: 2 (Coal, Forest)
-- **Location**: Route 207 (306, 714) — just past the bike slope, on the bicycle, Repel active. Save state: `route207_north_of_slope_session18_end`. Full team healed.
+- **Location**: Wayward Cave upper room, (30, 23) on map 285. Save state: `wayward_cave_session20_end`. Full team healed, Repel active (6 left). Entered via the *secret* second entrance at (299, 611) on Route 206 west lower path — this is NOT where Mira is. The *main* entrance is visible from Route 207 near the Mt. Coronet warp, and the Psychic there blocks progress until we rescue Mira.
 - **Luxray** Lv33 — Jolly, Guts. Scope Lens. Spark / **Crunch** / Howl / Ice Fang.
 - **Grotle** Lv24 — Naughty, Overgrow. Muscle Band. Bulldoze / Cut / Bullet Seed / Razor Leaf.
 - **Prinplup** Lv26 — Lax, Vital Spirit. Metal Claw / Growl / **Scald** / Icy Wind.
@@ -265,8 +265,9 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 - **Togepi** Lv1 — Timid, Serene Grace. Growl / Charm / Extrasensory / Disarming Voice.
 - **PC Box 1**: Machop Lv25, Larvitar Lv9 (Rock/Ground, Guts).
 - **HM plan**: Prinplup→Empoleon (Surf, Waterfall). Togepi→Togekiss (Fly). Grotle→Torterra / Swinub→Mamoswine / Larvitar→Tyranitar (Rock Climb options).
-- **Notable items**: Explorer Kit, **Hard Stone** (new — boost Rock moves, save for Larvitar/Tyranitar), Dawn Stone, Wise Glasses, TM16 Light Screen, TM33 Reflect, TM73 Thunder Wave, Oval Stone, Fire Stone, Sun Stone, Never-Melt Ice. Bag stocked: 10 Super Potions, 10 Repels.
-- **Next**: Push north on Route 207 to Mt. Coronet entrance. Still want to find a Flying-type scout (Togepi → Togekiss is the long-term plan). Rotate Larvitar into party for training? Shroomish on Route 203 wants an Oran Berry (come back later).
+- **Notable items**: Explorer Kit, **Hard Stone** (boost Rock moves, save for Larvitar/Tyranitar), Dawn Stone, Wise Glasses, **TM74 Gyro Ball** (new, Route 206 middle island), **PP Up** (new, east lower path), TM16 Light Screen, TM33 Reflect, TM73 Thunder Wave, Oval Stone, Fire Stone, Sun Stone, Never-Melt Ice. Bag: 10 Super Potions, 6 Repels.
+- **Defeated this session**: Hiker Justin (Route 207, Graveler + Sandslash), Hiker Theodore (Route 206 grass, Torkoal — Crunch crit OHKO).
+- **Next**: Session blocked on navigation bug cascade (BUG-029/030/031/032). Need those fixed before continuing the Wayward Cave exploration. Then: exit this secret branch back to Route 206, enter the main Wayward Cave entrance from Route 207, rescue Mira's Kadabra, return to the Psychic to unlock Mt. Coronet.
 
 See GAME_HISTORY.md for full details (defeated trainers, story progress, box contents, items).
 

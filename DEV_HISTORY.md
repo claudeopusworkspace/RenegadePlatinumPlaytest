@@ -4,6 +4,78 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Playtest Session 20 — BUG-029 + BUG-030 + BUG-031 + BUG-032 + FR-009 filed (2026-04-20)
+
+Session cut short after a cascade of overlapping navigation bugs on Route 206 Cycling Road + Wayward Cave. The underlying theme: BFS reachability doesn't consistently respect elevation/bridge layering, and bike-slope traversal assumes descent-only. Bugs filed for the dev queue; playtest continuation blocked until fixes land.
+
+### BUG-032: `view_map` classifies Mira's Kadabra (NPC) as a "Pokeball"
+
+**Repro save state.** `bug_wayward_cave_pokeball_mislabeled` (checkpoint `bb0b5a81`). Map 285 Wayward Cave upper room. Player at (30, 23); target listed as `{"index": 2, "x": 31, "y": 16, "name": "Pokeball", "reachable": true, "steps": 19}` in `view_map.objects`.
+
+**Exact tool call.** `interact_with(object_index=2)`.
+
+**Symptom.** Returns `"No reachable tile adjacent to Pokeball at (31, 16). Fully surrounded by obstacles."` while `navigate_to(30, 16)` shows an `N` (NPC) adjacent to the target in its failure diagram. So the object is actually an NPC (almost certainly Mira's Kadabra, since her quest is active and this is her room), but `view_map` is naming it "Pokeball".
+
+**Suspected root cause.** Name resolution is probably pulling from the wrong sprite/object-type table — the sprite ID may match a Pokeball graphic in one lookup but an NPC in another. Check how `view_map` classifies `objects` vs NPCs: anything with a dialogue/trainer script should be named by its NPC entry, not its sprite table.
+
+**Fix direction.** Cross-check the sprite-label lookup with the object's behavior type. If it has a dialogue script or NPC-movement type, label it by NPC class (e.g., "Kadabra" / "Mira's Pokemon" / "NPC") rather than "Pokeball". Same lookup likely affects other story NPCs that happen to share sprite IDs with item-graphic objects.
+
+### BUG-031: `navigate_to` bike-slope traversal fails going UP in Wayward Cave
+
+### BUG-031: `navigate_to` bike-slope traversal fails going UP in Wayward Cave
+
+**Repro save state.** `bug_wayward_cave_bike_slope_up` (checkpoint `9f48a95a`). Map 285 Wayward Cave second room. Player at (7, 32) on the bicycle; bike slope pair at (7, 37) top / (7, 38) bottom is north of player (south of them is the bottom room, north is upper room continuation).
+
+**Exact tool call.** `navigate_to(x=7, y=18)`.
+
+**Symptom.** Path announced as `"up x14"`, but only 6 steps executed, stopped at (7, 28). The bike-slope traversal logic in `navigate_to` is tuned for *downhill* (fast gear toggle + continuous UP hold going south); here the player needs to ascend the slope going NORTH, which requires a different input pattern the auto-handler doesn't emit. No `obstacles_cleared` entry despite the obvious slope obstacle.
+
+**Contrast with BUG-025 (closed).** That one was about entering the bike-slope sequence without a bicycle. This one is about ascending a slope with the bicycle — previously all Renegade bike slopes we encountered were descent-only (Route 207+ overworld), so the ascent code path was never exercised.
+
+**Fix direction.** `navigate_to` should detect when the slope-traversal direction is north of the player (ascent) and either: (a) refuse cleanly with a "bike slopes are one-way — descend only" note, or (b) implement an ascent strategy if the engine supports it. Given slopes are typically one-way in Platinum, (a) is likely correct — and the natural fallback is to find an alternate path around the slope. Verify the BFS isn't picking the slope path when a detour exists.
+
+**Workaround (this session).** `navigate d3` + 90-frame `advance_frames([up])` to see whether manual hold-UP climbs the slope (testing in progress).
+
+### BUG-030: `navigate_to` routes through bridge instead of under it
+
+### FR-009: `use_item("Repel")` should report "already active"
+
+**Symptom.** Calling `use_item("Repel")` when a Repel is already active returns:
+
+```
+success: false
+kind: bag_message
+formatted: "Item use may have failed. Repel quantity: 6 → 6. The menu flow may have gone wrong."
+```
+
+The "menu flow may have gone wrong" wording strongly implies a UI bug in the tool — but the actual cause is in-game: the game rejects the second Repel with an "Another Repel is already in use" prompt, so the item count correctly stays flat. No bug, just a confusing error message.
+
+**Fix direction.** When `use_item` detects the "Repel already active" rejection prompt (or any "can't use now" dialogue), return a clear `reason: "repel_already_active"` plus a message like `"Repel already active — no new Repel consumed."` Same treatment for Escape Rope in non-escapable areas and Bicycle in walk-only zones, if those have analogous rejections.
+
+
+
+### BUG-030: `navigate_to` routes through bridge instead of under it
+
+**Repro.** Route 206 middle lower path. Player at (302, 654) (dirt path between the two bridge halves, underneath the bridge-merge section). Hiker NPC visible at (292, 643) on the west lower path, `reachable: true, steps: 20` per `view_map`. `navigate_to(292, 643)` triggers `cycling_road: true` mode (the bridge-slope auto-slide), slides south, doesn't reach the west side.
+
+**Suspected root cause.** Same family as BUG-029 — BFS is not constraining to elevation level, so it treats bridge `n` tiles as walkable for the player standing underneath. When the chosen path crosses bridge tiles, the Cycling Road auto-slide kicks in because the code thinks the player is on the bridge.
+
+**Fix direction.** Hierarchical BFS should gate on elevation level for lower-path start positions: the player under the bridge cannot traverse bridge tiles. Probably the same constraint that fixes BUG-029 (restrict reachability to player's current elevation) will fix this too.
+
+**Workaround.** Use bare `navigate` with manual `up`/`left` strings to crawl out of the gap; don't call `navigate_to` from under-bridge positions until elevation gating lands.
+
+### BUG-029: `view_map` marks under-bridge pickup as reachable
+
+**Repro save state.** `bug_view_map_under_bridge_pokeball` (checkpoint `72c8ecc7`). Map 350 Route 206 Cycling Road. Player at (301, 662) on the bridge; Pokeball at (302, 652) is visible in the ASCII map through the bridge gap but sits on ground level below.
+
+**Symptom.** `view_map` reports the pickup in `objects` with `reachable: true, steps: 18`.  `navigate_to(302, 652)` rides 4 tiles north then stops at (301, 662) with `reached_target: false, note: "Possible obstacle (trainer NPC, wall, or end of bridge)"`.  The pickup is physically under the bridge and can only be collected from the lower elevation path (enter Cycling Road from a different side).
+
+**Suspected root cause.** `view_map`'s BFS reachability check ignores elevation — the bridge and the ground underneath share the same (x, y) in the 2D grid, so anything directly below a `n` tile looks connected.  BDHC elevation data is already loaded (render uses it for the `n` / `\` / `/` glyphs), just not consumed by the reachability pass.
+
+**Fix direction.** When evaluating reachability on a 3D map, constrain the BFS to the player's current elevation level (same rule `navigate_to` uses for hierarchical path planning).  Unreachable-due-to-elevation items should move to `unreachable_objects` with a clear reason.
+
+**Scope.** Only affects maps where pickups/NPCs sit on a different elevation from the player (Cycling Road, Mt. Coronet bridges, gyms with platforms).  Doesn't block gameplay — the misroute just wastes a few bike tiles.
+
 ## Dev Session: BUG-027 + BUG-028 fixed (2026-04-20 session 19c)
 
 Cleared both bugs filed at the end of session 19b.  Straightforward — each had a precise repro save state and a file:line pointer, so the work was about picking the right fix wedge rather than hunting for the root cause.
