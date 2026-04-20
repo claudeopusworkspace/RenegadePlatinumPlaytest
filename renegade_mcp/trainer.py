@@ -45,6 +45,71 @@ def is_trainer_defeated(emu: EmulatorClient, trainer_id: int) -> bool:
     return bool(byte_val & bit_mask)
 
 
+# ── Trainer class lookup (QA BUG-020) ──
+# Sprite classes shown by view_map come from the NPC's graphics_id (via
+# GFX_NAMES). The actual in-battle trainer class is stored in trdata.narc
+# as a class-index byte that indexes into ROM message file 619. These
+# don't always agree — e.g. trainer 76 uses the "Ace Trainer F" sprite
+# but battles as "Bird Keeper Alexandra". `trainer_classes.json` was
+# pre-built from trdata.narc + file 619 at data-prep time so runtime
+# lookups are a plain dict hit.
+_TRAINER_CLASSES_CACHE: dict[int, str] | None = None
+
+
+def _load_trainer_classes() -> dict[int, str]:
+    global _TRAINER_CLASSES_CACHE
+    if _TRAINER_CLASSES_CACHE is None:
+        import json
+        from pathlib import Path
+        path = Path(__file__).resolve().parent.parent / "data" / "trainer_classes.json"
+        raw = json.loads(path.read_text())
+        _TRAINER_CLASSES_CACHE = {
+            int(tid): entry["class_name"] for tid, entry in raw.items()
+        }
+    return _TRAINER_CLASSES_CACHE
+
+
+def lookup_trainer_class(trainer_id: int) -> str | None:
+    """Return the authoritative trainer class name from trdata.narc.
+
+    Returns None when the trainer ID isn't in the table (should never happen
+    for live-game trainer IDs, but keeps callers safe against future data
+    rev bumps).
+    """
+    return _load_trainer_classes().get(trainer_id)
+
+
+# ── Flavor-NPC allowlist (QA BUG-021) ──
+# Some Renegade-Platinum NPCs declare a trainer_type byte and a trainer
+# script in their zone_event header, but the actual script path only
+# emits flavor dialogue and never invokes the battle. A story-side script
+# pre-sets the trainer-defeat flag for these NPCs so they silently
+# deactivate — from view_map's save-flag-based `defeated` probe, that
+# looks like a cleared trainer on first map entry. To avoid misleading
+# callers (completionist checkers, planning tools), suppress the trainer
+# metadata for (map_id, trainer_id) pairs enumerated in
+# data/rp_flavor_trainers.json. Entries are added as QA discovers them.
+_FLAVOR_TRAINERS_CACHE: dict[int, set[int]] | None = None
+
+
+def _load_flavor_trainers() -> dict[int, set[int]]:
+    global _FLAVOR_TRAINERS_CACHE
+    if _FLAVOR_TRAINERS_CACHE is None:
+        import json
+        from pathlib import Path
+        path = Path(__file__).resolve().parent.parent / "data" / "rp_flavor_trainers.json"
+        raw = json.loads(path.read_text())
+        _FLAVOR_TRAINERS_CACHE = {
+            int(mid): set(tids) for mid, tids in raw.get("maps", {}).items()
+        }
+    return _FLAVOR_TRAINERS_CACHE
+
+
+def is_flavor_trainer(map_id: int, trainer_id: int) -> bool:
+    """Return True if the (map, trainer) pair is a known flavor-only NPC."""
+    return trainer_id in _load_flavor_trainers().get(map_id, set())
+
+
 def read_trainer_status(emu: EmulatorClient) -> dict[str, Any]:
     """Read money and badge count from the save block.
 

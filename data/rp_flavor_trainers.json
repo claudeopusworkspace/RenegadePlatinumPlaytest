@@ -1,0 +1,6 @@
+{
+  "description": "NPCs whose zone_event header declares them a trainer (trainer_type > 0, script in the trainer-id range) but whose Renegade Platinum script path never invokes the battle routine. Typically Drayano kept the trdata.narc party data intact but rewrote the field script to only emit flavor dialogue, and a map-init / story script flips the defeat flag so the NPC won't trigger a battle if the player walks into their line of sight. Reported by QA (BUG-021): these NPCs appear as `trainer=true defeated=true` with no prior player interaction, which misleads completionist logic.\n\nKeyed by map ID. Each value is a list of trainer IDs (as decoded from `script - 3000 + 1` for single-battle scripts or `script - 5000 + 1` for double-battle scripts) that should be reported as flavor-only NPCs. When view_map resolves one of these, `trainer`/`trainer_id`/`defeated` are suppressed and `flavor_npc: true` is set instead.\n\nExpand this list as additional flavor-NPCs are discovered during QA playthroughs — see BUG_LOG.md for repro steps.",
+  "maps": {
+    "365": [326]
+  }
+}

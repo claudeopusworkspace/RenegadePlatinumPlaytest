@@ -1,0 +1,4266 @@
+{
+  "0": {
+    "class_id": 0,
+    "class_name": "Pokémon Trainer"
+  },
+  "1": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "2": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "3": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "4": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "5": {
+    "class_id": 95,
+    "class_name": "Pokémon Trainer"
+  },
+  "6": {
+    "class_id": 4,
+    "class_name": "Camper"
+  },
+  "7": {
+    "class_id": 5,
+    "class_name": "Picnicker"
+  },
+  "8": {
+    "class_id": 5,
+    "class_name": "Picnicker"
+  },
+  "9": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "10": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "11": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "12": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "13": {
+    "class_id": 6,
+    "class_name": "Bug Catcher"
+  },
+  "14": {
+    "class_id": 7,
+    "class_name": "Aroma Lady"
+  },
+  "15": {
+    "class_id": 8,
+    "class_name": "Twins"
+  },
+  "16": {
+    "class_id": 4,
+    "class_name": "Camper"
+  },
+  "17": {
+    "class_id": 5,
+    "class_name": "Picnicker"
+  },
+  "18": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "19": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "20": {
+    "class_id": 10,
+    "class_name": "Battle Girl"
+  },
+  "21": {
+    "class_id": 7,
+    "class_name": "Aroma Lady"
+  },
+  "22": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "23": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "24": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "25": {
+    "class_id": 12,
+    "class_name": "Cyclist"
+  },
+  "26": {
+    "class_id": 12,
+    "class_name": "Cyclist"
+  },
+  "27": {
+    "class_id": 12,
+    "class_name": "Cyclist"
+  },
+  "28": {
+    "class_id": 12,
+    "class_name": "Cyclist"
+  },
+  "29": {
+    "class_id": 13,
+    "class_name": "Cyclist"
+  },
+  "30": {
+    "class_id": 13,
+    "class_name": "Cyclist"
+  },
+  "31": {
+    "class_id": 13,
+    "class_name": "Cyclist"
+  },
+  "32": {
+    "class_id": 13,
+    "class_name": "Cyclist"
+  },
+  "33": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "34": {
+    "class_id": 4,
+    "class_name": "Camper"
+  },
+  "35": {
+    "class_id": 5,
+    "class_name": "Picnicker"
+  },
+  "36": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "37": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "38": {
+    "class_id": 10,
+    "class_name": "Battle Girl"
+  },
+  "39": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "40": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "41": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "42": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "43": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "44": {
+    "class_id": 7,
+    "class_name": "Aroma Lady"
+  },
+  "45": {
+    "class_id": 15,
+    "class_name": "Artist"
+  },
+  "46": {
+    "class_id": 16,
+    "class_name": "Pokémon Breeder"
+  },
+  "47": {
+    "class_id": 17,
+    "class_name": "Pokémon Breeder"
+  },
+  "48": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "49": {
+    "class_id": 19,
+    "class_name": "Jogger"
+  },
+  "50": {
+    "class_id": 20,
+    "class_name": "Pokéfan"
+  },
+  "51": {
+    "class_id": 21,
+    "class_name": "Pokéfan"
+  },
+  "52": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "53": {
+    "class_id": 22,
+    "class_name": "Poké Kid"
+  },
+  "54": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "55": {
+    "class_id": 23,
+    "class_name": "Young Couple"
+  },
+  "56": {
+    "class_id": 16,
+    "class_name": "Pokémon Breeder"
+  },
+  "57": {
+    "class_id": 17,
+    "class_name": "Pokémon Breeder"
+  },
+  "58": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "59": {
+    "class_id": 19,
+    "class_name": "Jogger"
+  },
+  "60": {
+    "class_id": 20,
+    "class_name": "Pokéfan"
+  },
+  "61": {
+    "class_id": 21,
+    "class_name": "Pokéfan"
+  },
+  "62": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "63": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "64": {
+    "class_id": 26,
+    "class_name": "Waitress"
+  },
+  "65": {
+    "class_id": 8,
+    "class_name": "Twins"
+  },
+  "66": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "67": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "68": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "69": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "70": {
+    "class_id": 28,
+    "class_name": "Ninja Boy"
+  },
+  "71": {
+    "class_id": 28,
+    "class_name": "Ninja Boy"
+  },
+  "72": {
+    "class_id": 28,
+    "class_name": "Ninja Boy"
+  },
+  "73": {
+    "class_id": 29,
+    "class_name": "Dragon Tamer"
+  },
+  "74": {
+    "class_id": 30,
+    "class_name": "Bird Keeper"
+  },
+  "75": {
+    "class_id": 31,
+    "class_name": "Double Team"
+  },
+  "76": {
+    "class_id": 30,
+    "class_name": "Bird Keeper"
+  },
+  "77": {
+    "class_id": 10,
+    "class_name": "Battle Girl"
+  },
+  "78": {
+    "class_id": 28,
+    "class_name": "Ninja Boy"
+  },
+  "79": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "80": {
+    "class_id": 28,
+    "class_name": "Ninja Boy"
+  },
+  "81": {
+    "class_id": 30,
+    "class_name": "Bird Keeper"
+  },
+  "82": {
+    "class_id": 32,
+    "class_name": "Rich Boy"
+  },
+  "83": {
+    "class_id": 33,
+    "class_name": "Lady"
+  },
+  "84": {
+    "class_id": 34,
+    "class_name": "Gentleman"
+  },
+  "85": {
+    "class_id": 35,
+    "class_name": "Socialite"
+  },
+  "86": {
+    "class_id": 36,
+    "class_name": "Beauty"
+  },
+  "87": {
+    "class_id": 37,
+    "class_name": "Collector"
+  },
+  "88": {
+    "class_id": 38,
+    "class_name": "Policeman"
+  },
+  "89": {
+    "class_id": 38,
+    "class_name": "Policeman"
+  },
+  "90": {
+    "class_id": 38,
+    "class_name": "Policeman"
+  },
+  "91": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "92": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "93": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "94": {
+    "class_id": 39,
+    "class_name": "Pokémon Ranger"
+  },
+  "95": {
+    "class_id": 39,
+    "class_name": "Pokémon Ranger"
+  },
+  "96": {
+    "class_id": 40,
+    "class_name": "Pokémon Ranger"
+  },
+  "97": {
+    "class_id": 40,
+    "class_name": "Pokémon Ranger"
+  },
+  "98": {
+    "class_id": 41,
+    "class_name": "Scientist"
+  },
+  "99": {
+    "class_id": 41,
+    "class_name": "Scientist"
+  },
+  "100": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "101": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "102": {
+    "class_id": 38,
+    "class_name": "Policeman"
+  },
+  "103": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "104": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "105": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "106": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "107": {
+    "class_id": 44,
+    "class_name": "Tuber"
+  },
+  "108": {
+    "class_id": 45,
+    "class_name": "Tuber"
+  },
+  "109": {
+    "class_id": 10,
+    "class_name": "Battle Girl"
+  },
+  "110": {
+    "class_id": 46,
+    "class_name": "Sailor"
+  },
+  "111": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "112": {
+    "class_id": 47,
+    "class_name": "Sis and Bro"
+  },
+  "113": {
+    "class_id": 48,
+    "class_name": "Ruin Maniac"
+  },
+  "114": {
+    "class_id": 48,
+    "class_name": "Ruin Maniac"
+  },
+  "115": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "116": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "117": {
+    "class_id": 4,
+    "class_name": "Camper"
+  },
+  "118": {
+    "class_id": 5,
+    "class_name": "Picnicker"
+  },
+  "119": {
+    "class_id": 49,
+    "class_name": "Psychic"
+  },
+  "120": {
+    "class_id": 50,
+    "class_name": "Psychic"
+  },
+  "121": {
+    "class_id": 51,
+    "class_name": "PI"
+  },
+  "122": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "123": {
+    "class_id": 51,
+    "class_name": "PI"
+  },
+  "124": {
+    "class_id": 36,
+    "class_name": "Beauty"
+  },
+  "125": {
+    "class_id": 36,
+    "class_name": "Beauty"
+  },
+  "126": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "127": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "128": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "129": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "130": {
+    "class_id": 19,
+    "class_name": "Jogger"
+  },
+  "131": {
+    "class_id": 30,
+    "class_name": "Bird Keeper"
+  },
+  "132": {
+    "class_id": 53,
+    "class_name": "Ace Trainer"
+  },
+  "133": {
+    "class_id": 53,
+    "class_name": "Ace Trainer"
+  },
+  "134": {
+    "class_id": 54,
+    "class_name": "Ace Trainer"
+  },
+  "135": {
+    "class_id": 54,
+    "class_name": "Ace Trainer"
+  },
+  "136": {
+    "class_id": 55,
+    "class_name": "Skier"
+  },
+  "137": {
+    "class_id": 55,
+    "class_name": "Skier"
+  },
+  "138": {
+    "class_id": 56,
+    "class_name": "Skier"
+  },
+  "139": {
+    "class_id": 56,
+    "class_name": "Skier"
+  },
+  "140": {
+    "class_id": 53,
+    "class_name": "Ace Trainer"
+  },
+  "141": {
+    "class_id": 54,
+    "class_name": "Ace Trainer"
+  },
+  "142": {
+    "class_id": 55,
+    "class_name": "Skier"
+  },
+  "143": {
+    "class_id": 55,
+    "class_name": "Skier"
+  },
+  "144": {
+    "class_id": 56,
+    "class_name": "Skier"
+  },
+  "145": {
+    "class_id": 56,
+    "class_name": "Skier"
+  },
+  "146": {
+    "class_id": 28,
+    "class_name": "Ninja Boy"
+  },
+  "147": {
+    "class_id": 28,
+    "class_name": "Ninja Boy"
+  },
+  "148": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "149": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "150": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "151": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "152": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "153": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "154": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "155": {
+    "class_id": 47,
+    "class_name": "Sis and Bro"
+  },
+  "156": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "157": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "158": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "159": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "160": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "161": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "162": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "163": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "164": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "165": {
+    "class_id": 47,
+    "class_name": "Sis and Bro"
+  },
+  "166": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "167": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "168": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "169": {
+    "class_id": 48,
+    "class_name": "Ruin Maniac"
+  },
+  "170": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "171": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "172": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "173": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "174": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "175": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "176": {
+    "class_id": 57,
+    "class_name": "Roughneck"
+  },
+  "177": {
+    "class_id": 57,
+    "class_name": "Roughneck"
+  },
+  "178": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "179": {
+    "class_id": 58,
+    "class_name": "Clown"
+  },
+  "180": {
+    "class_id": 46,
+    "class_name": "Sailor"
+  },
+  "181": {
+    "class_id": 15,
+    "class_name": "Artist"
+  },
+  "182": {
+    "class_id": 23,
+    "class_name": "Young Couple"
+  },
+  "183": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "184": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "185": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "186": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "187": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "188": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "189": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "190": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "191": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "192": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "193": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "194": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "195": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "196": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "197": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "198": {
+    "class_id": 41,
+    "class_name": "Scientist"
+  },
+  "199": {
+    "class_id": 41,
+    "class_name": "Scientist"
+  },
+  "200": {
+    "class_id": 41,
+    "class_name": "Scientist"
+  },
+  "201": {
+    "class_id": 6,
+    "class_name": "Bug Catcher"
+  },
+  "202": {
+    "class_id": 6,
+    "class_name": "Bug Catcher"
+  },
+  "203": {
+    "class_id": 6,
+    "class_name": "Bug Catcher"
+  },
+  "204": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "205": {
+    "class_id": 49,
+    "class_name": "Psychic"
+  },
+  "206": {
+    "class_id": 50,
+    "class_name": "Psychic"
+  },
+  "207": {
+    "class_id": 23,
+    "class_name": "Young Couple"
+  },
+  "208": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "209": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "210": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "211": {
+    "class_id": 53,
+    "class_name": "Ace Trainer"
+  },
+  "212": {
+    "class_id": 53,
+    "class_name": "Ace Trainer"
+  },
+  "213": {
+    "class_id": 54,
+    "class_name": "Ace Trainer"
+  },
+  "214": {
+    "class_id": 54,
+    "class_name": "Ace Trainer"
+  },
+  "215": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "216": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "217": {
+    "class_id": 49,
+    "class_name": "Psychic"
+  },
+  "218": {
+    "class_id": 50,
+    "class_name": "Psychic"
+  },
+  "219": {
+    "class_id": 29,
+    "class_name": "Dragon Tamer"
+  },
+  "220": {
+    "class_id": 46,
+    "class_name": "Sailor"
+  },
+  "221": {
+    "class_id": 60,
+    "class_name": "School Kid"
+  },
+  "222": {
+    "class_id": 61,
+    "class_name": "School Kid"
+  },
+  "223": {
+    "class_id": 23,
+    "class_name": "Young Couple"
+  },
+  "224": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "225": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "226": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "227": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "228": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "229": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "230": {
+    "class_id": 29,
+    "class_name": "Dragon Tamer"
+  },
+  "231": {
+    "class_id": 29,
+    "class_name": "Dragon Tamer"
+  },
+  "232": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "233": {
+    "class_id": 30,
+    "class_name": "Bird Keeper"
+  },
+  "234": {
+    "class_id": 49,
+    "class_name": "Psychic"
+  },
+  "235": {
+    "class_id": 50,
+    "class_name": "Psychic"
+  },
+  "236": {
+    "class_id": 31,
+    "class_name": "Double Team"
+  },
+  "237": {
+    "class_id": 31,
+    "class_name": "Double Team"
+  },
+  "238": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "239": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "240": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "241": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "242": {
+    "class_id": 46,
+    "class_name": "Sailor"
+  },
+  "243": {
+    "class_id": 36,
+    "class_name": "Beauty"
+  },
+  "244": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "245": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "246": {
+    "class_id": 62,
+    "class_name": "Leader"
+  },
+  "247": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "248": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "249": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "250": {
+    "class_id": 64,
+    "class_name": "Leader"
+  },
+  "251": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "252": {
+    "class_id": 4,
+    "class_name": "Camper"
+  },
+  "253": {
+    "class_id": 4,
+    "class_name": "Camper"
+  },
+  "254": {
+    "class_id": 4,
+    "class_name": "Camper"
+  },
+  "255": {
+    "class_id": 4,
+    "class_name": "Camper"
+  },
+  "256": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "257": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "258": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "259": {
+    "class_id": 7,
+    "class_name": "Aroma Lady"
+  },
+  "260": {
+    "class_id": 7,
+    "class_name": "Aroma Lady"
+  },
+  "261": {
+    "class_id": 65,
+    "class_name": "Elite Four"
+  },
+  "262": {
+    "class_id": 66,
+    "class_name": "Elite Four"
+  },
+  "263": {
+    "class_id": 67,
+    "class_name": "Elite Four"
+  },
+  "264": {
+    "class_id": 68,
+    "class_name": "Elite Four"
+  },
+  "265": {
+    "class_id": 4,
+    "class_name": "Camper"
+  },
+  "266": {
+    "class_id": 4,
+    "class_name": "Camper"
+  },
+  "267": {
+    "class_id": 69,
+    "class_name": "Champion"
+  },
+  "268": {
+    "class_id": 53,
+    "class_name": "Ace Trainer"
+  },
+  "269": {
+    "class_id": 53,
+    "class_name": "Ace Trainer"
+  },
+  "270": {
+    "class_id": 54,
+    "class_name": "Ace Trainer"
+  },
+  "271": {
+    "class_id": 54,
+    "class_name": "Ace Trainer"
+  },
+  "272": {
+    "class_id": 37,
+    "class_name": "Collector"
+  },
+  "273": {
+    "class_id": 37,
+    "class_name": "Collector"
+  },
+  "274": {
+    "class_id": 37,
+    "class_name": "Collector"
+  },
+  "275": {
+    "class_id": 37,
+    "class_name": "Collector"
+  },
+  "276": {
+    "class_id": 37,
+    "class_name": "Collector"
+  },
+  "277": {
+    "class_id": 29,
+    "class_name": "Dragon Tamer"
+  },
+  "278": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "279": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "280": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "281": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "282": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "283": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "284": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "285": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "286": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "287": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "288": {
+    "class_id": 49,
+    "class_name": "Psychic"
+  },
+  "289": {
+    "class_id": 50,
+    "class_name": "Psychic"
+  },
+  "290": {
+    "class_id": 70,
+    "class_name": "Belle & Pa"
+  },
+  "291": {
+    "class_id": 71,
+    "class_name": "Rancher"
+  },
+  "292": {
+    "class_id": 71,
+    "class_name": "Rancher"
+  },
+  "293": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "294": {
+    "class_id": 8,
+    "class_name": "Twins"
+  },
+  "295": {
+    "class_id": 72,
+    "class_name": "Commander"
+  },
+  "296": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "297": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "298": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "299": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "300": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "301": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "302": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "303": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "304": {
+    "class_id": 48,
+    "class_name": "Ruin Maniac"
+  },
+  "305": {
+    "class_id": 48,
+    "class_name": "Ruin Maniac"
+  },
+  "306": {
+    "class_id": 19,
+    "class_name": "Jogger"
+  },
+  "307": {
+    "class_id": 19,
+    "class_name": "Jogger"
+  },
+  "308": {
+    "class_id": 19,
+    "class_name": "Jogger"
+  },
+  "309": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "310": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "311": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "312": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "313": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "314": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "315": {
+    "class_id": 74,
+    "class_name": "Leader"
+  },
+  "316": {
+    "class_id": 75,
+    "class_name": "Leader"
+  },
+  "317": {
+    "class_id": 76,
+    "class_name": "Leader"
+  },
+  "318": {
+    "class_id": 77,
+    "class_name": "Leader"
+  },
+  "319": {
+    "class_id": 78,
+    "class_name": "Leader"
+  },
+  "320": {
+    "class_id": 79,
+    "class_name": "Leader"
+  },
+  "321": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "322": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "323": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "324": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "325": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "326": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "327": {
+    "class_id": 80,
+    "class_name": "Parasol Lady"
+  },
+  "328": {
+    "class_id": 80,
+    "class_name": "Parasol Lady"
+  },
+  "329": {
+    "class_id": 5,
+    "class_name": "Picnicker"
+  },
+  "330": {
+    "class_id": 5,
+    "class_name": "Picnicker"
+  },
+  "331": {
+    "class_id": 22,
+    "class_name": "Poké Kid"
+  },
+  "332": {
+    "class_id": 38,
+    "class_name": "Policeman"
+  },
+  "333": {
+    "class_id": 38,
+    "class_name": "Policeman"
+  },
+  "334": {
+    "class_id": 32,
+    "class_name": "Rich Boy"
+  },
+  "335": {
+    "class_id": 32,
+    "class_name": "Rich Boy"
+  },
+  "336": {
+    "class_id": 33,
+    "class_name": "Lady"
+  },
+  "337": {
+    "class_id": 46,
+    "class_name": "Sailor"
+  },
+  "338": {
+    "class_id": 46,
+    "class_name": "Sailor"
+  },
+  "339": {
+    "class_id": 46,
+    "class_name": "Sailor"
+  },
+  "340": {
+    "class_id": 60,
+    "class_name": "School Kid"
+  },
+  "341": {
+    "class_id": 60,
+    "class_name": "School Kid"
+  },
+  "342": {
+    "class_id": 60,
+    "class_name": "School Kid"
+  },
+  "343": {
+    "class_id": 61,
+    "class_name": "School Kid"
+  },
+  "344": {
+    "class_id": 61,
+    "class_name": "School Kid"
+  },
+  "345": {
+    "class_id": 61,
+    "class_name": "School Kid"
+  },
+  "346": {
+    "class_id": 36,
+    "class_name": "Beauty"
+  },
+  "347": {
+    "class_id": 36,
+    "class_name": "Beauty"
+  },
+  "348": {
+    "class_id": 36,
+    "class_name": "Beauty"
+  },
+  "349": {
+    "class_id": 55,
+    "class_name": "Skier"
+  },
+  "350": {
+    "class_id": 56,
+    "class_name": "Skier"
+  },
+  "351": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "352": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "353": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "354": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "355": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "356": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "357": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "358": {
+    "class_id": 44,
+    "class_name": "Tuber"
+  },
+  "359": {
+    "class_id": 44,
+    "class_name": "Tuber"
+  },
+  "360": {
+    "class_id": 45,
+    "class_name": "Tuber"
+  },
+  "361": {
+    "class_id": 45,
+    "class_name": "Tuber"
+  },
+  "362": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "363": {
+    "class_id": 81,
+    "class_name": "Waiter"
+  },
+  "364": {
+    "class_id": 81,
+    "class_name": "Waiter"
+  },
+  "365": {
+    "class_id": 81,
+    "class_name": "Waiter"
+  },
+  "366": {
+    "class_id": 26,
+    "class_name": "Waitress"
+  },
+  "367": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "368": {
+    "class_id": 82,
+    "class_name": "Interviewers"
+  },
+  "369": {
+    "class_id": 83,
+    "class_name": "Cameraman"
+  },
+  "370": {
+    "class_id": 84,
+    "class_name": "Reporter"
+  },
+  "371": {
+    "class_id": 85,
+    "class_name": "Idol"
+  },
+  "372": {
+    "class_id": 10,
+    "class_name": "Battle Girl"
+  },
+  "373": {
+    "class_id": 30,
+    "class_name": "Bird Keeper"
+  },
+  "374": {
+    "class_id": 16,
+    "class_name": "Pokémon Breeder"
+  },
+  "375": {
+    "class_id": 17,
+    "class_name": "Pokémon Breeder"
+  },
+  "376": {
+    "class_id": 83,
+    "class_name": "Cameraman"
+  },
+  "377": {
+    "class_id": 4,
+    "class_name": "Camper"
+  },
+  "378": {
+    "class_id": 4,
+    "class_name": "Camper"
+  },
+  "379": {
+    "class_id": 4,
+    "class_name": "Camper"
+  },
+  "380": {
+    "class_id": 4,
+    "class_name": "Camper"
+  },
+  "381": {
+    "class_id": 37,
+    "class_name": "Collector"
+  },
+  "382": {
+    "class_id": 37,
+    "class_name": "Collector"
+  },
+  "383": {
+    "class_id": 37,
+    "class_name": "Collector"
+  },
+  "384": {
+    "class_id": 20,
+    "class_name": "Pokéfan"
+  },
+  "385": {
+    "class_id": 21,
+    "class_name": "Pokéfan"
+  },
+  "386": {
+    "class_id": 29,
+    "class_name": "Dragon Tamer"
+  },
+  "387": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "388": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "389": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "390": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "391": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "392": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "393": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "394": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "395": {
+    "class_id": 49,
+    "class_name": "Psychic"
+  },
+  "396": {
+    "class_id": 49,
+    "class_name": "Psychic"
+  },
+  "397": {
+    "class_id": 49,
+    "class_name": "Psychic"
+  },
+  "398": {
+    "class_id": 50,
+    "class_name": "Psychic"
+  },
+  "399": {
+    "class_id": 50,
+    "class_name": "Psychic"
+  },
+  "400": {
+    "class_id": 50,
+    "class_name": "Psychic"
+  },
+  "401": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "402": {
+    "class_id": 34,
+    "class_name": "Gentleman"
+  },
+  "403": {
+    "class_id": 86,
+    "class_name": "Galactic Boss"
+  },
+  "404": {
+    "class_id": 86,
+    "class_name": "Galactic Boss"
+  },
+  "405": {
+    "class_id": 72,
+    "class_name": "Commander"
+  },
+  "406": {
+    "class_id": 87,
+    "class_name": "Commander"
+  },
+  "407": {
+    "class_id": 87,
+    "class_name": "Commander"
+  },
+  "408": {
+    "class_id": 88,
+    "class_name": "Commander"
+  },
+  "409": {
+    "class_id": 88,
+    "class_name": "Commander"
+  },
+  "410": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "411": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "412": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "413": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "414": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "415": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "416": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "417": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "418": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "419": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "420": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "421": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "422": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "423": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "424": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "425": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "426": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "427": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "428": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "429": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "430": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "431": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "432": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "433": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "434": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "435": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "436": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "437": {
+    "class_id": 85,
+    "class_name": "Idol"
+  },
+  "438": {
+    "class_id": 85,
+    "class_name": "Idol"
+  },
+  "439": {
+    "class_id": 85,
+    "class_name": "Idol"
+  },
+  "440": {
+    "class_id": 85,
+    "class_name": "Idol"
+  },
+  "441": {
+    "class_id": 48,
+    "class_name": "Ruin Maniac"
+  },
+  "442": {
+    "class_id": 48,
+    "class_name": "Ruin Maniac"
+  },
+  "443": {
+    "class_id": 48,
+    "class_name": "Ruin Maniac"
+  },
+  "444": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "445": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "446": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "447": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "448": {
+    "class_id": 35,
+    "class_name": "Socialite"
+  },
+  "449": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "450": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "451": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "452": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "453": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "454": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "455": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "456": {
+    "class_id": 5,
+    "class_name": "Picnicker"
+  },
+  "457": {
+    "class_id": 5,
+    "class_name": "Picnicker"
+  },
+  "458": {
+    "class_id": 5,
+    "class_name": "Picnicker"
+  },
+  "459": {
+    "class_id": 5,
+    "class_name": "Picnicker"
+  },
+  "460": {
+    "class_id": 58,
+    "class_name": "Clown"
+  },
+  "461": {
+    "class_id": 58,
+    "class_name": "Clown"
+  },
+  "462": {
+    "class_id": 58,
+    "class_name": "Clown"
+  },
+  "463": {
+    "class_id": 58,
+    "class_name": "Clown"
+  },
+  "464": {
+    "class_id": 58,
+    "class_name": "Clown"
+  },
+  "465": {
+    "class_id": 22,
+    "class_name": "Poké Kid"
+  },
+  "466": {
+    "class_id": 38,
+    "class_name": "Policeman"
+  },
+  "467": {
+    "class_id": 32,
+    "class_name": "Rich Boy"
+  },
+  "468": {
+    "class_id": 32,
+    "class_name": "Rich Boy"
+  },
+  "469": {
+    "class_id": 33,
+    "class_name": "Lady"
+  },
+  "470": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "471": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "472": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "473": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "474": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "475": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "476": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "477": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "478": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "479": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "480": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "481": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "482": {
+    "class_id": 46,
+    "class_name": "Sailor"
+  },
+  "483": {
+    "class_id": 46,
+    "class_name": "Sailor"
+  },
+  "484": {
+    "class_id": 60,
+    "class_name": "School Kid"
+  },
+  "485": {
+    "class_id": 61,
+    "class_name": "School Kid"
+  },
+  "486": {
+    "class_id": 41,
+    "class_name": "Scientist"
+  },
+  "487": {
+    "class_id": 41,
+    "class_name": "Scientist"
+  },
+  "488": {
+    "class_id": 28,
+    "class_name": "Ninja Boy"
+  },
+  "489": {
+    "class_id": 28,
+    "class_name": "Ninja Boy"
+  },
+  "490": {
+    "class_id": 28,
+    "class_name": "Ninja Boy"
+  },
+  "491": {
+    "class_id": 36,
+    "class_name": "Beauty"
+  },
+  "492": {
+    "class_id": 36,
+    "class_name": "Beauty"
+  },
+  "493": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "494": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "495": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "496": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "497": {
+    "class_id": 44,
+    "class_name": "Tuber"
+  },
+  "498": {
+    "class_id": 45,
+    "class_name": "Tuber"
+  },
+  "499": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "500": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "501": {
+    "class_id": 81,
+    "class_name": "Waiter"
+  },
+  "502": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "503": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "504": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "505": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "506": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "507": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "508": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "509": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "510": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "511": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "512": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "513": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "514": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "515": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "516": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "517": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "518": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "519": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "520": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "521": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "522": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "523": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "524": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "525": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "526": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "527": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "528": {
+    "class_id": 72,
+    "class_name": "Commander"
+  },
+  "529": {
+    "class_id": 57,
+    "class_name": "Roughneck"
+  },
+  "530": {
+    "class_id": 20,
+    "class_name": "Pokéfan"
+  },
+  "531": {
+    "class_id": 21,
+    "class_name": "Pokéfan"
+  },
+  "532": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "533": {
+    "class_id": 70,
+    "class_name": "Belle & Pa"
+  },
+  "534": {
+    "class_id": 23,
+    "class_name": "Young Couple"
+  },
+  "535": {
+    "class_id": 7,
+    "class_name": "Aroma Lady"
+  },
+  "536": {
+    "class_id": 15,
+    "class_name": "Artist"
+  },
+  "537": {
+    "class_id": 17,
+    "class_name": "Pokémon Breeder"
+  },
+  "538": {
+    "class_id": 83,
+    "class_name": "Cameraman"
+  },
+  "539": {
+    "class_id": 37,
+    "class_name": "Collector"
+  },
+  "540": {
+    "class_id": 21,
+    "class_name": "Pokéfan"
+  },
+  "541": {
+    "class_id": 51,
+    "class_name": "PI"
+  },
+  "542": {
+    "class_id": 34,
+    "class_name": "Gentleman"
+  },
+  "543": {
+    "class_id": 35,
+    "class_name": "Socialite"
+  },
+  "544": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "545": {
+    "class_id": 32,
+    "class_name": "Rich Boy"
+  },
+  "546": {
+    "class_id": 33,
+    "class_name": "Lady"
+  },
+  "547": {
+    "class_id": 84,
+    "class_name": "Reporter"
+  },
+  "548": {
+    "class_id": 60,
+    "class_name": "School Kid"
+  },
+  "549": {
+    "class_id": 41,
+    "class_name": "Scientist"
+  },
+  "550": {
+    "class_id": 36,
+    "class_name": "Beauty"
+  },
+  "551": {
+    "class_id": 36,
+    "class_name": "Beauty"
+  },
+  "552": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "553": {
+    "class_id": 48,
+    "class_name": "Ruin Maniac"
+  },
+  "554": {
+    "class_id": 30,
+    "class_name": "Bird Keeper"
+  },
+  "555": {
+    "class_id": 30,
+    "class_name": "Bird Keeper"
+  },
+  "556": {
+    "class_id": 30,
+    "class_name": "Bird Keeper"
+  },
+  "557": {
+    "class_id": 29,
+    "class_name": "Dragon Tamer"
+  },
+  "558": {
+    "class_id": 29,
+    "class_name": "Dragon Tamer"
+  },
+  "559": {
+    "class_id": 29,
+    "class_name": "Dragon Tamer"
+  },
+  "560": {
+    "class_id": 29,
+    "class_name": "Dragon Tamer"
+  },
+  "561": {
+    "class_id": 29,
+    "class_name": "Dragon Tamer"
+  },
+  "562": {
+    "class_id": 29,
+    "class_name": "Dragon Tamer"
+  },
+  "563": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "564": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "565": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "566": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "567": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "568": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "569": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "570": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "571": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "572": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "573": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "574": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "575": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "576": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "577": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "578": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "579": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "580": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "581": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "582": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "583": {
+    "class_id": 49,
+    "class_name": "Psychic"
+  },
+  "584": {
+    "class_id": 49,
+    "class_name": "Psychic"
+  },
+  "585": {
+    "class_id": 50,
+    "class_name": "Psychic"
+  },
+  "586": {
+    "class_id": 50,
+    "class_name": "Psychic"
+  },
+  "587": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "588": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "589": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "590": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "591": {
+    "class_id": 39,
+    "class_name": "Pokémon Ranger"
+  },
+  "592": {
+    "class_id": 39,
+    "class_name": "Pokémon Ranger"
+  },
+  "593": {
+    "class_id": 39,
+    "class_name": "Pokémon Ranger"
+  },
+  "594": {
+    "class_id": 40,
+    "class_name": "Pokémon Ranger"
+  },
+  "595": {
+    "class_id": 40,
+    "class_name": "Pokémon Ranger"
+  },
+  "596": {
+    "class_id": 40,
+    "class_name": "Pokémon Ranger"
+  },
+  "597": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "598": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "599": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "600": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "601": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "602": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "603": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "604": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "605": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "606": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "607": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "608": {
+    "class_id": 90,
+    "class_name": "Pokémon Trainer"
+  },
+  "609": {
+    "class_id": 91,
+    "class_name": "Pokémon Trainer"
+  },
+  "610": {
+    "class_id": 92,
+    "class_name": "Pokémon Trainer"
+  },
+  "611": {
+    "class_id": 93,
+    "class_name": "Pokémon Trainer"
+  },
+  "612": {
+    "class_id": 94,
+    "class_name": "Pokémon Trainer"
+  },
+  "613": {
+    "class_id": 95,
+    "class_name": "Pokémon Trainer"
+  },
+  "614": {
+    "class_id": 95,
+    "class_name": "Pokémon Trainer"
+  },
+  "615": {
+    "class_id": 95,
+    "class_name": "Pokémon Trainer"
+  },
+  "616": {
+    "class_id": 96,
+    "class_name": "Pokémon Trainer"
+  },
+  "617": {
+    "class_id": 96,
+    "class_name": "Pokémon Trainer"
+  },
+  "618": {
+    "class_id": 96,
+    "class_name": "Pokémon Trainer"
+  },
+  "619": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "620": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "621": {
+    "class_id": 95,
+    "class_name": "Pokémon Trainer"
+  },
+  "622": {
+    "class_id": 95,
+    "class_name": "Pokémon Trainer"
+  },
+  "623": {
+    "class_id": 95,
+    "class_name": "Pokémon Trainer"
+  },
+  "624": {
+    "class_id": 96,
+    "class_name": "Pokémon Trainer"
+  },
+  "625": {
+    "class_id": 96,
+    "class_name": "Pokémon Trainer"
+  },
+  "626": {
+    "class_id": 96,
+    "class_name": "Pokémon Trainer"
+  },
+  "627": {
+    "class_id": 7,
+    "class_name": "Aroma Lady"
+  },
+  "628": {
+    "class_id": 7,
+    "class_name": "Aroma Lady"
+  },
+  "629": {
+    "class_id": 7,
+    "class_name": "Aroma Lady"
+  },
+  "630": {
+    "class_id": 15,
+    "class_name": "Artist"
+  },
+  "631": {
+    "class_id": 15,
+    "class_name": "Artist"
+  },
+  "632": {
+    "class_id": 15,
+    "class_name": "Artist"
+  },
+  "633": {
+    "class_id": 10,
+    "class_name": "Battle Girl"
+  },
+  "634": {
+    "class_id": 10,
+    "class_name": "Battle Girl"
+  },
+  "635": {
+    "class_id": 10,
+    "class_name": "Battle Girl"
+  },
+  "636": {
+    "class_id": 30,
+    "class_name": "Bird Keeper"
+  },
+  "637": {
+    "class_id": 30,
+    "class_name": "Bird Keeper"
+  },
+  "638": {
+    "class_id": 30,
+    "class_name": "Bird Keeper"
+  },
+  "639": {
+    "class_id": 16,
+    "class_name": "Pokémon Breeder"
+  },
+  "640": {
+    "class_id": 16,
+    "class_name": "Pokémon Breeder"
+  },
+  "641": {
+    "class_id": 16,
+    "class_name": "Pokémon Breeder"
+  },
+  "642": {
+    "class_id": 17,
+    "class_name": "Pokémon Breeder"
+  },
+  "643": {
+    "class_id": 17,
+    "class_name": "Pokémon Breeder"
+  },
+  "644": {
+    "class_id": 17,
+    "class_name": "Pokémon Breeder"
+  },
+  "645": {
+    "class_id": 4,
+    "class_name": "Camper"
+  },
+  "646": {
+    "class_id": 4,
+    "class_name": "Camper"
+  },
+  "647": {
+    "class_id": 4,
+    "class_name": "Camper"
+  },
+  "648": {
+    "class_id": 53,
+    "class_name": "Ace Trainer"
+  },
+  "649": {
+    "class_id": 54,
+    "class_name": "Ace Trainer"
+  },
+  "650": {
+    "class_id": 37,
+    "class_name": "Collector"
+  },
+  "651": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "652": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "653": {
+    "class_id": 12,
+    "class_name": "Cyclist"
+  },
+  "654": {
+    "class_id": 12,
+    "class_name": "Cyclist"
+  },
+  "655": {
+    "class_id": 12,
+    "class_name": "Cyclist"
+  },
+  "656": {
+    "class_id": 13,
+    "class_name": "Cyclist"
+  },
+  "657": {
+    "class_id": 13,
+    "class_name": "Cyclist"
+  },
+  "658": {
+    "class_id": 13,
+    "class_name": "Cyclist"
+  },
+  "659": {
+    "class_id": 29,
+    "class_name": "Dragon Tamer"
+  },
+  "660": {
+    "class_id": 29,
+    "class_name": "Dragon Tamer"
+  },
+  "661": {
+    "class_id": 29,
+    "class_name": "Dragon Tamer"
+  },
+  "662": {
+    "class_id": 29,
+    "class_name": "Dragon Tamer"
+  },
+  "663": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "664": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "665": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "666": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "667": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "668": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "669": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "670": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "671": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "672": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "673": {
+    "class_id": 49,
+    "class_name": "Psychic"
+  },
+  "674": {
+    "class_id": 49,
+    "class_name": "Psychic"
+  },
+  "675": {
+    "class_id": 49,
+    "class_name": "Psychic"
+  },
+  "676": {
+    "class_id": 49,
+    "class_name": "Psychic"
+  },
+  "677": {
+    "class_id": 50,
+    "class_name": "Psychic"
+  },
+  "678": {
+    "class_id": 50,
+    "class_name": "Psychic"
+  },
+  "679": {
+    "class_id": 50,
+    "class_name": "Psychic"
+  },
+  "680": {
+    "class_id": 50,
+    "class_name": "Psychic"
+  },
+  "681": {
+    "class_id": 71,
+    "class_name": "Rancher"
+  },
+  "682": {
+    "class_id": 71,
+    "class_name": "Rancher"
+  },
+  "683": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "684": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "685": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "686": {
+    "class_id": 11,
+    "class_name": "Fisherman"
+  },
+  "687": {
+    "class_id": 8,
+    "class_name": "Twins"
+  },
+  "688": {
+    "class_id": 8,
+    "class_name": "Twins"
+  },
+  "689": {
+    "class_id": 51,
+    "class_name": "PI"
+  },
+  "690": {
+    "class_id": 51,
+    "class_name": "PI"
+  },
+  "691": {
+    "class_id": 34,
+    "class_name": "Gentleman"
+  },
+  "692": {
+    "class_id": 34,
+    "class_name": "Gentleman"
+  },
+  "693": {
+    "class_id": 34,
+    "class_name": "Gentleman"
+  },
+  "694": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "695": {
+    "class_id": 48,
+    "class_name": "Ruin Maniac"
+  },
+  "696": {
+    "class_id": 48,
+    "class_name": "Ruin Maniac"
+  },
+  "697": {
+    "class_id": 19,
+    "class_name": "Jogger"
+  },
+  "698": {
+    "class_id": 19,
+    "class_name": "Jogger"
+  },
+  "699": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "700": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "701": {
+    "class_id": 35,
+    "class_name": "Socialite"
+  },
+  "702": {
+    "class_id": 35,
+    "class_name": "Socialite"
+  },
+  "703": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "704": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "705": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "706": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "707": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "708": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "709": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "710": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "711": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "712": {
+    "class_id": 6,
+    "class_name": "Bug Catcher"
+  },
+  "713": {
+    "class_id": 6,
+    "class_name": "Bug Catcher"
+  },
+  "714": {
+    "class_id": 6,
+    "class_name": "Bug Catcher"
+  },
+  "715": {
+    "class_id": 80,
+    "class_name": "Parasol Lady"
+  },
+  "716": {
+    "class_id": 80,
+    "class_name": "Parasol Lady"
+  },
+  "717": {
+    "class_id": 80,
+    "class_name": "Parasol Lady"
+  },
+  "718": {
+    "class_id": 5,
+    "class_name": "Picnicker"
+  },
+  "719": {
+    "class_id": 5,
+    "class_name": "Picnicker"
+  },
+  "720": {
+    "class_id": 5,
+    "class_name": "Picnicker"
+  },
+  "721": {
+    "class_id": 22,
+    "class_name": "Poké Kid"
+  },
+  "722": {
+    "class_id": 22,
+    "class_name": "Poké Kid"
+  },
+  "723": {
+    "class_id": 22,
+    "class_name": "Poké Kid"
+  },
+  "724": {
+    "class_id": 38,
+    "class_name": "Policeman"
+  },
+  "725": {
+    "class_id": 38,
+    "class_name": "Policeman"
+  },
+  "726": {
+    "class_id": 38,
+    "class_name": "Policeman"
+  },
+  "727": {
+    "class_id": 32,
+    "class_name": "Rich Boy"
+  },
+  "728": {
+    "class_id": 32,
+    "class_name": "Rich Boy"
+  },
+  "729": {
+    "class_id": 33,
+    "class_name": "Lady"
+  },
+  "730": {
+    "class_id": 33,
+    "class_name": "Lady"
+  },
+  "731": {
+    "class_id": 33,
+    "class_name": "Lady"
+  },
+  "732": {
+    "class_id": 39,
+    "class_name": "Pokémon Ranger"
+  },
+  "733": {
+    "class_id": 39,
+    "class_name": "Pokémon Ranger"
+  },
+  "734": {
+    "class_id": 39,
+    "class_name": "Pokémon Ranger"
+  },
+  "735": {
+    "class_id": 39,
+    "class_name": "Pokémon Ranger"
+  },
+  "736": {
+    "class_id": 40,
+    "class_name": "Pokémon Ranger"
+  },
+  "737": {
+    "class_id": 40,
+    "class_name": "Pokémon Ranger"
+  },
+  "738": {
+    "class_id": 40,
+    "class_name": "Pokémon Ranger"
+  },
+  "739": {
+    "class_id": 40,
+    "class_name": "Pokémon Ranger"
+  },
+  "740": {
+    "class_id": 46,
+    "class_name": "Sailor"
+  },
+  "741": {
+    "class_id": 46,
+    "class_name": "Sailor"
+  },
+  "742": {
+    "class_id": 46,
+    "class_name": "Sailor"
+  },
+  "743": {
+    "class_id": 41,
+    "class_name": "Scientist"
+  },
+  "744": {
+    "class_id": 41,
+    "class_name": "Scientist"
+  },
+  "745": {
+    "class_id": 41,
+    "class_name": "Scientist"
+  },
+  "746": {
+    "class_id": 28,
+    "class_name": "Ninja Boy"
+  },
+  "747": {
+    "class_id": 28,
+    "class_name": "Ninja Boy"
+  },
+  "748": {
+    "class_id": 28,
+    "class_name": "Ninja Boy"
+  },
+  "749": {
+    "class_id": 36,
+    "class_name": "Beauty"
+  },
+  "750": {
+    "class_id": 36,
+    "class_name": "Beauty"
+  },
+  "751": {
+    "class_id": 55,
+    "class_name": "Skier"
+  },
+  "752": {
+    "class_id": 55,
+    "class_name": "Skier"
+  },
+  "753": {
+    "class_id": 55,
+    "class_name": "Skier"
+  },
+  "754": {
+    "class_id": 55,
+    "class_name": "Skier"
+  },
+  "755": {
+    "class_id": 56,
+    "class_name": "Skier"
+  },
+  "756": {
+    "class_id": 56,
+    "class_name": "Skier"
+  },
+  "757": {
+    "class_id": 56,
+    "class_name": "Skier"
+  },
+  "758": {
+    "class_id": 56,
+    "class_name": "Skier"
+  },
+  "759": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "760": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "761": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "762": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "763": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "764": {
+    "class_id": 43,
+    "class_name": "Swimmer*"
+  },
+  "765": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "766": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "767": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "768": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "769": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "770": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "771": {
+    "class_id": 44,
+    "class_name": "Tuber"
+  },
+  "772": {
+    "class_id": 44,
+    "class_name": "Tuber"
+  },
+  "773": {
+    "class_id": 45,
+    "class_name": "Tuber"
+  },
+  "774": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "775": {
+    "class_id": 45,
+    "class_name": "Tuber"
+  },
+  "776": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "777": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "778": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "779": {
+    "class_id": 83,
+    "class_name": "Cameraman"
+  },
+  "780": {
+    "class_id": 83,
+    "class_name": "Cameraman"
+  },
+  "781": {
+    "class_id": 83,
+    "class_name": "Cameraman"
+  },
+  "782": {
+    "class_id": 83,
+    "class_name": "Cameraman"
+  },
+  "783": {
+    "class_id": 83,
+    "class_name": "Cameraman"
+  },
+  "784": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "785": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "786": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "787": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "788": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "789": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "790": {
+    "class_id": 85,
+    "class_name": "Idol"
+  },
+  "791": {
+    "class_id": 85,
+    "class_name": "Idol"
+  },
+  "792": {
+    "class_id": 85,
+    "class_name": "Idol"
+  },
+  "793": {
+    "class_id": 85,
+    "class_name": "Idol"
+  },
+  "794": {
+    "class_id": 85,
+    "class_name": "Idol"
+  },
+  "795": {
+    "class_id": 82,
+    "class_name": "Interviewers"
+  },
+  "796": {
+    "class_id": 82,
+    "class_name": "Interviewers"
+  },
+  "797": {
+    "class_id": 82,
+    "class_name": "Interviewers"
+  },
+  "798": {
+    "class_id": 82,
+    "class_name": "Interviewers"
+  },
+  "799": {
+    "class_id": 58,
+    "class_name": "Clown"
+  },
+  "800": {
+    "class_id": 58,
+    "class_name": "Clown"
+  },
+  "801": {
+    "class_id": 58,
+    "class_name": "Clown"
+  },
+  "802": {
+    "class_id": 58,
+    "class_name": "Clown"
+  },
+  "803": {
+    "class_id": 58,
+    "class_name": "Clown"
+  },
+  "804": {
+    "class_id": 22,
+    "class_name": "Poké Kid"
+  },
+  "805": {
+    "class_id": 22,
+    "class_name": "Poké Kid"
+  },
+  "806": {
+    "class_id": 22,
+    "class_name": "Poké Kid"
+  },
+  "807": {
+    "class_id": 22,
+    "class_name": "Poké Kid"
+  },
+  "808": {
+    "class_id": 38,
+    "class_name": "Policeman"
+  },
+  "809": {
+    "class_id": 84,
+    "class_name": "Reporter"
+  },
+  "810": {
+    "class_id": 84,
+    "class_name": "Reporter"
+  },
+  "811": {
+    "class_id": 84,
+    "class_name": "Reporter"
+  },
+  "812": {
+    "class_id": 84,
+    "class_name": "Reporter"
+  },
+  "813": {
+    "class_id": 41,
+    "class_name": "Scientist"
+  },
+  "814": {
+    "class_id": 42,
+    "class_name": "Swimmer@"
+  },
+  "815": {
+    "class_id": 81,
+    "class_name": "Waiter"
+  },
+  "816": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "817": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "818": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "819": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "820": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "821": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "822": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "823": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "824": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "825": {
+    "class_id": 2,
+    "class_name": "Youngster"
+  },
+  "826": {
+    "class_id": 97,
+    "class_name": "Tower Tycoon"
+  },
+  "827": {
+    "class_id": 53,
+    "class_name": "Ace Trainer"
+  },
+  "828": {
+    "class_id": 54,
+    "class_name": "Ace Trainer"
+  },
+  "829": {
+    "class_id": 41,
+    "class_name": "Scientist"
+  },
+  "830": {
+    "class_id": 41,
+    "class_name": "Scientist"
+  },
+  "831": {
+    "class_id": 41,
+    "class_name": "Scientist"
+  },
+  "832": {
+    "class_id": 22,
+    "class_name": "Poké Kid"
+  },
+  "833": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "834": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "835": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "836": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "837": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "838": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "839": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "840": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "841": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "842": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "843": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "844": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "845": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "846": {
+    "class_id": 59,
+    "class_name": "Worker"
+  },
+  "847": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "848": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "849": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "850": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "851": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "852": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "853": {
+    "class_id": 78,
+    "class_name": "Leader"
+  },
+  "854": {
+    "class_id": 76,
+    "class_name": "Leader"
+  },
+  "855": {
+    "class_id": 79,
+    "class_name": "Leader"
+  },
+  "856": {
+    "class_id": 64,
+    "class_name": "Leader"
+  },
+  "857": {
+    "class_id": 74,
+    "class_name": "Leader"
+  },
+  "858": {
+    "class_id": 62,
+    "class_name": "Leader"
+  },
+  "859": {
+    "class_id": 75,
+    "class_name": "Leader"
+  },
+  "860": {
+    "class_id": 77,
+    "class_name": "Leader"
+  },
+  "861": {
+    "class_id": 91,
+    "class_name": "Pokémon Trainer"
+  },
+  "862": {
+    "class_id": 93,
+    "class_name": "Pokémon Trainer"
+  },
+  "863": {
+    "class_id": 92,
+    "class_name": "Pokémon Trainer"
+  },
+  "864": {
+    "class_id": 94,
+    "class_name": "Pokémon Trainer"
+  },
+  "865": {
+    "class_id": 90,
+    "class_name": "Pokémon Trainer"
+  },
+  "866": {
+    "class_id": 65,
+    "class_name": "Elite Four"
+  },
+  "867": {
+    "class_id": 66,
+    "class_name": "Elite Four"
+  },
+  "868": {
+    "class_id": 67,
+    "class_name": "Elite Four"
+  },
+  "869": {
+    "class_id": 68,
+    "class_name": "Elite Four"
+  },
+  "870": {
+    "class_id": 69,
+    "class_name": "Champion"
+  },
+  "871": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "872": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "873": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "874": {
+    "class_id": 83,
+    "class_name": "Cameraman"
+  },
+  "875": {
+    "class_id": 83,
+    "class_name": "Cameraman"
+  },
+  "876": {
+    "class_id": 83,
+    "class_name": "Cameraman"
+  },
+  "877": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "878": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "879": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "880": {
+    "class_id": 85,
+    "class_name": "Idol"
+  },
+  "881": {
+    "class_id": 85,
+    "class_name": "Idol"
+  },
+  "882": {
+    "class_id": 85,
+    "class_name": "Idol"
+  },
+  "883": {
+    "class_id": 82,
+    "class_name": "Interviewers"
+  },
+  "884": {
+    "class_id": 82,
+    "class_name": "Interviewers"
+  },
+  "885": {
+    "class_id": 82,
+    "class_name": "Interviewers"
+  },
+  "886": {
+    "class_id": 58,
+    "class_name": "Clown"
+  },
+  "887": {
+    "class_id": 58,
+    "class_name": "Clown"
+  },
+  "888": {
+    "class_id": 58,
+    "class_name": "Clown"
+  },
+  "889": {
+    "class_id": 22,
+    "class_name": "Poké Kid"
+  },
+  "890": {
+    "class_id": 22,
+    "class_name": "Poké Kid"
+  },
+  "891": {
+    "class_id": 22,
+    "class_name": "Poké Kid"
+  },
+  "892": {
+    "class_id": 32,
+    "class_name": "Rich Boy"
+  },
+  "893": {
+    "class_id": 33,
+    "class_name": "Lady"
+  },
+  "894": {
+    "class_id": 84,
+    "class_name": "Reporter"
+  },
+  "895": {
+    "class_id": 84,
+    "class_name": "Reporter"
+  },
+  "896": {
+    "class_id": 84,
+    "class_name": "Reporter"
+  },
+  "897": {
+    "class_id": 98,
+    "class_name": "Maid"
+  },
+  "898": {
+    "class_id": 98,
+    "class_name": "Maid"
+  },
+  "899": {
+    "class_id": 98,
+    "class_name": "Maid"
+  },
+  "900": {
+    "class_id": 98,
+    "class_name": "Maid"
+  },
+  "901": {
+    "class_id": 98,
+    "class_name": "Maid"
+  },
+  "902": {
+    "class_id": 99,
+    "class_name": "Hall Matron"
+  },
+  "903": {
+    "class_id": 100,
+    "class_name": "Factory Head"
+  },
+  "904": {
+    "class_id": 101,
+    "class_name": "Arcade Star"
+  },
+  "905": {
+    "class_id": 102,
+    "class_name": "Castle Valet"
+  },
+  "906": {
+    "class_id": 83,
+    "class_name": "Cameraman"
+  },
+  "907": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "908": {
+    "class_id": 85,
+    "class_name": "Idol"
+  },
+  "909": {
+    "class_id": 82,
+    "class_name": "Interviewers"
+  },
+  "910": {
+    "class_id": 58,
+    "class_name": "Clown"
+  },
+  "911": {
+    "class_id": 22,
+    "class_name": "Poké Kid"
+  },
+  "912": {
+    "class_id": 84,
+    "class_name": "Reporter"
+  },
+  "913": {
+    "class_id": 86,
+    "class_name": "Galactic Boss"
+  },
+  "914": {
+    "class_id": 83,
+    "class_name": "Cameraman"
+  },
+  "915": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "916": {
+    "class_id": 85,
+    "class_name": "Idol"
+  },
+  "917": {
+    "class_id": 82,
+    "class_name": "Interviewers"
+  },
+  "918": {
+    "class_id": 58,
+    "class_name": "Clown"
+  },
+  "919": {
+    "class_id": 22,
+    "class_name": "Poké Kid"
+  },
+  "920": {
+    "class_id": 84,
+    "class_name": "Reporter"
+  },
+  "921": {
+    "class_id": 79,
+    "class_name": "Leader"
+  },
+  "922": {
+    "class_id": 67,
+    "class_name": "Elite Four"
+  },
+  "923": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "924": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "925": {
+    "class_id": 63,
+    "class_name": "Pokémon Trainer"
+  },
+  "926": {
+    "class_id": 72,
+    "class_name": "Commander"
+  },
+  "927": {
+    "class_id": 87,
+    "class_name": "Commander"
+  },
+  "928": {
+    "class_id": 1,
+    "class_name": "Pokémon Trainer"
+  },
+  "929": {
+    "class_id": 1,
+    "class_name": "Pokémon Trainer"
+  },
+  "930": {
+    "class_id": 1,
+    "class_name": "Pokémon Trainer"
+  },
+  "931": {
+    "class_id": 0,
+    "class_name": "Pokémon Trainer"
+  },
+  "932": {
+    "class_id": 0,
+    "class_name": "Pokémon Trainer"
+  },
+  "933": {
+    "class_id": 0,
+    "class_name": "Pokémon Trainer"
+  },
+  "934": {
+    "class_id": 84,
+    "class_name": "Reporter"
+  },
+  "935": {
+    "class_id": 29,
+    "class_name": "Dragon Tamer"
+  },
+  "936": {
+    "class_id": 53,
+    "class_name": "Ace Trainer"
+  },
+  "937": {
+    "class_id": 54,
+    "class_name": "Ace Trainer"
+  },
+  "938": {
+    "class_id": 54,
+    "class_name": "Ace Trainer"
+  },
+  "939": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "940": {
+    "class_id": 1,
+    "class_name": "Pokémon Trainer"
+  },
+  "941": {
+    "class_id": 1,
+    "class_name": "Pokémon Trainer"
+  },
+  "942": {
+    "class_id": 1,
+    "class_name": "Pokémon Trainer"
+  },
+  "943": {
+    "class_id": 0,
+    "class_name": "Pokémon Trainer"
+  },
+  "944": {
+    "class_id": 0,
+    "class_name": "Pokémon Trainer"
+  },
+  "945": {
+    "class_id": 0,
+    "class_name": "Pokémon Trainer"
+  },
+  "946": {
+    "class_id": 65,
+    "class_name": "Elite Four"
+  },
+  "947": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "948": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "949": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "950": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "951": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "952": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "953": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "954": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "955": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "956": {
+    "class_id": 89,
+    "class_name": "Galactic"
+  },
+  "957": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "958": {
+    "class_id": 73,
+    "class_name": "Galactic"
+  },
+  "959": {
+    "class_id": 88,
+    "class_name": "Commander"
+  },
+  "960": {
+    "class_id": 34,
+    "class_name": "Gentleman"
+  },
+  "961": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "962": {
+    "class_id": 49,
+    "class_name": "Psychic"
+  },
+  "963": {
+    "class_id": 1,
+    "class_name": "Pokémon Trainer"
+  },
+  "964": {
+    "class_id": 1,
+    "class_name": "Pokémon Trainer"
+  },
+  "965": {
+    "class_id": 1,
+    "class_name": "Pokémon Trainer"
+  },
+  "966": {
+    "class_id": 0,
+    "class_name": "Pokémon Trainer"
+  },
+  "967": {
+    "class_id": 0,
+    "class_name": "Pokémon Trainer"
+  },
+  "968": {
+    "class_id": 0,
+    "class_name": "Pokémon Trainer"
+  },
+  "969": {
+    "class_id": 102,
+    "class_name": "Castle Valet"
+  },
+  "970": {
+    "class_id": 91,
+    "class_name": "Pokémon Trainer"
+  },
+  "971": {
+    "class_id": 97,
+    "class_name": "Tower Tycoon"
+  },
+  "972": {
+    "class_id": 86,
+    "class_name": "Galactic Boss"
+  },
+  "973": {
+    "class_id": 101,
+    "class_name": "Arcade Star"
+  },
+  "974": {
+    "class_id": 92,
+    "class_name": "Pokémon Trainer"
+  },
+  "975": {
+    "class_id": 1,
+    "class_name": "Pokémon Trainer"
+  },
+  "976": {
+    "class_id": 1,
+    "class_name": "Pokémon Trainer"
+  },
+  "977": {
+    "class_id": 1,
+    "class_name": "Pokémon Trainer"
+  },
+  "978": {
+    "class_id": 0,
+    "class_name": "Pokémon Trainer"
+  },
+  "979": {
+    "class_id": 0,
+    "class_name": "Pokémon Trainer"
+  },
+  "980": {
+    "class_id": 0,
+    "class_name": "Pokémon Trainer"
+  },
+  "981": {
+    "class_id": 65,
+    "class_name": "Elite Four"
+  },
+  "982": {
+    "class_id": 65,
+    "class_name": "Elite Four"
+  },
+  "983": {
+    "class_id": 65,
+    "class_name": "Elite Four"
+  },
+  "984": {
+    "class_id": 66,
+    "class_name": "Elite Four"
+  },
+  "985": {
+    "class_id": 66,
+    "class_name": "Elite Four"
+  },
+  "986": {
+    "class_id": 66,
+    "class_name": "Elite Four"
+  },
+  "987": {
+    "class_id": 67,
+    "class_name": "Elite Four"
+  },
+  "988": {
+    "class_id": 67,
+    "class_name": "Elite Four"
+  },
+  "989": {
+    "class_id": 67,
+    "class_name": "Elite Four"
+  },
+  "990": {
+    "class_id": 68,
+    "class_name": "Elite Four"
+  },
+  "991": {
+    "class_id": 68,
+    "class_name": "Elite Four"
+  },
+  "992": {
+    "class_id": 68,
+    "class_name": "Elite Four"
+  },
+  "993": {
+    "class_id": 69,
+    "class_name": "Champion"
+  },
+  "994": {
+    "class_id": 69,
+    "class_name": "Champion"
+  },
+  "995": {
+    "class_id": 69,
+    "class_name": "Champion"
+  },
+  "996": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "997": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "998": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "999": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1000": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1001": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1002": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1003": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1004": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1005": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1006": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1007": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1008": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1009": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1010": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1011": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1012": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1013": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1014": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1015": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1016": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1017": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1018": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1019": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1020": {
+    "class_id": 18,
+    "class_name": "Cowgirl"
+  },
+  "1021": {
+    "class_id": 84,
+    "class_name": "Reporter"
+  },
+  "1022": {
+    "class_id": 84,
+    "class_name": "Reporter"
+  },
+  "1023": {
+    "class_id": 93,
+    "class_name": "Pokémon Trainer"
+  },
+  "1024": {
+    "class_id": 53,
+    "class_name": "Ace Trainer"
+  },
+  "1025": {
+    "class_id": 54,
+    "class_name": "Ace Trainer"
+  },
+  "1026": {
+    "class_id": 53,
+    "class_name": "Ace Trainer"
+  },
+  "1027": {
+    "class_id": 53,
+    "class_name": "Ace Trainer"
+  },
+  "1028": {
+    "class_id": 54,
+    "class_name": "Ace Trainer"
+  },
+  "1029": {
+    "class_id": 30,
+    "class_name": "Bird Keeper"
+  },
+  "1030": {
+    "class_id": 6,
+    "class_name": "Bug Catcher"
+  },
+  "1031": {
+    "class_id": 85,
+    "class_name": "Idol"
+  },
+  "1032": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "1033": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "1034": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "1035": {
+    "class_id": 27,
+    "class_name": "Veteran"
+  },
+  "1036": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "1037": {
+    "class_id": 49,
+    "class_name": "Psychic"
+  },
+  "1038": {
+    "class_id": 6,
+    "class_name": "Bug Catcher"
+  },
+  "1039": {
+    "class_id": 14,
+    "class_name": "Black Belt"
+  },
+  "1040": {
+    "class_id": 41,
+    "class_name": "Scientist"
+  },
+  "1041": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "1042": {
+    "class_id": 9,
+    "class_name": "Hiker"
+  },
+  "1043": {
+    "class_id": 41,
+    "class_name": "Scientist"
+  },
+  "1044": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "1045": {
+    "class_id": 36,
+    "class_name": "Beauty"
+  },
+  "1046": {
+    "class_id": 3,
+    "class_name": "Lass"
+  },
+  "1047": {
+    "class_id": 52,
+    "class_name": "Guitarist"
+  },
+  "1048": {
+    "class_id": 49,
+    "class_name": "Psychic"
+  },
+  "1049": {
+    "class_id": 54,
+    "class_name": "Ace Trainer"
+  },
+  "1050": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "1051": {
+    "class_id": 25,
+    "class_name": "Ace Trainer"
+  },
+  "1052": {
+    "class_id": 30,
+    "class_name": "Bird Keeper"
+  },
+  "1053": {
+    "class_id": 24,
+    "class_name": "Ace Trainer"
+  },
+  "1054": {
+    "class_id": 1,
+    "class_name": "Pokémon Trainer"
+  },
+  "1055": {
+    "class_id": 1,
+    "class_name": "Pokémon Trainer"
+  },
+  "1056": {
+    "class_id": 1,
+    "class_name": "Pokémon Trainer"
+  },
+  "1057": {
+    "class_id": 0,
+    "class_name": "Pokémon Trainer"
+  },
+  "1058": {
+    "class_id": 0,
+    "class_name": "Pokémon Trainer"
+  },
+  "1059": {
+    "class_id": 0,
+    "class_name": "Pokémon Trainer"
+  },
+  "1060": {
+    "class_id": 72,
+    "class_name": "Commander"
+  },
+  "1061": {
+    "class_id": 87,
+    "class_name": "Commander"
+  },
+  "1062": {
+    "class_id": 88,
+    "class_name": "Commander"
+  },
+  "1063": {
+    "class_id": 86,
+    "class_name": "Galactic Boss"
+  },
+  "1064": {
+    "class_id": 90,
+    "class_name": "Pokémon Trainer"
+  },
+  "1065": {
+    "class_id": 94,
+    "class_name": "Pokémon Trainer"
+  }
+}

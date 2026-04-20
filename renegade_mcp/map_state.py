@@ -1198,25 +1198,51 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
     header = f"Map {map_id} ({px},{py}) {facing_name}{elev_str}  origin:({vp_x},{vp_y}) {vp_w}x{vp_h}"
 
     # Object list (compact: index, name, position, trainer status)
+    from renegade_mcp.trainer import (
+        trainer_id_from_script,
+        is_trainer_defeated,
+        lookup_trainer_class,
+        is_flavor_trainer,
+    )
     obj_info = []
     for obj in visible_objects:
         idx = obj["index"]
         if idx == 0:
             continue  # Player is already in the player field
-        name = obj.get("name", "")
+        sprite_name = obj.get("name", "")
         entry: dict[str, Any] = {
             "index": idx,
             "x": obj["x"], "y": obj["y"],
         }
-        if name:
-            entry["name"] = name
+        if sprite_name:
+            entry["name"] = sprite_name
         if obj.get("trainer_type", 0) > 0:
-            from renegade_mcp.trainer import trainer_id_from_script, is_trainer_defeated
             tid = trainer_id_from_script(obj.get("script", 0))
             if tid is not None:
-                entry["trainer"] = True
-                entry["trainer_id"] = tid
-                entry["defeated"] = is_trainer_defeated(emu, tid)
+                if is_flavor_trainer(map_id, tid):
+                    # QA BUG-021: NPC is data-classed as a trainer but
+                    # Renegade Platinum's script path never invokes the
+                    # battle and pre-sets the defeat flag via a story script.
+                    # Report as a flavor NPC so callers don't mistake it for
+                    # a cleared battleable trainer.
+                    entry["flavor_npc"] = True
+                else:
+                    entry["trainer"] = True
+                    entry["trainer_id"] = tid
+                    entry["defeated"] = is_trainer_defeated(emu, tid)
+                    # QA BUG-020: sprite class (from GFX_NAMES) and the
+                    # real trainer class (from trdata.narc) can differ —
+                    # e.g. trainer 76 is a "Bird Keeper" in battle but
+                    # uses the "Ace Trainer F" overworld sprite. Surface
+                    # the authoritative trainer class and, when it
+                    # disagrees with the sprite, override `name` so
+                    # callers plan type matchups off the real class.
+                    trainer_class = lookup_trainer_class(tid)
+                    if trainer_class is not None:
+                        entry["trainer_class"] = trainer_class
+                        if sprite_name and trainer_class != sprite_name:
+                            entry["name"] = trainer_class
+                            entry["sprite_name"] = sprite_name
         obj_info.append(entry)
 
     # BFS flood-fill from player for reachability + step counts
