@@ -4,6 +4,63 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: QA BUG-022 — battle_turn(use_item=...) missing `log` field (2026-04-19 session 17)
+
+QA surfaced BUG-022: `battle_turn(use_item=...)` returned a response with
+no `log` field, making the turn opaque — the enemy's reciprocal action
+executed invisibly and only the pre/post HP delta (often confusingly
+"backwards" when the enemy's damage exceeded the heal) hinted that the
+enemy had acted at all. Classic observability gap: every return path
+was missing `log`, not just one edge case.
+
+Copied `session16_map75_pre_jupiter_battle.mst` from the QA project into
+`/workspace/RenegadePlatinumPlaytest/savestates/qa_session16_map75_pre_jupiter_battle.mst`
+(ROM MD5 matches, so save states transfer cleanly). Walked the extra
+6 tiles to Jupiter, engaged her, saved a focused repro state
+`bug022_jupiter_battle_pre_super_potion` at her action prompt with
+Monferno 75/99 HP and Super Potion x9 in the Medicine pocket. Pre-fix
+call returned `old_hp=75 new_hp=51 final_state=WAIT_FOR_ACTION` with no
+log. Post-fix call exposes the full turn: *Used the Super Potion!* →
+*Monferno's HP was restored by 24 points.* → *The foe's Golbat used
+Wing Attack!* → *It's super effective!* → *What will Monferno do?*
+
+**Root cause.** `use_battle_item` called `_wait_for_action_prompt`
+(which itself logs every distinct text transition while polling through
+item animation + enemy turn + action-prompt return), but only read
+`prompt["prompt_type"]`. `prompt["log"]` — the complete turn narration
+— was thrown away. Every one of the six return paths in the function
+(blackout, active-heal HP-changed, active-heal HP-unchanged, bench
+HP-unverifiable, X-item success, X-item uncertain) omitted the `log`
+field.
+
+**Fix.** `renegade_mcp/use_battle_item.py`:
+- Initialize `turn_log: list[dict] = []` just before the Step 7 branch
+  so even the escape-item (Poke Doll, battleUseFunc=3) path — which
+  doesn't call `_wait_for_action_prompt` — still returns a well-typed
+  empty list.
+- Capture `turn_log = prompt.get("log", []) or []` immediately after the
+  `_wait_for_action_prompt` call on the healing / X-item branch.
+- Thread `"log": turn_log` through every return dict. `turn.py::battle_turn`'s
+  item path (lines 1056-1064) already returns the inner dict unchanged
+  and then appends `battle_state`, so the new `log` field propagates
+  automatically — no wrapper changes needed.
+
+8 regression tests in `tests/test_qa_bug022_battle_turn_use_item_log.py`:
+- 4 on `battle_item_debug_damaged` (Luxio vs Natu, Potion) — log key is
+  present and a list, entries have correct shape (`text` + `stop`,
+  valid stop values), last entry's stop is WAIT_FOR_ACTION when the
+  prompt closes the turn, log contains "Potion" narration.
+- 2 on the same state via the `battle_turn(use_item=...)` wrapper
+  exposing the log and coexisting with `battle_state`.
+- 2 on `bug022_jupiter_battle_pre_super_potion` — the exact QA repro,
+  asserting "Golbat" appears in the log text blob and that both the
+  heal narration ("restored") and enemy-action narration ("used") are
+  captured so downstream callers can reconstruct the HP arc.
+
+Existing `test_use_battle_item.py` (25 tests) still passes — no
+regressions. Full BUG-022 file runs in ~12 s; the combined
+use_battle_item surface is ~32 s.
+
 ## Dev Session: QA BUG-019 / BUG-020 / BUG-021 — double-battle log dedupe + trainer-class/flavor-NPC metadata (2026-04-19 session 15)
 
 Triaged the three new QA reports from session 15. All three are log /

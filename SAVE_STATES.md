@@ -54,6 +54,8 @@
 | `eterna_forest_cheryl_doubles_mid_battle_buneary_paras` | QA save, mid-Cheryl double battle with wild Buneary + Paras. Imported for future doubles-flow regression — not yet referenced in tests. |
 | `bug009_cheryl_post_drifloon_ko` | Playtest-created, Cheryl battle right after Drifloon KO, Wailmer incoming. Ad-hoc checkpoint kept for future Cheryl-line text investigations. |
 | `bug011_cheryl_post_wailmer_ko` | Playtest-created, switch-prompt state post-Wailmer KO with Vaporeon's level-up consumed. Checkpoint for revisiting post-level-up log flows if needed. |
+| `qa_session16_map75_pre_jupiter_battle` | QA-imported (copied from QA session 16). Galactic Eterna Bldg top floor (map 75) at (21, 6), facing Jupiter at (14, 6). Monferno Lv33 75/99, party Vaporeon/Mothim/Shinx, Super Potion x9 in Medicine. Walk 6 tiles west + interact to engage Jupiter's Golbat. Source fixture for `bug022_jupiter_battle_pre_super_potion`. |
+| `bug022_jupiter_battle_pre_super_potion` | Frozen at Jupiter's battle action prompt after engaging from `qa_session16_map75_pre_jupiter_battle`. Monferno Lv33 75/99 vs Golbat Lv26. Used by `test_qa_bug022_battle_turn_use_item_log.py` to verify `battle_turn(use_item=...)` now surfaces the enemy's reciprocal action in the turn log. |
 
 ## Test Suite
 

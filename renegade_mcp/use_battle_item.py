@@ -238,6 +238,9 @@ def use_battle_item(
     # battleUseFunc == 3 (escape): auto-triggers, nothing to tap
 
     # ── Step 7: Wait for item animation + enemy turn + return to action prompt ──
+    # QA BUG-022: capture the narration log so callers can see the enemy's
+    # reciprocal action on the same turn (parity with the move-action path).
+    turn_log: list[dict] = []
     if battle_use == 3:
         # Escape item — wait for battle to end
         emu.advance_frames(ANIM_WAIT)
@@ -249,6 +252,7 @@ def use_battle_item(
         # The item animation + enemy's turn can take 600+ frames.
         from renegade_mcp.turn import _wait_for_action_prompt
         prompt = _wait_for_action_prompt(emu)
+        turn_log = prompt.get("log", []) or []
         if prompt["ready"]:
             pt = prompt.get("prompt_type", "ACTION")
             # Map internal "ACTION" to public "WAIT_FOR_ACTION"; pass through
@@ -274,6 +278,7 @@ def use_battle_item(
                 "item": item_name,
                 "final_state": "BATTLE_ENDED",
                 "blackout": True,
+                "log": turn_log,
                 "formatted": msg,
             }
             if blackout_dialogue:
@@ -327,6 +332,7 @@ def use_battle_item(
                     "old_hp": old_hp,
                     "new_hp": new_hp,
                     "final_state": final_state,
+                    "log": turn_log,
                     "formatted": msg,
                 }
             else:
@@ -343,6 +349,7 @@ def use_battle_item(
                     "role": role_label,
                     "hp": old_hp,
                     "final_state": final_state,
+                    "log": turn_log,
                     "formatted": msg,
                 }
 
@@ -358,6 +365,7 @@ def use_battle_item(
             "party_slot": party_slot,
             "role": role_label,
             "final_state": final_state,
+            "log": turn_log,
             "formatted": msg,
         }
 
@@ -368,6 +376,7 @@ def use_battle_item(
             "success": True,
             "item": item_name,
             "final_state": final_state,
+            "log": turn_log,
             "formatted": msg,
         }
     else:
@@ -376,6 +385,7 @@ def use_battle_item(
             "success": False,
             "item": item_name,
             "final_state": final_state,
+            "log": turn_log,
             "formatted": msg,
         }
 
