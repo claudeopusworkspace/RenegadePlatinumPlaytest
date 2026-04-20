@@ -782,3 +782,46 @@ Four-Pokemon team in Renegade Platinum (vs. vanilla's two):
 - **Items obtained**: Hard Stone (route drop), Super Potion (route drop). 10 Super Potions + 10 Repels in bag.
 - **Location**: Route 207 (306, 714), on bicycle, Repel active. Save state: `route207_north_of_slope_session18_end`.
 - **Next session**: Push north toward Mt. Coronet. Remaining Route 207 trainers: Hiker at (329, 715), two more to scout further up. Pokeball at (323, 730) still uncollected. Consider rotating Larvitar into party for training before Mt. Coronet (currently Lv9 vs Mt. Coronet wilds at Lv14-16).
+
+## Session 20 (2026-04-20): Mt. Coronet blocked — forced into Wayward Cave detour
+
+### Route 207 push east → Mt. Coronet gate
+- Began at `route207_north_of_slope_session18_end`. Session 18's hint ("push north") turned out to be wrong — Mt. Coronet is *east* of the save state, not north. Detoured north first, hit Route 206 Cycling Road by mistake, came back (one bug filed in the process — see BUG-029 below).
+- Headed east through the Route 207 vent corridor. **Hiker Justin** ambushed at (329, 715):
+  - **Graveler Lv25** — Rock Head + Self-Destruct (full 200 BP, no recoil!). Luxray's Electric is useless here, so switched to Prinplup. Graveler crit-Magnitude knocked Prinplup to 32/77 on the switch-in turn. Scald (4x on Rock/Ground, +30% burn) OHKO'd cleanly.
+  - Free switch prompt → **Grotle** for **Sandslash Lv25** (Ground). Razor Leaf 3HKO (Sandslash missed one Crush Claw). +$800.
+  - Swinub hit **Lv26** from the Exp. Share.
+- Healed Prinplup back to full with a Super Potion (10 → 9 Super Potions).
+- **Mt. Coronet warp found at (341, 712)**, but the **Psychic NPC at (336, 710)** intercepts with a mandatory sight-line dialogue: *"A Kadabra, sending a distress signal for its trainer from Wayward Cave!"* Triggered the Mira rescue quest. The Psychic is a hard story gate — can't pass until Mira is rescued.
+
+### Route 206 grind for the Wayward Cave entrance
+- Backtracked west + north, looping around the Café Cabin instead of through it, to reach Route 206's lower path (the grass strip beside the Cycling Road bridges).
+- **TM74 Gyro Ball** on the middle island between the two bridges at (302, 652). Reachable only via the gap under the bridge-merge section.
+- **PP Up** on the east lower path at (313, 679).
+- Hit **BUG-030** (navigate_to routes *through* bridge instead of under it) when trying to cross from middle island to west grass. Worked around with manual `navigate` inputs: up 2 + left 5 pushed through the bridge-underside tiles by hand.
+- **Hiker NPC at (292, 643)** gave the canonical hint: *"Two caves on Route 206, but I can only find one entrance."* — standard Wayward-Cave-secret-entrance flavor.
+- **Hiker Theodore** ambushed at (302, 631) during the grass walk:
+  - **Torkoal Lv26** — Drought auto-sun + Lava Plume/Flame Wheel. Nasty matchup for most of the team (Swinub Ice/Ground takes 2x sun-boosted Fire). Stuck with Luxray — Crunch crit OHKO'd on turn 1 (Scope Lens pulled its weight). +$832.
+
+### Entered the secret Wayward Cave branch (not Mira's room)
+- **Wayward Cave secret entrance at (299, 611)** on Route 206's *west* lower path, guarded by patrolling Cyclist F #29. `interact_with` timed out on her patrol, but the pathing still walked onto the warp tile and triggered the transition — entered map 284 at (30, 55).
+- Map 284 → internal warp at (28, 54) → map 285 (second floor of the secret branch).
+- Bike-slope puzzle: the slopes in map 285 go north-to-south. Hit **BUG-031** (navigate_to assumes slopes are descent-only, can't ascend). Workaround: `navigate d3` to back off, then `advance_frames(90, buttons=["up"])` — held-UP rode the slope successfully.
+- Reached the upper room at (30, 23). `view_map` reported a "Pokeball" at (31, 16) that turned out to be Mira's Kadabra (or an NPC sprite sharing the Pokeball graphic) — **BUG-032** filed.
+
+### Bugs filed (playtest blocked pending fixes)
+- **BUG-029** `view_map` marks under-bridge pickup as reachable (Cycling Road elevation ignored by BFS).
+- **BUG-030** `navigate_to` routes through bridge tiles when player is under the bridge.
+- **BUG-031** `navigate_to` bike-slope traversal fails going UP (tuned for descent-only; first ascent in the playthrough).
+- **BUG-032** `view_map` labels Mira's Kadabra NPC as "Pokeball" (sprite-label table mismatched).
+- **FR-009** `use_item("Repel")` misreports already-active Repel as `"menu flow may have gone wrong"` — confusing when the tool actually worked.
+- Every bug has a named repro save state in `savestates/`.
+
+### Session Summary
+- **Badges**: 2 (unchanged).
+- **Trainers defeated**: Hiker Justin (Route 207), Hiker Theodore (Route 206 west grass).
+- **Items obtained**: TM74 Gyro Ball, PP Up.
+- **Party**: Luxray Lv33, Grotle Lv24, Prinplup Lv26, Monferno Lv27, Swinub ✨ **Lv26** (+1), Togepi Lv1. All healed, Prinplup patched mid-session.
+- **Bag**: 10 Super Potions, 6 Repels (burned 4 across routing detours).
+- **Location**: Wayward Cave upper room, map 285 at (30, 23). Save state: `wayward_cave_session20_end`. **This is the secret branch, not the main Mira-quest branch.**
+- **Next session**: Gated on dev fixing BUG-029/030/031/032. Then: exit the secret branch back to Route 206, find the *main* Wayward Cave entrance near the Route 207 Mt. Coronet gate, rescue Mira's Kadabra, return to the Psychic, proceed into Mt. Coronet.
