@@ -432,3 +432,58 @@ class TestQaBug025BikeSlopeAutoMount:
             f"Got spurious bike_slope_requires_bicycle when slope should have been "
             f"cleared: {result}"
         )
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-024: navigate_to wanders on side-warp clusters (Cycling Road gate)
+# ---------------------------------------------------------------------------
+
+class TestQaBug024SideWarpCluster:
+    """Regression: reject absurdly long BFS paths near same-map warp clusters.
+
+    At the end of Cycling Road, the player stands on a 0x6F (side_S WARP)
+    tile inside a gate house.  The reciprocal 0x6E (WARP_NORTH) tile sits
+    south of the gate, only 7 Manhattan tiles away — but there's no direct
+    walkable route, so BFS finds a 93-step detour that loops all the way
+    around the overworld.  navigate_to would then try to execute that crazy
+    path, repath 7+ times, and exit far from the target with warp_failed.
+
+    Fix: if the BFS path length exceeds max(manhattan * 5, manhattan + 30),
+    refuse with a clear error.  When the player is on a directional warp
+    tile, include a press_buttons suggestion so the caller knows the
+    intended way through.
+    """
+
+    @retry_on_rng("route206_cyclingroad_end_nav_repro")
+    def test_refuses_long_detour_to_warp_target(self, emu: EmulatorClient):
+        """(302, 681) → (302, 688) through the gate house returns clean error."""
+        from renegade_mcp.navigation import _navigate_to_impl
+
+        result = _navigate_to_impl(emu, 302, 688)
+        assert "error" in result, f"Expected error, got: {result}"
+        assert "No reasonable path" in result["error"], result["error"]
+        assert result.get("manhattan") == 7
+        assert result.get("path_length", 0) > 50
+
+    @retry_on_rng("route206_cyclingroad_end_nav_repro")
+    def test_hints_at_warp_direction_when_on_warp_tile(self, emu: EmulatorClient):
+        """Error message tells caller which direction triggers the warp."""
+        from renegade_mcp.navigation import _navigate_to_impl
+
+        result = _navigate_to_impl(emu, 302, 688)
+        assert "note" in result, f"Expected warp note, got: {result}"
+        # Player is on a 0x6F (WARP_SOUTH) tile — hint should suggest 'down'.
+        assert "down" in result["note"], result["note"]
+
+    @retry_on_rng("route206_cyclingroad_end_nav_repro")
+    def test_does_not_move_the_player(self, emu: EmulatorClient):
+        """Refused navigation must not leave player wandering on the map."""
+        from renegade_mcp.navigation import _read_position, _navigate_to_impl
+
+        _, x_before, y_before = _read_position(emu)
+        _navigate_to_impl(emu, 302, 688)
+        _, x_after, y_after = _read_position(emu)
+        assert (x_after, y_after) == (x_before, y_before), (
+            f"Player moved from ({x_before},{y_before}) to ({x_after},{y_after}) "
+            f"despite refused navigation."
+        )

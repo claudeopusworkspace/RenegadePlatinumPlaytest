@@ -1052,6 +1052,43 @@ def _navigate_to_impl(
 
     start_pos = _pos_with_map(px, py, map_id)
 
+    # ── Sanity cap: reject absurdly long paths vs manhattan distance ──
+    # When player is on a side-warp cluster (gate house, Cycling Road), BFS
+    # can find a technically valid path that loops all the way around the
+    # overworld to reach the other side of the gate.  The correct action is
+    # to trigger the warp, not walk 93 tiles for a 7-tile trip.
+    if path is not None and len(path) > 0:
+        manhattan = abs(bfs_tx - bfs_sx) + abs(bfs_ty - bfs_sy)
+        limit = max(manhattan * 5, manhattan + 30)
+        if len(path) > limit:
+            # Check if the player is currently standing on a directional warp
+            # tile — if so, they almost certainly want to trigger it.
+            on_warp_dir = None
+            if 0 <= bfs_sy < len(terrain_info) and 0 <= bfs_sx < len(terrain_info[0]):
+                _, start_behavior = terrain_info[bfs_sy][bfs_sx]
+                on_warp_dir = DIRECTIONAL_WARP.get(start_behavior)
+            target_gx = bfs_tx + repath_ox
+            target_gy = bfs_ty + repath_oy
+            result: dict[str, Any] = {
+                "error": (
+                    f"No reasonable path to ({target_gx}, {target_gy}): "
+                    f"BFS path is {len(path)} steps for a {manhattan}-tile "
+                    f"Manhattan distance.  Target is likely in a separate "
+                    f"walkable region reachable only via warp."
+                ),
+                "start": start_pos,
+                "target": {"x": target_x, "y": target_y},
+                "path_length": len(path),
+                "manhattan": manhattan,
+            }
+            if on_warp_dir is not None:
+                result["note"] = (
+                    f"You are standing on a directional warp tile.  "
+                    f"Trigger it with `press_buttons(['{on_warp_dir}'])` "
+                    f"to transition, then navigate from the other side."
+                )
+            return result
+
     if path is None:
         # Diagnose why BFS couldn't find a path
         reasons: list[str] = []
