@@ -268,6 +268,17 @@ def _try_repath(
     )
 
 
+def _auto_mount_for_slope(emu: EmulatorClient) -> bool:
+    """Mount the bicycle if not already on it. Returns True on success."""
+    from renegade_mcp.addresses import addr
+    from renegade_mcp.use_item import use_item
+
+    if bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")):
+        return True
+    mount = use_item(emu, "Bicycle")
+    return bool(mount.get("success"))
+
+
 # ── Path execution ──
 
 def _execute_path(
@@ -309,6 +320,31 @@ def _execute_path(
     while i < len(directions):
         direction = directions[i]
         old_map, old_x, old_y = _read_position(emu)
+        dx, dy = _DIR_DELTAS.get(direction, (0, 0))
+
+        # Pre-step: if the next tile is a bike slope and we're walking,
+        # mount the bicycle first.  Stepping onto a slope on foot registers
+        # as a successful step (position briefly changes) before the game's
+        # slope physics slides the player back south, so the post-step
+        # `blocked` check never catches this case — the player oscillates.
+        # Once on the bike, stepping into a slope IS blocked, which routes
+        # through the existing blocked-branch slope traversal below.
+        pre_target = (old_x + dx, old_y + dy)
+        pre_obs = obstacle_tiles.get(pre_target)
+        if pre_obs is not None and pre_obs.get("type") in BIKE_SLOPE_TYPES:
+            from renegade_mcp.addresses import addr as _addr
+            on_bike = bool(emu.read_memory(_addr("CYCLING_GEAR_ADDR"), size="short"))
+            if not on_bike:
+                if not _auto_mount_for_slope(emu):
+                    nav_info["blocked_at"] = {"x": old_x, "y": old_y, "step": steps_taken}
+                    nav_info["blocked_reason"] = "bike_slope_requires_bicycle"
+                    nav_info["note"] = (
+                        f"Bike slope at ({pre_target[0]}, {pre_target[1]}) "
+                        f"requires the Bicycle key item.  Get the Bicycle "
+                        f"and retry."
+                    )
+                    return True, steps_taken, repaths_used, nav_info
+                active_hold = BIKE_HOLD_FRAMES
 
         emu.advance_frames(active_hold, buttons=[direction])
         emu.advance_frames(WAIT_FRAMES)
@@ -321,7 +357,6 @@ def _execute_path(
             # Check if blocked by a clearable HM obstacle BEFORE slow terrain
             # retries — extra directional presses would interfere with the
             # Rock Smash / Cut / Surf interaction dialogue.
-            dx, dy = _DIR_DELTAS.get(direction, (0, 0))
             obs_gx, obs_gy = old_x + dx, old_y + dy
             obs_info = obstacle_tiles.get((obs_gx, obs_gy))
             if obs_info is not None and obs_info["type"] in BIKE_SLOPE_TYPES:

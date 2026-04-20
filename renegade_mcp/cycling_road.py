@@ -267,12 +267,15 @@ def _traverse_bike_slope(
     opp = _OPPOSITE_DIR[direction]
     dx, dy = _DIR_DELTAS[direction]
 
-    # ── 1. Ensure fast gear ──
-    gear = emu.read_memory(BIKE_GEAR_STATE_ADDR, size="byte")
-    was_slow = gear != 0
-    if was_slow:
-        emu.press_buttons(["b"], frames=8)
-        emu.advance_frames(8)
+    # ── 1. Ensure fast gear (with B-press settle) ──
+    # Force gear=1 (slow) via memory write, then press B to toggle to fast.
+    # The B press is essential even when gear is already 0 (fast) — it
+    # settles the bike's internal state.  Without it (e.g. right after a
+    # fresh mount), the first backup press gets absorbed by residual mount-
+    # animation state and the momentum build-up fails.
+    emu.write_memory(BIKE_GEAR_STATE_ADDR, value=1, size="byte")
+    emu.press_buttons(["b"], frames=8)
+    emu.advance_frames(8)
 
     # ── 2. Back up 3 tiles for running start ──
     for _ in range(BIKE_SLOPE_BACKUP_TILES):

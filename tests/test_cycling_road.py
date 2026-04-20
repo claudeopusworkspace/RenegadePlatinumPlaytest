@@ -372,3 +372,63 @@ class TestBikeSlopeTraversal:
         assert result["final"]["y"] <= 718, (
             f"Expected past the slope (y <= 718), got y={result['final']['y']}"
         )
+
+
+# ---------------------------------------------------------------------------
+# QA BUG-025: navigate_to silent failure on bike slope without bicycle
+# ---------------------------------------------------------------------------
+
+class TestQaBug025BikeSlopeAutoMount:
+    """Regression: walking north into a slope from distance auto-mounts cleanly.
+
+    The original bug: when navigate_to's BFS path crossed a bike slope and the
+    player was on foot, stepping onto the slope tile briefly succeeded (position
+    changed) before the game's slope physics slid the player back south. The
+    post-step blocked check never caught this — the player oscillated between
+    the slope-bottom tile and the ground tile to its south, burning all 15
+    repaths before returning without any diagnostic.
+
+    Fix: pre-step check in _execute_path intercepts slope targets, auto-mounts
+    the bicycle, and then lets the existing blocked-branch traversal run
+    (single-step entry IS blocked on a bike, so it fires correctly). The
+    traverse helper was also made more robust: it now forces gear=1 via memory
+    write and presses B unconditionally, since a fresh mount leaves gear=0 in
+    a state where the first backup press gets absorbed by residual animation.
+    """
+
+    @retry_on_rng("bug_bike_slope_north_climb_fail")
+    def test_walk_from_distance_auto_mounts(self, emu: EmulatorClient):
+        """navigate_to from (299, 730) on foot to (305, 715) clears the slope."""
+        from renegade_mcp.addresses import addr
+        from renegade_mcp.navigation import _navigate_to_impl
+
+        cycling = emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")
+        assert cycling == 0, "Precondition: save state should start on foot"
+
+        result = _navigate_to_impl(emu, 305, 715)
+
+        assert "obstacles_cleared" in result, (
+            f"Expected slope to be cleared, got: {result}"
+        )
+        slopes = [o for o in result["obstacles_cleared"] if o["type"] == "bike_slope"]
+        assert len(slopes) == 1, f"Expected 1 bike_slope cleared, got {slopes}"
+
+        # Bike momentum may overshoot the exact target by a tile; what matters
+        # is that the slope was crossed (y <= 717).
+        assert result["final"]["y"] <= 717, (
+            f"Expected to clear the slope (y <= 717), got {result['final']}"
+        )
+
+        cycling_after = emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")
+        assert cycling_after != 0, "Player should be cycling after auto-mount"
+
+    @retry_on_rng("bug_bike_slope_north_climb_fail")
+    def test_no_bike_slope_blocked_reason_on_success(self, emu: EmulatorClient):
+        """Successful slope climb must NOT return blocked_reason=bike_slope_requires_bicycle."""
+        from renegade_mcp.navigation import _navigate_to_impl
+
+        result = _navigate_to_impl(emu, 305, 715)
+        assert result.get("blocked_reason") != "bike_slope_requires_bicycle", (
+            f"Got spurious bike_slope_requires_bicycle when slope should have been "
+            f"cleared: {result}"
+        )
