@@ -617,7 +617,13 @@ class TestFr005SwitchToZeroErrorMessage:
         )
 
     def test_error_clarifies_party_slot_numbering(self, emu: EmulatorClient):
-        """Error explains switch_to uses party-slot numbering, not battle-slot."""
+        """Error points at read_party and names the 1-5 valid range.
+
+        Post-FR-008 the error explains switch_to is battle UI slot numbering
+        (with read_party.battle_ui_slot as the mapping) — but the regression
+        surface is the same: message must reference `read_party` and the
+        1-5 valid range so the caller can self-correct.
+        """
         load_state(emu, "test_bug009_roark_battle_monferno_lead")
         from renegade_mcp.turn import battle_turn
         result = battle_turn(emu, switch_to=0)
@@ -639,3 +645,100 @@ class TestFr005SwitchToZeroErrorMessage:
         assert "active battler" in msg.lower(), (
             f"Expected 'active battler' phrasing in helper output, got: {msg!r}"
         )
+
+
+# ---------------------------------------------------------------------------
+# FR-008: switch_to uses battle UI slot numbering + rejects fainted targets
+# ---------------------------------------------------------------------------
+
+class TestFr008SwitchBattleUiSlot:
+    """switch_to is the battle UI slot (1-5), not a party slot.
+
+    The in-battle POKEMON grid is battle-slot-ordered — active always at UI 0,
+    and after a switch the Pokemon who came in occupies UI 0 while the one who
+    left takes the freed tile. Since we drive the UI by tapping the grid tile,
+    switch_to=N taps UI tile N. Callers must consult read_party's
+    battle_ui_slot field to know which party member sits at each UI slot.
+
+    The tool must also reject switch_to=N when the party member at UI slot N
+    has HP==0, to prevent the UI-stall regression from the original FR-008
+    bug report (Jupiter battle, switch_to=4 landed on fainted Monferno and
+    stalled on the summary screen).
+    """
+
+    def test_zero_error_mentions_battle_ui_slot_phrasing(
+        self, emu: EmulatorClient,
+    ):
+        """Error on switch_to=0 clarifies the new battle-UI-slot semantics."""
+        load_state(emu, "test_bug009_roark_battle_monferno_lead")
+        from renegade_mcp.turn import _switch_to_zero_error
+        msg = _switch_to_zero_error(emu)
+        assert "battle UI slot" in msg, (
+            f"Expected 'battle UI slot' phrasing in error, got: {msg!r}"
+        )
+        assert "read_party" in msg, (
+            f"Expected pointer to read_party.battle_ui_slot, got: {msg!r}"
+        )
+
+    def test_fainted_helper_returns_none_for_healthy_bench(
+        self, emu: EmulatorClient,
+    ):
+        """_fainted_switch_error returns None when the target is at full HP."""
+        load_state(emu, "test_trainer_battle_action")
+        from renegade_mcp.turn import _fainted_switch_error
+        # UI slot 1 is a healthy bench member in this save (all 6 at full HP).
+        assert _fainted_switch_error(emu, 1) is None
+        assert _fainted_switch_error(emu, 2) is None
+
+    def test_fainted_helper_returns_error_for_fainted_bench(
+        self, emu: EmulatorClient, monkeypatch,
+    ):
+        """_fainted_switch_error names the species + says 'fainted' when HP==0."""
+        fake_party = {
+            "party": [
+                {"slot": 0, "name": "Luxio", "hp": 59,
+                 "battle_ui_slot": 0, "battle_role": "active"},
+                {"slot": 1, "name": "Machop", "hp": 0,
+                 "battle_ui_slot": 1, "battle_role": "bench"},
+                {"slot": 2, "name": "Grotle", "hp": 76,
+                 "battle_ui_slot": 2, "battle_role": "bench"},
+            ]
+        }
+        import renegade_mcp.party as party_mod
+        monkeypatch.setattr(party_mod, "read_party", lambda _e: fake_party)
+        from renegade_mcp.turn import _fainted_switch_error
+        err = _fainted_switch_error(emu, 1)
+        assert err is not None
+        assert "Machop" in err, err
+        assert "fainted" in err.lower(), err
+        # Healthy slots still None under the same patch.
+        assert _fainted_switch_error(emu, 2) is None
+
+    def test_battle_turn_rejects_fainted_switch_target(
+        self, emu: EmulatorClient, monkeypatch,
+    ):
+        """battle_turn(switch_to=N) surfaces the fainted error to the caller."""
+        load_state(emu, "test_trainer_battle_action")
+        fake_party = {
+            "party": [
+                {"slot": 0, "name": "Luxio", "hp": 59,
+                 "battle_ui_slot": 0, "battle_role": "active"},
+                {"slot": 1, "name": "Machop", "hp": 0,
+                 "battle_ui_slot": 1, "battle_role": "bench"},
+                {"slot": 2, "name": "Grotle", "hp": 76,
+                 "battle_ui_slot": 2, "battle_role": "bench"},
+                {"slot": 3, "name": "Prinplup", "hp": 64,
+                 "battle_ui_slot": 3, "battle_role": "bench"},
+                {"slot": 4, "name": "Charmeleon", "hp": 67,
+                 "battle_ui_slot": 4, "battle_role": "bench"},
+                {"slot": 5, "name": "Swinub", "hp": 49,
+                 "battle_ui_slot": 5, "battle_role": "bench"},
+            ]
+        }
+        import renegade_mcp.party as party_mod
+        monkeypatch.setattr(party_mod, "read_party", lambda _e: fake_party)
+        from renegade_mcp.turn import battle_turn
+        result = battle_turn(emu, switch_to=1)
+        assert "error" in result, f"Expected fainted error, got: {result}"
+        assert "Machop" in result["error"]
+        assert "fainted" in result["error"].lower()

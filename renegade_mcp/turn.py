@@ -129,9 +129,9 @@ TEXT_ADVANCE_WAIT = 120  # frames between B presses during text advancement
 def _switch_to_zero_error(emu: EmulatorClient) -> str:
     """Build the FR-005 rejection message for switch_to=0.
 
-    Names the active battler species and clarifies that switch_to uses
-    party-slot numbering (0-5 matching read_party order), not battle-slot
-    numbering (where slot 2 is the doubles partner).
+    Names the active battler species. `switch_to` uses battle UI slot
+    numbering (1-5 for benched Pokemon); slot 0 is always the currently
+    active battler and cannot be swapped to itself.
     """
     from renegade_mcp.addresses import addr
     from renegade_mcp.data import species_names
@@ -140,9 +140,33 @@ def _switch_to_zero_error(emu: EmulatorClient) -> str:
     species = species_names().get(species_id, f"#{species_id}") if species_id else "active battler"
     return (
         f"switch_to=0 is your active battler ({species}). "
-        f"switch_to uses party-slot numbering (0-5, matching read_party order), "
-        f"not battle-slot numbering. Use 1-5 to swap in a different party Pokemon."
+        f"switch_to uses battle UI slot numbering (1-5) — slot 0 is always "
+        f"the active battler. Use 1-5 to swap in a benched Pokemon; see "
+        f"read_party's battle_ui_slot field for the current mapping."
     )
+
+
+def _fainted_switch_error(emu: EmulatorClient, switch_to: int) -> str | None:
+    """Check if the party Pokemon at battle UI slot `switch_to` is fainted.
+
+    Returns an error string if fainted, None otherwise (including when the
+    mapping can't be determined — fall through to the UI driver).
+    """
+    from renegade_mcp.party import read_party
+    party_data = read_party(emu)
+    party = party_data.get("party") if isinstance(party_data, dict) else party_data
+    if not party:
+        return None
+    for p in party:
+        if p.get("battle_ui_slot") == switch_to:
+            if p.get("hp", 1) == 0:
+                name = p.get("name", f"slot {switch_to}")
+                return (
+                    f"Cannot switch to UI slot {switch_to} ({name}): fainted. "
+                    f"Pick a different battle_ui_slot (see read_party)."
+                )
+            return None
+    return None
 
 
 def _is_battle_over(emu: EmulatorClient) -> bool:
@@ -1020,6 +1044,10 @@ def battle_turn(
             return {"error": _switch_to_zero_error(emu)}
         if has_switch and switch_to > 5:
             return {"error": f"switch_to must be 1-5, got {switch_to}"}
+        if has_switch:
+            err = _fainted_switch_error(emu, switch_to)
+            if err:
+                return {"error": err}
     elif has_item:
         return {"error": f"Can't use an item in {pt} state. Items are only usable at the main action prompt."}
     elif pt in ("FAINT_SWITCH", "SWITCH_PROMPT"):
@@ -1034,6 +1062,10 @@ def battle_turn(
             return {"error": _switch_to_zero_error(emu)}
         if has_switch and switch_to > 5:
             return {"error": f"switch_to must be 1-5, got {switch_to}"}
+        if has_switch:
+            err = _fainted_switch_error(emu, switch_to)
+            if err:
+                return {"error": err}
     elif pt == "FAINT_FORCED":
         if has_forget:
             return {"error": "Not at a move learning prompt. Your Pokemon fainted — use switch_to."}
@@ -1045,6 +1077,10 @@ def battle_turn(
             return {"error": _switch_to_zero_error(emu)}
         if switch_to > 5:
             return {"error": f"switch_to must be 1-5, got {switch_to}"}
+        if has_switch:
+            err = _fainted_switch_error(emu, switch_to)
+            if err:
+                return {"error": err}
     elif pt == "MOVE_LEARN":
         if has_move or has_switch:
             return {"error": "At move learning prompt. Use forget_move (0-3) to forget a move, or forget_move=-1 to skip."}

@@ -71,13 +71,14 @@ class TestQaBug020ViewMapOverride:
         # Walk east so Alexandra enters the viewport (starting state is at
         # (352, 531); Alexandra is at (367, 523) which is in-range from
         # origin (336, 515)).
+        all_objs = result["objects"] + result.get("unreachable_objects", [])
         alexandra = next(
-            (o for o in result["objects"] if o.get("trainer_id") == 76),
+            (o for o in all_objs if o.get("trainer_id") == 76),
             None,
         )
         assert alexandra is not None, (
             f"Expected trainer 76 in viewport objects, got: "
-            f"{[o.get('name') for o in result['objects']]}"
+            f"{[o.get('name') for o in all_objs]}"
         )
 
         # Primary fix: `name` reflects the real battle class, not the sprite.
@@ -100,8 +101,9 @@ class TestQaBug020ViewMapOverride:
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
 
+        all_objs = result["objects"] + result.get("unreachable_objects", [])
         ninja_boy = next(
-            (o for o in result["objects"] if o.get("trainer_id") == 78),
+            (o for o in all_objs if o.get("trainer_id") == 78),
             None,
         )
         assert ninja_boy is not None

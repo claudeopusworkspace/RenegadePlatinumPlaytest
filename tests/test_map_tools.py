@@ -169,6 +169,78 @@ class TestFr006FloorLegend:
 
 
 # ---------------------------------------------------------------------------
+# FR-007: view_map splits objects into reachable vs unreachable lists
+# ---------------------------------------------------------------------------
+
+class TestFr007ReachableSplit:
+    """view_map must expose separate reachable/unreachable object lists so
+    callers can plan interact_with / navigate_to without filtering a mixed
+    list. Previously everything lived in `objects` with a `reachable` bool,
+    which was easy to miss when planning from the ASCII output alone."""
+
+    def test_objects_contains_only_reachable(self, emu: EmulatorClient):
+        """Every entry in `objects` has reachable=True."""
+        load_state(emu, "eterna_city_shiny_swinub_in_party")
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        assert len(result["objects"]) > 0
+        for o in result["objects"]:
+            assert o.get("reachable") is True, (
+                f"object in `objects` must be reachable, got: {o}"
+            )
+
+    def test_unreachable_objects_key_always_present(self, emu: EmulatorClient):
+        """`unreachable_objects` is a list — empty when everything is reachable."""
+        load_state(emu, "eterna_city_shiny_swinub_in_party")
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        assert "unreachable_objects" in result
+        assert isinstance(result["unreachable_objects"], list)
+        for o in result["unreachable_objects"]:
+            assert o.get("reachable") is False, (
+                f"entry in unreachable_objects must have reachable=False, got: {o}"
+            )
+
+    def test_unreachable_split_in_walled_area(self, emu: EmulatorClient):
+        """Galactic HQ has rooms walled off by interior structure — when any
+        object ends up BFS-unreachable it should appear in
+        unreachable_objects, not objects, and the map string should surface a
+        one-liner pointer."""
+        load_state(emu, "eterna_galactic_hq_pre_jupiter")
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+
+        unreachable = result["unreachable_objects"]
+        if not unreachable:
+            # Not all HQ floors have visible but walled-off objects in this
+            # save; if the viewport happens to expose none, the invariant
+            # still holds (everything in `objects` is reachable). Skip the
+            # stronger assertions for this save.
+            return
+
+        for o in unreachable:
+            assert o.get("reachable") is False
+            # unreachable entries carry Manhattan distance, not BFS steps
+            assert "distance" in o
+            assert "steps" not in o
+
+        # Map string must surface the unreachable count so a reader notices.
+        assert "Unreachable:" in result["map"]
+
+    def test_objects_and_unreachable_disjoint(self, emu: EmulatorClient):
+        """A given object must not appear in both lists."""
+        load_state(emu, "eterna_galactic_hq_pre_jupiter")
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        reachable_idx = {o["index"] for o in result["objects"]}
+        unreachable_idx = {o["index"] for o in result["unreachable_objects"]}
+        assert reachable_idx.isdisjoint(unreachable_idx), (
+            f"indices appeared in both lists: "
+            f"{reachable_idx & unreachable_idx}"
+        )
+
+
+# ---------------------------------------------------------------------------
 # map_name
 # ---------------------------------------------------------------------------
 

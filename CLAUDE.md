@@ -76,7 +76,7 @@ Multi-chunk maps (overworld, large caves) use a matrix/chunk system detected aut
 ### Automated (preferred)
 1. **`read_battle`** — check enemy species, types, ability, stats, moves. Plan tactics. Returns all 4 battlers in double battles. Use **`type_matchup`** to check effectiveness before committing.
 2. **`battle_turn(move_index=N)`** — use a move (0-3). **Checks type effectiveness first** — returns `EFFECTIVENESS_WARNING` if the move is immune or not very effective against the target. Call with `force=True` to proceed anyway (e.g., status moves, chip damage, or when no better option). Returns battle log + final state + updated battle state.
-   - Or **`battle_turn(switch_to=N)`** — switch to party slot N (0-5) instead of attacking.
+   - Or **`battle_turn(switch_to=N)`** — switch in the Pokemon at battle UI slot N (1-5) instead of attacking. UI slot 0 is always the active battler (rejected). The UI grid is **battle-slot-ordered, not party-ordered** — after a switch, the Pokemon who came in occupies UI 0 and the one who left takes the freed tile. Use `read_party`'s `battle_ui_slot` field in-battle to look up the current mapping. Fainted targets are rejected.
    - Or **`battle_turn(run=True)`** — attempt to flee a wild battle. Returns `BATTLE_ENDED` on success, `WAIT_FOR_ACTION` on failure (enemy gets a free turn).
    - In **double battles**, add `target=` to specify the target: `0`=first enemy (slot 1), `1`=second enemy (slot 3), `2`=self/ally. Default `-1` auto-targets first enemy.
    - Works on the very first turn of battle — no need to call twice.

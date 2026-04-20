@@ -75,13 +75,14 @@ class TestQaBug021ViewMapSuppression:
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
 
+        all_objs = result["objects"] + result.get("unreachable_objects", [])
         louis = next(
-            (o for o in result["objects"] if o.get("x") == 377 and o.get("y") == 529),
+            (o for o in all_objs if o.get("x") == 377 and o.get("y") == 529),
             None,
         )
         assert louis is not None, (
             f"Expected Hiker at (377, 529) in viewport objects, got: "
-            f"{[(o.get('x'), o.get('y'), o.get('name')) for o in result['objects']]}"
+            f"{[(o.get('x'), o.get('y'), o.get('name')) for o in all_objs]}"
         )
         assert louis.get("flavor_npc") is True, (
             f"Expected flavor_npc=True, got: {louis}"
@@ -104,8 +105,9 @@ class TestQaBug021ViewMapSuppression:
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
 
+        all_objs = result["objects"] + result.get("unreachable_objects", [])
         alexandra = next(
-            (o for o in result["objects"] if o.get("trainer_id") == 76),
+            (o for o in all_objs if o.get("trainer_id") == 76),
             None,
         )
         assert alexandra is not None, "Alexandra should still be a trainer"

@@ -102,7 +102,10 @@ def create_server() -> FastMCP:
 
         Warp coordinates from the warps list can be passed directly to navigate_to.
 
-        Objects/NPCs sorted by Manhattan distance from player (nearest first).
+        Objects/NPCs are split into two lists by BFS reachability from the player:
+        `objects` (BFS-reachable, sorted by step count) and `unreachable_objects`
+        (walled off, sorted by Manhattan distance). Use `objects` when planning
+        `interact_with` or `navigate_to` calls — unreachable targets will fail.
         Trainer NPCs show [defeated] in label, plus trainer_id and defeated fields
         (reads VarsFlags bitfield from save RAM). Works for regular trainers; gym
         leaders/rivals use separate story flags.
@@ -434,8 +437,11 @@ def create_server() -> FastMCP:
 
         Actions:
         - move_index (0-3): Tap FIGHT, select the move (top-left, top-right, bottom-left, bottom-right).
-        - switch_to (1-5): Tap POKEMON, navigate to the given **party slot** (0-5, matching read_party
-          order — NOT battle-slot numbering). Slot 0 is rejected because it's the active battler.
+        - switch_to (1-5): Tap POKEMON, select the benched Pokemon at the given **battle UI slot**.
+          UI slot 0 is always the active battler (rejected). The UI grid is battle-slot-ordered,
+          not party-ordered — after a switch, the Pokemon who came in occupies UI 0 and the one
+          who left takes the freed tile. Use `read_party`'s `battle_ui_slot` field in-battle to
+          find which UI slot each party member currently occupies. Fainted targets are rejected.
         - use_item (str): Use a bag item (name, case-insensitive). Delegates to use_battle_item.
           For healing items pass party_slot (0-5); for X items in doubles pass target (0=first
           active, 1=second active). Escape items (Poke Doll) need neither. Consumes the turn.

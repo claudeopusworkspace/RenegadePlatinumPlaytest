@@ -1274,8 +1274,15 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
             o["reachable"] = False
             o["distance"] = abs(o["x"] - px) + abs(o["y"] - py)
 
-    # Sort: reachable first (by steps), then unreachable (by Manhattan distance)
-    obj_info.sort(key=lambda o: (not o.get("reachable", False), o.get("steps", 0) if o.get("reachable") else o.get("distance", 0)))
+    # Split into reachable (by steps) and unreachable (by Manhattan distance)
+    reachable_objs = sorted(
+        (o for o in obj_info if o.get("reachable", False)),
+        key=lambda o: o.get("steps", 0),
+    )
+    unreachable_objs = sorted(
+        (o for o in obj_info if not o.get("reachable", False)),
+        key=lambda o: o.get("distance", 0),
+    )
 
     # Warp destinations within viewport
     all_warps = read_warps_from_rom(emu, map_id)
@@ -1288,8 +1295,15 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
                 "dest": dest["name"],
             })
 
+    map_body = header + "\n\n" + map_str
+    if unreachable_objs:
+        map_body += (
+            f"\nUnreachable: {len(unreachable_objs)} object(s) walled off — "
+            f"see `unreachable_objects`"
+        )
+
     result: dict[str, Any] = {
-        "map": header + "\n\n" + map_str,
+        "map": map_body,
         "map_id": map_id,
         "player": {
             "x": px, "y": py,
@@ -1297,7 +1311,8 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
             "grid_x": player_grid_x,
             "grid_y": player_grid_y,
         },
-        "objects": obj_info,
+        "objects": reachable_objs,
+        "unreachable_objects": unreachable_objs,
         "warps": warp_info,
     }
     if elevation is not None and player_elev is not None:
