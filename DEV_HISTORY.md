@@ -4,6 +4,67 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Nav bug parade + pytest owns the fleet (2026-04-21 session 26)
+
+Long session. Ran in parallel with a playtest instance that filed six repro saves as it hit fresh issues in Wayward Cave. Pattern was: playtest instance checkpoints the anomaly, writes repro notes, I diagnose and fix while they keep playing. Six commits landed: `b862449`, `8b024dc`, `5fbeb64`, `11c4c25`, `cf16155`, `bd12380`.
+
+### BUG-034: Mira reported unreachable despite standing 14 steps away
+
+Repro save `session23_end_with_mira`, player at (42, 53), Mira at (38, 42). `view_map` dropped Mira into `unreachable_interactibles` even though the corridor between them was wide open.
+
+**Root cause.** On chunked maps, `_build_multi_chunk_elevation` returns `None` when BDHC reports a single flat height across all loaded chunks (common for one-floor caves). With `reach_3d_ok = False`, the 2D fallback flooded only the **15×15 render viewport**, not the full multi-chunk extent. Mira at y=42 is 4 tiles north of the viewport top (y=46); the flood hit its own edge and classified everything outside as unreachable.
+
+**Fix (`map_state.py`).** Stash the `mc_ox/mc_oy/mc_w/mc_h` extent when `_build_multi_chunk_terrain` succeeds. On fallback, call `_load_viewport_terrain(…, mc_ox, mc_oy, mc_w, mc_h)` to build a u16 terrain for the whole multi-chunk extent and flood on that instead of `vp_terrain`. The 3D path for elevated maps (Cycling Road under-bridge) is untouched — when `mc_elev` resolves, `reach_3d_ok = True` and the flat-fallback branch never runs. Test: `TestFlatMultiChunkReachability`. Full suite 492 passed in 2:34.
+
+### BUG-035: Follower Mira blocks BFS; (0,0) hidden objects pollute output
+
+Second repro save, same cave. Player at (39, 42) facing left, Mira at (38, 42) — the only east-west link in the chamber. Every POI west of her plus east-wing trainers/Pokéballs all dropped into `unreachable_interactibles`. Also 11 "Rock Smash" entries at (0, 0) cluttered the list at distance=95.
+
+**Root cause.** Gen 4 follower NPCs (Mira, Cheryl, rival escorts) swap places with the player when the player steps onto their tile — the tile is effectively passable. But every BFS call site added non-player objects to `npc_set` unconditionally, walling off narrow escort corridors. Separately, Drayano disables unused `zone_event` entries by parking them at (0, 0) instead of deleting them, producing a dozen decoy POIs per map.
+
+**Fix.** Confirmed against `pret/pokeplatinum`'s `generated/movement_types.txt`: `MOVEMENT_TYPE_FOLLOW_PLAYER = 48`, `MOVEMENT_TYPE_FOLLOW_PARTNER_TRAINER = 50`. Exposed `movement_type_id` as a new field on `read_objects` output. Added `is_follower_npc(obj)` helper in `nav_constants.py`. Every BFS call site now skips followers at the source: `view_map`'s 3D + 2D flood, `_build_terrain_info`, `_classify_objects_for_grid`, `_read_npc_positions`, and `interaction.py`'s multi-chunk builder. `_build_interactibles` drops any object whose `(x, y) == (0, 0)` before classification.
+
+**Scoping guardrail.** Only mv=48/50 qualify. In `session23_end_with_mira`, idle post-battle Mira has mv=16 (`LOOK_SOUTH`) and still blocks. `test_non_follower_npc_still_blocks` pins this so a future refactor can't accidentally widen the follower check.
+
+### BUG-036: `flee_encounters=True` ignores wild doubles
+
+Third repro. `navigate_to(poi="obj:15", flee_encounters=True)`, path "right x3" to Hiker Lorenzo. A tag-partner 2v2 wild double (Luxray + Mira's Kadabra vs Geodude + Baltoy) fires mid-approach. Tool surfaces the battle uncontested — flee never attempted.
+
+**Diagnosis.** Not a doubles problem at all. Verified against decomp that `BATTLE_TYPE_AI_PARTNER = DOUBLES | 2vs2 | AI` — no `BATTLE_TYPE_TRAINER` bit, so flee is permitted and a single RUN tap escapes the whole side. The flee plumbing in `interact_with` only sat in the `stopped_early` branch (encounter fires mid-walk). When `_execute_path` signed off on all 3 steps and the encounter triggered during the subsequent face-target turn, `facing_seized=True` latched and the branch at `interaction.py:443` returned the encounter directly without ever consulting `flee_encounters`.
+
+**Fix.** In the `facing_seized` branch, route wild encounters through the same `_try_flee_encounter` helper the `stopped_early` branch uses. On successful flee, settle the overworld, re-attempt the turn, and fall through to the existing A-press path so the NPC's dialogue / trainer battle runs cleanly. Flee failures carry the same `flee_failed` exit shape. Test: `test_flee_encounters_during_face_target` on new save `bug_flee_encounters_ignores_wild_double`.
+
+### FR-010: BFS cap 150 → 250 for winding dungeons
+
+Woj's ask after practical use. 150 was tight enough that Wayward Cave's end-of-map POIs (and likely Mt. Coronet / Victory Road) fell into `unreachable_interactibles` despite being walkable. Bumped `MAX_REACH_STEPS` in `map_state.py`; updated the matching figure in `server.py`'s `view_map` docstring. Suite still green in 2:32.
+
+### Test infrastructure: pytest owns the fleet lifecycle
+
+**Trigger.** Earlier in the session I `pkill`'d the fleet, committed, and left. The playtest instance's very next `pytest` silently landed on the playthrough emulator — because conftest's fallback list included `.melonds_bridge.sock`. Save states got loaded over the playtest's active state. Checkpoint ring buffer saved the work; discussed with Woj, agreed on a rewrite.
+
+**Changes (`cf16155`).**
+- `scripts/start_test_emulators.py` refactored to expose importable `start_fleet(count)` / `stop_fleet(procs)` on top of the existing CLI wrapper. `start_fleet` now probes each socket for liveness before returning, rather than just checking file existence — tighter against boot races.
+- `tests/conftest.py` adds `--fleet-size=N` (default 8, 0 skips auto-spawn). `pytest_xdist_auto_num_workers` — master-only hook, inherently skipped in xdist worker subprocesses — spawns the fleet when none is live and stashes the procs on a module-level list. `pytest_sessionfinish` tears down only what we spawned; reused pre-booted fleets are left alone.
+- `.melonds_bridge.sock` removed from `_BACKENDS` fallback. Remaining fallback (`.melonds_test_bridge.sock`, standalone) now liveness-probed. The `emu` fixture `pytest.skip`s with a specific message if nothing's up.
+
+**One landmine caught mid-flight.** Initial attempt put the spawn in `pytest_configure`. xdist's `pytest_cmdline_main` runs BEFORE `pytest_configure`, so by the time the fleet existed xdist had already decided on `-n 0`. Full suite ran sequentially in 13:45 instead of 2:37. Moved to `pytest_xdist_auto_num_workers` (earliest master-only hook xdist sees), documented in the conftest comment so future-me doesn't re-make the same mistake.
+
+**Verified.** Cold-boot auto-spawn → 497 passed in 2:32, 0 stragglers. Reuse path (`--fleet-size=0` with a pre-booted fleet) — detected, reused, not torn down. `--fleet-size=2` — boots 2 emus in ~4s, runs, cleans up.
+
+### BUG-037: `read_objects` silently drops up to 23 objects per sparse array
+
+Last repro. Player at (44, 14), `view_map` reports 1 reachable + 4 unreachable — Mira, 10 trainers, 11 hidden rocks, a Pokéball all missing from **both** lists. Playtest notes flagged possible correlation with an earlier checkpoint revert; that was a red herring.
+
+**Root cause.** `read_objects` had a `consecutive_empty >= 3 → break` heuristic dating from the DeSmuME port. The assumption ("slots are packed") is wrong for Gen 4's `LocalMapObjectManager`: it evicts distant NPCs out of their slots as the player walks around, so a save where the player has roamed can end up with slots 0/1 populated, 2/3/4 cleared, 5-27 still live. Scanner bailed at slot 5 and silently dropped every one. Happy-path saves we use in tests have the array packed, so nobody had noticed.
+
+**Fix (`map_state.py`).** Read the whole 64-slot array as one `read_memory_block` (~19 KB, one round-trip) and parse headers locally with `struct.unpack_from`. No early-exit. Faster than the old per-slot loop even for dense maps (1 round-trip vs up to 20), and the sparse case just works. Test: `test_sparse_object_array_fully_scanned` on `bug_mira_and_east_interactibles_missing` asserts slots 5-15 + 27 all surface. 497 passed in 2:32.
+
+### Session take-aways
+
+- **Three of the six repros involved Wayward Cave + Mira.** Follower escorts stress overworld systems in ways solo play doesn't — narrow corridors with an NPC on the only east-west link, follower+player tag-partner doubles, dynamic slot eviction as the player wanders between the cave's four separated chambers. Worth pulling a few more escort saves from future sessions (Cheryl in Eterna Forest, Buck in Stark Mountain) to shake out the remaining edges.
+- **Silent early-exit heuristics are the worst kind of bug.** `read_objects`'s `break` and `view_map`'s viewport-only 2D flood both shipped long ago and only showed up once a specific map geometry + specific player position exposed them. Added regression saves for both so they can't slip back.
+- **`pkill`-to-commit loops are no longer a live-emu risk.** pytest owns the fleet now. `pytest_xdist_auto_num_workers` is also the only xdist hook that runs early enough AND master-only — future fleet-lifecycle work should start there, not in `pytest_configure`.
+
 ## Dev Session: N=8 fleet unlocked (2026-04-21 session 25)
 
 Short follow-up to session 24. Woj restarted the container with `--shm-size=8g`, which resolves the SIGBUS ceiling diagnosed in MelonMCP#9 (closed upstream — low ROI for an emulator-side fix once the tmpfs sizing was understood).
