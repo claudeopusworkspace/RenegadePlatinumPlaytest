@@ -46,14 +46,13 @@ SHARED_LINKS = ("savestates", "macros", "data")
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
     parser.add_argument(
-        "--count", type=int, default=2,
+        "--count", type=int, default=8,
         help=(
-            "Number of emulator instances (default 2). "
-            "N>=3 SIGBUSes on this container because /dev/shm defaults to 64 MB "
-            "and melonDS's JIT fastmem needs ~17 MB of tmpfs per worker (see "
-            "MelonMCP#9 — diagnosed). To scale up: "
-            "`sudo mount -o remount,size=8G /dev/shm` and optionally "
-            "`sudo sysctl -w vm.max_map_count=1048576`, then --count 8."
+            "Number of emulator instances (default 8). "
+            "Requires /dev/shm >= ~150 MB (8 workers × ~17 MB JIT fastmem). "
+            "If container was started without `--shm-size`, /dev/shm defaults "
+            "to 64 MB — drop --count to 2 or restart the container with "
+            "`--shm-size=8g`. See MelonMCP#9 for the SIGBUS diagnosis."
         ),
     )
     parser.add_argument(

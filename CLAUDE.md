@@ -126,7 +126,7 @@ See GAME_HISTORY.md for full details (defeated trainers, story progress, box con
 Integration tests live in `tests/` (491 tests across 42 files). Require at least one running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
 
 ```bash
-.venv/bin/python -m pytest tests/ -v          # full suite (~7 min @ N=2, ~13 min single)
+.venv/bin/python -m pytest tests/ -v          # full suite (~2:30 @ N=8, ~7 min @ N=2, ~13 min single)
 .venv/bin/python -m pytest tests/test_X.py -v  # single file
 ```
 
@@ -138,12 +138,12 @@ Tests load save states, call implementation functions directly (bypassing MCP pr
 
 Tests run against their own melonDS process(es) so they don't fight the emulator Claude Code is driving for interactive play. Two setups:
 
-**Parallel fleet (preferred, ~2× speedup)**:
+**Parallel fleet (preferred, ~5.4× speedup)**:
 
 ```bash
-# Terminal 1 — start N isolated test emulators (default 2; blocks, Ctrl-C to stop):
-.venv/bin/python scripts/start_test_emulators.py             # N=2 → ~7 min full suite
-.venv/bin/python scripts/start_test_emulators.py --count 4   # experimental
+# Terminal 1 — start N isolated test emulators (default 8; blocks, Ctrl-C to stop):
+.venv/bin/python scripts/start_test_emulators.py             # N=8 → ~2:30 full suite
+.venv/bin/python scripts/start_test_emulators.py --count 2   # fallback if /dev/shm is 64 MB
 
 # Terminal 2 — pytest auto-detects socket count and fans out:
 .venv/bin/python -m pytest tests/ -v
@@ -151,13 +151,7 @@ Tests run against their own melonDS process(es) so they don't fight the emulator
 
 Each worker gets its own `.workers/worker_{i}/` with a ROM copy + symlinks to shared `savestates/macros/data`, bound to `.melonds_test_bridge_{i}.sock`. `conftest.py`'s `pytest_xdist_auto_num_workers` hook resolves `-n auto` (set in `pytest.ini`) to the number of running sockets — so no manual `-n` flag. CLI `-n N` still wins if you pass it.
 
-**Known ceiling** — diagnosed in MelonMCP#9: at N≥3 a worker SIGBUSes during `savestate_load` because melonDS's JIT fastmem needs ~17 MB of `/dev/shm` per instance, and this container's `/dev/shm` defaults to 64 MB. N=2 fits (34 MB), N=3+ oversubscribes. To scale up:
-
-```bash
-sudo mount -o remount,size=8G /dev/shm
-sudo sysctl -w vm.max_map_count=1048576    # defensive
-.venv/bin/python scripts/start_test_emulators.py --count 8
-```
+**Container requirement** — melonDS's JIT fastmem needs ~17 MB of `/dev/shm` per worker. N=8 needs ~150 MB; our container is started with `--shm-size=8g` to provide headroom. If `/dev/shm` reverts to the Docker default 64 MB, workers SIGBUS on `savestate_load` (see MelonMCP#9) and only N≤2 is viable. Check with `df -h /dev/shm`; restart the container with `--shm-size=8g` if needed.
 
 Staggers in the launcher + conftest are defensive and harmless at any N — leave them.
 
