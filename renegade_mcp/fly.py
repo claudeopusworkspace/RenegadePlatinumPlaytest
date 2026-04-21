@@ -147,27 +147,17 @@ def _find_fly_user(party: list[dict]) -> int | None:
 
 
 def _count_field_moves(party: list[dict], slot: int) -> int:
-    """Count usable field moves before Fly in the Pokemon submenu.
+    """Count field moves before Fly in the Pokemon submenu.
 
-    In Gen 4, field moves appear in the submenu in the order they appear
-    in the Pokemon's moveset.  We need to know how many field moves come
-    before Fly to navigate the submenu correctly.
+    Field moves appear between Summary and Switch in moveset order; Fly's
+    row is 1 + (field moves preceding it). Delegates to the shared helper
+    so the field-move list stays in sync with give_item/take_item/reorder.
     """
-    field_hms = {
-        "cut", "fly", "surf", "strength", "defog",
-        "rock smash", "waterfall", "rock climb",
-    }
     mon = party[slot] if slot < len(party) else None
     if not mon:
         return 0
-    count = 0
-    for m in mon.get("moves", []):
-        name = m.get("name", "").lower()
-        if name == "fly":
-            return count
-        if name in field_hms:
-            count += 1
-    return count
+    from renegade_mcp.party_submenu import count_field_moves_before
+    return count_field_moves_before(mon, "fly")
 
 
 def _press(emu: EmulatorClient, buttons: list[str], wait: int = NAV_WAIT) -> None:

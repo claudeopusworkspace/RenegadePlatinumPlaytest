@@ -36,9 +36,9 @@ PARTY_NAV_ABS = {
     5: ["down", "down", "right"],
 }
 
-# ── Submenu positions (from SUMMARY) ──
-# SUMMARY(0) → SWITCH(1) → ITEM(2) → CANCEL(3)
-ITEM_OPTION_OFFSET = 2
+# ── Submenu positions (field-move-agnostic) ──
+# Base layout: SUMMARY(0) → [field moves] → SWITCH → ITEM → CANCEL.
+# Use renegade_mcp.party_submenu.item_row(mon) for the runtime offset.
 
 # ── Item submenu positions (from GIVE) ──
 # GIVE(0) → TAKE(1) → CANCEL(2)
@@ -97,8 +97,10 @@ def take_item(emu: EmulatorClient, party_slot: int = 0) -> dict[str, Any]:
     _press(emu, ["a"], wait=MENU_WAIT)
 
     # ── Step 4: Select ITEM from submenu ──
-    # Submenu: SUMMARY(0), SWITCH(1), ITEM(2), CANCEL(3)
-    for _ in range(ITEM_OPTION_OFFSET):
+    # Submenu: SUMMARY, [field moves in moveset order], SWITCH, ITEM, CANCEL.
+    # Each field move the Pokemon knows shifts ITEM down one row.
+    from renegade_mcp.party_submenu import item_row
+    for _ in range(item_row(target)):
         _press(emu, ["down"])
     _press(emu, ["a"], wait=MENU_WAIT)
 

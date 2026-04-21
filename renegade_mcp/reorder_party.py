@@ -88,6 +88,19 @@ def reorder_party(
     if not (0 <= from_slot <= 5 and 0 <= to_slot <= 5):
         return _error(f"Slots must be 0-5, got from={from_slot} to={to_slot}.")
 
+    # Pre-read party: we need the source Pokemon's moveset to compute the
+    # sub-menu offset for "Switch", and we need the before-state species IDs
+    # to verify the swap committed.
+    party_before = read_party(emu)
+    if from_slot >= len(party_before) or to_slot >= len(party_before):
+        return _error(
+            f"Party has {len(party_before)} member(s); cannot swap "
+            f"{from_slot} <-> {to_slot}."
+        )
+
+    source_mon = party_before[from_slot]
+    from renegade_mcp.party_submenu import switch_row
+
     # ── Step 1: Open pause menu (with readiness check) ──
     if not open_pause_menu(emu):
         return _error("Could not open pause menu — player may not have control.")
@@ -107,9 +120,11 @@ def reorder_party(
     _press(emu, ["a"], wait=MENU_WAIT)
 
     # ── Step 4: Choose "Switch" from submenu ──
-    # Menu order: Summary, Switch, Item, Cancel
-    # Down once from default (Summary) to reach Switch
-    _press(emu, ["down"])
+    # Menu: Summary, [field moves in moveset order], Switch, Item, Cancel.
+    # Each field move the Pokemon knows pushes Switch down one row.
+    switch_offset = switch_row(source_mon)
+    for _ in range(switch_offset):
+        _press(emu, ["down"])
     _press(emu, ["a"], wait=MENU_WAIT)
 
     # ── Step 5: Navigate from source to destination ──
@@ -121,10 +136,36 @@ def reorder_party(
     _press(emu, ["b"], wait=MENU_WAIT)   # close party screen
     _press(emu, ["b"], wait=MENU_WAIT)   # close pause menu
 
-    # ── Step 7: Read updated party ──
+    # ── Step 7: Verify the swap actually committed ──
     from renegade_mcp.party import format_party
     party_after = read_party(emu)
     names = [p.get("name", "?") for p in party_after]
+
+    # Compare species IDs (name can be a nickname and thus unreliable for
+    # same-species pairs, but species_id is stable across slots).
+    before_src = source_mon.get("species_id", 0)
+    before_dst = party_before[to_slot].get("species_id", 0)
+    after_src = party_after[from_slot].get("species_id", 0) if from_slot < len(party_after) else 0
+    after_dst = party_after[to_slot].get("species_id", 0) if to_slot < len(party_after) else 0
+
+    swapped = (after_src == before_dst) and (after_dst == before_src)
+
+    if not swapped:
+        err = (
+            f"Swap did not commit. Before: slot {from_slot}={source_mon.get('name','?')} "
+            f"(species {before_src}), slot {to_slot}={party_before[to_slot].get('name','?')} "
+            f"(species {before_dst}). After: slot {from_slot} species {after_src}, "
+            f"slot {to_slot} species {after_dst}. Menu cursor likely landed on the "
+            "wrong sub-menu row."
+        )
+        return {
+            "success": False,
+            "error": err,
+            "from_slot": from_slot,
+            "to_slot": to_slot,
+            "party": party_after,
+            "formatted": "Error: " + err + "\n\n" + format_party(party_after),
+        }
 
     msg = f"Swapped slot {from_slot} with slot {to_slot}. Party: {', '.join(names)}."
     return {

@@ -43,9 +43,10 @@ PARTY_NAV = {
     5: ["down", "down", "right"],
 }
 
-# ── Submenu positions ──
-# SUMMARY(0) → SWITCH(1) → ITEM(2) → CANCEL(3)
-ITEM_OPTION_OFFSET = 2
+# ── Submenu positions (field-move-agnostic) ──
+# Base layout: SUMMARY(0) → [field moves] → SWITCH → ITEM → CANCEL.
+# Use renegade_mcp.party_submenu.item_row(mon) to get the runtime offset;
+# each field move in the mon's moveset pushes ITEM down one row.
 
 # ── Bag pocket touch coords (bottom screen) ──
 POCKET_COORDS = {
@@ -157,8 +158,10 @@ def give_item(emu: EmulatorClient, item_name: str, party_slot: int = 0) -> dict[
     _press(emu, ["a"], wait=MENU_WAIT)
 
     # ── Step 4: Select ITEM from submenu ──
-    # Submenu: SUMMARY(0), SWITCH(1), ITEM(2), CANCEL(3)
-    for _ in range(ITEM_OPTION_OFFSET):
+    # Submenu: SUMMARY, [field moves in moveset order], SWITCH, ITEM, CANCEL.
+    # Each field move the Pokemon knows shifts ITEM down one row.
+    from renegade_mcp.party_submenu import item_row
+    for _ in range(item_row(target_mon)):
         _press(emu, ["down"])
     _press(emu, ["a"], wait=MENU_WAIT)
 

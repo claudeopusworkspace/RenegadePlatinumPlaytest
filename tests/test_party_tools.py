@@ -126,6 +126,46 @@ class TestReorderParty:
         assert party_after[2]["level"] == level_0
         assert party_after[2]["move_names"] == moves_0
 
+    def test_swap_when_source_knows_field_move(self, emu: EmulatorClient):
+        """Source Pokemon knows a field move (Cut) — sub-menu row for Switch
+        is pushed down by 1. Repro for the bug where reorder_party silently
+        reported success while nothing actually swapped.
+        """
+        from renegade_mcp.party import read_party
+        from renegade_mcp.reorder_party import reorder_party
+        from renegade_mcp.party_submenu import FIELD_MOVES
+
+        load_state(emu, "bug_reorder_party_fails_silently_with_field_move")
+
+        party_before = read_party(emu)
+        assert len(party_before) > 3, "Save state should have >=4 Pokemon"
+
+        # Confirm the precondition the bug depends on: slot 0 knows at least
+        # one field move. If this ever changes, update the save state.
+        slot0_moves = [m.lower() for m in party_before[0]["move_names"]]
+        assert any(m in FIELD_MOVES for m in slot0_moves), (
+            f"Slot 0 ({party_before[0]['name']}) must know a field move for "
+            f"this regression test to exercise the bug. Moves: {slot0_moves}"
+        )
+
+        species_0 = party_before[0]["species_id"]
+        species_3 = party_before[3]["species_id"]
+        assert species_0 != species_3, "Slots must hold different species"
+
+        result = reorder_party(emu, 0, 3)
+
+        assert result.get("success") is True, (
+            f"reorder_party should succeed; got: {result.get('formatted')}"
+        )
+
+        party_after = read_party(emu)
+        assert party_after[0]["species_id"] == species_3, (
+            f"Slot 0 should hold species {species_3}, got {party_after[0]['species_id']}"
+        )
+        assert party_after[3]["species_id"] == species_0, (
+            f"Slot 3 should hold species {species_0}, got {party_after[3]['species_id']}"
+        )
+
 
 # ---------------------------------------------------------------------------
 # heal_party
