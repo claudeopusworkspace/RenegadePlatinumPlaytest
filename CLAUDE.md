@@ -105,19 +105,20 @@ Letter grid coordinates (calibrated):
 
 - **Character**: CLAUDE | **Rival**: WOJ
 - **Badges**: 2 (Coal, Forest)
-- **Location**: Wayward Cave main branch, (42, 53) on map 284 (D21R0101). Save state: `session23_end_with_mira`. Full team healed (Mira auto-heals after every battle). Entered via the *main* (east) Route 206 warp at (310, 607) — this is the correct entry to reach Mira. The west entrance at (299, 611) leads to the secret upper branch and cannot reach Mira.
+- **Location**: Wayward Cave main branch, (73, 29) on map 284 (D21R0101). Save state: `session28_wayward_east_wing_mid_sweep`. Full team healed (Mira auto-heals after every battle). Entered via the *main* (east) Route 206 warp at (310, 607) — this is the correct entry to reach Mira. The west entrance at (299, 611) leads to the secret upper branch and cannot reach Mira.
+- **Party order** (post-session-28 reorder): Monferno leads, then Luxray, Prinplup, Grotle, Swinub, Togepi.
+- **Monferno** Lv28 — Careful, Iron Fist. Charcoal. Low Kick / **Mach Punch** / **Flame Wheel** / Taunt.
 - **Luxray** Lv34 — Jolly, Guts. Scope Lens. Spark / **Crunch** / Howl / Ice Fang.
-- **Grotle** Lv24 — Naughty, Overgrow. Muscle Band. Bulldoze / Cut / Bullet Seed / Razor Leaf.
 - **Prinplup** Lv26 — Lax, Vital Spirit. Metal Claw / Growl / **Scald** / Icy Wind.
-- **Monferno** Lv27 — Careful, Iron Fist. Charcoal. Low Kick / Mach Punch / Flame Wheel / Taunt.
-- **Swinub** ✨ Lv26 — Timid, Thick Fat. Exp. Share. **Avalanche** / Ice Shard / Bulldoze / Mud Bomb.
+- **Grotle** Lv25 — Naughty, Overgrow. Muscle Band. Bulldoze / Cut / Bullet Seed / **Razor Leaf**.
+- **Swinub** ✨ Lv28 — Timid, Thick Fat. Exp. Share. **Avalanche** / **Ice Shard** / Bulldoze / Mud Bomb.
 - **Togepi** Lv1 — Timid, Serene Grace. Growl / Charm / Extrasensory / Disarming Voice.
 - **PC Box 1**: Machop Lv25, Larvitar Lv9 (Rock/Ground, Guts).
 - **HM plan**: Prinplup→Empoleon (Surf, Waterfall). Togepi→Togekiss (Fly). Grotle→Torterra / Swinub→Mamoswine / Larvitar→Tyranitar (Rock Climb options).
-- **Notable items**: Explorer Kit, **Hard Stone** (boost Rock moves, save for Larvitar/Tyranitar), Dawn Stone, Wise Glasses, **TM74 Gyro Ball** (new, Route 206 middle island), **PP Up** (new, east lower path), TM16 Light Screen, TM33 Reflect, TM73 Thunder Wave, Oval Stone, Fire Stone, Sun Stone, Never-Melt Ice. Bag: 9 Super Potions, 6 Repels, **0 Revival Herbs** (used it on Luxray vs Mira's Kadabra — restock before Mt. Coronet).
-- **Defeated this session**: **Pokémon Trainer Mira** (Togetic Lv27 / Porygon2 Lv27 / Kadabra Lv28 / Haunter Lv27) — Renegade Platinum changes the Mira rescue quest into a trainer battle. Kadabra has Life Orb + Dazzling Gleam / Grass Knot / Psybeam / Recover and wipes most of the team; we won by reviving Luxray with a Revival Herb and Crunching the Kadabra SE.
-- **Mira follow state**: Mira is following the player in map 284 (standby at (38, 42)). She auto-heals the party after every battle and triggers "Are you leaving? I haven't found my item yet..." dialogue when approaching map exits. **Do not leave the cave until the item is found.**
-- **Next**: Explore west/south from (42, 53) to find Mira's lost item deep in Wayward Cave, return to her, exit to Route 206, then clear the Route 207 Psychic to unlock Mt. Coronet. The 15×15 viewport + interactibles list + elevation-aware navigation that landed in session 24 should make the cave tractable.
+- **Notable items**: Explorer Kit, **Hard Stone**, Dawn Stone, **Dusk Stone** (new session 28, Wayward Cave), Wise Glasses, **TM74 Gyro Ball**, **TM32 Double Team** (new session 28, Wayward Cave), **PP Up**, TM16 Light Screen, TM33 Reflect, TM73 Thunder Wave, **Focus Band** (new session 28, Wayward Cave), Oval Stone, Fire Stone, Sun Stone, Never-Melt Ice. Bag: 7 Super Potions (used 2 on Hiker Reginald's Dugtrio), 6 Repels, **0 Revival Herbs** (restock before Mt. Coronet).
+- **Mira follow state**: Mira still following in map 284 (standby at (72, 29)). Auto-heals party after every battle. Triggers "Are you leaving? I haven't found my item yet..." dialogue when approaching map exits. **Do not leave the cave until the item is found.** Current candidates for her lost item: obj:27 Pokéball at (72, 11) 136 steps north, or obj:1 Pokéball at (57, 53) still-unreachable (puzzle-gated). TM32 / Focus Band / Dusk Stone all picked up without triggering her quest-complete dialogue.
+- **Wayward Cave trainers remaining**: Camper at (77, 30) — unfought, paired with the just-defeated Picnicker Ana. Plus the east-wing duo Collector (91, 48) + Ruin Maniac (93, 48). 7 trainers defeated this session (Hiker Reginald/Lorenzo, Youngster Wayne, Lass Cassidy, Picnicker Tori, Camper Diego, Picnicker Ana).
+- **Next**: finish east-wing sweep, grab obj:27 Pokéball, find the gate to obj:1 / Mira's item, return to Mira, exit to Route 206, clear the Route 207 Psychic, enter Mt. Coronet. **Silver Wind omni-boost proc almost wiped the team on Picnicker Ana** — treat that 10% stat-up chance as a real threat on any Bug/Fairy encounter going forward.
 
 See GAME_HISTORY.md for full details (defeated trainers, story progress, box contents, items).
 

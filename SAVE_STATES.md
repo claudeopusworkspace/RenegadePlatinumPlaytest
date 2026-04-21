@@ -31,7 +31,8 @@
 | `wayward_cave_session20_end` | Wayward Cave upper secret room map 285 at (30, 23). Entered via the *west* Route 206 secret entrance at (299, 611). 2 badges, session 20 wrap. |
 | `session23_exited_secret_wayward` | Route 206 (299, 612) on bicycle, just exited the west secret entrance back to Route 206. Session 23 early — en route to the *east* main entrance. |
 | `session23_mira_defeated` | Wayward Cave main branch map 284 at (39, 42). Just defeated Mira in her trainer battle (Togetic Lv27 / Porygon2 Lv27 / Kadabra Lv28 / Haunter Lv27). Party fully healed by Mira's auto-heal. Luxray Lv34. Swinub fainted + revived via Revival Herb → reheal. Mira now follows us, asks us to help find her lost item deeper in the cave. |
-| `session23_end_with_mira` | **CURRENT** — Wayward Cave main map 284 at (42, 53) with Mira following (she's at (38, 42) standby). Party full HP. Mira auto-heals after every battle. Next: explore deeper into the cave (west / south paths) to find her lost item. **Blocked on map communication fidelity** — Woj paused to rethink how multi-level cave maps should render. |
+| `session23_end_with_mira` | Wayward Cave main map 284 at (42, 53) with Mira following (she's at (38, 42) standby). Party full HP. Mira auto-heals after every battle. Session 23 wrap; left here when Woj paused to rethink how multi-level cave maps should render. |
+| `session28_wayward_east_wing_mid_sweep` | **CURRENT** — Wayward Cave main map 284 at (73, 29), Monferno leads, Mira at (72, 29). 7 trainers cleared this session (Hiker Reginald/Lorenzo, Youngster Wayne, Lass Cassidy, Picnicker Tori/Ana, Camper Diego), TM32 + Focus Band + Dusk Stone collected. Party all full HP. Party order: Monferno Lv28, Luxray Lv34, Prinplup Lv26, Grotle Lv25, Swinub ✨ Lv28, Togepi Lv1. Next: Camper at (77, 30) → Collector/Ruin Maniac duo at (91-93, 48) → Pokéball (72, 11). Mira's lost item still not found. |
 
 ## Debug & Testing
 

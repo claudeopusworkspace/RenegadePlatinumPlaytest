@@ -862,3 +862,57 @@ Four-Pokemon team in Renegade Platinum (vs. vanilla's two):
 - **Location**: Wayward Cave main branch map 284 (D21R0101) at (42, 53). Mira standing by at (38, 42). Save state: `session23_end_with_mira`.
 - **Bugs filed**: **BUG-033** (`interact_with` stops one tile short on the bicycle, repro `bug_interact_with_on_bike`).
 - **Next session**: blocked on map-tool redesign. Then: find Mira's lost item deeper in the cave (west/south corridors from the (42, 53) area are the unexplored parts), return to her, exit, finally unlock the Route 207 Psychic → Mt. Coronet.
+
+## Session 28 (2026-04-21): Wayward Cave trainer sweep — 7 KOs, 3 items, major nav-tool audit
+
+Loaded `session23_end_with_mira`. Woj's brief: playtest in careful mode — stop before/after every navigation decision, describe what the tool's showing, state intent, wait for confirmation. Goal was to sanity-check whether the nav tools actually communicate the situation clearly enough to act on. They did not, at first — this session surfaced **seven** distinct tool bugs, each fixed by the dev instance running in parallel.
+
+### Cave traversal and trainer sweep
+Starting position: Wayward Cave main branch (42, 53), Mira follower at (38, 42) standby. Worked outward from the entry chamber, clearing trainers along the BFS-reachable set:
+
+- **Hiker Reginald** (Dugtrio Lv26, Sand Veil + Sturdy). Rough fight — Dugtrio cycles Dig and outspeeds Luxray. Howl on the burrow turn, Ice Fang into surface turn didn't OHKO due to Sturdy-free-Gen4, ended up swapping Luxray → Grotle (Grass resists Ground) → Swinub (Ice Shard priority for the KO). Needed 2 Super Potions to patch Grotle and Swinub through the Dig cycles.
+- **Hiker Lorenzo** (Rhyhorn Lv25, Sudowoodo Lv25). Luxray Ice Fang 2× SE 2HKO'd Rhyhorn. Free-switch prompt used to bring in Prinplup for Sudowoodo — Scald 2× SE 2HKO'd it. Sudowoodo Mimic'd Scald off Prinplup.
+- **Youngster Wayne** (Loudred Lv25, Raticate Lv25). Luxray Crunch STAB OHKO'd both Normal-types. Free-switch used to rotate Monferno in for the Meowth/Eevee line on the next battle.
+- **Lass Cassidy** (Skitty Lv24 / Meowth Lv24 / Eevee Lv24). Luxray Crunch'd Skitty, Monferno Flame Wheel chained through Meowth + Eevee. Eevee tried a Wish that never resolved (KO'd first). Monferno Lv27 → **Lv28**.
+- **Picnicker Tori** (Psyduck Lv25, Nidorina Lv25). Grotle (now lead, per session 28 lead swap — see below) opened with Razor Leaf 2× SE OHKO on Psyduck despite Screech dropping Def -2. Nidorina is Poison → swapped to Monferno, who 2HKO'd with Flame Wheel. Nidorina set Toxic Spikes before dying.
+- **Camper Diego** (Aipom Lv25, Nidorino Lv25). Grotle Bullet Seed 5-hit crushed Aipom. Grotle Lv24 → **Lv25** mid-battle; declined the learned move (unknown — Renegade Platinum may have shifted Grotle's Lv25 learn, but staying with Bulldoze/Cut/Bullet Seed/Razor Leaf for coverage). Swapped to Monferno for Nidorino — Flame Wheel 2HKO, Poison Point proc'd but Mira auto-healed post-battle.
+- **Picnicker Ana** (Illumise Lv25, Furret Lv25). **First attempt wipe risk**: Luxray as lead took 38 dmg from Silver Wind 2× SE (Bug vs Dark — I had forgotten), then Illumise's 10% Silver Wind omni-boost proc'd on the switch-in hit. +1 Spe put Illumise at 87 speed (faster than Luxray's 69), +1 SpA turned Draining Kiss into a near-OHKO Fairy-SE hit on Luxray's Dark typing. No team member had any SE move against Bug/Fairy *except* Monferno's Flame Wheel, and Monferno's slower than +1 Illumise — a switch-in would have eaten a 2× SE DK before attacking. Woj let me revert to the pre-navigation checkpoint and swap Monferno to lead (reorder blocked at first by a Cut-in-sub-menu bug — see below). Re-engaged with Monferno leading: Flame Wheel 2× SE STAB Charcoal = clean OHKO on Illumise before Silver Wind's boost could fire. Then Mach Punch priority ×2 cleaned up Furret, ignoring its Agility boost.
+
+### Items and minor finds
+- **TM32 Double Team** — Pokéball in the west chamber at (8, 44).
+- **Focus Band** — Pokéball in the north chamber at (7, 15).
+- **Dusk Stone** — Pokéball at (44, 15) in the east traversal corridor.
+- None of these triggered Mira's quest-complete dialogue. Mira's item is presumably still deeper in the cave — either obj:27 Pokéball at (72, 11) (not yet reached) or obj:1 Pokéball at (57, 53) (still unreachable, likely requires a puzzle path we haven't found).
+
+### Party changes
+- Reordered party mid-session: **Grotle to lead** after Woj pointed out Luxray Lv34 was overkill for Lv24-27 trainers. Later swapped **Monferno to lead** for the Illumise retry.
+- Final party order: **Monferno Lv28, Luxray Lv34, Prinplup Lv26, Grotle Lv25, Swinub ✨ Lv28, Togepi Lv1**. All full HP (Mira auto-heal).
+- Swinub leveled Lv26 → Lv27 → Lv28 via Exp. Share. Declined Take Down at Lv28 (Normal 90 pow w/ recoil + 85% acc is strictly worse than Swinub's existing Ice/Ground STAB kit).
+- Grotle leveled Lv24 → Lv25 during a wild Sandshrew flee sequence (MOVE_LEARN interrupted a failed run — see bugs). Declined the move learn offered.
+- Monferno leveled Lv27 → Lv28.
+- Money: +$832 Reginald +$800 Lorenzo +$400 Wayne +$400 Cassidy +$400 Tori +$400 Diego +$400 Ana = **+$3,632 this session**.
+
+### Tool bugs surfaced and fixed (dev instance ran in parallel; see DEV_HISTORY for details)
+Every one of these was a real issue the nav tools had been hiding. Careful-mode playtest caught them one by one:
+
+1. **2D BFS stuck inside 15×15 viewport** — first nav to Mira reported ~30 interactibles as "unreachable" when Mira was plainly walkable to. 2D fallback path was capped to the viewport. Fixed.
+2. **Follower NPC marked as blocker** — after re-engaging Mira, pathfinding refused to route through her tile even though follower NPCs swap-place with the player. Fixed after Woj explained the swap mechanic.
+3. **`flee_encounters` failed on facing step** — `navigate_to(poi='obj:15')` walked the path, then on the auto-face step a wild double encounter spawned (Geodude + Baltoy + Mira's Kadabra) and the flee path didn't cover the facing-trigger window. Fixed.
+4. **`flee_encounters` broke on level-up mid-chain** — a failed run-attempt against wild Onix+Sandshrew let Mira's Kadabra KO one, Exp. Share leveled Grotle, MOVE_LEARN state interrupted the flee loop, tool returned `"unexpected state: MOVE_LEARN"`. Woj called this "technically correct" and deferred.
+5. **`read_objects` early-exit on sparse arrays** — after a test-fleet cross-contamination revert, `view_map` showed Mira and the entire east wing "missing" from both reachable and unreachable lists. Root cause: Gen 4's LocalMapObjectManager evicts NPCs into non-contiguous slots; the scanner bailed at consecutive_empty ≥ 3 and dropped 23 objects silently. Fixed to read the full array.
+6. **BFS reach capped at 150 steps** — far east trainers dropped off the reachable list as we moved deeper. Woj bumped cap to 250; newly-reachable obj:27 Pokéball at 171 steps appeared in the list.
+7. **`reorder_party` silent failure with field-move** — Grotle knows Cut (HM field move), which adds a "Use" row to the Pokémon sub-menu above "Switch". The reorder tool's hardcoded cursor nav landed on Cut instead, returned `success: true`, party unchanged. Fixed + verify step added.
+
+### Non-bug oddities for the record
+- **Test-fleet cross-contamination** mid-session: one of the dev instance's test-suite threads attached to our live emulator socket (instead of a test worker socket), loaded test save states, and left us on Route 202 reading an Arrow Signpost near Sandgem Town. Recovered via `revert_to_checkpoint(4f7ce163)` back to the pre-contamination wild battle.
+- **Silver Wind omni-boost proc** is a brutal status in this hack — a 10% chance to +1 every stat turns a Lv25 Bug into a threat to Lv34 mons. Worth remembering for future Bug encounters.
+
+### Session Summary
+- **Badges**: 2 (unchanged).
+- **Trainers defeated**: 7 (Hiker Reginald, Hiker Lorenzo, Youngster Wayne, Lass Cassidy, Picnicker Tori, Camper Diego, Picnicker Ana). **+$3,632.**
+- **Items obtained**: TM32 Double Team, Focus Band, Dusk Stone.
+- **Items used**: 2 Super Potions (Reginald fight). Mira's auto-heal covered everything else.
+- **Party**: Monferno **Lv28** (+1), Luxray Lv34, Prinplup Lv26, Grotle **Lv25** (+1), Swinub ✨ **Lv28** (+2), Togepi Lv1.
+- **Location**: Wayward Cave main map 284 at (73, 29), on defeated Picnicker Ana's interaction tile. Mira standby at (72, 29). Save state: `session28_wayward_east_wing_mid_sweep`.
+- **Remaining cave content**: Camper (77, 30) — 4 steps east (probable double-battle pair with Picnicker Ana, same pattern as earlier trainer pairs). Collector (91, 48) + Ruin Maniac (93, 48) — far east duo. Pokéball (72, 11) at 136 steps north. Pokéball (57, 53) still unreachable — likely gated by puzzle we haven't found yet.
+- **Next session**: finish Camper → east-wing duo → obj:27 Pokéball → figure out the (57, 53) approach → return to Mira for the quest resolution → exit, clear the Psychic, into Mt. Coronet.
