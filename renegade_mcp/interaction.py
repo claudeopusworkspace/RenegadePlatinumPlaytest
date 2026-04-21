@@ -443,9 +443,54 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
     if facing_seized:
         encounter = _post_nav_check(emu)
         if encounter:
-            nav_result["encounter"] = encounter
-            nav_result["interrupted"] = True
-            return nav_result
+            # Wild encounter triggered during the face-target step (common
+            # when the target's tile IS an encounter tile, or a follower's
+            # tag-battle trigger fires on the final step). flee_encounters
+            # must still be honored here — otherwise doubles with partner
+            # trainers (Mira in Wayward Cave) get surfaced uncontested.
+            if flee_encounters:
+                encounter, flee_entry = _try_flee_encounter(emu, encounter)
+                if flee_entry:
+                    nav_result.setdefault("flee_log", []).append(flee_entry)
+                    if flee_entry.get("fled"):
+                        nav_result["encounters_fled"] = (
+                            nav_result.get("encounters_fled", 0) + 1
+                        )
+                    elif flee_entry.get("reason"):
+                        reason = flee_entry["reason"]
+                        species = flee_entry.get("species", "unknown")
+                        if "fainted" in reason:
+                            nav_result["flee_failed"] = (
+                                f"Pokemon fainted while fleeing wild {species}. "
+                                f"Heal party before continuing."
+                            )
+                        else:
+                            nav_result["flee_failed"] = (
+                                f"Flee failed against wild {species}: {reason}"
+                            )
+                        nav_result["encounter"] = encounter
+                        nav_result["interrupted"] = True
+                        return nav_result
+            if encounter:
+                nav_result["encounter"] = encounter
+                nav_result["interrupted"] = True
+                return nav_result
+            # Wild encounter fled — let overworld settle, then fall through
+            # so the target is re-faced and the interaction runs normally.
+            emu.advance_frames(POST_BATTLE_SETTLE)
+            facing_seized = False
+            nav_result.pop("facing_seized", None)
+            _, _, _, cur_facing = read_player_state(emu)
+            if cur_facing != desired_facing:
+                emu.advance_frames(HOLD_FRAMES, buttons=[face_dir])
+                emu.advance_frames(WAIT_FRAMES)
+                _, _, _, new_facing = read_player_state(emu)
+                if new_facing == desired_facing:
+                    nav_result["turned_to_face"] = face_dir
+                else:
+                    # Face failed again — surface as-is rather than looping
+                    nav_result["facing_seized"] = True
+                    facing_seized = True
         # Still nothing — fall through to normal interaction below
 
     # ── Check for auto-interaction (signs auto-trigger when faced) ──

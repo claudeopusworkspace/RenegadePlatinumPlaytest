@@ -239,6 +239,43 @@ class TestInteractWith:
             f"Dialogue should be completed, got: {result['dialogue'].get('status')}"
         )
 
+    def test_flee_encounters_during_face_target(self, emu: EmulatorClient):
+        """Regression: wild encounters triggered during the face-target phase
+        (after BFS completed but before the A-press interaction) must honor
+        flee_encounters. Repro: bug_flee_encounters_ignores_wild_double —
+        player at (17, 37) walking `right x3` to reach Hiker Lorenzo
+        (obj:15). With Mira following, stepping onto the grass at (20, 37)
+        triggers a tag-partner double (Luxray + Mira's Kadabra vs wild
+        Geodude + Baltoy). Before the fix the encounter fired the
+        facing_seized branch, which returned the battle to the caller
+        without ever calling the flee helper. The fix restores the flee
+        path and lets the Hiker interaction run to completion (trainer
+        battles still surface as expected — just not wild ones)."""
+        from renegade_mcp.navigation import navigate_to
+        load_state(emu, "bug_flee_encounters_ignores_wild_double")
+        result = navigate_to(emu, poi="obj:15", flee_encounters=True)
+        assert "error" not in result, f"Should not error: {result.get('error')}"
+        # The wild double MUST be fled — not returned as an unresolved encounter.
+        flee_log = result.get("flee_log") or []
+        wild_flees = [e for e in flee_log if e.get("type") == "wild" and e.get("fled")]
+        assert wild_flees, (
+            f"Expected at least one fled wild encounter, got flee_log={flee_log}; "
+            f"result keys: {list(result.keys())}"
+        )
+        assert result.get("encounters_fled", 0) >= 1
+        # Interaction with Hiker Lorenzo ran — either dialogue completed or
+        # his trainer battle is now surfaced (can't flee trainers).
+        encounter = result.get("encounter")
+        if encounter is not None:
+            # Must be the Hiker's trainer battle, not a lingering wild one
+            log_text = "\n".join(
+                (e.get("text", "") for e in encounter.get("battle_log", []))
+            ).lower()
+            assert "hiker" in log_text or "trainer" in log_text, (
+                f"Remaining encounter should be the trainer battle, not the "
+                f"wild double; got: {log_text[:200]!r}"
+            )
+
     def test_cutscene_trigger(self, emu: EmulatorClient):
         """Pokeball interaction triggers Cynthia cutscene dialogue."""
         load_state(emu, "debug_pokeball_cutscene_interrupt")
