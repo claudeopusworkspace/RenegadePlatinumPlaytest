@@ -407,6 +407,43 @@ class TestFollowerPassableAndHiddenObjects:
                 "Non-follower NPC interaction tile must be adjacent, not own tile"
             )
 
+    def test_sparse_object_array_fully_scanned(self, emu: EmulatorClient):
+        """Regression: read_objects must scan every slot, not bail on the
+        first run of 3 consecutive empty slots. Gen 4 dynamically evicts
+        distant NPCs from the overworld object array — after the player
+        walks far enough, slots 2/3/4 can all be empty (status=0) while
+        slots 5+ remain live. The old scanner broke after 3 empties and
+        silently dropped Mira, every trainer, and every hidden rock from
+        view_map output.
+
+        Save `bug_mira_and_east_interactibles_missing` puts the player at
+        (44, 14) in Wayward Cave with exactly that sparse layout: only
+        slots 0 and 1 are non-empty through the first 5 slots, but Mira
+        (obj:5) and 10 trainers occupy later slots."""
+        load_state(emu, "bug_mira_and_east_interactibles_missing")
+        from renegade_mcp.map_state import read_objects, view_map
+
+        objects = read_objects(emu)
+        indices = {o["index"] for o in objects}
+        # Expected objects that sit past the old early-exit point.
+        expected = {5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 27}
+        missing = expected - indices
+        assert not missing, (
+            f"read_objects dropped slots {sorted(missing)} — the scanner "
+            f"likely bailed out early on a run of empty slots. "
+            f"Got indices: {sorted(indices)}"
+        )
+
+        # And view_map must surface Mira + at least one far-east trainer.
+        result = view_map(emu)
+        labels = {
+            e.get("label")
+            for e in result["interactibles"] + result["unreachable_interactibles"]
+        }
+        assert "Mira" in labels, (
+            f"Mira must appear in view_map output; got labels={labels}"
+        )
+
     def test_zero_coord_objects_excluded(self, emu: EmulatorClient):
         """Wayward Cave has many disabled Rock-Smash entries parked at
         (0, 0). They must not appear in either reachable or unreachable

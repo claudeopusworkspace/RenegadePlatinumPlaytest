@@ -834,61 +834,61 @@ def _load_viewport_terrain(
 def read_objects(emu: EmulatorClient) -> list[dict[str, Any]]:
     """Scan the overworld object array and return active objects with identity info.
 
-    For each active entry, reads the MapObject struct header to get graphicsID,
-    movementType, localID, trainerType, and script — enabling identification of
-    what each object actually is (NPC, item ball, briefcase, boulder, etc.).
+    For each active entry, parses the MapObject struct header to get
+    graphicsID, movementType, localID, trainerType, and script — enabling
+    identification of what each object actually is (NPC, item ball, etc.).
+
+    Reads the whole 64-slot array as one memory block and parses locally.
+    The previous "stop after 3 consecutive empty slots" heuristic was
+    unsafe: Gen 4 evicts distant NPCs out of the array while keeping
+    others loaded, so slots 2/3/4 can be empty (status=0) while 5+ are
+    live. Once that happened we silently dropped Mira, all trainers, and
+    every hidden rock from view_map's output. One block read costs one
+    round-trip and ~19 KB of data, which is cheaper than the prior
+    up-to-20 per-slot reads anyway.
     """
+    import struct
     from renegade_mcp.addresses import addr
+
     obj_fpx_base = addr("OBJ_ARRAY_FPX_BASE")
     obj_struct_base = obj_fpx_base - 0x70  # True start of MapObject[0]
+    fpx_offset_within_slot = obj_fpx_base - obj_struct_base  # 0x70
+
+    block = emu.read_memory_block(obj_struct_base, OBJ_STRIDE * OBJ_MAX_ENTRIES)
 
     objects = []
-    consecutive_empty = 0
-
     for i in range(OBJ_MAX_ENTRIES):
-        struct_base = obj_struct_base + (i * OBJ_STRIDE)
-
-        # Read struct header first: status, unk, localID, mapID, graphicsID,
-        # movementType, trainerType, flag, script (9 longs from struct base)
-        header = emu.read_memory_range(struct_base, size="long", count=9)
-        status = header[0] if header else 0
-
-        # Use status field for empty detection — position (0,0) doesn't mean
-        # empty (some objects are loaded at origin before being placed)
+        off = i * OBJ_STRIDE
+        # 9 longs at the struct base: status, unk, localID, mapID,
+        # graphicsID, movementType, trainerType, flag, script.
+        header = struct.unpack_from("<9I", block, off)
+        status = header[0]
+        # Empty slot — keep scanning; later slots can still be populated.
         if status == 0:
-            consecutive_empty += 1
-            if consecutive_empty >= 3:
-                break
             continue
-        consecutive_empty = 0
 
-        fpx_addr = obj_fpx_base + (i * OBJ_STRIDE)
-        fpy_addr = fpx_addr + 8
-
-        fpx = emu.read_memory(fpx_addr, size="long")
-        fpy = emu.read_memory(fpy_addr, size="long")
-
+        # fpx, skip(unk), fpy — three u32s starting at the +0x70 fpx offset.
+        # Unsigned matches the previous read_memory(size="long") default.
+        fpx, _, fpy = struct.unpack_from("<III", block, off + fpx_offset_within_slot)
         tile_x = (fpx >> 16) & 0xFFFF
         tile_y = (fpy >> 16) & 0xFFFF
-
         if tile_x > 10000 or tile_y > 10000:
             continue
 
+        gfx_id = header[4]
+        mv_id = header[5]
         obj: dict[str, Any] = {
-            "index": i, "x": tile_x, "y": tile_y, "fpx": fpx, "fpy": fpy,
+            "index": i,
+            "x": tile_x, "y": tile_y,
+            "fpx": fpx, "fpy": fpy,
+            "local_id": header[2],
+            "graphics_id": gfx_id,
+            "name": GFX_NAMES.get(gfx_id, f"Unknown ({gfx_id})"),
+            "movement_type": MOVEMENT_TYPES.get(mv_id, f"type_{mv_id}"),
+            "movement_type_id": mv_id,
+            "trainer_type": header[6],
+            "script": header[8],
         }
-
-        if len(header) >= 9:
-            gfx_id = header[4]
-            mv_id = header[5]
-            obj["local_id"] = header[2]
-            obj["graphics_id"] = gfx_id
-            obj["name"] = GFX_NAMES.get(gfx_id, f"Unknown ({gfx_id})")
-            obj["movement_type"] = MOVEMENT_TYPES.get(mv_id, f"type_{mv_id}")
-            obj["movement_type_id"] = mv_id
-            obj["trainer_type"] = header[6]
-            obj["script"] = header[8]
-
         objects.append(obj)
 
     return objects
