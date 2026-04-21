@@ -91,6 +91,41 @@ MULTI_TILE_HM_TYPES = ROCK_CLIMB_TYPES | WATERFALL_TYPES
 AUTO_NAVIGATE_TYPES = CLEARABLE_TYPES | SURF_TYPES | ROCK_CLIMB_TYPES | WATERFALL_TYPES
 PUZZLE_OBSTACLES = {84}  # strength_boulder — Distortion World only; handle manually
 
+# ── Follower NPC detection ──
+# Movement type ids from pret/pokeplatinum (generated/movement_types.txt).
+# An NPC with one of these movement types follows the player tile-by-tile,
+# and the engine swaps them with the player whenever the player steps onto
+# their tile — so BFS must treat follower tiles as passable, not blocking,
+# otherwise narrow corridors (e.g. Wayward Cave's Mira escort) end up with
+# every POI on the far side of the follower reported unreachable.
+MOVEMENT_TYPE_FOLLOW_PLAYER = 48
+MOVEMENT_TYPE_FOLLOW_PARTNER_TRAINER = 50
+FOLLOWER_MOVEMENT_TYPES = frozenset({
+    MOVEMENT_TYPE_FOLLOW_PLAYER,
+    MOVEMENT_TYPE_FOLLOW_PARTNER_TRAINER,
+})
+
+
+def is_follower_npc(obj: dict) -> bool:
+    """True if this map object is an active follower (Mira/Cheryl/rival/etc.).
+
+    `obj` is a dict from `read_objects`. The check looks at the raw
+    movement-type id rather than the human-readable label so it stays
+    correct for ids the label table doesn't know about. Accepts either
+    the raw id (stored under `movement_type_id` when added) or — for
+    backward compatibility with callers that only preserved the label —
+    the `type_NN` label form emitted by MOVEMENT_TYPES.get fallback.
+    """
+    raw = obj.get("movement_type_id")
+    if raw is None:
+        label = obj.get("movement_type", "")
+        if isinstance(label, str) and label.startswith("type_"):
+            try:
+                raw = int(label[5:])
+            except ValueError:
+                raw = None
+    return raw in FOLLOWER_MOVEMENT_TYPES
+
 # Badge name → bit index in the badge bitmask
 BADGE_BITS: dict[str, int] = {
     "Coal": 0, "Forest": 1, "Cobble": 2, "Fen": 3,

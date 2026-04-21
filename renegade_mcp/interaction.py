@@ -217,10 +217,13 @@ def interact_with(emu: EmulatorClient, object_index: int = -1, x: int = -1, y: i
 
         terrain_info, grid_ox, grid_oy, grid_w, grid_h = mc_result
 
-        # Build NPC set, excluding the target object
+        # Build NPC set, excluding the target object and active followers
+        from renegade_mcp.nav_constants import is_follower_npc
         npc_set = set()
         for obj in objects:
             if obj["index"] == 0 or obj["index"] == exclude_index:
+                continue
+            if is_follower_npc(obj):
                 continue
             nx = obj["x"] - grid_ox
             ny = obj["y"] - grid_oy

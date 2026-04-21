@@ -27,6 +27,7 @@ from renegade_mcp.nav_constants import (
     TERRAIN_OBSTACLE_INFO,
     TERRAIN_OBSTACLES,
     WARP_PASSABLE,
+    is_follower_npc,
 )
 from renegade_mcp.map_state import (
     CHUNK_SIZE,
@@ -189,6 +190,11 @@ def _build_terrain_info(
     obstacle_map: dict[tuple[int, int], dict] = {}
     for obj in objects:
         if obj["index"] == 0:
+            continue
+        # Follower NPCs (Mira, Cheryl, rival escorts) swap places with the
+        # player on step-in — their tile is effectively passable, so leave
+        # them out of npc_set to avoid walling off narrow escort corridors.
+        if is_follower_npc(obj):
             continue
         lx = obj.get("local_x", obj["x"]) - obj_offset_x
         ly = obj.get("local_y", obj["y"]) - obj_offset_y
@@ -1112,6 +1118,8 @@ def _classify_objects_for_grid(
     obstacle_map: dict[tuple[int, int], dict] = {}
     for obj in objects:
         if obj["index"] == 0:
+            continue
+        if is_follower_npc(obj):
             continue
         lx = obj["x"] - grid_ox
         ly = obj["y"] - grid_oy

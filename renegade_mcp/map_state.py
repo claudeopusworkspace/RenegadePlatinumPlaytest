@@ -880,10 +880,12 @@ def read_objects(emu: EmulatorClient) -> list[dict[str, Any]]:
 
         if len(header) >= 9:
             gfx_id = header[4]
+            mv_id = header[5]
             obj["local_id"] = header[2]
             obj["graphics_id"] = gfx_id
             obj["name"] = GFX_NAMES.get(gfx_id, f"Unknown ({gfx_id})")
-            obj["movement_type"] = MOVEMENT_TYPES.get(header[5], f"type_{header[5]}")
+            obj["movement_type"] = MOVEMENT_TYPES.get(mv_id, f"type_{mv_id}")
+            obj["movement_type_id"] = mv_id
             obj["trainer_type"] = header[6]
             obj["script"] = header[8]
 
@@ -1297,6 +1299,12 @@ def _build_interactibles(
         if idx == 0:
             continue  # player
         gx, gy = obj["x"], obj["y"]
+        # Drayano left many unused zone_event entries in place (he disables
+        # rather than deletes objects); the engine parks them at (0, 0).
+        # They clutter `unreachable_interactibles` without being
+        # actionable — filter them out regardless of kind.
+        if gx == 0 and gy == 0:
+            continue
 
         kind, tid, preview = _classify_object(obj, map_id)
         sprite_name = (obj.get("name", "") or "").strip()
@@ -1544,9 +1552,11 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
                     tile_x=px - mc_ox, tile_y=py - mc_oy,
                 )
                 if mc_player_level is not None:
+                    from renegade_mcp.nav_constants import is_follower_npc
                     mc_npc_positions = {
                         (obj["x"] - mc_ox, obj["y"] - mc_oy)
-                        for obj in objects if obj["index"] != 0
+                        for obj in objects
+                        if obj["index"] != 0 and not is_follower_npc(obj)
                     }
                     reach = _bfs_reachable_3d(
                         mc_terrain, mc_npc_positions, mc_elev,
@@ -1591,9 +1601,11 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
             local_py_flood = py - origin_y
 
         if 0 <= local_px_flood < flood_w and 0 <= local_py_flood < flood_h:
+            from renegade_mcp.nav_constants import is_follower_npc
             npc_positions = {
                 (obj["x"] - flood_ox, obj["y"] - flood_oy)
-                for obj in objects if obj["index"] != 0
+                for obj in objects
+                if obj["index"] != 0 and not is_follower_npc(obj)
             }
             reach2d = _bfs_flood_fill(
                 flood_terrain, local_px_flood, local_py_flood,

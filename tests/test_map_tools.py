@@ -333,6 +333,96 @@ class TestFlatMultiChunkReachability:
         assert "steps" in reachable[mira["id"]]
 
 
+class TestFollowerPassableAndHiddenObjects:
+    """Regression: follower NPCs (movement_type 48 / 50) must NOT block BFS,
+    and Drayano's disabled-but-not-deleted zone_event entries (parked at
+    (0, 0)) must not pollute the interactibles list.
+
+    Repro save `bug_mira_follower_blocks_bfs` puts the player at (39, 42)
+    in Wayward Cave with Mira sitting on (38, 42) — the only east-west
+    link in the chamber. Before the fix:
+      - Mira's tile was in npc_set, so walking through her was impossible
+        and every POI on the other side (trainers at y=38/42, Pokeballs
+        at y=15) fell into unreachable_interactibles.
+      - 11 hidden "Rock Smash" zone_event rows at (0, 0) cluttered
+        unreachable_interactibles.
+    """
+
+    SAVE_STATE = "bug_mira_follower_blocks_bfs"
+
+    def test_follower_treated_as_passable(self, emu: EmulatorClient):
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+
+        reachable_pos = {(e["x"], e["y"]): e for e in result["interactibles"]}
+        unreachable_pos = {(e["x"], e["y"]): e for e in result["unreachable_interactibles"]}
+
+        # Mira is 0 steps from the player — her tile IS the interaction tile.
+        assert (38, 42) in reachable_pos, (
+            "Mira (38,42) should be reachable (follower tile is passable)"
+        )
+
+        # Everything west of Mira — only reachable if Mira's tile is passable.
+        west_pois = [(17, 38), (20, 38), (2, 42), (5, 42), (2, 14), (5, 14)]
+        for pos in west_pois:
+            assert pos in reachable_pos, (
+                f"{pos} should be reachable via Mira's tile; "
+                f"unreachable={sorted(unreachable_pos)}"
+            )
+
+    def test_non_follower_npc_still_blocks(self, emu: EmulatorClient):
+        """Guard against over-broad follower detection: Mira in the save from
+        right after her battle (`session23_end_with_mira`) has
+        movement_type = LOOK_SOUTH (16), not FOLLOW_PLAYER (48) — she hasn't
+        latched onto the player yet, so she must still be treated as a solid
+        NPC that blocks BFS. The interaction tile must be adjacent to her,
+        not her own tile."""
+        load_state(emu, "session23_end_with_mira")
+        from renegade_mcp.map_state import view_map, read_objects
+        from renegade_mcp.nav_constants import is_follower_npc
+
+        objects = read_objects(emu)
+        mira_obj = next(
+            (o for o in objects if (o.get("name") or "").strip() == "Mira"),
+            None,
+        )
+        assert mira_obj is not None, "Mira must be in the object array"
+        assert not is_follower_npc(mira_obj), (
+            f"Mira mv_id={mira_obj.get('movement_type_id')} is not a "
+            f"follower movement type in this save, and must not be treated "
+            f"as passable"
+        )
+
+        result = view_map(emu)
+        mira_entries = [
+            e for e in result["interactibles"] + result["unreachable_interactibles"]
+            if e.get("label") == "Mira"
+        ]
+        assert mira_entries, "Mira should appear in view_map output"
+        mira = mira_entries[0]
+        # Non-follower POI: interaction tile is a 4-adjacent tile, not her own
+        if "interaction_x" in mira:
+            assert (mira["interaction_x"], mira["interaction_y"]) != (mira["x"], mira["y"]), (
+                "Non-follower NPC interaction tile must be adjacent, not own tile"
+            )
+
+    def test_zero_coord_objects_excluded(self, emu: EmulatorClient):
+        """Wayward Cave has many disabled Rock-Smash entries parked at
+        (0, 0). They must not appear in either reachable or unreachable
+        interactibles — they're neither actionable nor useful to surface."""
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+
+        all_entries = result["interactibles"] + result["unreachable_interactibles"]
+        zero_coord = [e for e in all_entries if (e["x"], e["y"]) == (0, 0)]
+        assert not zero_coord, (
+            f"Expected no interactibles parked at (0, 0); got: "
+            f"{[e['id'] + '/' + e.get('label', '') for e in zero_coord]}"
+        )
+
+
 class TestBug030PathElevationValidator:
     """Regression: the 2D-BFS-fallback path validator rejects paths that
     step between incompatible elevation layers (BUG-030).

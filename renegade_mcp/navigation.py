@@ -197,9 +197,20 @@ def _attach_warp_hint(
 # ── NPC tracking and dynamic repathing ──
 
 def _read_npc_positions(emu: EmulatorClient) -> dict[int, tuple[int, int]]:
-    """Read current NPC tile positions. Returns {obj_index: (global_x, global_y)}."""
+    """Read current NPC tile positions. Returns {obj_index: (global_x, global_y)}.
+
+    Followers (Mira, Cheryl, rival escorts) are excluded — they trail the
+    player tile-by-tile, so every step would otherwise register as a fake
+    NPC movement AND their position would spuriously block repath BFS in
+    narrow corridors.
+    """
+    from renegade_mcp.nav_constants import is_follower_npc
     objects = read_objects(emu)
-    return {obj["index"]: (obj["x"], obj["y"]) for obj in objects if obj["index"] != 0}
+    return {
+        obj["index"]: (obj["x"], obj["y"])
+        for obj in objects
+        if obj["index"] != 0 and not is_follower_npc(obj)
+    }
 
 
 def _detect_npc_changes(
