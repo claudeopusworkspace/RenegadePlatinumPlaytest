@@ -4,6 +4,54 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: MCP tool trim + 2-way parallel test fleet (2026-04-21 session 24)
+
+Housekeeping pass followed by test-infra work. Full suite green end-to-end (`60fb0ba` + `707106f`); runtime down from 13:27 → 7:07.
+
+### MCP surface-area trim
+
+`interact_with` and `map_name` removed as MCP tools. Both were superseded:
+
+- `navigate_to(poi="obj:N")` dispatches `interact_with` internally for every dynamic-object POI in `view_map`'s `interactibles` list — same face+A flow. The internal `interact_with(emu, ...)` Python function stays; heal_party / shop / pc / move_services / navigation all import it as a shared primitive for coord-mode A-presses against static fixtures (PCs, bookshelves), which Claude never called directly anyway.
+- `map_name` was redundant with nav position dicts that already carry `{map_id, name, display, code, room}`. Replaced by folding the same dict into `view_map`'s return under a new `location` key (was bare `map_id: int`). Header line now reads `Oreburgh Gate (D04) (x,y)…` instead of `Map 258 (x,y)…`.
+
+Six macros deleted (`mash_a/b`, `walk_{up,down,left,right}`) — all early-session concepts superseded by `navigate_to` / `read_dialogue` auto-advance.
+
+### CLAUDE.md rewrite (353 → 158 lines)
+
+Stripped everything that duplicates tool docstrings — Battle Workflow, Fishing, Auto-Grind, Navigation-param details, Quick Reference workflows, Memory snapshot steps. Kept: save-state infrastructure, battery-save workflow, the `@renegade_tool` contributor pattern, navigation philosophy (don't trust screenshots), DS screen layout, bag/keyboard touch coordinates, game progress, test suite, genuine gotchas. Saved `feedback_no_mcp_docs_in_claudemd.md` so we stop falling back into this — per Woj, we've cleared it before and drifted.
+
+Updated the "Next" stub to reflect session-23's objective (find Mira's lost item) rather than the old "fix map rendering first" that session-24's own work handled.
+
+### Parallel test fleet
+
+Goal: make `pytest tests/` feedback-loop-short enough that running it on every change feels free. Baseline was 13:27 sequential (491 tests).
+
+**Infrastructure (commit `60fb0ba`):**
+- `scripts/start_test_emulators.py` fans out N isolated melonDS instances, each with `.workers/worker_{i}/` (ROM copy + symlinks to shared `savestates/macros/data`, its own `.sav`) bound to `.melonds_test_bridge_{i}.sock`. 2s startup stagger between launches.
+- `scripts/start_test_emulator.py` gained `--socket / --data-dir / --rom` args so it can be driven by the plural launcher.
+- `tests/conftest.py` hooks `pytest_xdist_auto_num_workers` (the *correct* xdist entry point — `pytest_configure` and `pytest_load_initial_conftests` both fire too late once xdist has made its distributed-session decision) and returns the running socket count. With `-n auto --dist loadfile` set in `pytest.ini`, plain `pytest tests/` scales automatically. CLI `-n N` still wins.
+- Each xdist worker (`gw0`…) picks its socket by index via `PYTEST_XDIST_WORKER`. 1.5s-per-worker staggered delay before the session fixture's first `load_state` (defensive against the bug below).
+
+**N=2 ships as the default: 491 passed in 7:07 — 1.9× speedup.** N=3+ reliably SIGBUSes a worker during `savestate_load` within seconds.
+
+### MelonMCP#9 — diagnosed
+
+Filed an investigation request on MelonMCP; coordinated with another LLM instance on that repo who walked through the JIT fastmem code path. My original "concurrent `.mst` mmap contention" theory was **wrong**: savestates use plain `fread`, no mmap. Actual cause:
+
+- melonDS's JIT fastmem allocates a PID-namespaced POSIX shm region (~17 MB per worker) in `/dev/shm`, then `mmap(MAP_SHARED|MAP_FIXED)` aliases it into an 8 GB reserved virtual window so JIT-emitted code can issue native loads/stores against guest pointers.
+- On every `load_state`, `NDS::DoSavestate` calls `MapSharedWRAM` + `JIT.Reset`, which unmaps and remaps the fastmem aliases — a burst of page faults against the tmpfs-backed shm fd.
+- When `/dev/shm` runs out of space, those faults deliver `SIGBUS(BUS_ADRERR)`. melonDS's own SIGBUS handler only recovers `SEGV_MAPERR/SEGV_ACCERR`, so tmpfs exhaustion falls through to `SIG_DFL` → process exits -7.
+- Container's `/dev/shm` is Docker's 64 MB default (`df -h /dev/shm` confirms). N=2 fits (34 MB fastmem + 30 MB headroom); N=3+ oversubscribes → loses the fault lottery.
+
+**Unblock for N=8 next time:** `sudo mount -o remount,size=8G /dev/shm` (+ `sudo sysctl -w vm.max_map_count=1048576` defensively), then `start_test_emulators.py --count 8`. Documented inline in CLAUDE.md's test-suite section and `start_test_emulators.py --help`; full playbook (including strace/coredump fallback diagnostics) lives in `memory/project_parallel_test_fleet.md`.
+
+### Test count ground-truth
+
+- Sequential baseline: **491 passed in 13:27** (CLAUDE.md claimed 369 across 31 files — stale; now corrected to 491 across 42 files).
+- Parallel N=2: **491 passed in 7:07**.
+- Sequential re-run after the MCP trim caught one stale assert in `test_detect_shift.py:55` (`result["map_id"]` → `result["location"]["map_id"]`), fixed; re-ran clean.
+
 ## Playtest Session 23 — BUG-033 filed (2026-04-20)
 
 ### BUG-033: `interact_with` stops one tile short when player is on the bicycle
