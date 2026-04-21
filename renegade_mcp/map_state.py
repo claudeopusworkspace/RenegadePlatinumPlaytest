@@ -1519,12 +1519,14 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
     elev_str = f" L{player_elev}" if elevation and player_elev is not None else ""
     header = f"{location['display']} ({px},{py}) {facing_name}{elev_str}  origin:({vp_x},{vp_y}) {vp_w}x{vp_h}"
 
-    # ── Reachability BFS — keyed by GLOBAL tile coords, capped at 150 steps.
+    # ── Reachability BFS — keyed by GLOBAL tile coords, capped at 250 steps.
     #    Scope spans the full multi-chunk (up to 5x5) or indoor chunk so
     #    interactibles outside the 15x15 render viewport still get a
     #    reachable/unreachable answer. Under-bridge tiles correctly stay
     #    unreachable from on-bridge players via the elevation-aware 3D BFS.
-    MAX_REACH_STEPS = 150
+    #    Cap raised from 150→250 so winding cave systems (Wayward, Mt.
+    #    Coronet, Victory Road) resolve end-of-map POIs as reachable.
+    MAX_REACH_STEPS = 250
     reachable_tiles: dict[tuple[int, int], int] = {}
     reach_3d_ok = False
     mc_bounds: tuple[int, int, int, int] | None = None  # (ox, oy, w, h)

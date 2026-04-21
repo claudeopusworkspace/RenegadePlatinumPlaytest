@@ -102,7 +102,7 @@ def create_server() -> FastMCP:
         grid corner and viewport dimensions. Convert grid position to global coords:
         global = origin + grid_pos. Player dict includes grid_x/grid_y.
 
-        The `interactibles` list enumerates every actionable POI within 150 BFS
+        The `interactibles` list enumerates every actionable POI within 250 BFS
         steps of the player — NPCs, trainers, signs, items, berries, and warps.
         Each entry has:
           - `id` (e.g. "obj:5", "warp:2") — stable within a call; pass to
