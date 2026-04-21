@@ -68,46 +68,50 @@ class TestQaBug020ViewMapOverride:
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
 
-        # Walk east so Alexandra enters the viewport (starting state is at
-        # (352, 531); Alexandra is at (367, 523) which is in-range from
-        # origin (336, 515)).
-        all_objs = result["objects"] + result.get("unreachable_objects", [])
+        all_entries = (
+            result["interactibles"] + result.get("unreachable_interactibles", [])
+        )
         alexandra = next(
-            (o for o in all_objs if o.get("trainer_id") == 76),
+            (e for e in all_entries
+             if e.get("preview", {}).get("trainer_id") == 76),
             None,
         )
         assert alexandra is not None, (
-            f"Expected trainer 76 in viewport objects, got: "
-            f"{[o.get('name') for o in all_objs]}"
+            f"Expected trainer 76 in viewport interactibles, got: "
+            f"{[e.get('label') for e in all_entries]}"
         )
 
-        # Primary fix: `name` reflects the real battle class, not the sprite.
-        assert alexandra["name"] == "Bird Keeper", (
-            f"Expected name='Bird Keeper' (from trdata), got {alexandra['name']!r}"
+        # Primary fix: `label` reflects the real battle class, not the sprite.
+        assert alexandra["label"] == "Bird Keeper", (
+            f"Expected label='Bird Keeper' (from trdata), got {alexandra['label']!r}"
         )
-        assert alexandra.get("trainer_class") == "Bird Keeper"
+        assert alexandra["kind"] == "trainer"
+        preview = alexandra["preview"]
+        assert preview.get("trainer_class") == "Bird Keeper"
         # Sprite preserved for reference / debugging.
-        assert alexandra.get("sprite_name") == "Ace Trainer F"
-        assert alexandra.get("trainer") is True
-        assert alexandra.get("defeated") is False
+        assert preview.get("sprite_name") == "Ace Trainer F"
+        assert preview.get("defeated") is False
 
     def test_ninja_boy_name_unchanged_when_sprite_matches_class(
         self, emu: EmulatorClient,
     ) -> None:
-        """Sprite class == trainer class → no `sprite_name` noise in output."""
+        """Sprite class == trainer class → no `sprite_name` noise in preview."""
         load_state(emu, "qa_session15_route211_west_entry")
         emu.advance_frames(120)
 
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
 
-        all_objs = result["objects"] + result.get("unreachable_objects", [])
+        all_entries = (
+            result["interactibles"] + result.get("unreachable_interactibles", [])
+        )
         ninja_boy = next(
-            (o for o in all_objs if o.get("trainer_id") == 78),
+            (e for e in all_entries
+             if e.get("preview", {}).get("trainer_id") == 78),
             None,
         )
         assert ninja_boy is not None
-        assert ninja_boy["name"] == "Ninja Boy"
-        assert ninja_boy.get("trainer_class") == "Ninja Boy"
-        # When sprite_name matches trainer_class, it isn't duplicated.
-        assert "sprite_name" not in ninja_boy
+        assert ninja_boy["label"] == "Ninja Boy"
+        assert ninja_boy["preview"].get("trainer_class") == "Ninja Boy"
+        # When sprite matches trainer_class, sprite_name is omitted.
+        assert "sprite_name" not in ninja_boy["preview"]

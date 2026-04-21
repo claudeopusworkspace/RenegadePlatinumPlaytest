@@ -399,13 +399,20 @@ def _bfs_flood_fill(
     start_x: int, start_y: int,
     npc_positions: set[tuple[int, int]],
     width: int, height: int,
+    max_steps: int | None = None,
 ) -> dict[tuple[int, int], int]:
-    """BFS flood-fill from (start_x, start_y). Returns {(x,y): steps} for all reachable tiles."""
+    """BFS flood-fill from (start_x, start_y). Returns {(x,y): steps} for all reachable tiles.
+
+    When ``max_steps`` is given, the flood stops expanding beyond that
+    distance — tiles farther than the cap are simply absent from the result.
+    """
     dist: dict[tuple[int, int], int] = {(start_x, start_y): 0}
     queue: deque[tuple[int, int, int]] = deque([(start_x, start_y, 0)])
 
     while queue:
         x, y, d = queue.popleft()
+        if max_steps is not None and d >= max_steps:
+            continue
         for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0)):
             nx, ny = x + dx, y + dy
             if (nx, ny) in dist:
@@ -714,7 +721,7 @@ def _compute_viewport_bounds(
     origin_x: int, origin_y: int,
     objects: list[dict],
     chunked: bool,
-    viewport_size: int = 32,
+    viewport_size: int = 15,
 ) -> tuple[int, int, int, int]:
     """Compute viewport rectangle in global tile coordinates.
 
@@ -1094,11 +1101,295 @@ def render_map(
     return "\n".join(lines)
 
 
+# ── Axis-ruler rendering ──
+
+def _render_with_axes(
+    grid_str: str, vp_x: int, vp_y: int, vp_w: int, vp_h: int,
+) -> str:
+    """Prefix a rendered grid with an X-axis ruler + per-row Y labels.
+
+    The ruler shows the *last digit* of each column's absolute X coordinate
+    (a visual anchor that survives tokenization better than spacing — see
+    "Stuck in the Matrix", arxiv 2510.20198). The Y column uses the full
+    absolute Y, right-aligned to 3 chars. Trailing lines from render_map
+    (Key:..., Elevation:...) are passed through untouched.
+    """
+    lines = grid_str.split("\n")
+    grid_rows = lines[:vp_h]
+    trailing = lines[vp_h:]
+
+    x_ruler = "".join(str((vp_x + i) % 10) for i in range(vp_w))
+    out: list[str] = [f"    {x_ruler}"]
+    for i, row in enumerate(grid_rows):
+        out.append(f"{vp_y + i:3d} {row}")
+    out.extend(trailing)
+    return "\n".join(out)
+
+
+# ── Interactibles: reachable POIs (dynamic objects + merged warps) ──
+
+# Dynamic-object graphics ids that classify as non-NPC POIs.
+_GFX_POKEBALL = 87
+_GFX_BERRY = 100
+
+# Adjacency offsets used to find an interaction tile next to a POI.
+# (adj_dx, adj_dy, face_direction): `adj_dx/dy` is the displacement FROM
+# the POI tile TO the interaction tile; `face_direction` is the direction
+# the player must face to see the POI from that adjacent tile.
+_INTERACTIBLE_ADJ = (
+    (0, -1, "down"),   # adjacent tile is north of POI → face down
+    (0, 1, "up"),      # south → face up
+    (-1, 0, "right"),  # west → face right
+    (1, 0, "left"),    # east → face left
+)
+
+
+def _merge_adjacent_warps(
+    warps: list[dict[str, int]],
+    reachable_tiles: dict[tuple[int, int], int],
+    player_x: int, player_y: int,
+) -> list[dict[str, Any]]:
+    """Cluster warps that share a destination AND are 4-adjacent.
+
+    Returns a list of cluster dicts with keys:
+      - dest_map, dest_warp: destination identity
+      - tiles: list of (x, y) for every constituent warp
+      - interaction_xy: (x, y) of the representative tile (nearest
+        reachable to the player; falls back to nearest-Manhattan if no
+        constituent is reachable)
+      - reachable: bool
+      - metric: BFS steps when reachable, Manhattan distance otherwise
+    """
+    by_dest: dict[tuple[int, int], list[dict[str, int]]] = {}
+    for w in warps:
+        by_dest.setdefault((w["dest_map"], w["dest_warp"]), []).append(w)
+
+    clusters: list[dict[str, Any]] = []
+    for (dest_map, dest_warp), group in by_dest.items():
+        # 4-connectivity union-find within the group.
+        unmerged = list(group)
+        while unmerged:
+            seed = unmerged.pop(0)
+            current = [seed]
+            changed = True
+            while changed:
+                changed = False
+                i = 0
+                while i < len(unmerged):
+                    w = unmerged[i]
+                    if any(
+                        abs(w["x"] - c["x"]) + abs(w["y"] - c["y"]) == 1
+                        for c in current
+                    ):
+                        current.append(unmerged.pop(i))
+                        changed = True
+                    else:
+                        i += 1
+
+            # Pick the representative interaction tile.
+            best_reach: tuple[int, tuple[int, int]] | None = None
+            best_manh: tuple[int, tuple[int, int]] | None = None
+            for w in current:
+                wx, wy = w["x"], w["y"]
+                if (wx, wy) in reachable_tiles:
+                    s = reachable_tiles[(wx, wy)]
+                    if best_reach is None or s < best_reach[0]:
+                        best_reach = (s, (wx, wy))
+                d = abs(wx - player_x) + abs(wy - player_y)
+                if best_manh is None or d < best_manh[0]:
+                    best_manh = (d, (wx, wy))
+
+            if best_reach is not None:
+                clusters.append({
+                    "dest_map": dest_map,
+                    "dest_warp": dest_warp,
+                    "tiles": [(w["x"], w["y"]) for w in current],
+                    "interaction_xy": best_reach[1],
+                    "reachable": True,
+                    "metric": best_reach[0],
+                })
+            else:
+                assert best_manh is not None
+                clusters.append({
+                    "dest_map": dest_map,
+                    "dest_warp": dest_warp,
+                    "tiles": [(w["x"], w["y"]) for w in current],
+                    "interaction_xy": best_manh[1],
+                    "reachable": False,
+                    "metric": best_manh[0],
+                })
+
+    return clusters
+
+
+def _classify_object(
+    obj: dict[str, Any], map_id: int,
+) -> tuple[str, int | None, dict[str, Any]]:
+    """Decide the interactible kind for a dynamic object.
+
+    Returns (kind, resolved_trainer_id_or_None, preview_dict).
+    `preview_dict` always includes `object_index` for dispatch. For
+    trainers, the caller (which has `emu` in scope) fills in the
+    `defeated` field — this helper stops at identity data.
+    """
+    from renegade_mcp.trainer import (
+        is_flavor_trainer,
+        lookup_trainer_class,
+        trainer_id_from_script,
+    )
+
+    idx = obj["index"]
+    gfx_id = obj.get("graphics_id", 0)
+    sprite_name = (obj.get("name", "") or "").strip()
+    trainer_type = obj.get("trainer_type", 0)
+    preview: dict[str, Any] = {"object_index": idx}
+
+    if trainer_type > 0:
+        tid = trainer_id_from_script(obj.get("script", 0))
+        if tid is not None and is_flavor_trainer(map_id, tid):
+            preview["flavor_npc"] = True
+            return "npc", tid, preview
+        if tid is not None:
+            trainer_class = lookup_trainer_class(tid)
+            preview["trainer_id"] = tid
+            if trainer_class is not None:
+                preview["trainer_class"] = trainer_class
+            if sprite_name and trainer_class and sprite_name != trainer_class:
+                preview["sprite_name"] = sprite_name
+            return "trainer", tid, preview
+
+    if gfx_id in SIGN_GFX_IDS:
+        return "sign", None, preview
+    if gfx_id == _GFX_POKEBALL:
+        return "item", None, preview
+    if gfx_id == _GFX_BERRY:
+        return "berry", None, preview
+    if sprite_name:
+        return "npc", None, preview
+    return "object", None, preview
+
+
+def _build_interactibles(
+    emu: EmulatorClient,
+    map_id: int,
+    objects: list[dict[str, Any]],
+    reachable_tiles: dict[tuple[int, int], int],
+    player_x: int, player_y: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Construct (reachable, unreachable) interactibles lists.
+
+    `reachable_tiles` must be keyed by GLOBAL tile coords. Objects and
+    warps whose interaction tile is in `reachable_tiles` are sorted by
+    BFS steps; the rest are reported unreachable with Manhattan distance.
+
+    Entries carry: id, kind, label, x/y (POI), interaction_x/y, face,
+    steps (or distance), preview.
+    """
+    from renegade_mcp.map_names import lookup_map_name
+    from renegade_mcp.trainer import is_trainer_defeated
+
+    reachable: list[dict[str, Any]] = []
+    unreachable: list[dict[str, Any]] = []
+
+    # --- Dynamic objects ---
+    for obj in objects:
+        idx = obj["index"]
+        if idx == 0:
+            continue  # player
+        gx, gy = obj["x"], obj["y"]
+
+        kind, tid, preview = _classify_object(obj, map_id)
+        sprite_name = (obj.get("name", "") or "").strip()
+
+        # Label — prefer authoritative trainer class, else sprite name, else generic.
+        if kind == "trainer":
+            trainer_class = preview.get("trainer_class")
+            label = trainer_class or sprite_name or f"Trainer {tid}"
+            # Fill in defeated bit now that we have emu in scope.
+            if tid is not None:
+                preview["defeated"] = is_trainer_defeated(emu, tid)
+        elif kind == "sign":
+            label = sprite_name or "Sign"
+        elif kind == "item":
+            label = sprite_name or "Item Ball"
+        elif kind == "berry":
+            label = sprite_name or "Berry Patch"
+        elif kind == "npc":
+            label = sprite_name or f"NPC {idx}"
+        else:
+            label = sprite_name or f"Object {idx}"
+
+        # Find best interaction tile.
+        best: tuple[int, int, int, str] | None = None  # (steps, adj_x, adj_y, face)
+        for adj_dx, adj_dy, face in _INTERACTIBLE_ADJ:
+            adj_gx, adj_gy = gx + adj_dx, gy + adj_dy
+            if (adj_gx, adj_gy) in reachable_tiles:
+                s = reachable_tiles[(adj_gx, adj_gy)]
+                if best is None or s < best[0]:
+                    best = (s, adj_gx, adj_gy, face)
+
+        entry: dict[str, Any] = {
+            "id": f"obj:{idx}",
+            "kind": kind,
+            "label": label,
+            "x": gx, "y": gy,
+            "preview": preview,
+        }
+        if best is not None:
+            s, adj_gx, adj_gy, face = best
+            entry["interaction_x"] = adj_gx
+            entry["interaction_y"] = adj_gy
+            entry["face"] = face
+            entry["steps"] = s
+            reachable.append(entry)
+        else:
+            entry["distance"] = abs(gx - player_x) + abs(gy - player_y)
+            unreachable.append(entry)
+
+    # --- Warps (merged by destination + adjacency) ---
+    all_warps = read_warps_from_rom(emu, map_id)
+    clusters = _merge_adjacent_warps(
+        all_warps, reachable_tiles, player_x, player_y,
+    )
+    warp_idx = 0
+    for c in clusters:
+        dest = lookup_map_name(c["dest_map"])
+        dest_name = dest.get("name", f"Map {c['dest_map']}")
+        ix, iy = c["interaction_xy"]
+        preview = {
+            "dest_map_id": c["dest_map"],
+            "dest_map_name": dest_name,
+            "dest_warp": c["dest_warp"],
+        }
+        if len(c["tiles"]) > 1:
+            preview["merged_tile_count"] = len(c["tiles"])
+        entry = {
+            "id": f"warp:{warp_idx}",
+            "kind": "warp",
+            "label": f"to {dest_name}",
+            "x": ix, "y": iy,
+            "interaction_x": ix, "interaction_y": iy,
+            "face": None,
+            "preview": preview,
+        }
+        warp_idx += 1
+        if c["reachable"]:
+            entry["steps"] = c["metric"]
+            reachable.append(entry)
+        else:
+            entry["distance"] = c["metric"]
+            unreachable.append(entry)
+
+    reachable.sort(key=lambda e: e["steps"])
+    unreachable.sort(key=lambda e: e["distance"])
+    return reachable, unreachable
+
+
 def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
-    """Get player-centered ASCII map with terrain, NPCs, and warps.
+    """Get player-centered ASCII map with terrain, NPCs, and interactibles.
 
     Indoor/small maps: compact content-fitted rendering (no void padding).
-    Overworld maps: 32x32 viewport centered on the player, loading adjacent
+    Overworld maps: 15x15 viewport centered on the player, loading adjacent
     chunks as needed. Edges clamp to world bounds.
 
     Args:
@@ -1115,7 +1406,11 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
         # Fallback: single-chunk from ROM or RAM (legacy path)
         state = get_map_state(emu)
         if state is None:
-            return {"error": "Could not resolve map chunk", "map": "", "player": {}, "objects": []}
+            return {
+                "error": "Could not resolve map chunk",
+                "map": "", "player": {},
+                "interactibles": [], "unreachable_interactibles": [],
+            }
         # Use old single-chunk path with content crop
         terrain = state["terrain"]
         origin_x, origin_y = state["origin_x"], state["origin_y"]
@@ -1128,7 +1423,11 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
         # Load the player's chunk for indoor content-bounds detection
         chunk_terrain, origin_x, origin_y, _, _ = resolve_terrain_from_rom(emu, map_id, px, py)
         if chunk_terrain is None:
-            return {"error": "Could not resolve terrain", "map": "", "player": {}, "objects": []}
+            return {
+                "error": "Could not resolve terrain",
+                "map": "", "player": {},
+                "interactibles": [], "unreachable_interactibles": [],
+            }
         terrain = chunk_terrain
 
     # Compute viewport bounds
@@ -1210,69 +1509,20 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
     elev_str = f" L{player_elev}" if elevation and player_elev is not None else ""
     header = f"Map {map_id} ({px},{py}) {facing_name}{elev_str}  origin:({vp_x},{vp_y}) {vp_w}x{vp_h}"
 
-    # Object list (compact: index, name, position, trainer status)
-    from renegade_mcp.trainer import (
-        trainer_id_from_script,
-        is_trainer_defeated,
-        lookup_trainer_class,
-        is_flavor_trainer,
-    )
-    obj_info = []
-    for obj in visible_objects:
-        idx = obj["index"]
-        if idx == 0:
-            continue  # Player is already in the player field
-        sprite_name = obj.get("name", "")
-        entry: dict[str, Any] = {
-            "index": idx,
-            "x": obj["x"], "y": obj["y"],
-        }
-        if sprite_name:
-            entry["name"] = sprite_name
-        if obj.get("trainer_type", 0) > 0:
-            tid = trainer_id_from_script(obj.get("script", 0))
-            if tid is not None:
-                if is_flavor_trainer(map_id, tid):
-                    # QA BUG-021: NPC is data-classed as a trainer but
-                    # Renegade Platinum's script path never invokes the
-                    # battle and pre-sets the defeat flag via a story script.
-                    # Report as a flavor NPC so callers don't mistake it for
-                    # a cleared battleable trainer.
-                    entry["flavor_npc"] = True
-                else:
-                    entry["trainer"] = True
-                    entry["trainer_id"] = tid
-                    entry["defeated"] = is_trainer_defeated(emu, tid)
-                    # QA BUG-020: sprite class (from GFX_NAMES) and the
-                    # real trainer class (from trdata.narc) can differ —
-                    # e.g. trainer 76 is a "Bird Keeper" in battle but
-                    # uses the "Ace Trainer F" overworld sprite. Surface
-                    # the authoritative trainer class and, when it
-                    # disagrees with the sprite, override `name` so
-                    # callers plan type matchups off the real class.
-                    trainer_class = lookup_trainer_class(tid)
-                    if trainer_class is not None:
-                        entry["trainer_class"] = trainer_class
-                        if sprite_name and trainer_class != sprite_name:
-                            entry["name"] = trainer_class
-                            entry["sprite_name"] = sprite_name
-        obj_info.append(entry)
-
-    # BFS flood-fill from player for reachability + step counts.
-    # On multi-chunk elevated maps (Cycling Road, Mt. Coronet bridges, etc.)
-    # we use the 3D flood-fill so bridge-over-ground overlaps don't show
-    # under-bridge pickups as reachable from the bridge. Single-chunk maps
-    # continue to use the plain 2D flood-fill (elevation is already consumed
-    # by render_map for the glyphs, and indoor maps rarely have z-stacked
-    # reachability problems).
-    reachable_tiles: dict[tuple[int, int], int]
-    reach_3d: dict[tuple[int, int], int] | None = None
+    # ── Reachability BFS — keyed by GLOBAL tile coords, capped at 150 steps.
+    #    Scope spans the full multi-chunk (up to 5x5) or indoor chunk so
+    #    interactibles outside the 15x15 render viewport still get a
+    #    reachable/unreachable answer. Under-bridge tiles correctly stay
+    #    unreachable from on-bridge players via the elevation-aware 3D BFS.
+    MAX_REACH_STEPS = 150
+    reachable_tiles: dict[tuple[int, int], int] = {}
+    reach_3d_ok = False
 
     if chunked:
         from renegade_mcp.pathfinding import (
-            _build_multi_chunk_terrain,
-            _build_multi_chunk_elevation,
             _bfs_reachable_3d,
+            _build_multi_chunk_elevation,
+            _build_multi_chunk_terrain,
             _height_to_level,
         )
         mc_result = _build_multi_chunk_terrain(
@@ -1292,78 +1542,63 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
                 if mc_player_level is not None:
                     mc_npc_positions = {
                         (obj["x"] - mc_ox, obj["y"] - mc_oy)
-                        for obj in visible_objects
-                        if obj["index"] != 0
+                        for obj in objects if obj["index"] != 0
                     }
                     reach = _bfs_reachable_3d(
                         mc_terrain, mc_npc_positions, mc_elev,
                         px - mc_ox, py - mc_oy, mc_player_level,
                         width=mc_w, height=mc_h,
+                        max_steps=MAX_REACH_STEPS,
                     )
-                    # Translate mc-grid → viewport-local
-                    dx = mc_ox - vp_x
-                    dy = mc_oy - vp_y
-                    reach_3d = {
-                        (gx + dx, gy + dy): s
+                    reachable_tiles = {
+                        (gx + mc_ox, gy + mc_oy): s
                         for (gx, gy), s in reach.items()
-                        if 0 <= gx + dx < vp_w and 0 <= gy + dy < vp_h
                     }
+                    reach_3d_ok = True
 
-    if reach_3d is not None:
-        reachable_tiles = reach_3d
-    else:
-        npc_positions: set[tuple[int, int]] = {
-            (obj["local_x"], obj["local_y"])
-            for obj in visible_objects if obj["index"] != 0
-        }
-        reachable_tiles = _bfs_flood_fill(
-            vp_terrain, player_grid_x, player_grid_y,
-            npc_positions, vp_w, vp_h,
-        )
-
-    # Annotate each object with reachability (min BFS steps to any adjacent tile)
-    for o in obj_info:
-        lx, ly = o["x"] - vp_x, o["y"] - vp_y
-        best_steps = None
-        for dx, dy in ((0, -1), (0, 1), (-1, 0), (1, 0)):
-            adj = (lx + dx, ly + dy)
-            if adj in reachable_tiles:
-                s = reachable_tiles[adj]
-                if best_steps is None or s < best_steps:
-                    best_steps = s
-        if best_steps is not None:
-            o["reachable"] = True
-            o["steps"] = best_steps
+    if not reach_3d_ok:
+        # 2D fallback on raw u16 terrain. Chunked maps without BDHC fall
+        # through the viewport; indoor maps use the full chunk so 15x15
+        # viewport cropping doesn't hide reachable NPCs on larger floors.
+        if chunked:
+            flood_terrain = vp_terrain
+            flood_w, flood_h = vp_w, vp_h
+            flood_ox, flood_oy = vp_x, vp_y
+            local_px_flood, local_py_flood = player_grid_x, player_grid_y
         else:
-            o["reachable"] = False
-            o["distance"] = abs(o["x"] - px) + abs(o["y"] - py)
+            flood_terrain = terrain
+            flood_h = len(terrain)
+            flood_w = len(terrain[0]) if flood_h > 0 else 0
+            flood_ox, flood_oy = origin_x, origin_y
+            local_px_flood = px - origin_x
+            local_py_flood = py - origin_y
 
-    # Split into reachable (by steps) and unreachable (by Manhattan distance)
-    reachable_objs = sorted(
-        (o for o in obj_info if o.get("reachable", False)),
-        key=lambda o: o.get("steps", 0),
+        if 0 <= local_px_flood < flood_w and 0 <= local_py_flood < flood_h:
+            npc_positions = {
+                (obj["x"] - flood_ox, obj["y"] - flood_oy)
+                for obj in objects if obj["index"] != 0
+            }
+            reach2d = _bfs_flood_fill(
+                flood_terrain, local_px_flood, local_py_flood,
+                npc_positions, flood_w, flood_h,
+                max_steps=MAX_REACH_STEPS,
+            )
+            reachable_tiles = {
+                (lx + flood_ox, ly + flood_oy): s
+                for (lx, ly), s in reach2d.items()
+            }
+
+    interactibles, unreachable_interactibles = _build_interactibles(
+        emu, map_id, objects, reachable_tiles, px, py,
     )
-    unreachable_objs = sorted(
-        (o for o in obj_info if not o.get("reachable", False)),
-        key=lambda o: o.get("distance", 0),
-    )
 
-    # Warp destinations within viewport
-    all_warps = read_warps_from_rom(emu, map_id)
-    warp_info = []
-    for w in all_warps:
-        if vp_x <= w["x"] < vp_x + vp_w and vp_y <= w["y"] < vp_y + vp_h:
-            dest = lookup_map_name(w["dest_map"])
-            warp_info.append({
-                "x": w["x"], "y": w["y"],
-                "dest": dest["name"],
-            })
+    map_str_with_axes = _render_with_axes(map_str, vp_x, vp_y, vp_w, vp_h)
 
-    map_body = header + "\n\n" + map_str
-    if unreachable_objs:
+    map_body = header + "\n\n" + map_str_with_axes
+    if unreachable_interactibles:
         map_body += (
-            f"\nUnreachable: {len(unreachable_objs)} object(s) walled off — "
-            f"see `unreachable_objects`"
+            f"\nUnreachable: {len(unreachable_interactibles)} interactible(s) — "
+            f"see `unreachable_interactibles`"
         )
 
     result: dict[str, Any] = {
@@ -1375,9 +1610,8 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
             "grid_x": player_grid_x,
             "grid_y": player_grid_y,
         },
-        "objects": reachable_objs,
-        "unreachable_objects": unreachable_objs,
-        "warps": warp_info,
+        "interactibles": interactibles,
+        "unreachable_interactibles": unreachable_interactibles,
     }
     if elevation is not None and player_elev is not None:
         result["player"]["elevation"] = player_elev

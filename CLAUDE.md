@@ -58,8 +58,8 @@ Checkpoints share a unified ring buffer (300 slots) with the melonDS MCP's own c
 
 **CRITICAL: Do not rely on screenshots for spatial reasoning in the overworld.** The isometric/overhead camera makes it very difficult to judge tile positions, room boundaries, and exits from pixel images. Instead:
 
-- **Use `view_map`** to get a full map with terrain, player, NPCs, and **warp destinations** — all read live from the emulator. The `warps` list shows every door/stair exit with its destination name and tile coordinates.
-- **Use warp coordinates from `view_map` with `navigate_to`** to enter buildings — the (x, y) from a warp entry can be passed directly to `navigate_to` for seamless transitions.
+- **Use `view_map`** to get a 15×15 local grid (with X-axis ruler + Y labels showing absolute coords) plus a full `interactibles` list of every actionable POI within 150 BFS steps — NPCs, trainers, signs, items, berries, and warps — each with a stable `id`, semantic `label`, coordinates, `steps` distance, and a kind-specific `preview`. Adjacent warp tiles with the same destination are merged into single entries. POIs that exist but aren't reachable (walled off, behind an uncleared HM, beyond 150 steps) go in `unreachable_interactibles` with a Manhattan `distance`.
+- **Target-based navigation is the default.** Prefer `navigate_to(poi="obj:5")` or `navigate_to(poi="warp:2")` over coordinate lookup — the tool resolves the POI from a live `view_map` and runs the default interaction (step onto warps; face+A for NPCs / signs / items / berries). Returns the normal nav result plus `poi_resolved: {id, kind, x, y, label}`. Use `navigate_to(x, y)` only when you need to walk somewhere unnamed (a specific tile, a frontier, a fishing spot).
 - **Use `navigate` or `navigate_to`** to walk paths — they verify each step and stop on collision. `navigate` auto-trims paths at door/stair transitions. `navigate_to` auto-enters adjacent walk-into doors (0x69, 0x6E). **`navigate_to` auto-Surfs across water, climbs Rock Climb walls, and descends/ascends Waterfalls** when the obstacle path is shorter — returns `obstacles_cleared` in the response. Surf requires the Fen Badge; Rock Climb requires the Icicle Badge; Waterfall requires the Beacon Badge (each + a party Pokemon with the move). Movement speed auto-adjusts to 8f/tile while surfing. Rock Climb and Waterfall traverse multiple tiles in one animation (path steps auto-consumed). **Rock Smash rocks, Cut trees, and Strength boulders are treated as impassable objects** — Renegade Platinum has no mandatory Rock Smash or Cut obstacles (remaining rocks/trees are decorative and walked around). Strength is only used for the Distortion World boulder puzzle, handled manually with `press_buttons` when we reach it. If a mandatory Rock Smash or Cut obstacle is ever discovered, re-enabling auto-clear is a one-line change in `nav_constants.py` (add the GFX id to `CLEARABLE_OBSTACLES`).
 - **When stuck navigating, ask Michael for visual help** rather than brute-forcing positions.
 - Screenshots are fine for reading dialogue, menus, and battle screens — just not for spatial navigation.
@@ -275,8 +275,8 @@ See GAME_HISTORY.md for full details (defeated trainers, story progress, box con
 ## Quick Reference: Common Workflows
 
 ### Entering a new area
-1. `view_map` — see the map layout, NPCs, exits, and **warp destinations** with coordinates
-2. `navigate_to(x, y)` — use warp coordinates from `view_map` to enter buildings directly
+1. `view_map` — returns a 15×15 local grid + a full `interactibles` list (NPCs, signs, items, warps) within 150 BFS steps. Pick a target by `id`.
+2. `navigate_to(poi="warp:N")` — path to the POI and fire its default interaction. For NPCs use `poi="obj:N"`; for an unnamed tile, `navigate_to(x, y)`.
 
 ### Before/during battle
 1. `read_battle` — enemy species, types, ability, stats, moves, HP

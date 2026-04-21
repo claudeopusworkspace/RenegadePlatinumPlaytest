@@ -622,6 +622,7 @@ def _flood_fill_level(
     terrain_info: list, npc_set: set, elevation: dict,
     start_x: int, start_y: int, current_level: int,
     width: int = 32, height: int = 32,
+    max_steps: int | None = None,
 ) -> tuple[dict[tuple[int, int], int],
            dict[object, tuple[int, tuple[int, int], int]]]:
     """Flood-fill restricted to one elevation level.
@@ -635,6 +636,9 @@ def _flood_fill_level(
       (e.g. a bridge-over-ground overlap tile).
 
     Uses the same level-compatibility rules as ``_bfs_pathfind_level``.
+
+    When ``max_steps`` is given, the flood stops expanding past that
+    distance (measured from the start tile on this level).
     """
     if not (0 <= start_x < width and 0 <= start_y < height):
         return {}, {}
@@ -699,6 +703,8 @@ def _flood_fill_level(
 
     while queue:
         x, y, d = queue.popleft()
+        if max_steps is not None and d >= max_steps:
+            continue
         for dx, dy, direction in BFS_MOVES:
             nx, ny = x + dx, y + dy
             if not (0 <= nx < width and 0 <= ny < height):
@@ -812,6 +818,7 @@ def _bfs_reachable_3d(
     start_x: int, start_y: int, start_level: int,
     width: int = 32, height: int = 32,
     timeout: float = 1.5,
+    max_steps: int | None = None,
 ) -> dict[tuple[int, int], int]:
     """Hierarchical flood-fill across elevation levels via ramp transitions.
 
@@ -823,6 +830,11 @@ def _bfs_reachable_3d(
     most once across the whole search, bounded by O(tiles * levels). The
     ``timeout`` parameter caps wall-clock time — default 1.5s is enough for
     a Cycling-Road-sized 5x5-chunk grid and keeps ``view_map`` responsive.
+
+    When ``max_steps`` is given, both the per-level floods and the ramp
+    transition enqueue respect it: tiles farther than the cap are omitted
+    and transitions whose entry distance already exceeds the cap are not
+    followed.
     """
     deadline = time.monotonic() + timeout
     reach: dict[tuple[int, int], int] = {}
@@ -840,12 +852,16 @@ def _bfs_reachable_3d(
             break
 
         sx, sy, level, base_steps = work.popleft()
+        level_budget = None if max_steps is None else max(0, max_steps - base_steps)
         level_reach, level_transitions = _flood_fill_level(
             terrain_info, npc_set, elevation,
             sx, sy, level, width=width, height=height,
+            max_steps=level_budget,
         )
         for pos, s in level_reach.items():
             total = base_steps + s
+            if max_steps is not None and total > max_steps:
+                continue
             prev = reach.get(pos)
             if prev is None or total < prev:
                 reach[pos] = total
@@ -854,8 +870,11 @@ def _bfs_reachable_3d(
             seed = (rx, ry, other_level)
             if seed in visited_level_starts:
                 continue
+            new_base = base_steps + steps_to_t
+            if max_steps is not None and new_base > max_steps:
+                continue
             visited_level_starts.add(seed)
-            work.append((rx, ry, other_level, base_steps + steps_to_t))
+            work.append((rx, ry, other_level, new_base))
 
     return reach
 

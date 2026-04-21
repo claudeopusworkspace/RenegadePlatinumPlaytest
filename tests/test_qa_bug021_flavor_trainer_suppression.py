@@ -65,9 +65,10 @@ class TestQaBug021ViewMapSuppression:
         load_state(emu, "qa_session15_route211_west_entry")
         emu.advance_frames(120)
 
-        # Walk east so Louis enters the 32x32 viewport. Start state is at
-        # (352, 531); Louis is at (377, 529). Navigate bumps player far
-        # enough right that (377, 529) falls inside origin (358, 517).
+        # Walk east so Louis enters the viewport. Start state is at
+        # (352, 531); Louis is at (377, 529). The 150-step BFS radius is
+        # wider than the 15x15 render viewport, so we still need to be
+        # close enough for BFS to reach him.
         from renegade_mcp.navigation import navigate_to
         navigate_to(emu, 374, 533, flee_encounters=True)
         emu.advance_frames(60)
@@ -75,25 +76,30 @@ class TestQaBug021ViewMapSuppression:
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
 
-        all_objs = result["objects"] + result.get("unreachable_objects", [])
+        all_entries = (
+            result["interactibles"] + result.get("unreachable_interactibles", [])
+        )
         louis = next(
-            (o for o in all_objs if o.get("x") == 377 and o.get("y") == 529),
+            (e for e in all_entries if e.get("x") == 377 and e.get("y") == 529),
             None,
         )
         assert louis is not None, (
-            f"Expected Hiker at (377, 529) in viewport objects, got: "
-            f"{[(o.get('x'), o.get('y'), o.get('name')) for o in all_objs]}"
+            f"Expected Hiker at (377, 529) in interactibles, got: "
+            f"{[(e.get('x'), e.get('y'), e.get('label')) for e in all_entries]}"
         )
-        assert louis.get("flavor_npc") is True, (
-            f"Expected flavor_npc=True, got: {louis}"
+        assert louis["kind"] == "npc", (
+            f"Flavor trainer must be reclassified as plain npc, got kind={louis['kind']}"
         )
-        # Trainer metadata must be fully suppressed — callers keying off
-        # `trainer` / `defeated` should not see stale values.
-        assert "trainer" not in louis
-        assert "trainer_id" not in louis
-        assert "defeated" not in louis
-        # Sprite-class name is still informative for display.
-        assert louis.get("name") == "Hiker"
+        preview = louis["preview"]
+        assert preview.get("flavor_npc") is True, (
+            f"Expected flavor_npc=True in preview, got: {preview}"
+        )
+        # Trainer metadata must be fully suppressed so callers keying off
+        # trainer_id / defeated don't see stale values.
+        assert "trainer_id" not in preview
+        assert "defeated" not in preview
+        # Sprite-class label is still informative for display.
+        assert louis["label"] == "Hiker"
 
     def test_real_trainers_still_report_trainer_metadata(
         self, emu: EmulatorClient,
@@ -105,12 +111,16 @@ class TestQaBug021ViewMapSuppression:
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
 
-        all_objs = result["objects"] + result.get("unreachable_objects", [])
+        all_entries = (
+            result["interactibles"] + result.get("unreachable_interactibles", [])
+        )
         alexandra = next(
-            (o for o in all_objs if o.get("trainer_id") == 76),
+            (e for e in all_entries
+             if e.get("preview", {}).get("trainer_id") == 76),
             None,
         )
         assert alexandra is not None, "Alexandra should still be a trainer"
-        assert alexandra.get("trainer") is True
-        assert alexandra.get("defeated") is False
-        assert "flavor_npc" not in alexandra
+        assert alexandra["kind"] == "trainer"
+        preview = alexandra["preview"]
+        assert preview.get("defeated") is False
+        assert "flavor_npc" not in preview

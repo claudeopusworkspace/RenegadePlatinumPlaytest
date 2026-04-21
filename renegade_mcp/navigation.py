@@ -725,11 +725,21 @@ def navigate_manual(emu: EmulatorClient, directions_str: str, flee_encounters: b
 
 
 def navigate_to(
-    emu: EmulatorClient, target_x: int, target_y: int,
+    emu: EmulatorClient,
+    target_x: int = -1, target_y: int = -1,
     path_choice: str | None = None,
     flee_encounters: bool = False,
+    poi: str | None = None,
 ) -> dict[str, Any]:
-    """Pathfind to target tile using BFS. Obstacle-aware with dual pathfinding.
+    """Pathfind to target tile or POI using BFS. Obstacle-aware with dual pathfinding.
+
+    Two modes:
+    - **Coordinate mode**: pass (target_x, target_y) to walk to a specific tile.
+    - **POI mode**: pass `poi` — an id from `view_map`'s ``interactibles`` list
+      (e.g. ``"obj:5"`` or ``"warp:2"``). The tool resolves the POI from a live
+      ``view_map`` call, pathfinds to the POI's ``interaction_x/y``, and
+      dispatches the default interaction: step onto warp tiles, face+A for
+      NPCs / signs / items / berries.
 
     Auto-traverses water (Surf), Rock Climb walls, and Waterfall tiles when
     the obstacle path is shorter than the clean path and the party has the
@@ -745,12 +755,28 @@ def navigate_to(
     returned to the caller since they can't be fled.
 
     Args:
-        target_x, target_y: Target tile coordinates.
+        target_x, target_y: Target tile coordinates (coordinate mode).
         path_choice: None (default — evaluate and ask if obstacles involved),
                      "obstacle" (take the path through obstacles),
                      "clean" (take the obstacle-free path).
         flee_encounters: If True, auto-flee wild battles and resume navigation.
+        poi: Interactible id (e.g. "obj:5", "warp:2") from ``view_map``
+             output. Mutually exclusive with (target_x, target_y).
     """
+    has_xy = target_x >= 0 and target_y >= 0
+    has_poi = poi is not None
+    if has_xy and has_poi:
+        return {"error": "Provide (target_x, target_y) OR poi, not both."}
+    if not has_xy and not has_poi:
+        return {"error": "Provide (target_x, target_y) or poi."}
+
+    if has_poi:
+        return _navigate_to_poi(
+            emu, poi,  # type: ignore[arg-type]
+            path_choice=path_choice,
+            flee_encounters=flee_encounters,
+        )
+
     hold = _get_move_hold(emu)
     if not flee_encounters:
         return _navigate_to_impl(emu, target_x, target_y, path_choice=path_choice, hold_frames=hold)
@@ -810,6 +836,77 @@ def navigate_to(
         result["flee_log"] = flee_log
         result["encounters_fled"] = sum(1 for e in flee_log if e.get("fled"))
 
+    return result
+
+
+def _navigate_to_poi(
+    emu: EmulatorClient, poi_id: str,
+    path_choice: str | None = None,
+    flee_encounters: bool = False,
+) -> dict[str, Any]:
+    """Resolve a POI from live view_map and dispatch the default interaction.
+
+    Warps: pathfind onto the interaction tile (the existing warp-step handling
+    in _navigate_to_impl activates the transition).
+    NPCs / signs / items / berries: hand off to interact_with with the POI's
+    object_index so the standard face+A flow runs.
+    """
+    # Lazy import — view_map lives in map_state, which also imports from this
+    # module transitively; keep it local to avoid circular-import surprises.
+    from renegade_mcp.map_state import view_map
+
+    vmap = view_map(emu)
+    if "error" in vmap:
+        return {"error": f"Could not resolve POI '{poi_id}': {vmap['error']}"}
+
+    all_entries = (
+        vmap.get("interactibles", []) + vmap.get("unreachable_interactibles", [])
+    )
+    entry = next((e for e in all_entries if e.get("id") == poi_id), None)
+    if entry is None:
+        return {
+            "error": f"POI '{poi_id}' not found in current map",
+            "available_ids": [e["id"] for e in all_entries],
+        }
+
+    if "steps" not in entry:
+        # Present in unreachable list — surface the reason so the caller
+        # can decide whether to move closer or pick a different target.
+        return {
+            "error": (
+                f"POI '{poi_id}' ({entry.get('label')}) is not currently "
+                f"reachable (Manhattan distance {entry.get('distance', '?')})."
+            ),
+            "poi": entry,
+        }
+
+    resolved = {
+        "id": poi_id,
+        "kind": entry["kind"],
+        "x": entry["x"], "y": entry["y"],
+        "label": entry.get("label"),
+    }
+
+    if entry["kind"] == "warp":
+        ix, iy = entry["interaction_x"], entry["interaction_y"]
+        result = navigate_to(
+            emu, ix, iy,
+            path_choice=path_choice, flee_encounters=flee_encounters,
+        )
+        result["poi_resolved"] = resolved
+        return result
+
+    # Object-style interaction — hand off to interact_with.
+    obj_idx = entry.get("preview", {}).get("object_index")
+    if obj_idx is None:
+        return {
+            "error": f"POI '{poi_id}' has kind={entry['kind']!r} but no object_index",
+            "poi": entry,
+        }
+
+    from renegade_mcp.interaction import interact_with
+    result = interact_with(emu, object_index=obj_idx, flee_encounters=flee_encounters)
+    result["poi_resolved"] = resolved
     return result
 
 

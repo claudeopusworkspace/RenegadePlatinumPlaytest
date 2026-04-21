@@ -90,25 +90,40 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     def view_map(level: int = -1) -> dict[str, Any]:
-        """Show ASCII map of current area with terrain, player position, and NPCs.
+        """Show ASCII map of current area with terrain, player position, and interactibles.
 
-        Player-centered viewport: 32x32 grid centered on the player, loading
+        Player-centered viewport: 15x15 grid centered on the player, loading
         adjacent chunks as needed on overworld maps. Indoor/small maps use compact
-        content-fitted rendering (no void padding).
+        content-fitted rendering (no void padding). An X-axis ruler (last digit
+        of absolute X per column) and a Y column on the left give absolute
+        coordinate anchors alongside the glyphs.
 
         Header includes origin:(x,y) WxH — the global coordinate of the top-left
         grid corner and viewport dimensions. Convert grid position to global coords:
         global = origin + grid_pos. Player dict includes grid_x/grid_y.
 
-        Warp coordinates from the warps list can be passed directly to navigate_to.
+        The `interactibles` list enumerates every actionable POI within 150 BFS
+        steps of the player — NPCs, trainers, signs, items, berries, and warps.
+        Each entry has:
+          - `id` (e.g. "obj:5", "warp:2") — stable within a call; pass to
+            `navigate_to(poi=id)` to path there and run the default interaction.
+          - `kind`: npc / trainer / sign / item / berry / object / warp.
+          - `label`: human name (trainer class, NPC sprite class, or "to <dest>").
+          - `x`, `y`: POI's own global coords.
+          - `interaction_x`, `interaction_y`: tile the player stands on (a
+            4-adjacent tile for NPCs; the warp tile itself for warps).
+          - `face`: direction to face the POI (None for warps).
+          - `steps`: BFS distance from player to the interaction tile.
+          - `preview`: kind-specific dict (trainer_id/trainer_class/defeated,
+            dest_map_id/dest_map_name for warps, object_index for dispatch).
 
-        Objects/NPCs are split into two lists by BFS reachability from the player:
-        `objects` (BFS-reachable, sorted by step count) and `unreachable_objects`
-        (walled off, sorted by Manhattan distance). Use `objects` when planning
-        `interact_with` or `navigate_to` calls — unreachable targets will fail.
-        Trainer NPCs show [defeated] in label, plus trainer_id and defeated fields
-        (reads VarsFlags bitfield from save RAM). Works for regular trainers; gym
-        leaders/rivals use separate story flags.
+        Adjacent warp tiles sharing a destination are merged into one entry
+        (doors, gate strips); `preview.merged_tile_count` reports the size.
+
+        Objects/warps that exist but cannot be reached go into
+        `unreachable_interactibles` with a Manhattan `distance` instead of
+        `steps`. The map body appends an "Unreachable: N" note when that list
+        is non-empty.
 
         On 3D maps, shows elevation levels (0-9), ramps (/ \\), bridges (n*),
         and directional blocks (] [). Pass level=N to isolate a single level.
@@ -174,12 +189,23 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     @renegade_tool
-    def navigate_to(x: int, y: int, path_choice: str | None = None, flee_encounters: bool = False) -> dict[str, Any]:
-        """Pathfind to a target tile using BFS, then walk there automatically.
+    def navigate_to(
+        x: int = -1, y: int = -1,
+        path_choice: str | None = None,
+        flee_encounters: bool = False,
+        poi: str | None = None,
+    ) -> dict[str, Any]:
+        """Pathfind to a target tile or POI using BFS, then walk there automatically.
 
-        THIS IS THE DEFAULT NAVIGATION TOOL. Use this whenever you need to move
-        to a specific tile — it reads the terrain, avoids walls and NPCs, and
-        finds the shortest path. Use view_map to find target coordinates.
+        THIS IS THE DEFAULT NAVIGATION TOOL. Two modes:
+
+        - **POI mode** (preferred when targeting something named): pass
+          `poi="obj:5"` or `poi="warp:2"` — an id from `view_map`'s
+          `interactibles` list. The tool resolves the POI from a live view_map,
+          walks to its `interaction_x/y`, and fires the default interaction:
+          step onto warps, face+A for NPCs / signs / items / berries. Returns
+          the normal nav result plus `poi_resolved: {id, kind, x, y, label}`.
+        - **Coordinate mode**: pass x and y. Same pathfinding, no interaction.
 
         HM obstacle auto-clear: when water (Surf), Rock Climb walls, or Waterfall
         tiles block the shortest path and the party has the required move + badge,
@@ -218,18 +244,25 @@ def create_server() -> FastMCP:
         Handles multi-chunk overworld maps and door/stair transitions.
 
         Args:
-            x: Target X coordinate (local or global). Use view_map to find these.
-            y: Target Y coordinate (local or global).
+            x: Target X coordinate (coordinate mode). Default -1 (unused).
+            y: Target Y coordinate (coordinate mode). Default -1 (unused).
             path_choice: None (default — auto-clear Rock Smash/Cut; ask for terrain),
                          "obstacle" (force the obstacle path),
                          "clean" (force the obstacle-free path).
             flee_encounters: If True, auto-flee wild battles and resume navigation.
                 Trainer battles (detected by pre-battle dialogue) still halt for the caller.
+            poi: Interactible id from view_map (e.g. "obj:5", "warp:2").
+                Mutually exclusive with (x, y).
         """
         from renegade_mcp.navigation import navigate_to as _navigate_to
 
         emu = get_client()
-        return _navigate_to(emu, x, y, path_choice=path_choice, flee_encounters=flee_encounters)
+        return _navigate_to(
+            emu, x, y,
+            path_choice=path_choice,
+            flee_encounters=flee_encounters,
+            poi=poi,
+        )
 
     @mcp.tool()
     @renegade_tool
@@ -252,7 +285,9 @@ def create_server() -> FastMCP:
         target, then re-navigates from current position to complete the interaction.
 
         Args:
-            object_index: The object's index from the view_map objects list. Default -1 (unused).
+            object_index: The MapObject array index (read it from an interactible's
+                `preview.object_index` field in `view_map`'s output, or prefer
+                `navigate_to(poi=...)` which dispatches this for you). Default -1 (unused).
             x: Target tile X coordinate (global). Use with y for static tiles.
             y: Target tile Y coordinate (global). Use with x for static tiles.
             flee_encounters: If True, auto-flee wild battles encountered while walking to the target.

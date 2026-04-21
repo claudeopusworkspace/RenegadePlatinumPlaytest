@@ -21,15 +21,15 @@ class TestViewMap:
     """ASCII map rendering from memory/ROM."""
 
     def test_indoor_map(self, emu: EmulatorClient):
-        """Indoor Pokemon Center: returns grid, player, NPCs, warps."""
+        """Indoor map: returns grid, player, interactibles, unreachable list."""
         load_state(emu, "eterna_city_shiny_swinub_in_party")
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
         assert "map" in result
         assert "map_id" in result
         assert "player" in result
-        assert "objects" in result
-        assert "warps" in result
+        assert "interactibles" in result
+        assert "unreachable_interactibles" in result
         assert len(result["map"]) > 0
 
     def test_player_has_grid_position(self, emu: EmulatorClient):
@@ -45,32 +45,31 @@ class TestViewMap:
         assert "facing" in player
 
     def test_warps_have_destinations(self, emu: EmulatorClient):
-        """Warps include destination names and coordinates."""
+        """Warps appear as kind=warp interactibles with dest_map_name preview."""
         load_state(emu, "eterna_city_shiny_swinub_in_party")
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
-        assert len(result["warps"]) > 0
-        for warp in result["warps"]:
+        warps = [e for e in result["interactibles"] if e["kind"] == "warp"]
+        assert len(warps) > 0
+        for warp in warps:
             assert "x" in warp
             assert "y" in warp
-            assert "dest" in warp
+            assert warp["preview"].get("dest_map_name")
 
-    def test_objects_sorted_by_distance(self, emu: EmulatorClient):
-        """NPCs/objects are sorted nearest first."""
+    def test_interactibles_sorted_by_steps(self, emu: EmulatorClient):
+        """Reachable interactibles are sorted nearest first by BFS steps."""
         load_state(emu, "eterna_city_shiny_swinub_in_party")
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
-        objects = result["objects"]
-        assert len(objects) >= 2, "Pokemon Center should have multiple objects"
-        # Reachable objects should have increasing step counts
-        reachable = [o for o in objects if o.get("reachable")]
-        assert len(reachable) >= 2, "Should have multiple reachable objects"
-        for i in range(len(reachable) - 1):
-            steps_a = reachable[i].get("steps", 0)
-            steps_b = reachable[i + 1].get("steps", 0)
-            assert steps_a <= steps_b, (
-                f"Objects not sorted: {reachable[i]['name']} ({steps_a}) "
-                f"before {reachable[i+1]['name']} ({steps_b})"
+        entries = result["interactibles"]
+        assert len(entries) >= 2, "Pokemon Center should have multiple interactibles"
+        for e in entries:
+            assert "steps" in e, f"reachable entry missing steps: {e}"
+        for i in range(len(entries) - 1):
+            assert entries[i]["steps"] <= entries[i + 1]["steps"], (
+                f"Interactibles not sorted: {entries[i]['label']} "
+                f"({entries[i]['steps']}) before {entries[i+1]['label']} "
+                f"({entries[i+1]['steps']})"
             )
 
     def test_outdoor_multi_chunk(self, emu: EmulatorClient):
@@ -173,70 +172,63 @@ class TestFr006FloorLegend:
 # ---------------------------------------------------------------------------
 
 class TestFr007ReachableSplit:
-    """view_map must expose separate reachable/unreachable object lists so
-    callers can plan interact_with / navigate_to without filtering a mixed
-    list. Previously everything lived in `objects` with a `reachable` bool,
-    which was easy to miss when planning from the ASCII output alone."""
+    """view_map must expose separate reachable/unreachable lists so callers
+    can plan `navigate_to(poi=...)` without filtering a mixed list. The
+    `steps` field is present iff the interactible is reachable; unreachable
+    entries carry a Manhattan `distance` instead."""
 
-    def test_objects_contains_only_reachable(self, emu: EmulatorClient):
-        """Every entry in `objects` has reachable=True."""
+    def test_interactibles_have_steps(self, emu: EmulatorClient):
+        """Every entry in `interactibles` has a BFS `steps` field."""
         load_state(emu, "eterna_city_shiny_swinub_in_party")
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
-        assert len(result["objects"]) > 0
-        for o in result["objects"]:
-            assert o.get("reachable") is True, (
-                f"object in `objects` must be reachable, got: {o}"
-            )
+        assert len(result["interactibles"]) > 0
+        for e in result["interactibles"]:
+            assert "steps" in e, f"reachable entry missing steps: {e}"
+            assert "distance" not in e
 
-    def test_unreachable_objects_key_always_present(self, emu: EmulatorClient):
-        """`unreachable_objects` is a list — empty when everything is reachable."""
+    def test_unreachable_list_always_present(self, emu: EmulatorClient):
+        """`unreachable_interactibles` is a list — empty when everything is reachable."""
         load_state(emu, "eterna_city_shiny_swinub_in_party")
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
-        assert "unreachable_objects" in result
-        assert isinstance(result["unreachable_objects"], list)
-        for o in result["unreachable_objects"]:
-            assert o.get("reachable") is False, (
-                f"entry in unreachable_objects must have reachable=False, got: {o}"
-            )
+        assert "unreachable_interactibles" in result
+        assert isinstance(result["unreachable_interactibles"], list)
+        for e in result["unreachable_interactibles"]:
+            assert "distance" in e
+            assert "steps" not in e
 
     def test_unreachable_split_in_walled_area(self, emu: EmulatorClient):
         """Galactic HQ has rooms walled off by interior structure — when any
-        object ends up BFS-unreachable it should appear in
-        unreachable_objects, not objects, and the map string should surface a
-        one-liner pointer."""
+        POI ends up BFS-unreachable it should appear in
+        unreachable_interactibles with Manhattan distance, and the map body
+        must surface a one-liner pointer."""
         load_state(emu, "eterna_galactic_hq_pre_jupiter")
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
 
-        unreachable = result["unreachable_objects"]
+        unreachable = result["unreachable_interactibles"]
         if not unreachable:
-            # Not all HQ floors have visible but walled-off objects in this
-            # save; if the viewport happens to expose none, the invariant
-            # still holds (everything in `objects` is reachable). Skip the
-            # stronger assertions for this save.
+            # Not all HQ floors have walled-off POIs in this save; skip the
+            # stronger assertions if the viewport happens to expose none.
             return
 
-        for o in unreachable:
-            assert o.get("reachable") is False
-            # unreachable entries carry Manhattan distance, not BFS steps
-            assert "distance" in o
-            assert "steps" not in o
+        for e in unreachable:
+            assert "distance" in e
+            assert "steps" not in e
 
-        # Map string must surface the unreachable count so a reader notices.
         assert "Unreachable:" in result["map"]
 
-    def test_objects_and_unreachable_disjoint(self, emu: EmulatorClient):
-        """A given object must not appear in both lists."""
+    def test_reachable_and_unreachable_disjoint(self, emu: EmulatorClient):
+        """A given POI id must not appear in both lists."""
         load_state(emu, "eterna_galactic_hq_pre_jupiter")
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
-        reachable_idx = {o["index"] for o in result["objects"]}
-        unreachable_idx = {o["index"] for o in result["unreachable_objects"]}
-        assert reachable_idx.isdisjoint(unreachable_idx), (
-            f"indices appeared in both lists: "
-            f"{reachable_idx & unreachable_idx}"
+        reachable_ids = {e["id"] for e in result["interactibles"]}
+        unreachable_ids = {e["id"] for e in result["unreachable_interactibles"]}
+        assert reachable_ids.isdisjoint(unreachable_ids), (
+            f"ids appeared in both lists: "
+            f"{reachable_ids & unreachable_ids}"
         )
 
 
@@ -281,14 +273,14 @@ class TestBug029ElevationReachability:
         _load_frozen(emu, self.SAVE_STATE)
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
-        reachable = {(o["x"], o["y"]) for o in result["objects"]}
-        unreachable = {(o["x"], o["y"]) for o in result["unreachable_objects"]}
+        reachable = {(e["x"], e["y"]) for e in result["interactibles"]}
+        unreachable = {(e["x"], e["y"]) for e in result["unreachable_interactibles"]}
         assert (302, 652) not in reachable, (
             "Pokeball at (302, 652) is under the bridge — should not be "
             "reachable from on-bridge player."
         )
         assert (302, 652) in unreachable, (
-            f"Pokeball at (302, 652) must appear in unreachable_objects; "
+            f"Pokeball at (302, 652) must appear in unreachable_interactibles; "
             f"got unreachable={unreachable}"
         )
 
@@ -298,7 +290,7 @@ class TestBug029ElevationReachability:
         _load_frozen(emu, self.SAVE_STATE)
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
-        reachable = {(o["x"], o["y"]) for o in result["objects"]}
+        reachable = {(e["x"], e["y"]) for e in result["interactibles"]}
         assert (299, 669) in reachable, (
             f"On-bridge Cyclist at (299, 669) should be reachable; "
             f"reachable={reachable}"
@@ -478,4 +470,331 @@ class TestBug008MapName:
         ]
         assert len(unknowns) == 0, (
             f"Found {len(unknowns)} unknown entries: {unknowns[:5]}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Interactibles: new 15x15 + POI schema (FR-008)
+#
+# The view_map overhaul replaces the flat `objects` / `warps` lists with a
+# single `interactibles` list that carries POI ids for target-based nav.
+# These tests cover the schema invariants and the warp-merging helper.
+# ---------------------------------------------------------------------------
+
+
+class TestViewportSize:
+    """Overworld viewport is 15x15 with an axis ruler + Y column labels."""
+
+    def test_outdoor_viewport_is_15_by_15(self, emu: EmulatorClient):
+        load_state(emu, "route211_from_coronet")
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        # Header ends with "<w>x<h>" — verify 15x15 for chunked overworld.
+        lines = result["map"].split("\n")
+        header = lines[0]
+        assert "15x15" in header, f"Expected 15x15 viewport, got header: {header!r}"
+
+    def test_axis_ruler_first_line_after_header(self, emu: EmulatorClient):
+        """Row 0 of the rendered grid should be preceded by an X-ruler whose
+        length equals the viewport width and whose chars are absolute-X
+        last-digits."""
+        load_state(emu, "route211_from_coronet")
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+
+        lines = result["map"].split("\n")
+        # Layout: "Map ... origin:(vx,vy) WxH", blank, ruler, then grid rows.
+        header = lines[0]
+        # origin:(X,Y) — parse X.
+        import re
+        m = re.search(r"origin:\((\d+),(\d+)\) (\d+)x(\d+)", header)
+        assert m is not None, header
+        vp_x, vp_y, vp_w, _ = map(int, m.groups())
+
+        ruler = lines[2]
+        # "    " prefix (4 chars) then w digits.
+        assert ruler.startswith("    "), f"Ruler should start with 4-space pad: {ruler!r}"
+        digits = ruler[4:]
+        assert len(digits) == vp_w, f"Ruler len {len(digits)} != viewport width {vp_w}"
+        expected = "".join(str((vp_x + i) % 10) for i in range(vp_w))
+        assert digits == expected, f"Ruler {digits!r} != expected {expected!r}"
+
+    def test_y_column_labels_align_with_absolute_y(self, emu: EmulatorClient):
+        """Each grid row is prefixed with its absolute Y coord, right-aligned
+        to 3 chars + space."""
+        load_state(emu, "route211_from_coronet")
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+
+        lines = result["map"].split("\n")
+        import re
+        m = re.search(r"origin:\((\d+),(\d+)\) (\d+)x(\d+)", lines[0])
+        assert m is not None
+        _, vp_y, _, vp_h = map(int, m.groups())
+
+        # lines[0]=header, lines[1]=blank, lines[2]=ruler, lines[3..3+vp_h-1]=grid.
+        for i in range(vp_h):
+            row = lines[3 + i]
+            expected_label = f"{vp_y + i:3d} "
+            assert row.startswith(expected_label), (
+                f"Row {i} should start with {expected_label!r}, got {row[:5]!r}"
+            )
+
+
+class TestInteractibleSchema:
+    """Every reachable interactible has the fields needed for POI dispatch."""
+
+    def test_reachable_entry_has_interaction_tile_and_face(self, emu: EmulatorClient):
+        """NPC/sign/item/berry entries must expose interaction_x/y and face."""
+        load_state(emu, "eterna_city_shiny_swinub_in_party")
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        objs = [e for e in result["interactibles"] if e["kind"] != "warp"]
+        assert len(objs) > 0
+        for e in objs:
+            assert "interaction_x" in e
+            assert "interaction_y" in e
+            assert "face" in e
+            assert e["face"] in ("up", "down", "left", "right"), e
+            # interaction tile must be 4-adjacent to the POI
+            dx = e["interaction_x"] - e["x"]
+            dy = e["interaction_y"] - e["y"]
+            assert abs(dx) + abs(dy) == 1, (
+                f"interaction tile should be 4-adjacent; POI ({e['x']},{e['y']}) "
+                f"interaction ({e['interaction_x']},{e['interaction_y']})"
+            )
+
+    def test_warp_entry_has_no_face_and_interaction_equals_poi(
+        self, emu: EmulatorClient,
+    ):
+        """Warps are stepped-onto; interaction_x/y equals x/y and face is None."""
+        load_state(emu, "eterna_city_shiny_swinub_in_party")
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        warps = [e for e in result["interactibles"] if e["kind"] == "warp"]
+        assert len(warps) > 0
+        for w in warps:
+            assert w["face"] is None
+            assert w["interaction_x"] == w["x"]
+            assert w["interaction_y"] == w["y"]
+
+    def test_entry_ids_unique_within_call(self, emu: EmulatorClient):
+        load_state(emu, "route211_from_coronet")
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        all_ids = [
+            e["id"]
+            for e in result["interactibles"] + result["unreachable_interactibles"]
+        ]
+        assert len(all_ids) == len(set(all_ids)), (
+            f"duplicate ids: {sorted(all_ids)}"
+        )
+
+    def test_object_index_in_preview_for_dispatch(self, emu: EmulatorClient):
+        """Every non-warp interactible carries object_index in its preview
+        so navigate_to(poi=...) can dispatch to interact_with."""
+        load_state(emu, "eterna_city_shiny_swinub_in_party")
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        for e in result["interactibles"]:
+            if e["kind"] == "warp":
+                continue
+            assert "preview" in e
+            assert "object_index" in e["preview"], e
+
+    def test_rows_have_no_inter_cell_spaces(self, emu: EmulatorClient):
+        """Grid row body must be contiguous glyphs — no spaces between cells
+        (token-fragmentation finding from "Stuck in the Matrix")."""
+        load_state(emu, "route211_from_coronet")
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        lines = result["map"].split("\n")
+        # Grid rows start on line 3 (after header, blank, ruler).
+        for row in lines[3:18]:
+            # Row format: "YYY XXXXXXX...X" — strip label (4 chars), cells follow.
+            cells = row[4:]
+            # Cells contain no spaces; trailing text after cells may have them.
+            # The 15x15 grid is the first 15 chars after the label.
+            body = cells[:15]
+            assert " " not in body, (
+                f"Row body has inter-cell space: {body!r}"
+            )
+
+
+class TestWarpMerging:
+    """_merge_adjacent_warps: unit tests with synthetic warp data."""
+
+    def test_two_adjacent_warps_same_dest_merge_into_one(self):
+        """Door rendered as two adjacent tiles pointing at the same target."""
+        from renegade_mcp.map_state import _merge_adjacent_warps
+        warps = [
+            {"x": 10, "y": 5, "dest_map": 42, "dest_warp": 0},
+            {"x": 11, "y": 5, "dest_map": 42, "dest_warp": 0},
+        ]
+        reachable = {(10, 5): 3, (11, 5): 4}
+        clusters = _merge_adjacent_warps(warps, reachable, player_x=10, player_y=8)
+        assert len(clusters) == 1
+        c = clusters[0]
+        assert c["reachable"] is True
+        assert len(c["tiles"]) == 2
+        # Nearest-reachable tile is (10, 5) at 3 steps.
+        assert c["interaction_xy"] == (10, 5)
+        assert c["metric"] == 3
+
+    def test_distinct_destinations_stay_separate_even_if_adjacent(self):
+        """Two tiles next to each other going to different maps are two entries."""
+        from renegade_mcp.map_state import _merge_adjacent_warps
+        warps = [
+            {"x": 10, "y": 5, "dest_map": 42, "dest_warp": 0},
+            {"x": 11, "y": 5, "dest_map": 99, "dest_warp": 0},
+        ]
+        reachable = {(10, 5): 3, (11, 5): 3}
+        clusters = _merge_adjacent_warps(warps, reachable, player_x=10, player_y=8)
+        assert len(clusters) == 2
+        dests = sorted(c["dest_map"] for c in clusters)
+        assert dests == [42, 99]
+
+    def test_non_adjacent_warps_same_dest_stay_separate(self):
+        """Two tiles at the same destination but 2+ tiles apart do NOT merge."""
+        from renegade_mcp.map_state import _merge_adjacent_warps
+        warps = [
+            {"x": 10, "y": 5, "dest_map": 42, "dest_warp": 0},
+            {"x": 10, "y": 8, "dest_map": 42, "dest_warp": 0},
+        ]
+        reachable = {(10, 5): 1, (10, 8): 4}
+        clusters = _merge_adjacent_warps(warps, reachable, player_x=10, player_y=6)
+        assert len(clusters) == 2
+
+    def test_unreachable_warp_picks_nearest_by_manhattan(self):
+        """Cluster with no reachable tile returns reachable=False with Manhattan."""
+        from renegade_mcp.map_state import _merge_adjacent_warps
+        warps = [
+            {"x": 10, "y": 5, "dest_map": 42, "dest_warp": 0},
+            {"x": 11, "y": 5, "dest_map": 42, "dest_warp": 0},
+        ]
+        reachable = {}  # nothing reachable
+        clusters = _merge_adjacent_warps(warps, reachable, player_x=5, player_y=5)
+        assert len(clusters) == 1
+        c = clusters[0]
+        assert c["reachable"] is False
+        # Nearest-Manhattan tile is (10, 5) at distance 5.
+        assert c["interaction_xy"] == (10, 5)
+        assert c["metric"] == 5
+
+    def test_mixed_reachable_and_unreachable_in_cluster_prefers_reachable(self):
+        """If any tile in a cluster is reachable, the cluster is reachable."""
+        from renegade_mcp.map_state import _merge_adjacent_warps
+        warps = [
+            {"x": 10, "y": 5, "dest_map": 42, "dest_warp": 0},
+            {"x": 11, "y": 5, "dest_map": 42, "dest_warp": 0},
+            {"x": 12, "y": 5, "dest_map": 42, "dest_warp": 0},
+        ]
+        reachable = {(12, 5): 7}
+        clusters = _merge_adjacent_warps(warps, reachable, player_x=5, player_y=5)
+        assert len(clusters) == 1
+        assert clusters[0]["reachable"] is True
+        assert clusters[0]["interaction_xy"] == (12, 5)
+
+
+class TestMergedTileCountPreview:
+    """Warp interactibles expose merged_tile_count when > 1."""
+
+    def test_eterna_pc_door_merges_two_tiles(self, emu: EmulatorClient):
+        """Indoor map whose entrance door is a 2-tile warp strip."""
+        load_state(emu, "eterna_city_shiny_swinub_in_party")
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        # Find any warp with merged_tile_count set — at least one indoor door
+        # in Eterna PC / mart uses a 2-tile warp.
+        warps = [e for e in result["interactibles"] if e["kind"] == "warp"]
+        merged = [w for w in warps if w["preview"].get("merged_tile_count", 1) > 1]
+        if not merged:
+            # Not every save state places the player near a merged door —
+            # skip if the viewport doesn't expose one.
+            return
+        for w in merged:
+            assert w["preview"]["merged_tile_count"] >= 2
+
+
+# ---------------------------------------------------------------------------
+# navigate_to(poi=...) validation + dispatch
+# ---------------------------------------------------------------------------
+
+
+class TestNavigateToPOIValidation:
+    """Parameter validation — no emu state change."""
+
+    def test_mutual_exclusion_of_xy_and_poi(self, emu: EmulatorClient):
+        from renegade_mcp.navigation import navigate_to
+        r = navigate_to(emu, 10, 10, poi="obj:5")
+        assert "error" in r
+        assert "not both" in r["error"]
+
+    def test_neither_xy_nor_poi_errors(self, emu: EmulatorClient):
+        from renegade_mcp.navigation import navigate_to
+        r = navigate_to(emu)
+        assert "error" in r
+
+    def test_unknown_poi_id_lists_available_ids(self, emu: EmulatorClient):
+        load_state(emu, "eterna_city_shiny_swinub_in_party")
+        from renegade_mcp.navigation import navigate_to
+        r = navigate_to(emu, poi="obj:9999")
+        assert "error" in r
+        assert "available_ids" in r
+        assert isinstance(r["available_ids"], list)
+
+
+class TestNavigateToPOIDispatch:
+    """End-to-end POI dispatch — POI resolves, walks, runs the interaction."""
+
+    def test_warp_poi_activates_transition(self, emu: EmulatorClient):
+        """Picking a warp by POI id walks there and triggers the map transition."""
+        load_state(emu, "eterna_city_shiny_swinub_in_party")
+        from renegade_mcp.map_state import read_player_state, view_map
+        from renegade_mcp.navigation import navigate_to
+
+        start_map, _, _, _ = read_player_state(emu)
+        vmap = view_map(emu)
+        warps = [e for e in vmap["interactibles"] if e["kind"] == "warp"]
+        assert len(warps) > 0, "Need at least one reachable warp for this test"
+        # Pick the nearest warp.
+        warp = warps[0]
+
+        result = navigate_to(emu, poi=warp["id"])
+        assert "error" not in result, f"POI warp failed: {result.get('error')}"
+        assert result.get("poi_resolved", {}).get("kind") == "warp"
+
+        # Either the map changed (transition succeeded) or the nav reached the
+        # warp tile (close enough for this smoke test — the warp may take one
+        # extra frame to fire on some maps).
+        end_map, _, _, _ = read_player_state(emu)
+        reached_warp = (
+            result.get("final", {}).get("x") == warp["x"]
+            and result.get("final", {}).get("y") == warp["y"]
+        )
+        assert end_map != start_map or reached_warp, (
+            f"Warp dispatch neither transitioned nor reached tile: "
+            f"start_map={start_map} end_map={end_map} final={result.get('final')}"
+        )
+
+    def test_npc_poi_runs_face_plus_a(self, emu: EmulatorClient):
+        """Picking an NPC by POI id walks there, faces, and presses A."""
+        load_state(emu, "eterna_city_shiny_swinub_in_party")
+        from renegade_mcp.map_state import view_map
+        from renegade_mcp.navigation import navigate_to
+
+        vmap = view_map(emu)
+        npcs = [
+            e for e in vmap["interactibles"]
+            if e["kind"] in ("npc", "trainer", "sign", "item", "berry")
+        ]
+        assert len(npcs) > 0
+        npc = npcs[0]
+
+        result = navigate_to(emu, poi=npc["id"])
+        assert "error" not in result, f"POI NPC failed: {result.get('error')}"
+        assert result.get("poi_resolved", {}).get("kind") == npc["kind"]
+        # interact_with's result shape includes "target" or "dialogue" on success.
+        assert "target" in result or "dialogue" in result, (
+            f"Expected interact_with result shape, got keys: {list(result.keys())}"
         )

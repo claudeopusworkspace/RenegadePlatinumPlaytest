@@ -215,9 +215,14 @@ class TestInteractWith:
         from renegade_mcp.navigation import interact_with
         from renegade_mcp.map_state import view_map
         vmap = view_map(emu)
-        assert len(vmap["objects"]) > 0, "Expected objects on the map"
-        obj = vmap["objects"][-1]  # farthest object
-        result = interact_with(emu, object_index=obj["index"], flee_encounters=True)
+        non_warps = [e for e in vmap["interactibles"] if e["kind"] != "warp"]
+        assert len(non_warps) > 0, "Expected non-warp interactibles on the map"
+        obj = non_warps[-1]  # farthest
+        result = interact_with(
+            emu,
+            object_index=obj["preview"]["object_index"],
+            flee_encounters=True,
+        )
         assert "error" not in result, f"Interaction should succeed: {result.get('error')}"
 
     @retry_on_rng("test_eterna_city_overworld")
