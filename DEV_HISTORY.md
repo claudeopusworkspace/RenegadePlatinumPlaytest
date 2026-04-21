@@ -4,6 +4,44 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Party sub-menu offsets + reorder_party verify (2026-04-21 session 27)
+
+Short targeted fix session, one commit (`e6513bb`). Playtest instance filed BUG-033: `reorder_party(from=0, to=3)` reported `success: true` but nothing swapped. Grotle at slot 0 knows Cut, Monferno at slot 3.
+
+### BUG-033: `reorder_party` silently reports success when source Pokemon knows a field move
+
+**Root cause verified in decomp** (`src/applications/party_menu/main.c:1793` — `GetContextMenuEntriesForPartyMon`): the overworld party context menu is built as `Summary → [field moves in moveset order] → Switch → Item → Cancel`. The field-move list comes from `sFieldMoves` (main.c:245) — 15 Gen-4 moves (Cut, Fly, Surf, Strength, Defog, Rock Smash, Waterfall, Rock Climb, Flash, Teleport, Dig, Sweet Scent, Chatter, Milk Drink, Softboiled). A move appears as a row iff the Pokemon knows it — independent of whether the move is currently usable in the environment.
+
+Grotle's Cut pushes Switch from row 1 to row 2, so the tool's `down x1 → A` landed on Cut instead. "Can't use Cut here" dialog opened, subsequent D-pad / A presses got absorbed by dialogue text, and the tool returned unchanged party data with `success: true`.
+
+**Two distinct bugs, one repro save** (`bug_reorder_party_fails_silently_with_field_move`):
+1. Cursor nav didn't account for field-move rows pushing Switch / Item down.
+2. Tool never verified the swap actually committed before returning success.
+
+### Fix
+
+- **New `renegade_mcp/party_submenu.py`** — shared helpers consuming a `read_party` mon dict:
+  - `FIELD_MOVES` frozenset (all 15 moves, lowercase).
+  - `count_field_moves(mon)` — total field moves in moveset.
+  - `count_field_moves_before(mon, target_move)` — for `use_fly`'s navigate-to-Fly-row use case.
+  - `switch_row(mon)` → `1 + count_field_moves(mon)`.
+  - `item_row(mon)` → `2 + count_field_moves(mon)`.
+- **`reorder_party.py`** — reads party before the operation, computes `switch_row(source_mon)` for the cursor offset, then after closing menus re-reads and compares `species_id` before/after. If either slot doesn't hold the expected species, returns `success: False` with a diagnostic message naming both sides. Species ID comparison rather than name (name can be a nickname; same-species pairs would slip a name check).
+- **`give_item.py` / `take_item.py`** — replaced the hardcoded `ITEM_OPTION_OFFSET = 2` with `item_row(target_mon)`.
+- **`fly.py`** — consolidated its local `_count_field_moves` onto `count_field_moves_before`. The old local list was missing Flash, Teleport, Dig, Sweet Scent, Chatter, Milk Drink, Softboiled — harmless for Fly's current tests (no party Pokemon with Fly + Teleport in the same moveset), but a latent mismatch now erased.
+- **`teach_tm.py` / `use_item.py`** — inspected, no change needed. TM flow goes bag → USE → YES → party select → auto-advance (no sub-menu). Item flow goes bag → item → USE → party select (no sub-menu).
+
+### Tests
+
+- **18 unit tests** in `tests/test_party_submenu.py` — no emulator, pure dict-shape exercises. Covers empty moveset, non-field moves, single/multiple field moves, case-insensitivity, `target_move` first / last / missing.
+- **1 new integration test** `TestReorderParty::test_swap_when_source_knows_field_move` — loads the repro save, asserts slot 0 knows a field move as precondition, calls `reorder_party(0, 3)`, asserts species IDs actually swap. Pins the regression.
+- The existing two reorder tests use `eterna_city_shiny_swinub_in_party` where slot 0 is Luxio (no field moves), which is why they passed while the bug was live — swapping to a save with a field-move holder was the unlock.
+- Full suite: **516 passed in 2:30 @ N=8**.
+
+### Take-away
+
+The local `_count_field_moves` in `fly.py` was already doing the right thing for its own use case, but the pattern never got lifted to a shared helper. Three tools (`reorder_party`, `give_item`, `take_item`) independently hardcoded a static offset that was only valid when the Pokemon knew zero field moves. Worth a scan for similar "looks constant, actually depends on Pokemon state" offsets in UI drivers. Also a reminder: every UI-driving tool should verify the state actually changed. `give_item` and `take_item` already did; `reorder_party` didn't; now it does.
+
 ## Dev Session: Nav bug parade + pytest owns the fleet (2026-04-21 session 26)
 
 Long session. Ran in parallel with a playtest instance that filed six repro saves as it hit fresh issues in Wayward Cave. Pattern was: playtest instance checkpoints the anomaly, writes repro notes, I diagnose and fix while they keep playing. Six commits landed: `b862449`, `8b024dc`, `5fbeb64`, `11c4c25`, `cf16155`, `bd12380`.
