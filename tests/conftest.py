@@ -34,12 +34,33 @@ sys.path.insert(0, "/workspace/RenegadePlatinumPlaytest")
 _PROJECT_ROOT = Path("/workspace/RenegadePlatinumPlaytest")
 
 
+def _probe_socket(path: Path) -> bool:
+    """True if something is listening on `path` right now.
+
+    Unix domain socket files survive process death as stale filesystem
+    entries, so glob alone can't tell a live fleet from one that was
+    killed with the files left behind. A short `connect()` distinguishes:
+    live → success, stale → ConnectionRefusedError immediately.
+    """
+    import socket as _socket
+    s = _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM)
+    s.settimeout(0.2)
+    try:
+        s.connect(str(path))
+        return True
+    except (ConnectionRefusedError, FileNotFoundError, OSError):
+        return False
+    finally:
+        s.close()
+
+
 def _discover_parallel_test_sockets() -> list[Path]:
-    """Return sorted .melonds_test_bridge_{N}.sock paths that currently exist."""
-    return sorted(
+    """Return sorted .melonds_test_bridge_{N}.sock paths with a live listener."""
+    candidates = sorted(
         _PROJECT_ROOT.glob(".melonds_test_bridge_*.sock"),
         key=lambda p: int(p.stem.rsplit("_", 1)[-1]),
     )
+    return [p for p in candidates if _probe_socket(p)]
 
 
 def _worker_socket() -> Path | None:
