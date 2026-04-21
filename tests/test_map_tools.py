@@ -300,6 +300,39 @@ class TestBug029ElevationReachability:
         )
 
 
+class TestFlatMultiChunkReachability:
+    """Regression: on chunked maps whose BDHC is flat (one height across all
+    chunks), view_map's 2D fallback must flood the full multi-chunk extent,
+    not just the 15x15 render viewport. Otherwise POIs that sit a few tiles
+    outside the viewport get reported as unreachable even though a short
+    walking path exists.
+
+    Repro: Wayward Cave (map 284) with the party following Mira. Player at
+    (42, 53), Mira standing by at (38, 42) — 11 tiles north, well past the
+    viewport top (y=46). Pre-fix view_map put Mira in
+    unreachable_interactibles despite the corridor connecting the two tiles.
+    """
+
+    def test_wayward_cave_mira_reachable(self, emu: EmulatorClient):
+        load_state(emu, "session23_end_with_mira")
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        reachable = {e["id"]: e for e in result["interactibles"]}
+        unreachable_ids = {e["id"] for e in result["unreachable_interactibles"]}
+
+        mira = next(
+            (e for e in result["interactibles"] + result["unreachable_interactibles"]
+             if e.get("label") == "Mira"),
+            None,
+        )
+        assert mira is not None, "Mira NPC must appear in view_map output"
+        assert mira["id"] in reachable, (
+            f"Mira should be reachable from player (she is following and "
+            f"blocking the way); got unreachable={unreachable_ids}"
+        )
+        assert "steps" in reachable[mira["id"]]
+
+
 class TestBug030PathElevationValidator:
     """Regression: the 2D-BFS-fallback path validator rejects paths that
     step between incompatible elevation layers (BUG-030).

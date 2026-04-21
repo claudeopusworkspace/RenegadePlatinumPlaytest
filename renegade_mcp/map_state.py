@@ -1519,6 +1519,7 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
     MAX_REACH_STEPS = 150
     reachable_tiles: dict[tuple[int, int], int] = {}
     reach_3d_ok = False
+    mc_bounds: tuple[int, int, int, int] | None = None  # (ox, oy, w, h)
 
     if chunked:
         from renegade_mcp.pathfinding import (
@@ -1533,6 +1534,7 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
         )
         if mc_result is not None:
             mc_terrain, mc_ox, mc_oy, mc_w, mc_h = mc_result
+            mc_bounds = (mc_ox, mc_oy, mc_w, mc_h)
             mc_elev = _build_multi_chunk_elevation(
                 emu, map_id, mc_terrain, mc_ox, mc_oy, mc_w, mc_h,
             )
@@ -1559,10 +1561,23 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
                     reach_3d_ok = True
 
     if not reach_3d_ok:
-        # 2D fallback on raw u16 terrain. Chunked maps without BDHC fall
-        # through the viewport; indoor maps use the full chunk so 15x15
-        # viewport cropping doesn't hide reachable NPCs on larger floors.
-        if chunked:
+        # 2D fallback on raw u16 terrain. On chunked maps where the BDHC
+        # reported flat terrain (mc_elev is None) but a multi-chunk extent
+        # was still built, flood over that whole extent — otherwise POIs
+        # just outside the 15x15 render viewport would be reported
+        # unreachable even when a short walking path exists (e.g. Mira in
+        # Wayward Cave, 4 tiles north of the viewport top).
+        if chunked and mc_bounds is not None:
+            mc_ox, mc_oy, mc_w, mc_h = mc_bounds
+            flood_terrain = _load_viewport_terrain(
+                terrain_ids, matrix_w, matrix_h,
+                mc_ox, mc_oy, mc_w, mc_h,
+            )
+            flood_w, flood_h = mc_w, mc_h
+            flood_ox, flood_oy = mc_ox, mc_oy
+            local_px_flood = px - mc_ox
+            local_py_flood = py - mc_oy
+        elif chunked:
             flood_terrain = vp_terrain
             flood_w, flood_h = vp_w, vp_h
             flood_ox, flood_oy = vp_x, vp_y
