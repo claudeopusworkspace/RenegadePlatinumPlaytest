@@ -59,3 +59,6 @@ melonds_test_mcp_*.log*
 __pycache__/
 *.pyc
 .venv/
+
+# Claude Code project-local state (scheduled-task lock, local settings)
+.claude/

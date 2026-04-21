@@ -136,33 +136,39 @@ Tests load save states, call implementation functions directly (bypassing MCP pr
 
 ### Dedicated test emulator(s) — decoupled from the live session
 
-Tests run against their own melonDS process(es) so they don't fight the emulator Claude Code is driving for interactive play. Two setups:
-
-**Parallel fleet (preferred, ~5.4× speedup)**:
+Tests run against their own melonDS process(es) so they don't fight the emulator Claude Code is driving for interactive play. **pytest owns the fleet lifecycle by default** — no manual terminal juggling:
 
 ```bash
-# Terminal 1 — start N isolated test emulators (default 8; blocks, Ctrl-C to stop):
-.venv/bin/python scripts/start_test_emulators.py             # N=8 → ~2:30 full suite
-.venv/bin/python scripts/start_test_emulators.py --count 2   # fallback if /dev/shm is 64 MB
-
-# Terminal 2 — pytest auto-detects socket count and fans out:
-.venv/bin/python -m pytest tests/ -v
+.venv/bin/python -m pytest tests/              # auto-spawns 8 emus, runs, tears down
+.venv/bin/python -m pytest --fleet-size=2      # smaller fleet for single-file runs (~4s boot)
+.venv/bin/python -m pytest --fleet-size=0 …    # skip auto-spawn (reuse a pre-booted fleet)
 ```
 
-Each worker gets its own `.workers/worker_{i}/` with a ROM copy + symlinks to shared `savestates/macros/data`, bound to `.melonds_test_bridge_{i}.sock`. `conftest.py`'s `pytest_xdist_auto_num_workers` hook resolves `-n auto` (set in `pytest.ini`) to the number of running sockets — so no manual `-n` flag. CLI `-n N` still wins if you pass it.
+Cold-boot cost at N=8 is ~18s; after that the full suite completes in ~2:30. For many back-to-back invocations, pre-boot a persistent fleet and pytest will reuse it:
+
+```bash
+# Persistent fleet (blocks; Ctrl-C to stop):
+.venv/bin/python scripts/start_test_emulators.py --count 8
+
+# Every subsequent pytest invocation detects live sockets and reuses them
+# WITHOUT tearing them down at session end.
+.venv/bin/python -m pytest tests/
+```
+
+The playthrough emulator (`.melonds_bridge.sock`) is **never** in the fallback search order — tests cannot silently land on the interactive Claude-Code instance. If no test emulator is live and `--fleet-size=0` disables auto-spawn, the fixture fails with an explicit skip.
+
+Each worker gets its own `.workers/worker_{i}/` with a ROM copy + symlinks to shared `savestates/macros/data`, bound to `.melonds_test_bridge_{i}.sock`. `pytest_xdist_auto_num_workers` resolves `-n auto` (set in `pytest.ini`) to the live socket count — no manual `-n` flag needed. CLI `-n N` still wins if you pass it.
 
 **Container requirement** — melonDS's JIT fastmem needs ~17 MB of `/dev/shm` per worker. N=8 needs ~150 MB; our container is started with `--shm-size=8g` to provide headroom. If `/dev/shm` reverts to the Docker default 64 MB, workers SIGBUS on `savestate_load` (see MelonMCP#9) and only N≤2 is viable. Check with `df -h /dev/shm`; restart the container with `--shm-size=8g` if needed.
 
 Staggers in the launcher + conftest are defensive and harmless at any N — leave them.
 
-**Single standalone (legacy / debugging)**:
+**Single standalone (debugging a specific worker manually)**:
 
 ```bash
 .venv/bin/python scripts/start_test_emulator.py     # listens on .melonds_test_bridge.sock
-.venv/bin/python -m pytest tests/ -v                # sequential, ~13 min full suite
+.venv/bin/python -m pytest --fleet-size=0 tests/    # sequential, ~13 min full suite
 ```
-
-When no test sockets exist at all, pytest falls back to the live Claude-Code emulator on `.melonds_bridge.sock`.
 
 ## Tips
 

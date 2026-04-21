@@ -1,16 +1,22 @@
 """Shared fixtures for battle test suite.
 
-These are integration tests that require a running emulator (melonDS or DeSmuME)
-connected via the bridge socket. Start the emulator + bridge first:
+These are integration tests that run against dedicated test melonDS
+instances. conftest manages the fleet lifecycle automatically:
 
-    1. init_emulator (via melonds or desmume MCP)
-    2. load_rom (RenegadePlatinum.nds)
-
-Then run:
     cd /workspace/RenegadePlatinumPlaytest
-    python -m pytest tests/ -v
+    .venv/bin/python -m pytest tests/            # spawns 8 emus, runs, tears down
+    .venv/bin/python -m pytest --fleet-size=2    # smaller fleet for single-file runs
+    .venv/bin/python -m pytest --fleet-size=0    # skip auto-spawn (reuse already-live fleet,
+                                                 # or a standalone .melonds_test_bridge.sock)
 
-Set EMU_BACKEND=desmume or EMU_BACKEND=melonds to force a specific backend.
+If a parallel fleet (.melonds_test_bridge_*.sock) is already live when
+pytest starts, it's reused *without* teardown at session end — letting
+you pre-boot once via `scripts/start_test_emulators.py` and run many
+invocations against it.
+
+The playthrough emulator (`.melonds_bridge.sock`) is deliberately NOT in
+the fallback search order: tests must never be able to silently land on
+the interactive Claude-Code emulator.
 """
 
 from __future__ import annotations
@@ -84,51 +90,156 @@ def _worker_socket() -> Path | None:
     return parallel[0] if parallel else None
 
 
-# Backend socket configs (same order as connection.py).
+# Backend socket configs.
 # Parallel test sockets (.melonds_test_bridge_{0..N-1}.sock) are resolved
 # separately by _worker_socket() so each xdist worker gets its own emulator.
-# The fallbacks below cover single-emulator runs — the unsuffixed test socket
-# (scripts/start_test_emulator.py) first, then the live Claude-Code emulator.
+# The fallbacks below cover single-emulator runs — ONLY the unsuffixed
+# standalone test socket from scripts/start_test_emulator.py. The live
+# Claude-Code playthrough emulator (.melonds_bridge.sock) is intentionally
+# NOT in this list: a `pkill` that killed the fleet mid-session used to
+# leave pytest silently targeting the playthrough, trashing whatever the
+# interactive Claude instance was doing.
 _BACKENDS = {
     "melonds": {
         "sockets": [
             "/workspace/RenegadePlatinumPlaytest/.melonds_test_bridge.sock",
-            "/workspace/RenegadePlatinumPlaytest/.melonds_bridge.sock",
-            "/workspace/MelonMCP/.melonds_bridge.sock",
         ],
         "import": "melonds_mcp.client",
     },
     "desmume": {
         "sockets": [
             "/workspace/RenegadePlatinumPlaytest/.desmume_bridge.sock",
-            "/workspace/DesmumeMCP/.desmume_bridge.sock",
         ],
         "import": "desmume_mcp.client",
     },
 }
 
 
-def pytest_xdist_auto_num_workers(config):
-    """Resolve `-n auto` to the number of running parallel test emulators.
+# ── Fleet lifecycle (auto-spawn / auto-teardown) ──
+# conftest takes ownership of the test fleet by default: master pytest
+# spawns N emulators before xdist decides worker count, and tears them
+# down at session end. If a fleet is already live when pytest starts,
+# we detect and reuse it without taking ownership (no teardown), which
+# keeps the pre-boot workflow intact (run `scripts/start_test_emulators.py`
+# once, then many pytest invocations).
+#
+# Hook ordering note: the spawn has to happen inside
+# `pytest_xdist_auto_num_workers`, NOT in `pytest_configure`. xdist
+# makes its "distributed or sequential?" decision inside
+# `pytest_cmdline_main`, and that runs BEFORE `pytest_configure` —
+# meaning a fleet spawned there arrives too late and xdist silently
+# falls back to -n 0 (full suite ran in 13:45 instead of 2:30 before
+# this was moved). `pytest_xdist_auto_num_workers` is the earliest
+# master-only hook where the config is available, and it's inherently
+# skipped in xdist worker subprocesses — exactly what we need.
 
-    pytest-xdist calls this hook (firstresult) when `-n auto` is in effect —
-    the only reliable entry point for runtime-computed worker counts, since
-    xdist makes its distributed-session decision inside `pytest_cmdline_main`
-    before any `pytest_configure` hook runs.
+# Store spawned procs on the module so `pytest_sessionfinish` can find
+# them. We can't stash on `config` from inside
+# `pytest_xdist_auto_num_workers` because that hook runs before
+# `pytest_configure`, and some hook wrappers reject attribute writes on
+# config at that phase.
+_spawned_fleet_procs: list = []
 
-    Returns 0 when fewer than two parallel sockets exist, which causes xdist
-    to set `dist=no` and run sequentially (single shared emulator path).
-    Otherwise returns the socket count so xdist spawns that many workers.
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--fleet-size", type=int, default=8, dest="fleet_size",
+        help=(
+            "Number of test emulators to auto-spawn when no fleet is live. "
+            "Default 8. Set to 0 to skip auto-spawn (reuse an already-live "
+            "fleet, or fall through to the standalone test socket)."
+        ),
+    )
+    parser.addoption(
+        "--benchmark", action="store_true", default=False,
+        help="Enable phase-level profiling and print timing breakdown per test.",
+    )
+
+
+def _is_xdist_worker(config) -> bool:
+    """True when this pytest process is an xdist worker (not the master)."""
+    return hasattr(config, "workerinput")
+
+
+def _ensure_fleet_for_master(config) -> int:
+    """Spawn the fleet (if needed) and return the live socket count.
+
+    Idempotent: if already-live sockets exist, reuses them without
+    taking ownership. If we spawn, procs are stashed on the module for
+    teardown in `pytest_sessionfinish`.
     """
-    parallel = _discover_parallel_test_sockets()
-    if len(parallel) < 2:
+    global _spawned_fleet_procs
+
+    already_live = _discover_parallel_test_sockets()
+    if already_live:
+        if not _spawned_fleet_procs:
+            print(
+                f"\n[conftest] {len(already_live)} test emulator socket(s) already "
+                f"live — reusing without taking ownership.",
+            )
+        return len(already_live)
+
+    fleet_size = config.getoption("fleet_size", default=8)
+    if fleet_size <= 0:
+        return 0
+
+    sys.path.insert(0, str(_PROJECT_ROOT / "scripts"))
+    from start_test_emulators import start_fleet  # noqa: E402
+
+    print(
+        f"\n[conftest] Spawning fleet of {fleet_size} test emulator(s) "
+        f"(~{2 * fleet_size}s) ...",
+        flush=True,
+    )
+    try:
+        _spawned_fleet_procs = start_fleet(fleet_size)
+    except (FileNotFoundError, ValueError, RuntimeError) as e:
+        pytest.exit(f"Failed to spawn test fleet: {e}", returncode=2)
+
+    print(f"[conftest] Fleet ready: {fleet_size} emulators live.", flush=True)
+    return fleet_size
+
+
+def pytest_xdist_auto_num_workers(config):
+    """Resolve `-n auto` to live parallel-test-emulator count; spawn if needed.
+
+    pytest-xdist calls this hook (firstresult) when `-n auto` is in effect.
+    The hook is only invoked in the master process — xdist worker
+    subprocesses skip it — so it's the natural place to own the
+    master-only fleet lifecycle. Doing the spawn inside a later hook
+    (e.g., `pytest_configure`) is too late: xdist's
+    `pytest_cmdline_main` has already decided distribution mode by
+    then.
+
+    Returns 0 when fewer than two sockets are live, which causes xdist
+    to set `dist=no` (sequential on a single shared emulator).
+    """
+    count = _ensure_fleet_for_master(config)
+    if count < 2:
         return 0
 
     print(
-        f"\n[conftest] Detected {len(parallel)} parallel test emulator socket(s); "
-        f"running pytest-xdist with -n{len(parallel)}.",
+        f"\n[conftest] Running pytest-xdist with -n{count} "
+        f"(one worker per live test emulator).",
     )
-    return len(parallel)
+    return count
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Tear down only the fleet this process spawned; reused fleets are left alone."""
+    global _spawned_fleet_procs
+    if _is_xdist_worker(session.config):
+        return
+    if not _spawned_fleet_procs:
+        return
+
+    sys.path.insert(0, str(_PROJECT_ROOT / "scripts"))
+    from start_test_emulators import stop_fleet  # noqa: E402
+
+    procs = _spawned_fleet_procs
+    _spawned_fleet_procs = []
+    print(f"\n[conftest] Stopping {len(procs)} auto-spawned emulator(s)...", flush=True)
+    stop_fleet(procs)
 
 
 def _init_client(mod_name: str, sock: str) -> Any:
@@ -169,16 +280,23 @@ def _init_client(mod_name: str, sock: str) -> Any:
 
 @pytest.fixture(scope="session")
 def emu() -> Any:
-    """Connect to whichever emulator bridge is running. Fails fast if neither is up."""
-    # Parallel mode: xdist workers get their own emulator via indexed sockets.
-    # In single-emulator runs this returns the first indexed socket if any.
+    """Connect to whichever test emulator bridge is running. Fails fast if none is up.
+
+    Selection order:
+      1. Indexed parallel fleet socket for this xdist worker (or the first
+         indexed socket when running sequentially).
+      2. The standalone test emulator socket (`.melonds_test_bridge.sock`),
+         probed for a live listener.
+
+    The live playthrough emulator (`.melonds_bridge.sock`) is never in this
+    list — see module docstring.
+    """
     worker_sock = _worker_socket()
     if worker_sock is not None:
         return _init_client("melonds_mcp.client", str(worker_sock))
 
     forced = os.environ.get("EMU_BACKEND", "").lower()
 
-    # Build search order: forced backend first, then the other
     if forced in _BACKENDS:
         order = [forced] + [k for k in _BACKENDS if k != forced]
     else:
@@ -187,10 +305,19 @@ def emu() -> Any:
     for name in order:
         cfg = _BACKENDS[name]
         for sock in cfg["sockets"]:
-            if Path(sock).exists():
+            p = Path(sock)
+            # Probe rather than just checking file existence — Unix socket
+            # files linger as stale FS entries when the server crashes or
+            # was SIGKILL'd, and a stale file would otherwise make
+            # _init_client's connect() raise instead of falling through.
+            if p.exists() and _probe_socket(p):
                 return _init_client(cfg["import"], sock)
 
-    pytest.skip("No emulator bridge socket found — is an emulator running?")
+    pytest.skip(
+        "No test emulator bridge is live. Either run pytest without "
+        "--fleet-size=0 (default auto-spawns 8 emulators) or start "
+        "scripts/start_test_emulator.py / start_test_emulators.py manually."
+    )
 
 
 # ── Streaming suppression ──
@@ -231,14 +358,8 @@ def _disable_streaming(emu) -> Any:
 
 
 # ── Phase profiling ──
-# Activated by --benchmark flag or RENEGADE_BENCHMARK=1 env var.
-
-def pytest_addoption(parser):
-    parser.addoption(
-        "--benchmark", action="store_true", default=False,
-        help="Enable phase-level profiling and print timing breakdown per test.",
-    )
-
+# Activated by --benchmark flag (registered in pytest_addoption above) or
+# the RENEGADE_BENCHMARK=1 env var.
 
 @pytest.fixture(autouse=True)
 def _phase_timer(request, emu):
