@@ -1506,8 +1506,10 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
     )
 
     # Build header with viewport origin
+    from renegade_mcp.map_names import lookup_map_name
+    location = lookup_map_name(map_id)
     elev_str = f" L{player_elev}" if elevation and player_elev is not None else ""
-    header = f"Map {map_id} ({px},{py}) {facing_name}{elev_str}  origin:({vp_x},{vp_y}) {vp_w}x{vp_h}"
+    header = f"{location['display']} ({px},{py}) {facing_name}{elev_str}  origin:({vp_x},{vp_y}) {vp_w}x{vp_h}"
 
     # ── Reachability BFS — keyed by GLOBAL tile coords, capped at 150 steps.
     #    Scope spans the full multi-chunk (up to 5x5) or indoor chunk so
@@ -1603,7 +1605,7 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
 
     result: dict[str, Any] = {
         "map": map_body,
-        "map_id": map_id,
+        "location": location,
         "player": {
             "x": px, "y": py,
             "facing": facing_name,

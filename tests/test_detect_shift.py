@@ -52,7 +52,7 @@ class TestDetectShiftPreStarter:
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
         assert "error" not in result, f"view_map failed: {result}"
-        assert result["map_id"] is not None
+        assert result["location"]["map_id"] is not None
         assert len(result["map"]) > 0
 
     def test_pre_starter_save_block_and_field_ow_both_detected(

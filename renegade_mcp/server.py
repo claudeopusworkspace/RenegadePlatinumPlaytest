@@ -137,25 +137,6 @@ def create_server() -> FastMCP:
         emu = get_client()
         return _view_map(emu, level=level)
 
-    @mcp.tool()
-    def map_name(map_id: int = -1) -> dict[str, Any]:
-        """Look up the location name for a map ID.
-
-        Args:
-            map_id: Map ID to look up. If -1, reads current map from the emulator.
-        """
-        from renegade_mcp.map_names import lookup_map_name
-        from renegade_mcp.map_state import read_player_state
-
-        if map_id < 0:
-            emu = get_client()
-            mid, x, y, facing = read_player_state(emu)
-            result = lookup_map_name(mid)
-            result["x"] = x
-            result["y"] = y
-            return result
-        return lookup_map_name(map_id)
-
     # ── Navigation ──
 
     @mcp.tool()
@@ -263,40 +244,6 @@ def create_server() -> FastMCP:
             flee_encounters=flee_encounters,
             poi=poi,
         )
-
-    @mcp.tool()
-    @renegade_tool
-    def interact_with(object_index: int = -1, x: int = -1, y: int = -1, flee_encounters: bool = False) -> dict[str, Any]:
-        """Navigate to a map object/NPC or static tile and interact with it.
-
-        Two modes:
-        - **Object mode**: Pass object_index (from view_map) to target a dynamic object/NPC.
-        - **Coordinate mode**: Pass x and y to target a static tile (PCs, bookshelves, etc.).
-
-        Pathfinds to the nearest adjacent tile, faces the target, presses A,
-        and auto-advances through full multi-page dialogue (chains into
-        advance_dialogue). Detects trainer-spotted interruptions and checks
-        for battle transitions post-dialogue.
-
-        Sign overlay support: signpost text (board messages that bypass msgBox)
-        is captured and dismissed automatically — returns sign_overlay: true.
-
-        With flee_encounters, auto-flees wild battles during the walk to the
-        target, then re-navigates from current position to complete the interaction.
-
-        Args:
-            object_index: The MapObject array index (read it from an interactible's
-                `preview.object_index` field in `view_map`'s output, or prefer
-                `navigate_to(poi=...)` which dispatches this for you). Default -1 (unused).
-            x: Target tile X coordinate (global). Use with y for static tiles.
-            y: Target tile Y coordinate (global). Use with x for static tiles.
-            flee_encounters: If True, auto-flee wild battles encountered while walking to the target.
-                Trainer battles still halt for the caller.
-        """
-        from renegade_mcp.navigation import interact_with as _interact_with
-
-        emu = get_client()
-        return _interact_with(emu, object_index=object_index, x=x, y=y, flee_encounters=flee_encounters)
 
     @mcp.tool()
     @renegade_tool

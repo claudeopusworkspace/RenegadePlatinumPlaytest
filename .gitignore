@@ -43,7 +43,14 @@ desmume_mcp.log*
 # IPC bridge sockets
 .melonds_bridge.sock
 .melonds_test_bridge.sock
+.melonds_test_bridge_*.sock
 .desmume_bridge.sock
+
+# Per-worker scratch dirs for parallel test emulators (ROM copies + own .sav)
+.workers/
+
+# Rotated per-socket test-emulator logs
+melonds_test_mcp_*.log*
 
 # Battery save (exported from emulator, large binary)
 *.sav

@@ -1,4 +1,4 @@
-"""Tests for map tools: view_map, map_name.
+"""Tests for map tools: view_map and lookup_map_name helper.
 
 Deterministic memory/ROM reads — no retries needed.
 """
@@ -26,7 +26,9 @@ class TestViewMap:
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
         assert "map" in result
-        assert "map_id" in result
+        assert "location" in result
+        assert "map_id" in result["location"]
+        assert "name" in result["location"]
         assert "player" in result
         assert "interactibles" in result
         assert "unreachable_interactibles" in result
@@ -77,7 +79,8 @@ class TestViewMap:
         load_state(emu, "route211_from_coronet")
         from renegade_mcp.map_state import view_map
         result = view_map(emu)
-        assert result["map_id"] is not None
+        assert result["location"]["map_id"] is not None
+        assert result["location"]["name"]
         assert len(result["map"]) > 0
         # Outdoor maps should have the origin header
         assert "origin:" in result["map"]
@@ -391,7 +394,7 @@ class TestBug030PathElevationValidator:
 
 
 # ---------------------------------------------------------------------------
-# map_name
+# lookup_map_name helper
 # ---------------------------------------------------------------------------
 
 class TestMapName:
@@ -404,7 +407,7 @@ class TestMapName:
         from renegade_mcp.map_state import read_player_state, view_map
         # Get map_id from view_map to cross-check
         vmap = view_map(emu)
-        map_id = vmap["map_id"]
+        map_id = vmap["location"]["map_id"]
 
         result = lookup_map_name(map_id)
         assert "name" in result
@@ -434,7 +437,7 @@ class TestMapName:
 
 
 # ---------------------------------------------------------------------------
-# BUG-008: map_name returns wrong names for reshuffled map IDs
+# BUG-008: lookup_map_name returns wrong names for reshuffled map IDs
 # ---------------------------------------------------------------------------
 # Save state: qa_oreburgh_gate_entrance — player inside Oreburgh Gate, map_id=258.
 

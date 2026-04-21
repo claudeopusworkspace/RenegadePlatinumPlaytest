@@ -31,11 +31,43 @@ sys.path.insert(0, "/workspace/MelonMCP")
 sys.path.insert(0, "/workspace/DesmumeMCP")
 sys.path.insert(0, "/workspace/RenegadePlatinumPlaytest")
 
+_PROJECT_ROOT = Path("/workspace/RenegadePlatinumPlaytest")
+
+
+def _discover_parallel_test_sockets() -> list[Path]:
+    """Return sorted .melonds_test_bridge_{N}.sock paths that currently exist."""
+    return sorted(
+        _PROJECT_ROOT.glob(".melonds_test_bridge_*.sock"),
+        key=lambda p: int(p.stem.rsplit("_", 1)[-1]),
+    )
+
+
+def _worker_socket() -> Path | None:
+    """Pick the bridge socket for this pytest worker (xdist-aware).
+
+    Under xdist, `PYTEST_XDIST_WORKER` is set to `gw0`, `gw1`, … — use that
+    index into the sorted list of parallel test sockets. Outside xdist,
+    return the first existing parallel socket if any, else None so the
+    caller falls back to the single-emulator search order.
+    """
+    parallel = _discover_parallel_test_sockets()
+    worker = os.environ.get("PYTEST_XDIST_WORKER")
+    if worker and worker.startswith("gw"):
+        try:
+            idx = int(worker[2:])
+        except ValueError:
+            return None
+        if 0 <= idx < len(parallel):
+            return parallel[idx]
+        return None
+    return parallel[0] if parallel else None
+
+
 # Backend socket configs (same order as connection.py).
-# The test-dedicated socket is listed first so pytest binds to the standalone
-# emulator (scripts/start_test_emulator.py) when it's running, leaving the
-# interactive Claude Code emulator untouched. Falls back to the live sockets
-# if no standalone test emulator is up.
+# Parallel test sockets (.melonds_test_bridge_{0..N-1}.sock) are resolved
+# separately by _worker_socket() so each xdist worker gets its own emulator.
+# The fallbacks below cover single-emulator runs — the unsuffixed test socket
+# (scripts/start_test_emulator.py) first, then the live Claude-Code emulator.
 _BACKENDS = {
     "melonds": {
         "sockets": [
@@ -55,9 +87,74 @@ _BACKENDS = {
 }
 
 
+def pytest_xdist_auto_num_workers(config):
+    """Resolve `-n auto` to the number of running parallel test emulators.
+
+    pytest-xdist calls this hook (firstresult) when `-n auto` is in effect —
+    the only reliable entry point for runtime-computed worker counts, since
+    xdist makes its distributed-session decision inside `pytest_cmdline_main`
+    before any `pytest_configure` hook runs.
+
+    Returns 0 when fewer than two parallel sockets exist, which causes xdist
+    to set `dist=no` and run sequentially (single shared emulator path).
+    Otherwise returns the socket count so xdist spawns that many workers.
+    """
+    parallel = _discover_parallel_test_sockets()
+    if len(parallel) < 2:
+        return 0
+
+    print(
+        f"\n[conftest] Detected {len(parallel)} parallel test emulator socket(s); "
+        f"running pytest-xdist with -n{len(parallel)}.",
+    )
+    return len(parallel)
+
+
+def _init_client(mod_name: str, sock: str) -> Any:
+    """Connect to a bridge socket and prime address resolution."""
+    # Stagger the initial session-fixture work across xdist workers: every
+    # worker hits its emulator's first load_state at (near-)identical wall
+    # clock, and 3+ coincident load_states of the same .mst file reliably
+    # SIGBUS a melonDS instance. A 1.5s-per-worker stagger desynchronizes
+    # the initial call; subsequent load_states diverge naturally across
+    # test files and don't trip the race.
+    import time as _time
+    worker = os.environ.get("PYTEST_XDIST_WORKER", "")
+    if worker.startswith("gw"):
+        try:
+            _time.sleep(1.5 * int(worker[2:]))
+        except ValueError:
+            pass
+
+    mod = importlib.import_module(mod_name)
+    client = mod.EmulatorClient(sock)
+    client.get_frame_count()  # verify connection
+
+    # Initialize address resolution (tests bypass connection.py).
+    # detect_shift needs valid game data in RAM — if the emulator just loaded
+    # the ROM (title screen), load a known save state first so the party/badge
+    # canary values are present.
+    from renegade_mcp.addresses import detect_shift, get_delta
+    if get_delta() is None:
+        # Always load a known state first — on a fresh ROM (title screen),
+        # heap memory is zeroed and detect_shift can't distinguish delta=0
+        # from delta=-0x20.
+        from helpers import do_load_state
+        do_load_state(client, "eterna_city_shiny_swinub_in_party")
+        detect_shift(client)
+
+    return client
+
+
 @pytest.fixture(scope="session")
 def emu() -> Any:
     """Connect to whichever emulator bridge is running. Fails fast if neither is up."""
+    # Parallel mode: xdist workers get their own emulator via indexed sockets.
+    # In single-emulator runs this returns the first indexed socket if any.
+    worker_sock = _worker_socket()
+    if worker_sock is not None:
+        return _init_client("melonds_mcp.client", str(worker_sock))
+
     forced = os.environ.get("EMU_BACKEND", "").lower()
 
     # Build search order: forced backend first, then the other
@@ -70,24 +167,7 @@ def emu() -> Any:
         cfg = _BACKENDS[name]
         for sock in cfg["sockets"]:
             if Path(sock).exists():
-                mod = importlib.import_module(cfg["import"])
-                client = mod.EmulatorClient(sock)
-                client.get_frame_count()  # verify connection
-
-                # Initialize address resolution (tests bypass connection.py).
-                # detect_shift needs valid game data in RAM — if the emulator
-                # just loaded the ROM (title screen), load a known save state
-                # first so the party/badge canary values are present.
-                from renegade_mcp.addresses import detect_shift, get_delta
-                if get_delta() is None:
-                    # Always load a known state first — on a fresh ROM
-                    # (title screen), heap memory is zeroed and detect_shift
-                    # can't distinguish delta=0 from delta=-0x20.
-                    from helpers import do_load_state
-                    do_load_state(client, "eterna_city_shiny_swinub_in_party")
-                    detect_shift(client)
-
-                return client
+                return _init_client(cfg["import"], sock)
 
     pytest.skip("No emulator bridge socket found — is an emulator running?")
 

@@ -2,12 +2,14 @@
 
 You are playtesting the melonDS MCP server by playing Pokemon Renegade Platinum (a difficulty/QoL hack of Pokemon Platinum by Drayano).
 
+**MCP tools document themselves.** Read each tool's docstring for parameters and behavior — do not duplicate that here. This file covers project-specific context that isn't (and shouldn't be) in tool docstrings.
+
 ## Getting Started
 
 1. Call `init_emulator` to initialize melonDS.
 2. Call `load_rom` with path `/workspace/RenegadePlatinumPlaytest/RenegadePlatinum.nds`.
 3. Load a save state if one exists (e.g., `load_state("living_room")`).
-4. If no save state, you'll need to advance through the intro (~8000 frames) to reach the title screen.
+4. If no save state, advance through the intro (~8000 frames) to reach the title screen.
 
 ## Save States
 
@@ -54,143 +56,11 @@ Read-only tools (pure memory reads like `read_party`, `read_battle`, `read_bag`)
 
 Checkpoints share a unified ring buffer (300 slots) with the melonDS MCP's own checkpoints. One checkpoint per tool call is the right granularity — don't checkpoint inside helper functions. Sub-tools like `auto_grind` may create additional internal checkpoints for per-encounter granularity.
 
-## Navigation
+## Navigation Philosophy
 
-**CRITICAL: Do not rely on screenshots for spatial reasoning in the overworld.** The isometric/overhead camera makes it very difficult to judge tile positions, room boundaries, and exits from pixel images. Instead:
+**CRITICAL: Do not rely on screenshots for spatial reasoning in the overworld.** The isometric/overhead camera makes it very difficult to judge tile positions, room boundaries, and exits from pixel images. Use `view_map` + `navigate_to(poi=...)` — read their docstrings for parameters.
 
-- **Use `view_map`** to get a 15×15 local grid (with X-axis ruler + Y labels showing absolute coords) plus a full `interactibles` list of every actionable POI within 150 BFS steps — NPCs, trainers, signs, items, berries, and warps — each with a stable `id`, semantic `label`, coordinates, `steps` distance, and a kind-specific `preview`. Adjacent warp tiles with the same destination are merged into single entries. POIs that exist but aren't reachable (walled off, behind an uncleared HM, beyond 150 steps) go in `unreachable_interactibles` with a Manhattan `distance`.
-- **Target-based navigation is the default.** Prefer `navigate_to(poi="obj:5")` or `navigate_to(poi="warp:2")` over coordinate lookup — the tool resolves the POI from a live `view_map` and runs the default interaction (step onto warps; face+A for NPCs / signs / items / berries). Returns the normal nav result plus `poi_resolved: {id, kind, x, y, label}`. Use `navigate_to(x, y)` only when you need to walk somewhere unnamed (a specific tile, a frontier, a fishing spot).
-- **Use `navigate` or `navigate_to`** to walk paths — they verify each step and stop on collision. `navigate` auto-trims paths at door/stair transitions. `navigate_to` auto-enters adjacent walk-into doors (0x69, 0x6E). **`navigate_to` auto-Surfs across water, climbs Rock Climb walls, and descends/ascends Waterfalls** when the obstacle path is shorter — returns `obstacles_cleared` in the response. Surf requires the Fen Badge; Rock Climb requires the Icicle Badge; Waterfall requires the Beacon Badge (each + a party Pokemon with the move). Movement speed auto-adjusts to 8f/tile while surfing. Rock Climb and Waterfall traverse multiple tiles in one animation (path steps auto-consumed). **Rock Smash rocks, Cut trees, and Strength boulders are treated as impassable objects** — Renegade Platinum has no mandatory Rock Smash or Cut obstacles (remaining rocks/trees are decorative and walked around). Strength is only used for the Distortion World boulder puzzle, handled manually with `press_buttons` when we reach it. If a mandatory Rock Smash or Cut obstacle is ever discovered, re-enabling auto-clear is a one-line change in `nav_constants.py` (add the GFX id to `CLEARABLE_OBSTACLES`).
-- **When stuck navigating, ask Michael for visual help** rather than brute-forcing positions.
-- Screenshots are fine for reading dialogue, menus, and battle screens — just not for spatial navigation.
-- **Position dicts** (start/final in navigate responses) include full map name info (`map_id`, `name`, `display`, `code`, `room`) instead of a bare map ID. No need to call `map_name` separately.
-
-Multi-chunk maps (overworld, large caves) use a matrix/chunk system detected automatically by `view_map` and `navigate_to`. See MEMORY_MAP.md for collision data format, tile behaviors, and dynamic object details.
-
-**Cycling Road (Route 206)**: Bridge body tiles (0x71) force the player to slide south at ~4f/tile when on the bicycle. `navigate_to` auto-detects this (tile behavior + cycling state + path scan) and uses position-tracking instead of step-counting: south = passive slide, north = continuous UP hold (~8f/tile), lateral = 4f press with south drift. `navigate` (manual) refuses with a clear error. Encounter detection runs during all movement phases. The bridge renders as `n` in `view_map`.
-
-**Bike Slopes (Route 207+)**: Slope tiles (0xD9 top, 0xDA bottom) are passable in collision data but the game engine blocks single-step entry. `navigate_to` auto-detects slope tiles in the BFS path and traverses them with: fast gear toggle → 3-tile backup → continuous hold through slope → gear reset via memory write + 120f settle. The bike's momentum causes ~2 tiles of coast past the slope exit; this is absorbed by remaining path steps when navigating to a distant target. Returns `obstacles_cleared` with `type: "bike_slope"`. Slopes render as `\` (top) and `/` (bottom) in `view_map`.
-
-## Battle Workflow
-
-### Automated (preferred)
-1. **`read_battle`** — check enemy species, types, ability, stats, moves. Plan tactics. Returns all 4 battlers in double battles. Use **`type_matchup`** to check effectiveness before committing.
-2. **`battle_turn(move_index=N)`** — use a move (0-3). **Checks type effectiveness first** — returns `EFFECTIVENESS_WARNING` if the move is immune or not very effective against the target. Call with `force=True` to proceed anyway (e.g., status moves, chip damage, or when no better option). Returns battle log + final state + updated battle state.
-   - Or **`battle_turn(switch_to=N)`** — switch in the Pokemon at battle UI slot N (1-5) instead of attacking. UI slot 0 is always the active battler (rejected). The UI grid is **battle-slot-ordered, not party-ordered** — after a switch, the Pokemon who came in occupies UI 0 and the one who left takes the freed tile. Use `read_party`'s `battle_ui_slot` field in-battle to look up the current mapping. Fainted targets are rejected.
-   - Or **`battle_turn(run=True)`** — attempt to flee a wild battle. Returns `BATTLE_ENDED` on success, `WAIT_FOR_ACTION` on failure (enemy gets a free turn).
-   - In **double battles**, add `target=` to specify the target: `0`=first enemy (slot 1), `1`=second enemy (slot 3), `2`=self/ally. Default `-1` auto-targets first enemy.
-   - Works on the very first turn of battle — no need to call twice.
-3. Handle the returned state:
-   - `EFFECTIVENESS_WARNING` — move is immune or not very effective. Review the warning, then either pick a different move/switch, or call `battle_turn(move_index=N, force=True)` to use it anyway. No game state has changed yet.
-   - `WAIT_FOR_ACTION` — next turn, call `battle_turn` again. Battle state is included in the response.
-   - `WAIT_FOR_PARTNER_ACTION` — double battle: first Pokemon's action submitted, call `battle_turn` again for second Pokemon.
-   - `SWITCH_PROMPT` — trainer sending next Pokemon. Call `battle_turn(switch_to=N)` to swap, `battle_turn()` to keep battling, or `battle_turn(move_index=N)` to decline the switch and use that move in one call.
-   - `FAINT_SWITCH` — your Pokemon fainted (wild battle). Call `battle_turn(switch_to=N)` to send replacement, or `battle_turn()` to flee.
-   - `FAINT_FORCED` — your Pokemon fainted (trainer battle). Call `battle_turn(switch_to=N)` to send replacement (required).
-   - `MOVE_BLOCKED` — move was rejected by Torment, Disable, Encore, Taunt, or Choice item lock. No turn consumed, automatically backs out to main action menu. Pick a different move or switch.
-   - `BATTLE_ENDED` — back in overworld. **Auto-advances post-battle dialogue** (trainer defeat text, story triggers) if present — returned as `post_battle_dialogue` list. **Handles full party wipe**: auto-advances through blackout sequence + Nurse Joy dialogue, returns with `blackout: true` and player free in Pokemon Center. No manual `read_dialogue` needed.
-   - `MOVE_LEARN` — Pokemon wants to learn a new move. Response includes `move_to_learn` (the new move name, read directly from memory) and `current_moves` with slot indices. Call `battle_turn(forget_move=N)` to forget move N (0-3) and learn the new move, or `battle_turn(forget_move=-1)` to skip. Works in both trainer and wild battles.
-   - `NO_ACTION_PROMPT` — action prompt never appeared (~30 sec timeout). Game may need manual input.
-   - `TIMEOUT` — something unexpected. If actually in the overworld (not in battle), auto-checks for dialogue and upgrades to `BATTLE_ENDED`. Otherwise, screenshot + `read_battle` to diagnose.
-   - `NO_TEXT` — something unexpected. Screenshot + `read_battle` to diagnose.
-
-Note: `battle_turn` includes `read_battle` data in every response — no separate call needed.
-
-## Fishing
-
-`seek_encounter` supports fishing via the optional `rod` parameter.
-
-```
-seek_encounter(rod="Old Rod")     # fish with Old Rod
-seek_encounter(rod="Good Rod")    # fish with Good Rod
-seek_encounter(rod="Super Rod")   # fish with Super Rod
-```
-
-**How it works**: validates the rod is in the bag, auto-navigates to a tile adjacent to water (or turns to face water if already surfing), opens the menu to USE the rod, detects the bite via the player's MapObject animation state (offset 0xA0 == 2), presses A within the hook window, and advances through to the battle action prompt. Retries automatically on "Not even a nibble..." and "The Pokémon got away..." (up to 20 casts).
-
-**Hook timing windows** (from decomp): Old Rod 45f, Good Rod 30f, Super Rod 15f. We poll every frame, so we always catch it.
-
-**Error handling**: returns clear messages for unknown rod names, rods not in bag (lists available rods), and no water tiles nearby.
-
-## Auto Grind Workflow
-
-`auto_grind` automates wild encounter loops. Stand in a grass/cave area.
-
-When `move_index` is provided, fights each encounter by spamming that move (grind mode).
-When `move_index` is omitted, runs from each encounter (seek mode).
-When `target_species` is set, stops at the action prompt when that species appears.
-
-### Basic call
-```
-auto_grind(move_index=0)                    # spam move slot 0, grind indefinitely
-auto_grind(move_index=2, target_level=15)   # stop at Lv15
-auto_grind(move_index=1, cave=true)         # cave encounters
-auto_grind(move_index=0, iterations=5)      # stop after 5 encounters (scouting)
-auto_grind(move_index=0, iterations=10, target_level=20)  # whichever comes first
-auto_grind(target_species="Machop")         # run from everything until Machop appears
-auto_grind(move_index=0, target_species="Larvitar")  # grind, but stop if Larvitar appears
-auto_grind(move_index=3, backup_move=2)     # alternate moves when Tormented/Disabled
-```
-
-### Smart move selection
-When `backup_move` is set, checks type effectiveness per encounter:
-- Primary move effective (mult > 0.5) → use primary as normal
-- Primary NVE/immune, backup effective → use backup for that battle
-- Both NVE/immune + `flee_ineffective=True` → flee, continue to next encounter
-- Both NVE/immune + `flee_ineffective=False` → fight with primary anyway (default)
-
-```
-auto_grind(move_index=0, backup_move=2, flee_ineffective=true)  # smart selection + flee
-```
-
-### Auto-heal loop
-Two modes: **auto-detect** (preferred) or **coordinate-based** (legacy).
-
-**Auto-detect** (`auto_heal=True`): No coordinates needed. Scans the overworld matrix for
-the nearest Pokemon Center, navigates there (trying alternative cities if the nearest is
-blocked by terrain), heals, and returns to the grind spot. Works from routes and interior
-maps (exits via warps first). Handles the 5x5 chunk terrain cap with multi-hop navigation.
-
-```
-auto_grind(move_index=0, target_level=25, auto_heal=true)   # just works
-auto_grind(move_index=0, auto_heal=true, max_heal_trips=20) # raise safety cap
-```
-
-**Coordinate-based** (legacy): Provide `heal_x/heal_y/grind_x/grind_y` for same-map healing.
-
-```
-auto_grind(move_index=0, target_level=25, heal_x=15, heal_y=8, grind_x=42, grind_y=20)
-```
-
-### Stop conditions (returned as `stop_reason`)
-| Reason | Meaning | What to do |
-|--------|---------|------------|
-| `target_level` | Slot 0 reached the target level. | Done! |
-| `shiny` | Wild shiny Pokemon encountered. At action prompt. | Catch it! Battle state included in response. Always triggers regardless of other params. |
-| `target_species` | Found the target species. At action prompt. | Fight, catch, or flee. Battle state included in response. |
-| `iterations` | Completed the requested number of encounters. | Review encounter log. |
-| `fainted` | Slot 0 fainted (only when auto-heal is disabled). | Heal, then grind again or switch lead. |
-| `pp_depleted` | Spam move has 0 PP (only when auto-heal is disabled). | Handle manually: flee, use another move, or use an Ether. |
-| `move_learn` | Pokemon wants to learn a move but all 4 slots are full. | Call `auto_grind` again with `forget_move` to continue (see below). |
-| `move_blocked` | Primary move blocked by Torment/Disable/Encore/Taunt, no `backup_move` set. | Provide `backup_move` to auto-alternate, or handle manually. |
-| `turn_limit` | Battle exceeded 10 turns without ending (safety valve). | Likely move-lock or unexpectedly tanky opponent. |
-| `heal_failed` | Auto-heal navigation or healing failed. | Check position, navigate manually, retry. |
-| `max_heal_trips` | Reached the safety cap on heal cycles. | Increase `max_heal_trips` or investigate why healing is needed so often. |
-| `seek_failed` | `seek_encounter` didn't find a battle (cutscene, blocked path). | Investigate manually. |
-| `unexpected` | Unknown battle state. | Screenshot + `read_battle` to diagnose. |
-
-### Encounter log
-Every `auto_grind` response includes an `encounters` list. Each entry has:
-- `species`: The wild Pokemon's species name.
-- `checkpoint_id`: Hash of the checkpoint taken just before `seek_encounter`. Use `revert_to_checkpoint(checkpoint_id)` to return to the moment before that encounter — useful for catching a specific Pokemon at the cost of any XP gained after that point.
-
-### Continuing from move_learn
-When stopped for `move_learn`, the response includes `move_to_learn` and `current_moves` (with slot indices). Resume with:
-```
-auto_grind(move_index=0, forget_move=2)     # forget move slot 2, learn the new move, keep grinding
-auto_grind(move_index=0, forget_move=-1)    # skip learning, keep grinding
-```
-All other parameters (cave, target_level, iterations) should be re-supplied when resuming.
+Screenshots are fine for dialogue, menus, and battle screens. **When stuck navigating, ask Michael for visual help** rather than brute-forcing positions.
 
 ## DS Screen Layout
 
@@ -202,7 +72,7 @@ All other parameters (cave, target_level, iterations) should be re-supplied when
 
 **Buttons:** a, b, x, y, l, r, start, select, up, down, left, right
 
-- **A**: Confirm / advance dialogue / interact. Use `press_buttons(["a"], frames=8)`.
+- **A**: Confirm / advance dialogue / interact.
 - **B**: Cancel / advance dialogue. **Prefer B over A for advancing dialogue** — avoids re-triggering nearby NPCs.
 - **X**: Open menu (overworld). **Use X, not Start** — Start does not open the menu in Platinum.
 - **D-pad**: Move character / navigate menus.
@@ -231,27 +101,6 @@ Letter grid coordinates (calibrated):
 - BACK button: x=188, y=74
 - OK button: x=222, y=74
 
-## Macros
-
-Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/macros/`.
-
-| Macro | Description |
-|-------|-------------|
-| `mash_a` | Press A 5 times (8-frame holds, 30-frame waits) for dialogue |
-| `mash_b` | Press B 5 times (8-frame holds, 30-frame waits) — safer than A |
-| `walk_up` | Walk up 2 tiles (32-frame hold + 4-frame wait) |
-| `walk_down` | Walk down 2 tiles |
-| `walk_left` | Walk left 2 tiles |
-| `walk_right` | Walk right 2 tiles |
-
-## Memory Tools
-
-### Snapshot/Diff Workflow (for finding new addresses)
-1. `snapshot_memory(name="before", address=0x02200000, size=1048576)`
-2. Perform an in-game action
-3. `snapshot_memory(name="after", address=0x02200000, size=1048576)`
-4. `diff_snapshots(name_a="before", name_b="after", value_size="long", filter="changed")`
-
 ## Game Progress
 
 - **Character**: CLAUDE | **Rival**: WOJ
@@ -268,53 +117,16 @@ Saved macros persist across sessions in `/workspace/RenegadePlatinumPlaytest/mac
 - **Notable items**: Explorer Kit, **Hard Stone** (boost Rock moves, save for Larvitar/Tyranitar), Dawn Stone, Wise Glasses, **TM74 Gyro Ball** (new, Route 206 middle island), **PP Up** (new, east lower path), TM16 Light Screen, TM33 Reflect, TM73 Thunder Wave, Oval Stone, Fire Stone, Sun Stone, Never-Melt Ice. Bag: 9 Super Potions, 6 Repels, **0 Revival Herbs** (used it on Luxray vs Mira's Kadabra — restock before Mt. Coronet).
 - **Defeated this session**: **Pokémon Trainer Mira** (Togetic Lv27 / Porygon2 Lv27 / Kadabra Lv28 / Haunter Lv27) — Renegade Platinum changes the Mira rescue quest into a trainer battle. Kadabra has Life Orb + Dazzling Gleam / Grass Knot / Psybeam / Recover and wipes most of the team; we won by reviving Luxray with a Revival Herb and Crunching the Kadabra SE.
 - **Mira follow state**: Mira is following the player in map 284 (standby at (38, 42)). She auto-heals the party after every battle and triggers "Are you leaving? I haven't found my item yet..." dialogue when approaching map exits. **Do not leave the cave until the item is found.**
-- **Next**: Navigation tooling doesn't communicate multi-level cave maps clearly — session 23 was cut short because I kept walking into cliff faces. Fix map-rendering first. Then: explore west/south from (42, 53) to find Mira's lost item deep in the cave, return to her, exit to Route 206, and finally clear the Route 207 Psychic to unlock Mt. Coronet.
+- **Next**: Explore west/south from (42, 53) to find Mira's lost item deep in Wayward Cave, return to her, exit to Route 206, then clear the Route 207 Psychic to unlock Mt. Coronet. The 15×15 viewport + interactibles list + elevation-aware navigation that landed in session 24 should make the cave tractable.
 
 See GAME_HISTORY.md for full details (defeated trainers, story progress, box contents, items).
 
-## Quick Reference: Common Workflows
-
-### Entering a new area
-1. `view_map` — returns a 15×15 local grid + a full `interactibles` list (NPCs, signs, items, warps) within 150 BFS steps. Pick a target by `id`.
-2. `navigate_to(poi="warp:N")` — path to the POI and fire its default interaction. For NPCs use `poi="obj:N"`; for an unnamed tile, `navigate_to(x, y)`.
-
-### Before/during battle
-1. `read_battle` — enemy species, types, ability, stats, moves, HP
-2. `battle_turn(move_index=0)` — use a move. Returns battle log + state + updated battle data.
-3. Or `battle_turn(switch_to=1)` — switch Pokemon instead of attacking.
-
-### Checking inventory/party (overworld)
-1. `read_party` — full party with moves, PP, nature, IVs, EVs. Reliable in any game state.
-2. `read_bag` — all items across all pockets
-
-### Using items (overworld)
-`use_item` is the single entry point for every field-usable bag item. It
-reads the item's `fieldUseFunc` and dispatches automatically:
-
-1. `use_item("Potion", party_slot=0)` — party-target items (Medicine, healing
-   Berries, evolution stones, Gracidea). `party_slot` required.
-2. `use_item("Repel")` — no-target items (Repel/flutes/Escape Rope/Honey/Bicycle).
-3. `use_item("HM06", party_slot=1, forget_move=2)` — TMs & HMs. Accepts the
-   TM label (`HM06`, `TM76`) or the move name (`Rock Smash`). `forget_move`
-   required when the Pokemon knows 4 moves; pass `-1` to cancel teaching.
-4. `use_medicine()` — **preferred for bulk healing**. Dry-run returns a plan,
-   `confirm=True` executes.
-
-Rejected with a pointer error (by design — out of scope for `use_item`):
-fishing rods (use `seek_encounter(rod=...)`), mail (use `give_item`),
-modal-UI key items (Town Map, Journal, Pal Pad, Poffin Case, Poké Radar,
-Explorer Kit, Vs. Seeker, Vs. Recorder, Sprayduck, Mulch, Azure Flute —
-drive manually with `press_buttons`).
-
-### Reordering party (overworld)
-1. `reorder_party(0, 2)` — swap slot 0 and slot 2. Navigates pause menu automatically.
-
 ## Test Suite
 
-Integration tests live in `tests/` (369 tests across 31 files). Require a running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
+Integration tests live in `tests/` (491 tests across 42 files). Require at least one running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
 
 ```bash
-.venv/bin/python -m pytest tests/ -v          # full suite (~12 min)
+.venv/bin/python -m pytest tests/ -v          # full suite (~7 min @ N=2, ~13 min single)
 .venv/bin/python -m pytest tests/test_X.py -v  # single file
 ```
 
@@ -322,31 +134,39 @@ Tests load save states, call implementation functions directly (bypassing MCP pr
 
 **Run tests after any change to `turn.py`, `auto_grind.py`, `navigation.py`, or `battle_tracker.py`.**
 
-### Dedicated test emulator (decoupled from the live session)
+### Dedicated test emulator(s) — decoupled from the live session
 
-The test suite can run against its own melonDS process so it doesn't fight the emulator Claude Code is driving for interactive play.
+Tests run against their own melonDS process(es) so they don't fight the emulator Claude Code is driving for interactive play. Two setups:
+
+**Parallel fleet (preferred, ~2× speedup)**:
 
 ```bash
-# Terminal 1 — start the standalone test emulator (blocks; Ctrl-C to stop):
-.venv/bin/python scripts/start_test_emulator.py
+# Terminal 1 — start N isolated test emulators (default 2; blocks, Ctrl-C to stop):
+.venv/bin/python scripts/start_test_emulators.py             # N=2 → ~7 min full suite
+.venv/bin/python scripts/start_test_emulators.py --count 4   # experimental
 
-# Terminal 2 — run the suite:
+# Terminal 2 — pytest auto-detects socket count and fans out:
 .venv/bin/python -m pytest tests/ -v
 ```
 
-The standalone listens on `.melonds_test_bridge.sock` (a different socket from the live `.melonds_bridge.sock`). `tests/conftest.py` prefers the test socket when it's present and falls back to the live one otherwise — no env vars required. Both emulators share the same `data_dir` (savestates, ROM, macros), so tests see the same checkpoint inventory the live emu sees.
+Each worker gets its own `.workers/worker_{i}/` with a ROM copy + symlinks to shared `savestates/macros/data`, bound to `.melonds_test_bridge_{i}.sock`. `conftest.py`'s `pytest_xdist_auto_num_workers` hook resolves `-n auto` (set in `pytest.ini`) to the number of running sockets — so no manual `-n` flag. CLI `-n N` still wins if you pass it.
+
+**Known ceiling**: at N≥3, a melonDS instance reliably SIGBUSes during `savestate_load` (suspected page-cache contention on concurrent `.mst` reads). Startup + per-worker load_state staggers only delay the crash. Default is `--count 2`; raise with caution until the MelonMCP-side root cause is understood.
+
+**Single standalone (legacy / debugging)**:
+
+```bash
+.venv/bin/python scripts/start_test_emulator.py     # listens on .melonds_test_bridge.sock
+.venv/bin/python -m pytest tests/ -v                # sequential, ~13 min full suite
+```
+
+When no test sockets exist at all, pytest falls back to the live Claude-Code emulator on `.melonds_bridge.sock`.
 
 ## Tips
 
 - Save state frequently — this is a difficulty hack, expect challenges.
-- **Use `read_battle` at the start of every battle** — Renegade Platinum changes abilities and movesets from vanilla.
-- **`read_dialogue` auto-advances by default** — just call it after triggering dialogue and it handles everything. Returns full conversation + status. Only need manual intervention for Yes/No prompts and multi-choice prompts.
+- **Renegade Platinum changes abilities and movesets from vanilla** — always `read_battle` at the start of every fight; don't assume vanilla behavior.
 - The `load_state` tool may occasionally hang — check `get_status` to verify.
 - Addresses must be passed as decimal integers to MCP tools, not hex strings.
-- **Touch screen taps default to `frames=8`** — changed from 1 to avoid missed inputs.
-- **Wait 300 frames between UI navigation steps** — Pokemon ignores input during forced text delays.
-- **Always check the bottom screen for Yes/No prompts** — battle/switch prompts use touch screen.
-- **`battle_turn` detects battle end via text absence** — after seeing battle narration, 20 consecutive polls (~5 sec) with no text markers triggers early exit. Log-based heuristic ("fainted" + "Exp. Points") classifies as BATTLE_ENDED. Level-up cases ("grew to" in log) defer to recovery instead.
-- **Pause menu remembers cursor position** — cursor index stored at `0x0229FA28`. The `use_item` tool reads this automatically; for manual menu navigation, read this address first.
-- **Trainer battles may have multiple Pokemon** — handle "Will you switch?" prompt before next action.
-- **Evolution is handled** — after level-up + move-learn resolution, `battle_turn` detects "is evolving" text, dismisses it with a single B press, then waits passively (no B) for the ~15s animation. "evolved into [Species]!" is captured in the log. Tested with Shinx→Luxio (Lv15). Works in both `battle_turn` and `auto_grind` flows.
+- **Wait 300 frames between UI navigation steps** when driving menus manually — Pokemon ignores input during forced text delays.
+- **Always check the bottom screen for Yes/No prompts** — battle/switch prompts use the touch screen.
