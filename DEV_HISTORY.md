@@ -4,6 +4,27 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: N=8 fleet unlocked (2026-04-21 session 25)
+
+Short follow-up to session 24. Woj restarted the container with `--shm-size=8g`, which resolves the SIGBUS ceiling diagnosed in MelonMCP#9 (closed upstream — low ROI for an emulator-side fix once the tmpfs sizing was understood).
+
+### What changed
+- Container now ships with `/dev/shm = 8.0G` (verified via `df -h /dev/shm`). Inside the container we still can't `mount -o remount` — `CapBnd=0x00000000a80425fb` lacks `CAP_SYS_ADMIN` bit 21 — so this is strictly a container-create flag.
+- Reinstalled 8 ad-hoc apt packages lost in the restart: `gh ninja-build gdb strace fzf tmux ffmpeg sqlite3`. `gh` auth picked up automatically from preserved `~/.config/gh/hosts.yml` (volume-mounted, survives restart).
+- `scripts/start_test_emulators.py` default: `--count 2` → `--count 8`. Help text reworded around the `--shm-size` container requirement instead of a manual `mount` runbook.
+- CLAUDE.md test-suite section updated: baseline `~2:30 @ N=8`, container requirement callout, no more mount incantation.
+
+### Ground-truth timings
+- Single emulator (sequential): ~13:00
+- N=2 fleet: 7:07 (1.9×)
+- **N=8 fleet: 491 passed in 2:31 — 5.4× over single, 2.8× over N=2**
+
+Sub-linear scaling from 2→8 is expected: savestate-load + per-worker fixture setup don't parallelize, and `--dist loadfile` means the slowest test file sets the tail. 2:31 is well below the threshold where running the full suite feels expensive — objective met.
+
+### Not changed
+- Launcher/conftest 2s and 1.5s staggers kept — defensive, harmless at any N, cheap insurance if tmpfs ever gets tight again.
+- `flock`-based `load_state` serialization fallback (the user-space option from the memory note) left unimplemented. Not needed now; easy to add if a future container regresses without `--shm-size`.
+
 ## Dev Session: MCP tool trim + 2-way parallel test fleet (2026-04-21 session 24)
 
 Housekeeping pass followed by test-infra work. Full suite green end-to-end (`60fb0ba` + `707106f`); runtime down from 13:27 → 7:07.
