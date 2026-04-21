@@ -49,10 +49,11 @@ def _parse_args() -> argparse.Namespace:
         "--count", type=int, default=2,
         help=(
             "Number of emulator instances (default 2). "
-            "N=2 is the largest value known to run the full suite reliably — "
-            "at N>=3 a melonDS instance reliably SIGBUSes inside savestate_load "
-            "(see MelonMCP issue — likely shared page-cache contention on "
-            "concurrent .mst reads). Raise at your own peril."
+            "N>=3 SIGBUSes on this container because /dev/shm defaults to 64 MB "
+            "and melonDS's JIT fastmem needs ~17 MB of tmpfs per worker (see "
+            "MelonMCP#9 — diagnosed). To scale up: "
+            "`sudo mount -o remount,size=8G /dev/shm` and optionally "
+            "`sudo sysctl -w vm.max_map_count=1048576`, then --count 8."
         ),
     )
     parser.add_argument(

@@ -151,7 +151,15 @@ Tests run against their own melonDS process(es) so they don't fight the emulator
 
 Each worker gets its own `.workers/worker_{i}/` with a ROM copy + symlinks to shared `savestates/macros/data`, bound to `.melonds_test_bridge_{i}.sock`. `conftest.py`'s `pytest_xdist_auto_num_workers` hook resolves `-n auto` (set in `pytest.ini`) to the number of running sockets — so no manual `-n` flag. CLI `-n N` still wins if you pass it.
 
-**Known ceiling**: at N≥3, a melonDS instance reliably SIGBUSes during `savestate_load` (suspected page-cache contention on concurrent `.mst` reads). Startup + per-worker load_state staggers only delay the crash. Default is `--count 2`; raise with caution until the MelonMCP-side root cause is understood.
+**Known ceiling** — diagnosed in MelonMCP#9: at N≥3 a worker SIGBUSes during `savestate_load` because melonDS's JIT fastmem needs ~17 MB of `/dev/shm` per instance, and this container's `/dev/shm` defaults to 64 MB. N=2 fits (34 MB), N=3+ oversubscribes. To scale up:
+
+```bash
+sudo mount -o remount,size=8G /dev/shm
+sudo sysctl -w vm.max_map_count=1048576    # defensive
+.venv/bin/python scripts/start_test_emulators.py --count 8
+```
+
+Staggers in the launcher + conftest are defensive and harmless at any N — leave them.
 
 **Single standalone (legacy / debugging)**:
 
