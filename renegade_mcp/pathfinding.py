@@ -471,19 +471,25 @@ def _bfs_pathfind_level(
 
     def _tile_on_level(tx: int, ty: int, level: int) -> bool:
         key = (tx, ty)
-        if key in ramp_tiles:
-            ri = ramp_tiles[key]
+        ri = ramp_tiles.get(key)
+        lvls = level_map.get(key)
+        # A tile can have BOTH a ramp plate AND a flat plate at overlapping
+        # (x, y) — a Cycling-Road ramp visibly sits over the ground tiles
+        # beneath it. Check each source independently and accept if either
+        # permits the level. Mirrors _flood_fill_level so single-level BFS
+        # agrees with view_map's hierarchical reachability.
+        if ri is not None:
             if level in (ri["from_level"], ri["to_level"]):
                 return True
-            # Ramp endpoints out of reach normally, but accept when either end
-            # is a small step (shallow L0 dip, sunken floor) from `level`.
-            return _steppable(ri["from_level"]) or _steppable(ri["to_level"])
-        if key in level_map:
-            if level in level_map[key]:
+            if _steppable(ri["from_level"]) or _steppable(ri["to_level"]):
                 return True
-            return any(_steppable(lv) for lv in level_map[key])
-        # No elevation data → accessible on any level
-        return True
+        if lvls is not None:
+            if level in lvls:
+                return True
+            if any(_steppable(lv) for lv in lvls):
+                return True
+        # No elevation data on either source → accessible on any level.
+        return ri is None and lvls is None
 
     goal = (goal_x, goal_y)
     visited = {(start_x, start_y)}
@@ -804,38 +810,31 @@ def _validate_path_elevation(
         cx += dx
         cy += dy
         key = (cx, cy)
-
-        if key in ramp_tiles:
-            ri = ramp_tiles[key]
-            ends = {ri["from_level"], ri["to_level"]}
-            # Step is accepted if any current level matches a ramp end or
-            # is steppable into one.
-            allowed_ends = {
-                lv for lv in ends
-                if lv in current_levels or any(_steppable(cl, lv) for cl in current_levels)
-            }
-            if not allowed_ends:
-                return False
-            # After the ramp we could be at either ramp end.
-            current_levels = ends
-            continue
-
+        ri = ramp_tiles.get(key)
         lvls = level_map.get(key)
-        if lvls is None:
-            continue  # No plate data — permissive.
 
-        compatible = set(lvls) & current_levels
-        if compatible:
-            current_levels = compatible
+        # Each step, enumerate every level the player could plausibly be on
+        # after landing here from ``current_levels``. Ramp and flat plates
+        # at the same (x, y) are considered independently so a ground-level
+        # traversal under a Cycling Road ramp stays on the ground plate.
+        next_levels: set[int] = set()
+        if ri is not None:
+            ends = {ri["from_level"], ri["to_level"]}
+            for lv in ends:
+                if lv in current_levels or any(_steppable(cl, lv) for cl in current_levels):
+                    next_levels.update(ends)
+                    break
+        if lvls is not None:
+            next_levels |= set(lvls) & current_levels
+            for lv in lvls:
+                if any(_steppable(cl, lv) for cl in current_levels):
+                    next_levels.add(lv)
+
+        if next_levels:
+            current_levels = next_levels
             continue
-        # Try stepping via small height difference.
-        steppable_lvls = {
-            lv for lv in lvls
-            if any(_steppable(cl, lv) for cl in current_levels)
-        }
-        if steppable_lvls:
-            current_levels = steppable_lvls
-            continue
+        if ri is None and lvls is None:
+            continue  # No plate data — permissive.
         return False
 
     return True

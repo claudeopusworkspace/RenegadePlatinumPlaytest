@@ -171,6 +171,90 @@ class TestNavigateTo:
         )
 
 
+class TestUnderBridgePathfind3d:
+    """Regression: companion to TestBug038UnderBridgeReachability (view_map).
+
+    After BUG-040 made view_map's ``_bfs_reachable_3d`` consider ramp AND
+    flat plates independently on multi-plate tiles, ``navigate_to``'s
+    ``_bfs_pathfind_level`` still used the old early-return logic — it
+    checked the ramp plate first and returned without consulting the flat
+    plate beneath. On Route 206 under the Cycling Road bridge, every
+    ground-level tile that happens to also carry a bridge-ramp plate
+    looked impassable to the level-1 BFS, so the east Wayward Cave warp
+    (warp:7 at 299, 611) was correctly marked reachable by ``view_map``
+    but unreachable by ``navigate_to``. Fix: port the permissive
+    ramp/flat-independent check from ``_flood_fill_level`` into
+    ``_bfs_pathfind_level`` (and mirror it in ``_validate_path_elevation``).
+    """
+
+    SAVE_STATE = "session30_route206_under_bridge"
+
+    def _setup_3d_inputs(self, emu: EmulatorClient, goal_x: int, goal_y: int):
+        """Build the same terrain+elevation tuple _navigate_to_impl uses."""
+        from renegade_mcp.map_state import read_player_height
+        from renegade_mcp.nav_constants import _read_position
+        from renegade_mcp.pathfinding import (
+            _build_multi_chunk_elevation,
+            _build_multi_chunk_terrain,
+            _height_to_level,
+        )
+        map_id, px, py = _read_position(emu)
+        terrain_info, ox, oy, w, h = _build_multi_chunk_terrain(
+            emu, map_id, px, py, goal_x, goal_y,
+        )
+        elevation = _build_multi_chunk_elevation(
+            emu, map_id, terrain_info, ox, oy, w, h,
+        )
+        assert elevation is not None, "Route 206 must have BDHC elevation data"
+        level = _height_to_level(
+            read_player_height(emu), elevation,
+            tile_x=px - ox, tile_y=py - oy,
+        )
+        assert level is not None, "Player must resolve to a single level"
+        return (terrain_info, elevation, level, ox, oy, w, h, px, py)
+
+    def test_under_bridge_to_wayward_warp_reachable(self, emu: EmulatorClient):
+        """3D pathfind from under-bridge (310, 608) to warp:7 (299, 611) —
+        the ground-level Wayward Cave entrance — must return a path on
+        the player's level."""
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.pathfinding import _bfs_pathfind_3d
+        terrain_info, elev, level, ox, oy, w, h, px, py = self._setup_3d_inputs(
+            emu, 299, 611,
+        )
+        path = _bfs_pathfind_3d(
+            terrain_info, set(), elev,
+            px - ox, py - oy, 299 - ox, 611 - oy,
+            level, width=w, height=h,
+        )
+        assert path is not None, (
+            "_bfs_pathfind_3d must find a ground-level path to the east "
+            "Wayward Cave warp (view_map reports it reachable)."
+        )
+        # Ground-level route hugs the east wall — should be short.
+        assert len(path) < 40, f"path unexpectedly long: {len(path)} steps"
+
+    def test_under_bridge_bridge_cyclist_unreachable(self, emu: EmulatorClient):
+        """Counter-check: obj:4 Cyclist on the bridge at (304, 631) h=112
+        must NOT be reachable from the ground player. Regression guard so
+        the permissive ``_tile_on_level`` rewrite doesn't accidentally
+        grant a ground→bridge path."""
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.pathfinding import _bfs_pathfind_3d
+        terrain_info, elev, level, ox, oy, w, h, px, py = self._setup_3d_inputs(
+            emu, 304, 631,
+        )
+        path = _bfs_pathfind_3d(
+            terrain_info, set(), elev,
+            px - ox, py - oy, 304 - ox, 631 - oy,
+            level, width=w, height=h,
+        )
+        assert path is None, (
+            f"Bridge Cyclist at (304, 631) must not be reachable from "
+            f"ground; got path of length {len(path) if path else 0}"
+        )
+
+
 # ---------------------------------------------------------------------------
 # interact_with
 # ---------------------------------------------------------------------------
