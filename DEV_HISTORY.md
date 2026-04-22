@@ -62,6 +62,51 @@ Added `TestLedgeDirections` in `tests/test_navigation.py` — three tests: (1) `
 
 "Instrument before theorize" paid for itself immediately — the cross-map topology was visible from one `jq` on two decomp JSONs once the widest-input BFS confirmed the single-map dead-end. The LEDGE_DIRECTIONS find was a bonus from reading the same decomp headers that pinned the ramp mechanic in session 31b; each trip back to the decomp keeps finding pre-existing bugs that were quietly surviving because no scenario tripped them. The ledge fix is small but shrinks the surface area where `navigate_to` could silently route into a wall — worth the lock-step update anytime a new direction-gated tile behavior gets added.
 
+## Dev Session: BUG-043 re-investigation — bike ramp jump is gear-dependent (2026-04-22 session 32b)
+
+Correction to the session-32 conclusion above. After Woj pushed back on the "cross-map by design" framing (his observation: "none of the ramp landing spots are showing as reachable in the overlay" + "the other 2 Pokéballs should be perfectly doable if BFS properly takes into account ramps"), a sub-agent decomp verification + empirical ramp test in-emulator overturned the prior session's (and session 31b's) claim about ramp jump distance.
+
+### What session 31b got wrong
+
+Session 31b cited `MovementAction_JumpFarEast_Step0` (`src/unk_020655F4.c::~970`) with `InitJump(DIR_EAST, FX32_CONST(2), 16, ...)` → 2-tile displacement from the entry tile. That is NOT the action a bike ramp invokes.
+
+### What actually happens (sub-agent decomp + empirical confirmation)
+
+1. When the cycling player **steps into** a 0xD7 tile, the normal walk movement carries them onto the ramp tile (not a jump — just a regular step).
+2. On the next tick, while **standing on** the ramp, `src/unk_0205F180.c::sub_0205F95C` (lines 613-629) consults `cyclingGear` and dispatches:
+   - gear **1** (fast, default) → `MOVEMENT_ACTION_JUMP_FARTHER_EAST` (0x5f). Params at `src/unk_020655F4.c:994`: `FX32_CONST(4)`, duration 12. Step-count rule (init + one `StepDir` per full FX32_CONST(16) accumulated by `MovementAction_Jump_Step1` at 817-871): **3 tile displacement past the ramp** = lands at `ramp + 3·dir`.
+   - gear **0** (slow) → `MOVEMENT_ACTION_JUMP_NEAR_SLOW_EAST` (0x5d). Params at 982: `FX32_CONST(1)`, duration 16. **1 tile past the ramp** = lands at `ramp + 1·dir`.
+
+From (7, 22) approaching ramp (10, 17) via entry (9, 17):
+- Fast gear: walk → (10, 17) → jump → **(13, 17)**.
+- Slow gear: walk → (10, 17) → jump → (11, 17) ← this is what our `_bike_ramp_landing` currently models.
+
+Our `BIKE_RAMP_JUMP_TILES = 2` (entry + 2·dir = ramp + 1·dir) is the slow-gear model. Default bike state is fast gear, so the BFS has been wrong for the common case.
+
+### Empirical verification
+
+`/tmp/verify_ramp_jump6.py`: loaded `session31_wayward_cave_bike_ramps`, dismounted, walked on foot to (4, 17), mounted bike (auto-gear 1), held right continuously across 10×20-frame chunks. Final position: **(14, 17)** — two tiles past the next ramp's approach. That trajectory requires the jump to land at (13, 17); walking east from (11, 17) would hit the wall at (12, 17) and stop. The wall is mid-jump and skipped (the jump action does not collision-check intermediate tiles — it invokes `StepDir` mechanically for 4 tiles).
+
+Additional finding during empirical testing: a **standing-start** press east from (9, 17) on a fast-gear bike did NOT trigger the ramp (player didn't move across 80 frames of hold). Continuous movement from further west DID trigger it. This mirrors bike slope (0xD9/0xDA) behavior where continuous momentum is required. Our `_execute_path` currently emits per-tile discrete presses; for ramps, it may need to detect the ramp sequence and emit a single held-direction input.
+
+### What this means for BUG-043
+
+The earlier "cross-map by design" conclusion for BUG-043 is **wrong**. The east-chamber POIs at (22, 9), (31, 16), (33, 8) are reachable single-map once the correct ramp model is in place: the row-17 ramp chain (10→13, 15→18, 20→23, 26→29) closes the corridor that the slow-gear model can't. Cross-map routing (FR-010 in the session-32 version of the backlog) is removed — the chamber-connectivity problem was a pathfinding bug, not a topology limitation.
+
+### Scope decision
+
+No code fix this session. The correct fix requires (a) gear-dependent jump distance in `_bike_ramp_landing`, (b) `_execute_path` changes to handle continuous-momentum ramp sequences like slope traversal, and (c) end-to-end regression tests actually routing through the east chamber. Each of those has non-trivial interactions with existing code — worth a dedicated session. Filed as reopened BUG-043 in the backlog with the empirical repro + decomp cites.
+
+The LEDGE_DIRECTIONS fix (session 32a) stays — it's independent and was validated by the full test suite.
+
+Per Woj's read: "This may be something to leave as an entire session's investigation in and of itself." Agreed.
+
+### Take-aways
+
+- Session 31b's take-away ("decomp reads paid for themselves") was half right. One decomp sighting with a plausible match is not enough — the sub-agent's more careful re-read found a DIFFERENT movement action path we missed. Empirical verification via test emulator would have caught this in 31b; the original session deferred it because an initial walk test got stuck on a black screen. That was a mistake.
+- Woj's visual read of the grid dump beat my reach-set arithmetic. When a human pattern-matches an obviously-wrong layout (10 ramps with only 1 landing reachable), listen.
+- Reach-set overlays are more useful than abstract unreachable counts. The overlay made the "none of the ramps chain" pattern visible; the count-based report had framed it as "3 POIs unreachable, priority medium."
+
 ## Dev Session: Bike ramp BFS edges + auto-mount traversal (2026-04-22 session 31b)
 
 Second half of the session 31 dev pair, running in parallel with the playthrough agent on `.melonds_bridge.sock`. Standalone test emulator on `.melonds_test_bridge.sock`; all probe scripts in `/tmp`.
