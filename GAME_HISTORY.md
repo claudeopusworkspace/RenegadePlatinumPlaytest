@@ -916,3 +916,43 @@ Every one of these was a real issue the nav tools had been hiding. Careful-mode 
 - **Location**: Wayward Cave main map 284 at (73, 29), on defeated Picnicker Ana's interaction tile. Mira standby at (72, 29). Save state: `session28_wayward_east_wing_mid_sweep`.
 - **Remaining cave content**: Camper (77, 30) — 4 steps east (probable double-battle pair with Picnicker Ana, same pattern as earlier trainer pairs). Collector (91, 48) + Ruin Maniac (93, 48) — far east duo. Pokéball (72, 11) at 136 steps north. Pokéball (57, 53) still unreachable — likely gated by puzzle we haven't found yet.
 - **Next session**: finish Camper → east-wing duo → obj:27 Pokéball → figure out the (57, 53) approach → return to Mira for the quest resolution → exit, clear the Psychic, into Mt. Coronet.
+
+## Session 29 (2026-04-22): Mira's quest complete — cave cleared, exit to Route 206, nav-tool audit continued
+
+Loaded `session28_wayward_east_wing_mid_sweep`. Same careful-mode brief as session 28: stop before/after every navigation decision, describe what the tools show, state intent, wait for confirmation.
+
+### Trainer sweep (3 fights, all won clean)
+
+- **Camper Parker** (Volbeat Lv25 Bug/Electric, Linoone Lv25 Normal). Monferno Flame Wheel crit OHKO'd Volbeat (2× on Bug). Linoone stayed out — Mach Punch priority 2×SE into Normal: first hit 48 dmg, Linoone survived with 32 HP and hit back Headbutt 31 dmg, second Mach Punch finished it. Monferno **Lv28 → Lv29**.
+- **Collector Terry** (Gible Lv24, Bagon Lv24, Gabite Lv24 — Dragon lineup). Switched to Prinplup for **4× Icy Wind** against all three. Gible opened Sandstorm, then Icy Wind OHKO'd; Bagon OHKO by Icy Wind too (pleasant surprise — both were single-shots); Gabite used Dragon Rage (40 fixed) but Icy Wind OHKO'd it. **Prinplup took 3 OHKOs** for free XP through a chained type matchup. Prinplup earned significant XP but stayed Lv26.
+- **Ruin Maniac Gerald** (Cubone Lv25, Probopass Lv25). Switched Grotle in for 4× Bulldoze on Probopass — but Gerald opened with Cubone, and Grotle's **Grass resists Ground** turned Bonemerang into a 9-dmg-across-2-hits love-tap. Grotle Bullet Seed cleaned Cubone in 2 hits, Knock Off crit removed Muscle Band mid-fight (item returned post-battle, Gen 4 behavior confirmed), Razor Leaf finished Cubone. Probopass outsped Grotle (speed tie; cave Probopass is faster than predicted), Power Gem hit for 34, Grotle's Bulldoze dropped Probopass's Speed and did 40 dmg — too slow with Grotle at 17 HP, so switched to Monferno, took a Rock Slide (18 dmg), Mach Punch priority OHKO'd Probopass at 1 HP (Sturdy was already consumed). 
+
+### Exp. Share swap: Swinub → Togepi
+Mid-trainer-sweep, Woj flagged that Togepi was sitting at Lv1 with no way to catch up, and Exp. Share had been on an already-overlevelled Swinub (Lv28) since Route 216. Used `take_item(party_slot=4)` + `give_item("Exp. Share", party_slot=5)` — both tools worked clean first try. Immediate dividend: after the Ruin Maniac fight, Togepi gained 529 XP in one burst and rocketed **Lv1 → Lv9**, learning **Metronome** at Lv2 (forgot Growl). Dazzling Gleam later from Mira (see below) gives Togepi a real offensive option once it evolves.
+
+### Mira's Crimson Ribbon
+With all trainers in the east wing cleared, navigated to the obj:27 Pokéball at (72, 11) — 60 steps north through the winding east-half corridors. Result: **"CLAUDE found a Crimson Ribbon! / Mira: That's it! That's Mira's special ribbon that she lost! / Thank you! Now, let's get out of this scary cave!"** Quest complete.
+
+Approaching the exit warp at (41, 53) fired Mira's farewell dialogue: she rewards us with **TM85 Dazzling Gleam** (80-pow Fairy special, "It's a rare Fairy-type move that a lot of Pokémon can use!"). Earmarked for Togepi once it evolves.
+
+### Route 206 exit + Cycling Road 3D test
+Stepped onto `warp:1` at (41, 53), transitioned to Route 206 at **(310, 608)** — under the east side of the Cycling Road bridge. Same under-bridge pocket we entered from at start of Wayward Cave questing.
+
+### Tool bugs surfaced this session (dev instance handling)
+
+1. **BUG-024 wander guard retired** — the `max(manhattan*5, manhattan+30)` path-length cap from session 19 was false-positive'ing on legitimate long winding cave paths (Wayward Cave 101 steps for 17 Manhattan). Live repro of the original BUG-024 scenario (Cycling Road gate-house warp cluster) failed first at the BUG-030 elevation validator now — the length guard was redundant. Removed, committed in `e5c4b6c`.
+2. **view_map BFS chunk window (BUG-039, resolved parallel)** — from (73, 29) mid-cave, `view_map` classified (41, 53) as unreachable despite being perfectly walkable (`navigate_to` got there fine). Dev-instance root cause: BFS wasn't scanning all loaded cave chunks. Resolved parallel.
+3. **Bridge-Cyclist misclassified as ground-reachable (NEW, open)** — from (310, 608) under Cycling Road, `view_map` lists Cyclist obj:2 at (299, 611) as reachable in 35 steps and Cyclist obj:4 at (304, 631) as reachable in 30 steps. **Woj confirmed these cyclists should only be on the bridge (3 elevation levels up), not at ground level.** They render next to the cave-entrance tiles because the 2D projection flattens the bridge atop the under-bridge pocket. The 3D BFS is failing to exclude them from ground-level reachability. Repro save: `session29_exited_wayward_under_bridge`.
+4. **BUG-038 multi-level-up cascade (open)** — Togepi's Lv1→Lv9 jump in the Ruin Maniac fight exposed three minor issues: (a) `battle_turn(forget_move=0)` at Metronome learn committed silently but didn't surface a "learned Metronome" log entry; (b) `battle_turn(forget_move=-1)` at a later chained level-up returned `final_state=NO_TEXT` with the "Make it forget" prompt still on-screen; (c) mid-transition `read_party` returned stale save-block data (Togepi Lv1 with old moves while Monferno HP was current). Repro: `bug_togepi_cascade_levelup`.
+
+### Session Summary
+- **Badges**: 2 (unchanged).
+- **Trainers defeated**: 3 (Camper Parker, Collector Terry, Ruin Maniac Gerald). 10/10 trainers cleared in Wayward Cave across sessions 28+29. 
+- **Items obtained**: **TM85 Dazzling Gleam** (Mira's quest reward). Crimson Ribbon picked up during the quest but consumed/given back.
+- **Items used**: 0 (Mira's auto-heal covered every fight).
+- **Party**: Monferno **Lv29** (+1), Luxray Lv34, Prinplup Lv26, Grotle Lv25, Swinub ✨ Lv28, Togepi **Lv9** (+8!). Full HP (Mira final auto-heal on exit).
+- **Party changes**: Exp. Share moved from Swinub → Togepi. Togepi learned Metronome (replaced Growl).
+- **Mira**: quest complete, she's left the party. Cave freely traversable.
+- **Location**: Route 206 (310, 608) on foot, under Cycling Road bridge. Save state: `session29_exited_wayward_under_bridge`.
+- **Bugs filed**: BUG-024 retired (see DEV_HISTORY). BUG-039 resolved parallel. Open: BUG-038 (multi-level cascade) + new bridge-level-reachability bug (unnumbered, session 30 dev).
+- **Next session**: Woj called for a **dev-focused session next** to unravel the bridge reachability bug + BUG-038 cascade rather than continuing the playthrough. After that: clear Cyclist obj:4 (only remaining undefeated trainer on under-bridge Route 206 south), pick up Pokéballs at (292, 623) and (314, 631), confirm the under-bridge → south gate → Route 207 path works, push north to Route 207's Psychic Arianna, then Mt. Coronet.
