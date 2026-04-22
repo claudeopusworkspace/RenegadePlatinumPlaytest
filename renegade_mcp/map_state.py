@@ -859,9 +859,13 @@ def read_objects(emu: EmulatorClient) -> list[dict[str, Any]]:
     objects = []
     for i in range(OBJ_MAX_ENTRIES):
         off = i * OBJ_STRIDE
-        # 9 longs at the struct base: status, unk, localID, mapID,
-        # graphicsID, movementType, trainerType, flag, script.
-        header = struct.unpack_from("<9I", block, off)
+        # First 15 u32s: 9 header fields (status, unk, localID, mapID,
+        # graphicsID, movementType, trainerType, flag, script), then 5
+        # direction fields (initialDir, facingDir, movingDir, prevFacingDir,
+        # prevMovingDir), then data[0] at index 14 (offset 0x38). data[0]
+        # is the zone_event NPC-params field — e.g. soil objects put the
+        # berry patch index here.
+        header = struct.unpack_from("<15I", block, off)
         status = header[0]
         # Empty slot — keep scanning; later slots can still be populated.
         if status == 0:
@@ -899,6 +903,7 @@ def read_objects(emu: EmulatorClient) -> list[dict[str, Any]]:
             "movement_type_id": mv_id,
             "trainer_type": header[6],
             "script": header[8],
+            "data0": header[14],
         }
         objects.append(obj)
 
@@ -1306,6 +1311,12 @@ def _classify_object(
     if gfx_id == _GFX_POKEBALL:
         return "item", None, preview
     if gfx_id == _GFX_BERRY:
+        # Soil objects store the MiscSaveBlock berry-patch index in data[0].
+        # The actual patch state read happens in _build_interactibles where
+        # `emu` is in scope.
+        patch_id = obj.get("data0")
+        if isinstance(patch_id, int) and 0 <= patch_id < 128:
+            preview["patch_id"] = patch_id
         return "berry", None, preview
     if sprite_name:
         return "npc", None, preview
@@ -1363,7 +1374,24 @@ def _build_interactibles(
         elif kind == "item":
             label = sprite_name or "Item Ball"
         elif kind == "berry":
-            label = sprite_name or "Berry Patch"
+            # Resolve the soil's patch state now that emu is in scope.
+            patch_id = preview.get("patch_id")
+            patch_state: dict[str, Any] | None = None
+            if isinstance(patch_id, int):
+                from renegade_mcp.berry_patches import read_patch
+                patch_state = read_patch(emu, patch_id)
+            if patch_state is not None:
+                preview["patch"] = patch_state
+            if patch_state is None or not patch_state.get("planted"):
+                label = sprite_name or "Empty Berry Patch"
+            elif patch_state.get("harvestable"):
+                label = (
+                    f"{patch_state['berry']} Berry (ripe x{patch_state['yield']})"
+                )
+            else:
+                label = (
+                    f"{patch_state['berry']} Berry ({patch_state['growth_stage']})"
+                )
         elif kind == "npc":
             label = sprite_name or f"NPC {idx}"
         else:

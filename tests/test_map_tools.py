@@ -426,6 +426,47 @@ class TestFlatMultiChunkReachability:
         assert "steps" in reachable[mira["id"]]
 
 
+class TestBerryPatchState:
+    """Soil map-objects (gfx_id 100) resolve to a BerryPatch read from the
+    MiscSaveBlock RAM region (SAVE_BLOCK_BASE + 0x20C4, 14-byte records).
+    The Route 206 under-bridge save has four active soils: two Rawst at
+    (293-294, 627) and two Razz at (295-296, 691), all FRUIT stage x1.
+    """
+
+    SAVE_STATE = "session30_route206_under_bridge"
+
+    def test_soils_resolve_to_planted_rawst_and_razz(self, emu: EmulatorClient):
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        all_entries = result["interactibles"] + result["unreachable_interactibles"]
+        berries = {
+            (e["x"], e["y"]): e for e in all_entries if e["kind"] == "berry"
+        }
+        # Expect both Rawst + both Razz soils in the output.
+        expected = {(293, 627), (294, 627), (295, 691), (296, 691)}
+        assert expected.issubset(berries.keys()), (
+            f"Missing soils: got {set(berries.keys())}, expected superset of {expected}"
+        )
+        # Rawst pair
+        for xy in [(293, 627), (294, 627)]:
+            patch = berries[xy]["preview"].get("patch")
+            assert patch is not None, f"soil@{xy} missing patch preview"
+            assert patch["planted"] is True
+            assert patch["berry"] == "Rawst"
+            assert patch["growth_stage"] == "fruit"
+            assert patch["harvestable"] is True
+            assert patch["yield"] >= 1
+            assert berries[xy]["label"].startswith("Rawst Berry")
+        # Razz pair
+        for xy in [(295, 691), (296, 691)]:
+            patch = berries[xy]["preview"].get("patch")
+            assert patch is not None
+            assert patch["berry"] == "Razz"
+            assert patch["growth_stage"] == "fruit"
+            assert patch["harvestable"] is True
+
+
 class TestFollowerPassableAndHiddenObjects:
     """Regression: follower NPCs (movement_type 48 / 50) must NOT block BFS,
     and Drayano's disabled-but-not-deleted zone_event entries (parked at

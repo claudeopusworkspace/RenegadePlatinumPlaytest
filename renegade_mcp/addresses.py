@@ -75,6 +75,8 @@ _DESMUME: dict[str, int] = {
     "BAG_BASE":              0x0227E800,
     "FLAGS_ARRAY":           0x0227F1BC,
     "BOX_DATA_BASE":         0x0228B100,
+    # MiscSaveBlock.berryPatches[128] — 14-byte BerryPatch records, SB+0x20C4.
+    "BERRY_PATCH_BASE":      0x02280294,
     # FieldOverworldState group (live position, cycling gear)
     # CYCLING_GEAR_ADDR is explicitly +0x90 from PLAYER_POS_BASE in the same struct.
     "PLAYER_POS_BASE":       0x0227F450,
