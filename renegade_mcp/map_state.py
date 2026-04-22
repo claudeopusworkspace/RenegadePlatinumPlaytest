@@ -1524,9 +1524,11 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
     #    interactibles outside the 15x15 render viewport still get a
     #    reachable/unreachable answer. Under-bridge tiles correctly stay
     #    unreachable from on-bridge players via the elevation-aware 3D BFS.
-    #    Cap raised from 150→250 so winding cave systems (Wayward, Mt.
-    #    Coronet, Victory Road) resolve end-of-map POIs as reachable.
-    MAX_REACH_STEPS = 250
+    #    Cap raised 150→250 (cave systems), then 250→500 in session 29 —
+    #    Wayward Cave post-Mira-quest (73,29) → (41,53) is ~100+ Manhattan
+    #    through the cave interior with lots of branching, and BFS on a
+    #    5×5 chunk multi-chunk cave has been comfortably fast at 500 steps.
+    MAX_REACH_STEPS = 500
     reachable_tiles: dict[tuple[int, int], int] = {}
     reach_3d_ok = False
     mc_bounds: tuple[int, int, int, int] | None = None  # (ox, oy, w, h)
@@ -1538,9 +1540,19 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
             _build_multi_chunk_terrain,
             _height_to_level,
         )
+        # Gather every POI chunk so the BFS grid spans them. Without this the
+        # region is viewport-bounded and POIs in distant chunks of the same
+        # map appear unreachable (BUG-039: Wayward Cave bridge (73,29) →
+        # warp (41,53) routes through x<32 which the viewport never loads).
+        poi_points: list[tuple[int, int]] = [
+            (obj["x"], obj["y"]) for obj in objects if obj["index"] != 0
+        ]
+        for w in read_warps_from_rom(emu, map_id):
+            poi_points.append((w["x"], w["y"]))
         mc_result = _build_multi_chunk_terrain(
             emu, map_id, px, py,
             vp_x + vp_w - 1, vp_y + vp_h - 1,
+            extra_targets=poi_points,
         )
         if mc_result is not None:
             mc_terrain, mc_ox, mc_oy, mc_w, mc_h = mc_result

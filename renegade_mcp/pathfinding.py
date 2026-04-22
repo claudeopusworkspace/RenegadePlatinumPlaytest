@@ -887,8 +887,17 @@ def _bfs_reachable_3d(
 
 def _build_multi_chunk_terrain(
     emu: EmulatorClient, map_id: int, px: int, py: int, target_x: int, target_y: int,
+    extra_targets: list[tuple[int, int]] | None = None,
 ) -> tuple | None:
-    """Load multi-chunk terrain grid. Returns (terrain_info, origin_x, origin_y, w, h) or None."""
+    """Load multi-chunk terrain grid. Returns (terrain_info, origin_x, origin_y, w, h) or None.
+
+    The chunk window is bounded by the player, the (target_x, target_y) coord,
+    and any ``extra_targets`` tiles — then expanded by one chunk on each side.
+    Pass every POI a caller needs reachable (warps, objects) in ``extra_targets``
+    so a player standing in a corner-chunk of a wide map still gets a BFS grid
+    that covers the full single-map route; otherwise connectors in distant
+    chunks vanish. Capped at 5x5 chunks regardless.
+    """
     result = get_matrix_for_map(emu, map_id)
     if result is None:
         return None
@@ -900,20 +909,39 @@ def _build_multi_chunk_terrain(
     target_chunk_x = target_x // CHUNK_SIZE
     target_chunk_y = target_y // CHUNK_SIZE
 
-    min_cx = max(0, min(player_chunk_x, target_chunk_x) - 1)
-    max_cx = min(mw - 1, max(player_chunk_x, target_chunk_x) + 1)
-    min_cy = max(0, min(player_chunk_y, target_chunk_y) - 1)
-    max_cy = min(mh - 1, max(player_chunk_y, target_chunk_y) + 1)
+    xs = [player_chunk_x, target_chunk_x]
+    ys = [player_chunk_y, target_chunk_y]
+    if extra_targets:
+        for tx, ty in extra_targets:
+            xs.append(tx // CHUNK_SIZE)
+            ys.append(ty // CHUNK_SIZE)
 
-    # Cap at 5x5 chunks
+    min_cx = max(0, min(xs) - 1)
+    max_cx = min(mw - 1, max(xs) + 1)
+    min_cy = max(0, min(ys) - 1)
+    max_cy = min(mh - 1, max(ys) + 1)
+
+    # Cap at 5x5 chunks. With extra_targets (view_map reachability), center on
+    # the player — the flood starts there and we'd rather lose distant POIs
+    # than miss the player's own chunk. Without extras (navigate_to /
+    # interaction), center on the player↔target midpoint so both endpoints
+    # stay in bounds.
     if max_cx - min_cx > 4:
-        mid = (player_chunk_x + target_chunk_x) // 2
-        min_cx = max(0, mid - 2)
-        max_cx = min(mw - 1, mid + 2)
+        if extra_targets:
+            min_cx = max(0, player_chunk_x - 2)
+            max_cx = min(mw - 1, player_chunk_x + 2)
+        else:
+            mid = (player_chunk_x + target_chunk_x) // 2
+            min_cx = max(0, mid - 2)
+            max_cx = min(mw - 1, mid + 2)
     if max_cy - min_cy > 4:
-        mid = (player_chunk_y + target_chunk_y) // 2
-        min_cy = max(0, mid - 2)
-        max_cy = min(mh - 1, mid + 2)
+        if extra_targets:
+            min_cy = max(0, player_chunk_y - 2)
+            max_cy = min(mh - 1, player_chunk_y + 2)
+        else:
+            mid = (player_chunk_y + target_chunk_y) // 2
+            min_cy = max(0, mid - 2)
+            max_cy = min(mh - 1, mid + 2)
 
     num_cx = max_cx - min_cx + 1
     num_cy = max_cy - min_cy + 1
