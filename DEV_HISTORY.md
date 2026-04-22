@@ -4,6 +4,38 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Fix view_map BFS chunk window (2026-04-22 session 30)
+
+Pure dev session — no gameplay advance. Woj asked me to investigate save `bug_view_map_false_unreachable_wayward` (Wayward Cave main, (73, 29)): `view_map` was reporting 11 unreachable interactibles including `warp:1 to Route 206 (41, 53)` — the entry warp we had physically used earlier in the playthrough. One commit landed: `48432e4`.
+
+### False hypothesis first
+
+Initial read of the terrain dump + BDHC looked damning: all 4 loaded chunks reported a single flat height (16), chunk (1,1) had one isolated ramp with a −16/+16 span that no other plate connected to, and map 285 (the Wayward Cave sub-cave) clearly forms a bridge between the two disconnected halves of map 284. Filed BUG-039 as a cross-map reachability problem, suggested fixes ranging from a dest-map heuristic up to a full cross-map BFS.
+
+Woj pushed back: "if this is the case, why does manually entering the coordinates for (41, 53) into navigate_to manage to navigate to the warp from the save state in question? I'm fairly certain it doesn't cross through any warps." Ran `navigate_to(x=41, y=53)` — succeeded in 137 steps with a single-map path: `left 19 → up 14 → left 8 → up 12 → left 18 → ...`, looping up through the northern branch at y≈3 (which spans x=27..46), down the west side, and back east to the warp. Entirely within map 284. Cross-map hypothesis disproven.
+
+### Real root cause
+
+`view_map` called `_build_multi_chunk_terrain(emu, map_id, px, py, vp_x+vp_w-1, vp_y+vp_h-1)` — the "target" passed to the chunk-bounding logic was the **viewport's bottom-right corner**, not any actual POI. For player chunk (2, 0) and viewport-br chunk (2, 1), the function loaded chunks (1..2, 0..1) = x[32, 96), leaving chunk column 0 (x[0, 32)) unloaded. The northern-branch connector at y≈3 passes through x=27..31 — tiles that don't exist in the BFS terrain grid — so the flood couldn't close the loop back down to (41, 53), and the 6 west-wing trainers at x<32 weren't even in bounds. `navigate_to` sidestepped this accidentally: when it knows the real target coord, the same function expands `min_cx` down to 0 and loads the full matrix.
+
+### Fix
+
+- **`pathfinding.py`** — added `extra_targets: list[tuple[int,int]] | None` parameter to `_build_multi_chunk_terrain`. When supplied, every point contributes to the chunk-bounding box. 5x5 cap preserved; the trimming rule now branches: with extras (view_map), center on the player (flood origin) so we'd rather drop distant POIs than miss the player's own chunk; without extras (navigate_to, interaction), keep the old player↔target midpoint so both endpoints stay in bounds.
+- **`map_state.py`** — `view_map` now collects every object tile plus every warp tile from `read_warps_from_rom` and passes them as `extra_targets`. Docstring comment cross-references BUG-039.
+
+### Verification
+
+Re-ran the repro after `reload_tools` + `load_state`:
+- Before: **11 unreachable**.
+- After: **4 unreachable** — `warp:0 (30,55)`, `warp:2 (28,54)`, `warp:3 (55,54)`, `obj:1 Pokeball (57,53)`. All four are in the southern ground plaza that really is 2D-disconnected within map 284 and only reachable via map 285. Left as-is; cross-map BFS isn't worth the complexity for a handful of dungeon warps.
+- Reachable POIs show exactly the step counts the full-matrix diagnostic predicted: `warp:1 (41, 53)` = 138 steps, west-wing trainer interaction tiles = 104..135 steps.
+
+Full suite: **516 passed in 2:31 @ N=8**. Diagnostics preserved: `scripts/diag_view_map_bug.py` (narrow-window behavior, BDHC per-chunk dump, behavior-byte histogram, raw terrain passability overlay) and `scripts/diag_view_map_fullmatrix.py` (proves the full-matrix flood reaches every in-map POI).
+
+### Take-away
+
+The surprising part wasn't the bug — it was how plausible the cross-map theory looked before I tested the alternative. Two things saved us. (1) Woj cross-checked with `navigate_to` and it produced an actual 137-step path, which is something my diag script hadn't done. (2) Expanding the same BFS over the full matrix was cheap (one `_load_viewport_terrain` call) and immediately showed 1447 reached tiles vs 749. Once that number nearly doubled, the cross-map theory was dead — you can't pick up 700 single-map tiles by adding a map boundary. General lesson: when a reachability tool disagrees with ground truth, instrument the *same* algorithm with looser inputs before theorizing about topology. Cheap dial turns beat clever theories.
+
 ## Dev Session: Retire BUG-024 length guard (2026-04-22 session 29)
 
 Mid-playtest, the BUG-024 "wander guard" (introduced session 19) fired inside Wayward Cave on what looked like legitimate navigation: `navigate_to(x=73, y=29)` from (72, 10) returned `No reasonable path ... BFS path is 136 steps for a 20-tile Manhattan distance`. The cave's east half has two chambers connected by a single ~100-step winding corridor — the path is real, the ratio just exceeds `max(manhattan*5, manhattan+30)`. Breaking the trip into two legs worked around it, but every cave/dungeon run was going to keep eating this false positive.
