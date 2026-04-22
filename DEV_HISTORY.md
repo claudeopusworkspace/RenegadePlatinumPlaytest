@@ -4,6 +4,29 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Berry-patch state in view_map (2026-04-22 session 30c)
+
+Ran in parallel with a live playthrough agent on `.melonds_bridge.sock`; all dev work used a dedicated test emulator on `.melonds_test_bridge.sock` and throwaway probe scripts in `/tmp`.
+
+Soil map-objects (graphics_id 100) previously surfaced as bare `"Berry Patch"` labels with no state. They now resolve to their `BerryPatch` record and carry full state in the interactible preview — berry ID, growth stage, yield, moisture, mulch, `harvestable`.
+
+### How it works
+
+- `MapObject.data[0]` (offset 0x38 in the 0x128-byte slot, after 9 u32 header fields + 5 direction ints) holds the 0-127 berry patch index. `map_state.read_objects` now unpacks 15 u32s instead of 9 and exposes `data0`.
+- The `BerryPatch` array — 128 entries of **14 bytes each**, not 16 — lives at `SAVE_BLOCK_BASE + 0x20C4`. Added as `BERRY_PATCH_BASE = 0x02280294` in `addresses.py` (rides the default `save_block` delta group).
+- New module `renegade_mcp/berry_patches.py` decodes one record: berry ID (1-based, `item_id = berry_id + 148`), growth stage enum, yield, moisture rating, mulch type, is-growing flag, plus convenience fields (`harvestable`, moisture label, berry name via `data.item_names()`).
+- `_classify_object` tags soil previews with `patch_id`. `_build_interactibles` (which has `emu` in scope) reads the record and merges it into `preview.patch`, upgrading labels to e.g. `"Rawst Berry (ripe x1)"`, `"Razz Berry (growing)"`, or `"Empty Berry Patch"`.
+
+### Investigation notes
+
+- Decomp sub-agent claimed struct size was 16 (alignment padding). Empirical probe against `session30_route206_under_bridge` proved it's 14: stride=16 produced garbled yields and stages; stride=14 decoded cleanly with the opening slots matching `sBerryInitTable` (Oran, Cheri, Chesto, Pecha, Oran, Pecha, Razz, Bluk…). Last field is `u8 isGrowing`, so alignment only requires struct size to be even — 14 already is.
+- Can't derive MiscSaveBlock's address arithmetically from `SAVE_BLOCK_BASE` (which is actually the PLAYER save-table entry). Each save section has its own `pageInfo[id].location` computed at runtime from the preceding entries' sizes. Found it instead via the rival-name signature ("WOJ" + 0xFFFF terminator), which lives at a known offset inside MiscSaveBlock (`+0x824` past the berry array, through 36 bytes of `PersistedMapFeatures`).
+- Slots 120-127 can hold uninitialized sBerryInitTable tail bytes with out-of-range values; the reader returns `None` for `berry_id > 64` or `stage > 5` and the caller falls back to `"Empty Berry Patch"`.
+
+### Verification
+
+New test `TestBerryPatchState::test_soils_resolve_to_planted_rawst_and_razz` in `tests/test_map_tools.py` — four soils at (293-294, 627) and (295-296, 691) on `session30_route206_under_bridge` all decode to planted FRUIT-stage patches (Rawst × 2, Razz × 2). Existing 87 map/hm_obstacles/bug020 tests still green after the `read_objects` unpack widening. Memory note in `reference_berry_patches.md`; address table in `MEMORY_MAP.md`.
+
 ## Dev Session: Fix view_map under-bridge elevation misclassification (2026-04-22 session 30b)
 
 Three-pronged fix for an interlocking bug cluster on Route 206 at (310, 608) (Cycling Road bridge overhead, player on the ground plate underneath). Repro: `session30_route206_under_bridge`. Before the fix, `view_map` reported bridge-level Cyclists as reachable from under the bridge, AND the ground-level Wayward Cave warp sitting directly beneath one of those Cyclists as unreachable. Same (x, y), opposite verdicts — clear signal that elevation info was being dropped inconsistently between the BFS and the POI classifier.

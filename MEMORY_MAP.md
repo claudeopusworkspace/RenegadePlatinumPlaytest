@@ -135,6 +135,37 @@ Save block base: `0x0227E1D0`.
 | `0x0227E26C` | long | Party count | Offset +0x9C from base |
 | `0x022809B8` | 16 bytes | Rival name | Gen 4 text (u16 LE × 8, 0xFFFF terminated). Offset +0x27E8 from base. Unencrypted. |
 
+## MiscSaveBlock — Berry Patches
+
+Separate save-table entry (SAVE_TABLE_ENTRY_MISC) whose runtime offset from SAVE_BLOCK_BASE is fixed per game build. For Renegade Platinum the berry array sits at `SAVE_BLOCK_BASE + 0x20C4`. Exposed as `BERRY_PATCH_BASE = 0x02280294` in `addresses.py` (default save_block delta group).
+
+| Address      | Size | Field | Notes |
+|-------------|------|-------|-------|
+| `0x02280294` | 1792 bytes | BerryPatch[128] array | 14-byte records, stride=14 (struct last field is u8, only forces 2-byte alignment) |
+| `0x022809B8` | 16 bytes | Rival name | Lives at berry_array + 128*14 + 36 (PersistedMapFeatures) inside MiscSaveBlock |
+
+**Per-BerryPatch layout (14 bytes, offsets within record):**
+
+| Offset | Type | Field | Notes |
+|-------|------|-------|-------|
+| 0x00 | u8 | berryID | 1-based into berry subset; itemID = berryID + 148. 0 = empty, >64 = uninitialized |
+| 0x01 | u8 | growthStage | 0 NONE / 1 PLANTED / 2 SPROUTED / 3 GROWING / 4 BLOOMING / 5 FRUIT |
+| 0x02 | u16 | stageMinutesRemaining | RTC minutes until next stage |
+| 0x04 | u16 | moistureMinutesRemaining | RTC minutes of water left |
+| 0x06 | u8 | replantCount | Regrowth cycle count |
+| 0x07 | — | pad | 1 byte alignment pad before u16 yield |
+| 0x08 | u16 | yield | Berries ready to harvest (non-zero only at FRUIT) |
+| 0x0A | u8 | moistureRating | 0..100 |
+| 0x0B | u8 | yieldRating | 0..5 (5 = max) |
+| 0x0C | u8 | mulchType | 0 NONE / 1 GROWTH / 2 DAMP / 3 STABLE / 4 GOOEY |
+| 0x0D | u8 | isGrowing | Ticks only when player is in-range of the patch |
+
+**Map-object → patch index:** soil MapObjects (`graphics_id == 100`) store the patch index in `data[0]` — the 15th u32 within the 0x128-byte slot, offset `0x38` from the slot base (9 header u32s + 5 direction ints, then `int data[3]`).
+
+Growth advancement is RTC-driven: the field system ticks patches in view (`isGrowing=1`) when it processes a real-time-clock delta. Distant patches are frozen until re-entry. Reads are stable within a single turn.
+
+Reader: `renegade_mcp.berry_patches.read_patch(emu, patch_id)`. `view_map` already surfaces decoded state in berry interactibles' `preview.patch`.
+
 ## Encrypted Party Data (Gen 4)
 
 The game stores party Pokemon in encrypted Gen 4 format. Count at `0x0227E26C`, data at `0x0227E270` (236 bytes per slot, up to 6 slots).
