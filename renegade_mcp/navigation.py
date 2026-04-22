@@ -356,21 +356,27 @@ def _execute_path(
         old_map, old_x, old_y = _read_position(emu)
         dx, dy = _DIR_DELTAS.get(direction, (0, 0))
 
-        # Pre-step: if the next tile is a bike slope and we're walking,
-        # mount the bicycle first.  Stepping onto a slope on foot registers
-        # as a successful step (position briefly changes) before the game's
-        # slope physics slides the player back south, so the post-step
-        # `blocked` check never catches this case — the player oscillates.
-        # Once on the bike, stepping into a slope IS blocked, which routes
-        # through the existing blocked-branch slope traversal below.
+        # Pre-step: approaching a bike slope/ramp, we may need the bike.
+        # - Slopes always auto-slide south. Going against the slide (up) needs
+        #   fast gear + a running start — pre-mount so the blocked-branch
+        #   slope traversal can handle it. Going with the slide (down) works
+        #   on foot — the engine just slides us south, no bike required, and
+        #   mounting would add unwanted momentum that overshoots the target.
+        # - Ramps (Wayward Cave) always need the bike regardless of direction.
         pre_target = (old_x + dx, old_y + dy)
         pre_obs = obstacle_tiles.get(pre_target)
-        if pre_obs is not None and pre_obs.get("type") in (BIKE_SLOPE_TYPES | BIKE_RAMP_TYPES):
+        is_slope_ascent = (
+            pre_obs is not None
+            and pre_obs.get("type") in BIKE_SLOPE_TYPES
+            and direction == "up"
+        )
+        is_ramp = pre_obs is not None and pre_obs.get("type") in BIKE_RAMP_TYPES
+        if is_slope_ascent or is_ramp:
             from renegade_mcp.addresses import addr as _addr
             on_bike = bool(emu.read_memory(_addr("CYCLING_GEAR_ADDR"), size="short"))
             if not on_bike:
                 if not _auto_mount_for_slope(emu):
-                    kind = "bike_ramp" if pre_obs.get("type") in BIKE_RAMP_TYPES else "bike_slope"
+                    kind = "bike_ramp" if is_ramp else "bike_slope"
                     nav_info["blocked_at"] = {"x": old_x, "y": old_y, "step": steps_taken}
                     nav_info["blocked_reason"] = f"{kind}_requires_bicycle"
                     nav_info["note"] = (
@@ -471,14 +477,24 @@ def _execute_path(
                             from renegade_mcp.use_item import use_item
                             use_item(emu, "Bicycle")
                             active_hold = HOLD_FRAMES
+                            goal_gx = repath_ctx["grid_ox"] + repath_ctx["goal_x"]
+                            goal_gy = repath_ctx["grid_oy"] + repath_ctx["goal_y"]
+                            steps_taken += tiles_moved
+                            if (new_x, new_y) == (goal_gx, goal_gy):
+                                # Slope landed us exactly on target. Done.
+                                return False, steps_taken, repaths_used, nav_info
                             new_path = _try_repath(repath_ctx, prev_npcs, new_x, new_y)
                             if new_path is None:
-                                # Already at goal (or goal unreachable) — exit
-                                # cleanly without treating slope as a failure.
-                                steps_taken += tiles_moved
-                                return False, steps_taken, repaths_used, nav_info
+                                # No foot path from landing tile to original
+                                # target (e.g. target was on a slope tile, now
+                                # impassable without the bike). Surface as
+                                # stopped_early so callers can react.
+                                nav_info["blocked_at"] = {
+                                    "x": new_x, "y": new_y, "step": steps_taken,
+                                }
+                                nav_info["blocked_reason"] = "post_slope_repath_failed"
+                                return True, steps_taken, repaths_used, nav_info
                             repaths_used += 1
-                            steps_taken += tiles_moved
                             directions = directions[:i] + new_path
                             continue  # replay loop at same i with new path
                         else:
@@ -636,6 +652,20 @@ def _execute_path(
         nav_info["map_changed"] = True
     if npc_move_count > 0:
         nav_info["npc_moves"] = npc_move_count
+
+    # All directions executed. The new primitive exits each step on the first
+    # pos-change, so the last step's animation can continue briefly after we
+    # release input — give it time to settle before checking whether we made
+    # it to the goal. For manual walking (no repath_ctx) there's no goal.
+    if repath_ctx is not None:
+        emu.advance_frames(WAIT_FRAMES)
+        goal_gx = repath_ctx["grid_ox"] + repath_ctx["goal_x"]
+        goal_gy = repath_ctx["grid_oy"] + repath_ctx["goal_y"]
+        _, cur_x, cur_y = _read_position(emu)
+        if (cur_x, cur_y) != (goal_gx, goal_gy):
+            nav_info["blocked_at"] = {"x": cur_x, "y": cur_y, "step": steps_taken}
+            nav_info["blocked_reason"] = "path_exhausted_before_target"
+            return True, steps_taken, repaths_used, nav_info
 
     return False, steps_taken, repaths_used, nav_info
 
@@ -1505,9 +1535,16 @@ def _navigate_to_impl(
         return result
 
     # Non-door target: check if we ended up adjacent to a walk-into door/warp
+    # (nav was aiming at the door-adjacent tile and the user probably wants to
+    # actually step through). Skip this when the caller asked for a specific
+    # non-door tile and we're already on it — otherwise we'd shove the player
+    # off their intended target by pressing into an unrelated nearby warp.
     adj_warp_failed: dict[str, Any] | None = None
-    if not is_door and not stopped_early:
-        cur_map, cur_x, cur_y = _read_position(emu)
+    cur_map, cur_x, cur_y = _read_position(emu)
+    goal_gx = repath_ctx["grid_ox"] + repath_ctx["goal_x"]
+    goal_gy = repath_ctx["grid_oy"] + repath_ctx["goal_y"]
+    at_target = (cur_x, cur_y) == (goal_gx, goal_gy)
+    if not is_door and not stopped_early and not at_target:
         ti = repath_ctx["terrain_info"]
         gw, gh = repath_ctx["grid_w"], repath_ctx["grid_h"]
         gox, goy = repath_ctx["grid_ox"], repath_ctx["grid_oy"]

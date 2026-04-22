@@ -423,6 +423,16 @@ def seek_encounter(emu: EmulatorClient, cave: bool = False,
     dir_b_to_a = OPPOSITE_DIR[dir_a_to_b]
     steps_taken = 0
 
+    # Dismount the bike BEFORE walking to the pacing tile. Seek_encounter
+    # always ends on foot for pacing; walking there avoids the residual
+    # bike-momentum drift that lands us a tile short. Navigate_to auto-
+    # mounts for ascending slopes/ramps if genuinely needed, so grass
+    # paths that cross an up-slope still work.
+    from renegade_mcp.addresses import addr
+    from renegade_mcp.use_item import use_item
+    if bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")):
+        use_item(emu, "Bicycle")
+
     # Walk to first pacing tile via navigate_to — handles bike slopes,
     # facing turns, HM obstacles, repaths, and encounters along the way.
     # The naive press-and-check loop this replaces failed on bike slopes
@@ -438,21 +448,28 @@ def seek_encounter(emu: EmulatorClient, cave: bool = False,
             return {"result": "encounter",
                     "steps_taken": nav_result.get("steps", len(path_to_a)),
                     "encounter": nav_enc}
-        if "error" in nav_result:
+        if "error" in nav_result or nav_result.get("stopped_early"):
             final_map, final_x, final_y = _read_position(emu)
+            note = (
+                f"Could not reach pacing tile: {nav_result['error']}"
+                if "error" in nav_result
+                else (
+                    f"Nav stopped short of pacing tile at "
+                    f"({final_x},{final_y}): "
+                    f"{nav_result.get('blocked_reason', 'unknown')}"
+                )
+            )
             return {"result": "blocked",
                     "steps_taken": nav_result.get("steps", 0),
                     "position": _pos_with_map(final_x, final_y, final_map),
-                    "note": f"Could not reach pacing tile: {nav_result['error']}"}
+                    "note": note}
         steps_taken = nav_result.get("steps", 0)
 
-    # Dismount bicycle before pacing.  The bike's 4-frame per-tile hold is
-    # too short to reliably turn AND move in a single press, so alternating
-    # directions (which pacing does every step) produces bogus movement —
-    # pressing "up" while coasting south can still advance south one tile.
-    # On foot (16f hold), direction changes are clean.
-    from renegade_mcp.addresses import addr
-    from renegade_mcp.use_item import use_item
+    # Bike was dismounted pre-nav. If an ascending slope along the way
+    # auto-mounted us, dismount once more before pacing — the alternating-
+    # direction pacing loop is unreliable on the bike (4-frame hold can't
+    # cleanly turn + move in one press, and coasting can advance in the
+    # opposite direction you pressed).
     if bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")):
         use_item(emu, "Bicycle")
     hold = _get_move_hold(emu)
