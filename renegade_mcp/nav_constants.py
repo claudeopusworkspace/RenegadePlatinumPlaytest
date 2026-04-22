@@ -33,6 +33,39 @@ def _get_move_hold(emu: EmulatorClient) -> int:
     return BIKE_HOLD_FRAMES if cycling else HOLD_FRAMES
 
 
+def step_hold(emu: EmulatorClient, direction: str, active_hold: int,
+              aux_buttons: list[str] | None = None) -> dict:
+    """Hold `direction` (+ optional aux buttons) until the player's coordinate
+    on the movement axis changes, or max_frames elapses.
+
+    Replaces the legacy `advance_frames(hold, buttons=[dir]) + advance_frames(WAIT)`
+    pattern. Because `advance_frames_until` polls inside the bridge, the engine
+    sees a single continuous hold across tile boundaries — which is what makes
+    bike ramps/slopes and running-shoes speed behave correctly.
+
+    Returns the raw advance_frames_until result. `triggered=False` indicates
+    the call exhausted max_frames without the position changing — which the
+    caller can treat as "blocked".
+
+    Args:
+        active_hold: Expected per-tile frames for the current locomotion
+            (HOLD_FRAMES / BIKE_HOLD_FRAMES / SURF_HOLD_FRAMES). Used to size
+            the safety cap — actual per-tile frames are usually less.
+        aux_buttons: Extra buttons to hold alongside `direction`. Pass ["b"]
+            for running shoes on foot (harmless indoors / on bike / surfing).
+    """
+    from renegade_mcp.addresses import addr
+    axis_offset = 8 if direction in ("left", "right") else 12
+    pos_addr = addr("PLAYER_POS_BASE") + axis_offset
+    buttons = [direction] + (aux_buttons or [])
+    return emu.advance_frames_until(
+        max_frames=active_hold * 2 + 8,
+        conditions=[{"type": "changed", "address": pos_addr, "size": "long"}],
+        poll_interval=1,
+        buttons=buttons,
+    )
+
+
 # ── Direction handling ──
 DIR_ALIASES = {"u": "up", "d": "down", "l": "left", "r": "right"}
 BFS_MOVES = [(0, -1, "up"), (0, 1, "down"), (-1, 0, "left"), (1, 0, "right")]

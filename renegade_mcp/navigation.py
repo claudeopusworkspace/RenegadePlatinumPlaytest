@@ -100,6 +100,7 @@ from renegade_mcp.nav_constants import (  # noqa: F401
     WAIT_FRAMES,
     _get_move_hold,
     _normalize_direction,
+    step_hold,
     _pos_with_map,
     _read_position,
     _summarize_path,
@@ -396,8 +397,12 @@ def _execute_path(
             emu.advance_frames(BIKE_HOLD_FRAMES, buttons=[direction])
             emu.advance_frames(24)  # cover 16-frame jump + settle
         else:
-            emu.advance_frames(active_hold, buttons=[direction])
-            emu.advance_frames(WAIT_FRAMES)
+            # Hold direction until the movement-axis coord changes (or max
+            # frames elapse). Including "b" when walking engages Running Shoes
+            # (~2x speed outdoors, harmless otherwise). Bike/surf: "b" would
+            # toggle bike gear or do nothing useful, so skip it.
+            aux = ["b"] if active_hold == HOLD_FRAMES else None
+            step_hold(emu, direction, active_hold, aux_buttons=aux)
 
         new_map, new_x, new_y = _read_position(emu)
 
