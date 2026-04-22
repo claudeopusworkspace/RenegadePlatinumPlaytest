@@ -4,6 +4,64 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: LEDGE_DIRECTIONS decomp fix + BUG-043 root-cause (2026-04-22 session 32)
+
+Parallel-dev session running against `.melonds_test_bridge.sock` while the playthrough agent drives `.melonds_bridge.sock` on its own story track. All probes in `/tmp`.
+
+Goal: close out BUG-043 — the session-31b follow-up where four Wayward Cave B1F east-chamber POIs ((22, 9), (31, 16), (33, 8) Pokeballs + warp:0 at (43, 38)) remained in `unreachable_interactibles` on `session31_wayward_cave_bike_ramps` despite BUG-042 wiring bike-ramp BFS edges.
+
+### Instrument before theorize
+
+Per the memory rule, re-ran the 2D BFS with the widest possible input before theorizing about new mechanics. `_build_multi_chunk_terrain` applies a 5×5 chunk cap; I wrote `/tmp/probe_bug043_widen.py` to bypass that and BFS over the full 64×64 map terrain grid. Result: **172 tiles reached, identical to the viewport-bounded run** — confirms the problem isn't narrow input (instrument_before_theorize rule), it's genuine disconnection under our BFS model. Of the 10 bike ramps on the map, only (10, 17) has a reachable approach tile; every other ramp's approach sits in a walled-off chamber.
+
+### Root cause via decomp warp analysis
+
+Read `ref/pokeplatinum/res/field/events/events_wayward_cave_b1f.json` + `events_wayward_cave_1f.json`. The B1F has **two warps** both linking back to 1F: (43, 38)↔1F(55, 54) and (16, 40)↔1F(28, 54). The east-chamber POIs can only be reached by walking from (7, 22) to warp:1 at (16, 40), warping to 1F at (28, 54), walking on 1F to (55, 54), re-entering B1F at (43, 38). That re-entry tile lands the player in the east chamber with direct access to all four POIs. Our `navigate_to` BFS is single-map — it fundamentally can't plan that round trip.
+
+Filed as **FR-010 cross-map BFS** in the backlog (not a BUG-043 fix — the BFS correctly reports the POIs unreachable *within one map*, which is what the tool guarantees). BUG-043 closed as "cross-map by design".
+
+### Bonus: LEDGE_DIRECTIONS decomp-mismatch fix
+
+While enumerating terrain features I found **39 tiles of 0x3B** (row 22 cols 11–35, plus smaller clusters) and discovered our mapping was rotated 90°.
+
+`ref/pokeplatinum/include/constants/field/map_tile_behaviors.h` lines 67-70:
+```
+TILE_BEHAVIOR_JUMP_EAST  = 0x38
+TILE_BEHAVIOR_JUMP_WEST  = 0x39
+TILE_BEHAVIOR_JUMP_NORTH = 0x3A
+TILE_BEHAVIOR_JUMP_SOUTH = 0x3B
+```
+
+Confirmed by the switch in `src/unk_0205F180.c:1772-1793`:
+```
+case DIR_NORTH: if (TileBehavior_IsJumpNorth(t)) return TRUE;
+case DIR_SOUTH: if (TileBehavior_IsJumpSouth(t)) return TRUE;
+case DIR_WEST:  if (TileBehavior_IsJumpWest(t))  return TRUE;
+case DIR_EAST:  if (TileBehavior_IsJumpEast(t))  return TRUE;
+```
+
+Our `LEDGE_DIRECTIONS` had `{0x38: "down", 0x39: "up", 0x3A: "left", 0x3B: "right"}` — the correct mapping is `{0x38: "right", 0x39: "left", 0x3A: "up", 0x3B: "down"}`.
+
+Why no existing test caught it: Gen 4 ledges are sparse in the routes we've been QAing. The Wayward Cave B1F row-22 mass of 0x3B was the first dense-ledge grid we BFS'd, and even there the rotated mapping happened not to affect reachability for any tile the existing tests checked (ledge approach tiles are walled off anyway under both mappings).
+
+### Fix
+
+Four sites in two files, all mechanical swaps:
+- `renegade_mcp/nav_constants.py:44` — `LEDGE_DIRECTIONS` dict rewritten, with a decomp cite comment.
+- `renegade_mcp/nav_constants.py:257` — `_DIAG_CHAR` glyphs: `0x38:'>', 0x39:'<', 0x3A:'^', 0x3B:'v'` (arrow points in the jump direction).
+- `renegade_mcp/map_state.py:58` — `BEHAVIORS` human labels: `0x38:"ledge_E", 0x39:"ledge_W", 0x3A:"ledge_N", 0x3B:"ledge_S"`.
+- `renegade_mcp/map_state.py:1010` — `_BEHAVIOR_CHAR` render glyphs: same arrow convention as `_DIAG_CHAR`.
+
+Added `TestLedgeDirections` in `tests/test_navigation.py` — three tests: (1) `LEDGE_DIRECTIONS` equals the decomp-derived dict, (2) BFS crosses a `0x3B` JUMP_SOUTH ledge with a south step, (3) BFS rejects the north-approach (wrong direction).
+
+### Verification
+
+`tests/test_navigation.py` + `test_map_tools.py` + `test_3d_nav_fallback.py`: **91 passed** in 76s. Full suite (`pytest tests/`): **528 passed in 2:29** (525 pre-fix + 3 new). Zero regressions across 42 test files.
+
+### Take-away
+
+"Instrument before theorize" paid for itself immediately — the cross-map topology was visible from one `jq` on two decomp JSONs once the widest-input BFS confirmed the single-map dead-end. The LEDGE_DIRECTIONS find was a bonus from reading the same decomp headers that pinned the ramp mechanic in session 31b; each trip back to the decomp keeps finding pre-existing bugs that were quietly surviving because no scenario tripped them. The ledge fix is small but shrinks the surface area where `navigate_to` could silently route into a wall — worth the lock-step update anytime a new direction-gated tile behavior gets added.
+
 ## Dev Session: Bike ramp BFS edges + auto-mount traversal (2026-04-22 session 31b)
 
 Second half of the session 31 dev pair, running in parallel with the playthrough agent on `.melonds_bridge.sock`. Standalone test emulator on `.melonds_test_bridge.sock`; all probe scripts in `/tmp`.
