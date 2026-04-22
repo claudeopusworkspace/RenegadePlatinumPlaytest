@@ -403,6 +403,13 @@ def _execute_path(
             # toggle bike gear or do nothing useful, so skip it.
             aux = ["b"] if active_hold == HOLD_FRAMES else None
             step_hold(emu, direction, active_hold, aux_buttons=aux)
+            # Bike-slope tiles slide the player back mid-animation. step_hold
+            # exits on the first position change (= enters the slope), which
+            # is BEFORE the slide-back completes. Wait for the animation to
+            # settle so the blocked-check below sees the engine's final state
+            # and the slope branch triggers correctly.
+            if pre_obs is not None and pre_obs.get("type") in BIKE_SLOPE_TYPES:
+                emu.advance_frames(WAIT_FRAMES)
 
         new_map, new_x, new_y = _read_position(emu)
 
@@ -450,16 +457,37 @@ def _execute_path(
                         for step in range(1, tiles_moved + 1):
                             t = (sx + dx * step, sy + dy * step)
                             obstacle_tiles.pop(t, None)
-                        # Skip consumed path steps (current step + extras)
-                        extra = tiles_moved - 1
-                        if extra > 0:
-                            i += extra
-                            steps_taken += extra
                         nav_info.setdefault("obstacles_cleared", []).append({
                             "type": "bike_slope",
                             "tiles": num_slopes,
                             "x": obs_gx, "y": obs_gy,
                         })
+
+                        # Slope momentum overshoots the expected landing by 1-3
+                        # tiles unpredictably. Dismount and re-BFS from actual
+                        # position — walking back a few tiles is more reliable
+                        # than trying to predict the landing.
+                        if repath_ctx is not None:
+                            from renegade_mcp.use_item import use_item
+                            use_item(emu, "Bicycle")
+                            active_hold = HOLD_FRAMES
+                            new_path = _try_repath(repath_ctx, prev_npcs, new_x, new_y)
+                            if new_path is None:
+                                # Already at goal (or goal unreachable) — exit
+                                # cleanly without treating slope as a failure.
+                                steps_taken += tiles_moved
+                                return False, steps_taken, repaths_used, nav_info
+                            repaths_used += 1
+                            steps_taken += tiles_moved
+                            directions = directions[:i] + new_path
+                            continue  # replay loop at same i with new path
+                        else:
+                            # Manual walking (no repath context) — preserve the
+                            # original behavior: skip consumed path steps.
+                            extra = tiles_moved - 1
+                            if extra > 0:
+                                i += extra
+                                steps_taken += extra
                     else:
                         # Engine refuses this slope (seen on some ascent
                         # slopes). Surface it as a structured error rather
