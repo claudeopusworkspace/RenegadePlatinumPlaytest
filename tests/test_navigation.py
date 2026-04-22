@@ -342,6 +342,67 @@ class TestUnderBridgePathfind3d:
         )
 
 
+class TestLedgeDirections:
+    """Pin ``LEDGE_DIRECTIONS`` to the pokeplatinum decomp encoding.
+
+    Regression guard against the Apr 2026 discovery that the mapping was
+    inverted: we had 0x3B (``JUMP_SOUTH`` per
+    ``ref/pokeplatinum/include/constants/field/map_tile_behaviors.h`` line
+    70) labeled as "right" / east-crossing, etc. The decomp's
+    ``src/unk_0205F180.c:1772-1793`` switches on direction to pick which
+    ``IsJump{North,South,West,East}`` check fires — so the crossing
+    direction literally equals the ledge's name-direction.
+
+    Swapping this pin is a real behavior change: any production code using
+    the old mapping will route against the actual game. Update in lock-
+    step with decomp changes.
+    """
+
+    def test_mapping_matches_decomp(self):
+        from renegade_mcp.nav_constants import LEDGE_DIRECTIONS
+        assert LEDGE_DIRECTIONS == {
+            0x38: "right",  # JUMP_EAST
+            0x39: "left",   # JUMP_WEST
+            0x3A: "up",     # JUMP_NORTH
+            0x3B: "down",   # JUMP_SOUTH
+        }
+
+    def test_bfs_crosses_south_ledge_only_moving_south(self):
+        """A 0x3B JUMP_SOUTH ledge must accept south-direction steps and
+        reject every other direction. Without the fix the ledge accepted
+        east-direction steps (the old "right" mapping) — which let BFS
+        chain east across ledge rows that are actually one-way south
+        gates, creating phantom paths."""
+        from renegade_mcp.pathfinding import _bfs_reachable
+        # Column with player above a JUMP_SOUTH ledge at (0, 1); floor at (0, 2).
+        grid = [
+            [(True, 0x08)],    # (0, 0) floor — player
+            [(True, 0x3B)],    # (0, 1) JUMP_SOUTH ledge — passable for south step
+            [(True, 0x08)],    # (0, 2) floor past ledge
+        ]
+        reach = _bfs_reachable(grid, set(), 0, 0, width=1, height=3)
+        assert (0, 1) in reach, "south step onto JUMP_SOUTH ledge must be allowed"
+        assert (0, 2) in reach, "tile past the ledge must be reachable"
+
+    def test_bfs_rejects_ledge_entry_from_wrong_direction(self):
+        """Approaching a JUMP_SOUTH ledge from the south (moving north)
+        must be rejected. In the game the ledge's `is_blocked` bit stops
+        the step; BFS enforces the same via LEDGE_DIRECTIONS."""
+        from renegade_mcp.pathfinding import _bfs_reachable
+        # Player south of the ledge; floor tile north past the ledge.
+        grid = [
+            [(True, 0x08)],    # (0, 0) floor
+            [(True, 0x3B)],    # (0, 1) JUMP_SOUTH ledge
+            [(True, 0x08)],    # (0, 2) floor — player
+        ]
+        reach = _bfs_reachable(grid, set(), 0, 2, width=1, height=3)
+        # Player should NOT be able to move north through the ledge.
+        assert (0, 1) not in reach, (
+            "north-direction step onto JUMP_SOUTH ledge must be rejected"
+        )
+        assert (0, 0) not in reach
+
+
 # ---------------------------------------------------------------------------
 # interact_with
 # ---------------------------------------------------------------------------

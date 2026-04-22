@@ -55,7 +55,7 @@ BEHAVIORS = {
     0x08: "cave_floor", 0x10: "water", 0x13: "waterfall", 0x15: "sea",
     0x20: "ice", 0x21: "sand",
     0x30: "block_E", 0x31: "block_W",
-    0x38: "ledge_S", 0x39: "ledge_N", 0x3A: "ledge_W", 0x3B: "ledge_E",
+    0x38: "ledge_E", 0x39: "ledge_W", 0x3A: "ledge_N", 0x3B: "ledge_S",
     0x5E: "stairs_E", 0x5F: "stairs_W",
     0x62: "warp_E", 0x63: "warp_W", 0x64: "warp_N", 0x65: "warp_S",
     0x67: "warp_panel", 0x69: "door",
@@ -1007,7 +1007,7 @@ def render_map(
         0x10: '≈', 0x13: '≈', 0x15: '≈',  # water
         0x20: '=', 0x21: ',',  # ice, sand
         0x30: ']', 0x31: '[',  # directional blocks
-        0x38: 'v', 0x39: '^', 0x3A: '<', 0x3B: '>',  # ledges (reuse arrows)
+        0x38: '>', 0x39: '<', 0x3A: '^', 0x3B: 'v',  # ledges (arrow = jump direction)
         0x5E: '/', 0x5F: '\\',  # stairs
         0x69: 'D', 0x6E: 'D',  # doors
         0x62: '+', 0x63: '+', 0x64: '+', 0x65: '+', 0x67: '+',  # warps

@@ -40,9 +40,15 @@ _DIR_DELTAS = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
 OPPOSITE_DIR = {"up": "down", "down": "up", "left": "right", "right": "left"}
 _OPPOSITE_DIR = OPPOSITE_DIR  # alias used by bike slope traversal
 
-# Ledge behaviors: direction you must be moving to cross them
+# Ledge behaviors: direction you must be moving to cross them.
+# Per pokeplatinum decomp (include/constants/field/map_tile_behaviors.h):
+#   0x38 JUMP_EAST — triggered moving east (right)
+#   0x39 JUMP_WEST — triggered moving west (left)
+#   0x3A JUMP_NORTH — triggered moving north (up)
+#   0x3B JUMP_SOUTH — triggered moving south (down)
+# Confirmed by src/unk_0205F180.c:1772-1793 (direction switch → IsJump{North,South,West,East}).
 LEDGE_DIRECTIONS = {
-    0x38: "down", 0x39: "up", 0x3A: "left", 0x3B: "right",
+    0x38: "right", 0x39: "left", 0x3A: "up", 0x3B: "down",
 }
 
 # ── Bike slopes ──
@@ -254,7 +260,7 @@ _FACE_TO_INT = {"up": 0, "down": 1, "left": 2, "right": 3}
 _DIAG_CHAR: dict[int, str] = {
     0x02: '"', 0x03: '"',  # grass
     0x10: '≈', 0x13: '≈', 0x15: '≈',  # water
-    0x38: 'v', 0x39: '^', 0x3A: '<', 0x3B: '>',  # ledges
+    0x38: '>', 0x39: '<', 0x3A: '^', 0x3B: 'v',  # ledges (arrow = jump direction)
     0x69: 'D', 0x6E: 'D',  # doors
 }
 
