@@ -46,6 +46,9 @@ from renegade_mcp.nav_constants import (  # noqa: F401
     BADGE_BITS,
     BFS_MOVES,
     BIKE_HOLD_FRAMES,
+    BIKE_RAMP_BEHAVIORS,
+    BIKE_RAMP_DIRECTIONS,
+    BIKE_RAMP_TYPES,
     BIKE_SLOPE_BACKUP_TILES,
     BIKE_SLOPE_BEHAVIORS,
     BIKE_SLOPE_MAX_FRAMES,
@@ -361,23 +364,40 @@ def _execute_path(
         # through the existing blocked-branch slope traversal below.
         pre_target = (old_x + dx, old_y + dy)
         pre_obs = obstacle_tiles.get(pre_target)
-        if pre_obs is not None and pre_obs.get("type") in BIKE_SLOPE_TYPES:
+        if pre_obs is not None and pre_obs.get("type") in (BIKE_SLOPE_TYPES | BIKE_RAMP_TYPES):
             from renegade_mcp.addresses import addr as _addr
             on_bike = bool(emu.read_memory(_addr("CYCLING_GEAR_ADDR"), size="short"))
             if not on_bike:
                 if not _auto_mount_for_slope(emu):
+                    kind = "bike_ramp" if pre_obs.get("type") in BIKE_RAMP_TYPES else "bike_slope"
                     nav_info["blocked_at"] = {"x": old_x, "y": old_y, "step": steps_taken}
-                    nav_info["blocked_reason"] = "bike_slope_requires_bicycle"
+                    nav_info["blocked_reason"] = f"{kind}_requires_bicycle"
                     nav_info["note"] = (
-                        f"Bike slope at ({pre_target[0]}, {pre_target[1]}) "
-                        f"requires the Bicycle key item.  Get the Bicycle "
-                        f"and retry."
+                        f"{kind.replace('_', ' ').capitalize()} at "
+                        f"({pre_target[0]}, {pre_target[1]}) requires the "
+                        f"Bicycle key item.  Get the Bicycle and retry."
                     )
                     return True, steps_taken, repaths_used, nav_info
                 active_hold = BIKE_HOLD_FRAMES
 
-        emu.advance_frames(active_hold, buttons=[direction])
-        emu.advance_frames(WAIT_FRAMES)
+        is_ramp_step = (
+            pre_obs is not None
+            and pre_obs.get("type") in BIKE_RAMP_TYPES
+        )
+        if is_ramp_step:
+            # Bike ramp jump — engine plays a 2-tile JumpFar animation
+            # (FX32_CONST(2) * 16 frames = 2-tile displacement over 16
+            # frames, per pokeplatinum/src/unk_020655F4.c). Hold the
+            # direction long enough to cover both animation frames and the
+            # brief press window before it; then settle. Single press
+            # triggers a single jump — do NOT retry in the slow-terrain
+            # loop below, since a retry re-presses the direction after
+            # the jump and would step one tile past the landing.
+            emu.advance_frames(BIKE_HOLD_FRAMES, buttons=[direction])
+            emu.advance_frames(24)  # cover 16-frame jump + settle
+        else:
+            emu.advance_frames(active_hold, buttons=[direction])
+            emu.advance_frames(WAIT_FRAMES)
 
         new_map, new_x, new_y = _read_position(emu)
 
@@ -506,11 +526,14 @@ def _execute_path(
                         new_map, new_x, new_y = _read_position(emu)
                         blocked = (old_x, old_y) == (new_x, new_y) and old_map == new_map
 
-        if blocked:
+        if blocked and not is_ramp_step:
             # Slow terrain (deep snow, ice) may not complete a step within
             # active_hold + WAIT_FRAMES. Retry with full press cycles —
             # the first press may have only turned the character, or the
             # animation may still be in progress.
+            # Skipped for bike ramps: a successful jump already displaced
+            # 2 tiles, and a retry would re-press the direction after the
+            # landing and step one tile past the landing tile.
             for _ in range(SLOW_TERRAIN_RETRIES):
                 emu.advance_frames(active_hold, buttons=[direction])
                 emu.advance_frames(WAIT_FRAMES)
@@ -1337,12 +1360,32 @@ def _navigate_to_impl(
                     gy = ob["y"] + repath_oy
                 exec_obstacle_tiles[(gx, gy)] = ob
 
-    # Scan the chosen path for bike slope tiles
+    # Scan the chosen path for bike slope and bike ramp tiles. Bike ramps
+    # (0xD7/0xD8) appear in the path as a single direction step representing
+    # a 2-tile jump — the ramp tile itself is impassable and never "walked"
+    # onto, so the scanner must detect the ramp on the NEXT tile in direction
+    # and advance the position tracker by 2 tiles (to the landing).
     if path and terrain_info:
         sx, sy = bfs_sx, bfs_sy
         for step_dir in path:
             sdx, sdy = _DIR_DELTAS.get(step_dir, (0, 0))
-            sx, sy = sx + sdx, sy + sdy
+            nx, ny = sx + sdx, sy + sdy
+            is_ramp = False
+            if 0 <= ny < len(terrain_info) and 0 <= nx < len(terrain_info[ny]):
+                _, nbeh = terrain_info[ny][nx]
+                if (nbeh in BIKE_RAMP_BEHAVIORS
+                        and BIKE_RAMP_DIRECTIONS[nbeh] == step_dir):
+                    is_ramp = True
+                    gx, gy = nx + repath_ox, ny + repath_oy
+                    if (gx, gy) not in exec_obstacle_tiles:
+                        exec_obstacle_tiles[(gx, gy)] = {
+                            "type": "bike_ramp",
+                            "behavior": nbeh,
+                        }
+            if is_ramp:
+                sx, sy = nx + sdx, ny + sdy  # jump 2 tiles
+                continue
+            sx, sy = nx, ny
             if 0 <= sy < len(terrain_info) and 0 <= sx < len(terrain_info[sy]):
                 _passable, beh = terrain_info[sy][sx]
                 if beh in BIKE_SLOPE_BEHAVIORS:

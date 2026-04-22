@@ -1021,6 +1021,7 @@ def render_map(
         0xA1: '~', 0xA2: '~', 0xA3: '~',  # snow (deep/deeper/deepest)
         0xA8: '~', 0xA9: '~',  # snow (shallow/shadows)
         0xD9: '\\', 0xDA: '/',  # bike slope top/bottom
+        0xD7: '>', 0xD8: '<',  # bike ramps (jump E/W on bike)
     }
 
     grid_h = len(terrain)

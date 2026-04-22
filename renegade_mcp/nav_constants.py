@@ -51,6 +51,17 @@ BIKE_SLOPE_TYPES = {"bike_slope"}
 BIKE_SLOPE_BACKUP_TILES = 3  # tiles to back up before the running start
 BIKE_SLOPE_MAX_FRAMES = 600  # safety cap for the continuous hold phase
 
+# ── Bike jump ramps (Wayward Cave etc.) ──
+# 0xD7 = BIKE_RAMP_EASTWARD, 0xD8 = BIKE_RAMP_WESTWARD (pokeplatinum decomp).
+# The tile is hard-blocked (0x8000) on foot; when on a bicycle and stepping
+# INTO the ramp in the matching direction, the engine launches the player
+# 2 tiles (MOVEMENT_ACTION_JUMP_FAR_*, FX32_CONST(2)*16=2-tile displacement).
+# No N/S ramp variants exist in Gen 4 Platinum.
+BIKE_RAMP_BEHAVIORS = {0xD7, 0xD8}
+BIKE_RAMP_DIRECTIONS = {0xD7: "right", 0xD8: "left"}
+BIKE_RAMP_TYPES = {"bike_ramp"}
+BIKE_RAMP_JUMP_TILES = 2  # total tile displacement from the entry tile
+
 # ── Water / terrain obstacles ──
 WATER_BEHAVIORS = {0x10, 0x15}  # river, sea (surfable)
 WATERFALL_BEHAVIOR = 0x13

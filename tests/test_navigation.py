@@ -171,6 +171,93 @@ class TestNavigateTo:
         )
 
 
+class TestBikeRampBfsEdges:
+    """BFS adds a jump edge across bike-ramp tiles (0xD7 east, 0xD8 west).
+
+    The ramp tile is hard-blocked on foot; on a bicycle, stepping INTO the
+    ramp in the matching direction launches the player 2 tiles in that
+    direction (MOVEMENT_ACTION_JUMP_FAR_*, pokeplatinum/src/unk_020655F4.c).
+    BFS represents the jump as a single directional edge from the entry
+    tile (ramp - 1) to the landing tile (ramp + 1), skipping the ramp
+    tile itself. Without this edge every east-side POI in Wayward Cave's
+    bike-ramp chamber falls into unreachable_interactibles.
+    """
+
+    SAVE_STATE = "session31_wayward_cave_bike_ramps"
+
+    def test_ramp_landing_helper_east(self):
+        """_bike_ramp_landing returns the 2-tile-east landing when the ramp
+        faces east and the landing is passable."""
+        from renegade_mcp.pathfinding import _bike_ramp_landing
+        # Tiny synthetic row: [passable, ramp_E, passable, passable]
+        grid = [[(True, 0x08), (False, 0xD7), (True, 0x08), (True, 0x08)]]
+        # From (0, 0) going right: lands at (2, 0).
+        landing = _bike_ramp_landing(grid, 0, 0, "right", 1, 0, width=4, height=1)
+        assert landing == (2, 0)
+
+    def test_ramp_landing_wrong_direction(self):
+        """Ramp only triggers in its facing direction — approaching a
+        ramp_E from the east (moving left) must not produce a jump."""
+        from renegade_mcp.pathfinding import _bike_ramp_landing
+        grid = [[(True, 0x08), (False, 0xD7), (True, 0x08), (True, 0x08)]]
+        # From (3, 0) going left into the ramp at (1, 0): wrong direction.
+        # The helper only fires when neighbor-in-direction is the ramp.
+        # Stepping left from (2, 0) = neighbor (1, 0) ramp_E, direction
+        # "left" — mismatch, no jump.
+        landing = _bike_ramp_landing(grid, 2, 0, "left", -1, 0, width=4, height=1)
+        assert landing is None
+
+    def test_ramp_landing_blocked_landing(self):
+        """If the landing tile is impassable, the ramp edge does not fire."""
+        from renegade_mcp.pathfinding import _bike_ramp_landing
+        grid = [[(True, 0x08), (False, 0xD7), (False, 0x00), (True, 0x08)]]
+        landing = _bike_ramp_landing(grid, 0, 0, "right", 1, 0, width=4, height=1)
+        assert landing is None
+
+    def test_2d_bfs_crosses_ramp_in_wayward_cave(self, emu: EmulatorClient):
+        """From the under-bridge entrance corridor, the 2D BFS must reach
+        the landing tile (11, 17) past the east ramp at (10, 17). Pre-fix
+        the row-17 ramps were treated as impassable walls so (11, 17) was
+        unreachable from anywhere in the player's corridor."""
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.nav_constants import _read_position
+        from renegade_mcp.pathfinding import (
+            _bfs_reachable, _build_multi_chunk_terrain,
+        )
+        map_id, px, py = _read_position(emu)
+        ti, ox, oy, w, h = _build_multi_chunk_terrain(
+            emu, map_id, px, py, 43, 38,
+        )
+        reach = _bfs_reachable(ti, set(), px - ox, py - oy, w, h)
+        assert (11 - ox, 17 - oy) in reach, (
+            "2D BFS must reach ramp landing (11, 17) from the player "
+            "corridor via the ramp_E at (10, 17); got "
+            f"{len(reach)} tiles, ramp edge missing."
+        )
+
+    def test_2d_bfs_rejects_wrong_direction_approach(self, emu: EmulatorClient):
+        """A ramp_E at (10, 17) must NOT be usable from the east side
+        (going left / west) — that direction doesn't trigger the jump."""
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.nav_constants import _read_position
+        from renegade_mcp.pathfinding import (
+            _bfs_reachable, _build_multi_chunk_terrain, _bike_ramp_landing,
+        )
+        map_id, px, py = _read_position(emu)
+        ti, ox, oy, w, h = _build_multi_chunk_terrain(
+            emu, map_id, px, py, 43, 38,
+        )
+        # (11, 17) reachable east-to-west attempt via the ramp_E — helper
+        # must refuse the wrong-facing approach regardless of passability.
+        landing = _bike_ramp_landing(
+            ti, 11 - ox, 17 - oy, "left", -1, 0, w, h,
+        )
+        assert landing is None, (
+            "ramp_E must not fire when approached from the east "
+            f"(direction='left'); got landing {landing}"
+        )
+
+
 class TestUnderBridgePathfind3d:
     """Regression: companion to TestBug038UnderBridgeReachability (view_map).
 

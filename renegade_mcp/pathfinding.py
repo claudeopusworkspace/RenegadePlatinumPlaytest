@@ -16,6 +16,8 @@ from renegade_mcp.nav_constants import (
     _DIAG_CHAR,
     BADGE_BITS,
     BFS_MOVES,
+    BIKE_RAMP_BEHAVIORS,
+    BIKE_RAMP_DIRECTIONS,
     CLEARABLE_OBSTACLES,
     DIRECTIONAL_BLOCKS,
     DIRECTIONAL_WARP,
@@ -73,6 +75,39 @@ def _get_field_move_availability(emu: EmulatorClient) -> dict[str, bool]:
     return result
 
 
+def _bike_ramp_landing(
+    terrain_info: list, x: int, y: int, direction: str,
+    dx: int, dy: int, width: int, height: int,
+) -> tuple[int, int] | None:
+    """If stepping from (x, y) in `direction` collides with a bike ramp
+    whose facing matches `direction`, return the 2-tile jump landing tile.
+
+    Returns None when there is no ramp, the ramp faces a different axis,
+    the landing is out of bounds, or the landing tile is impassable.
+
+    Caller is responsible for deciding whether the player can actually use
+    the ramp (e.g., bicycle equipped). BFS treats bike availability as
+    given so navigate_to can auto-mount on execution — if the player lacks
+    the Bicycle item the auto-mount fails and the step surfaces as
+    blocked, same as a missing HM badge on a Surf/Waterfall edge.
+    """
+    nx, ny = x + dx, y + dy
+    if not (0 <= nx < width and 0 <= ny < height):
+        return None
+    _ramp_passable, behavior = terrain_info[ny][nx]
+    if behavior not in BIKE_RAMP_BEHAVIORS:
+        return None
+    if BIKE_RAMP_DIRECTIONS[behavior] != direction:
+        return None
+    lx, ly = nx + dx, ny + dy
+    if not (0 <= lx < width and 0 <= ly < height):
+        return None
+    land_passable, _land_beh = terrain_info[ly][lx]
+    if not land_passable:
+        return None
+    return (lx, ly)
+
+
 def _bfs_reachable(
     terrain_info: list, npc_set: set,
     start_x: int, start_y: int,
@@ -89,10 +124,16 @@ def _bfs_reachable(
             nx, ny = x + dx, y + dy
             if not (0 <= nx < width and 0 <= ny < height):
                 continue
-            if (nx, ny) in visited or (nx, ny) in npc_set:
-                continue
             passable, behavior = terrain_info[ny][nx]
             if not passable:
+                landing = _bike_ramp_landing(
+                    terrain_info, x, y, direction, dx, dy, width, height,
+                )
+                if landing is not None and landing not in visited and landing not in npc_set:
+                    visited.add(landing)
+                    queue.append(landing)
+                continue
+            if (nx, ny) in visited or (nx, ny) in npc_set:
                 continue
             if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
                 continue
@@ -327,13 +368,26 @@ def _bfs_pathfind(
             nx, ny = x + dx, y + dy
             if not (0 <= nx < width and 0 <= ny < height):
                 continue
-            if (nx, ny) in visited:
-                continue
-            if (nx, ny) in npc_set and (nx, ny) != goal:
-                continue
 
             passable, behavior = terrain_info[ny][nx]
             if not passable:
+                landing = _bike_ramp_landing(
+                    terrain_info, x, y, direction, dx, dy, width, height,
+                )
+                if landing is None or landing in visited:
+                    continue
+                if landing in npc_set and landing != goal:
+                    continue
+                new_path = path + [direction]
+                if landing == goal:
+                    return new_path
+                visited.add(landing)
+                queue.append((landing[0], landing[1], new_path))
+                continue
+
+            if (nx, ny) in visited:
+                continue
+            if (nx, ny) in npc_set and (nx, ny) != goal:
                 continue
 
             # Directional warps only allow entry from the correct direction
@@ -503,13 +557,29 @@ def _bfs_pathfind_level(
             nx, ny = x + dx, y + dy
             if not (0 <= nx < width and 0 <= ny < height):
                 continue
-            if (nx, ny) in visited:
-                continue
-            if (nx, ny) in npc_set and (nx, ny) != goal:
-                continue
 
             passable, behavior = terrain_info[ny][nx]
             if not passable:
+                landing = _bike_ramp_landing(
+                    terrain_info, x, y, direction, dx, dy, width, height,
+                )
+                if landing is None or landing in visited:
+                    continue
+                lx, ly = landing
+                if landing in npc_set and landing != goal:
+                    continue
+                if not _tile_on_level(lx, ly, current_level):
+                    continue
+                new_path = path + [direction]
+                visited.add(landing)
+                if landing == (goal_x, goal_y):
+                    return new_path, reachable_ramps
+                queue.append((lx, ly, new_path))
+                continue
+
+            if (nx, ny) in visited:
+                continue
+            if (nx, ny) in npc_set and (nx, ny) != goal:
                 continue
 
             # Directional warp check
@@ -740,16 +810,34 @@ def _flood_fill_level(
             nx, ny = x + dx, y + dy
             if not (0 <= nx < width and 0 <= ny < height):
                 continue
+
+            passable, behavior = terrain_info[ny][nx]
+            if not passable:
+                landing = _bike_ramp_landing(
+                    terrain_info, x, y, direction, dx, dy, width, height,
+                )
+                if landing is None or landing in reach:
+                    continue
+                lx, ly = landing
+                if npc_is_3d:
+                    if (lx, ly, current_level) in npc_set:
+                        continue
+                elif landing in npc_set:
+                    continue
+                if not _tile_on_level(lx, ly, current_level):
+                    continue
+                nd = d + 1
+                reach[landing] = nd
+                _record_transitions(lx, ly, nd)
+                queue.append((lx, ly, nd))
+                continue
+
             if (nx, ny) in reach:
                 continue
             if npc_is_3d:
                 if (nx, ny, current_level) in npc_set:
                     continue
             elif (nx, ny) in npc_set:
-                continue
-
-            passable, behavior = terrain_info[ny][nx]
-            if not passable:
                 continue
 
             if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
