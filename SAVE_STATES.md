@@ -41,6 +41,9 @@
 
 | Name | Description |
 |------|-------------|
+| `spike_eterna_open_ground` | Eterna City (304, 542) outdoors, on foot. 7+ tiles clear north/south, 7 east, 3 west. No NPCs, no encounters. Spike baseline for `scripts/spike_hold_vs_tap.py` (movement primitive experiments). |
+| `spike_eterna_open_bike_slow` | Same position as above, on bike in slow gear (`BIKE_GEAR_STATE_ADDR=1`). Spike variant for slow-bike per-tile timing + momentum measurement. |
+| `spike_eterna_open_bike_fast` | Same position, on bike in fast gear (gear=0). Spike variant for fast-bike acceleration curve (12→12→8→6→4 frames per tile across 5 tiles) + post-release coast. |
 | `route211_west_pre_trainer` | Route 211 west at (368, 524). Pre-trainer (Bird Keeper Alexandra 1 tile left). 6 Pokemon party, full HP. |
 | `bug_wild_faint_switch_trainer_error` | Route 205 mid-battle. Charmeleon vs Volbeat Lv17, Luxio fainted. `battle_turn(run=True)` errored "Must switch in a trainer battle" on a wild battle. |
 | `bug_move_learn_skip_fire_fang_stuck` | Route 205 mid-battle. Luxio Lv24, "give up on Fire Fang?" prompt. `forget_move=-1` fails to dismiss. |

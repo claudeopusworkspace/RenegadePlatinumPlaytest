@@ -124,7 +124,7 @@ See GAME_HISTORY.md for full details (defeated trainers, story progress, box con
 
 ## Test Suite
 
-Integration tests live in `tests/` (491 tests across 42 files). Require at least one running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
+Integration tests live in `tests/` (529 tests across 42 files). Require at least one running emulator with the ROM loaded. Legacy DeSmuME tests in `tests/legacy/` are excluded by default.
 
 ```bash
 .venv/bin/python -m pytest tests/ -v          # full suite (~2:30 @ N=8, ~7 min @ N=2, ~13 min single)

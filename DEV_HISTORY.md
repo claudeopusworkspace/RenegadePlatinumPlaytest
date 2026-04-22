@@ -4,6 +4,77 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Sustained-hold movement primitive (2026-04-22 session 33)
+
+Architectural overhaul of the per-tile movement primitive in `_execute_path`. The old tap-and-wait pattern (`advance_frames(HOLD, buttons=[dir]) + advance_frames(WAIT)`) released the d-pad between tiles, which broke anything the engine needs sustained input for — bike ramps and bike slopes top the list. The new primitive holds the direction continuously across tile boundaries and exits per-tile on a memory-change condition.
+
+Motivation: session 32b's bike-ramp empirical finding ("Ramps require continuous momentum, NOT a press-from-standing") implied the whole per-tile pattern was a dead end. Woj: "we need to try making all navigation be a matter of holding down buttons in a direction until we reach where we need to go".
+
+### Spike first
+
+`scripts/spike_hold_vs_tap.py` — four experiments across walking, slow bike, fast bike, and running (B+dir):
+
+1. **Commit threshold**: how many frames of held input before a step commits? Walking/slow-bike: 6f. Fast bike: 7f. RAM position-coord updates at ~frame 11 on foot, ~frame 12 on fast bike.
+2. **Back-to-back 5-tile runs** with varying 0f/1f/2f/4f release gaps between calls. Wall-clock total stays constant regardless of gap size — the engine's per-tile animation runs on a fixed clock whether or not the button is held. On fast bike the per-tile frames dropped from 12 → 4 across the run as the `playerAvatar->speed` (max 3) ramped.
+3. **Release-at-change settle**: after `advance_frames_until` fires on pos-change, release for 0/1/2/4/8/16/32/64 frames and re-read. Walking + slow-bike settle cleanly on the tile; fast-bike's per-tile release also clean (hasn't accumulated multi-tile momentum yet).
+4. **Momentum slide**: hold for N frames, release, advance 120f uninputted. Walking never coasts. Slow-bike rarely coasts. Fast-bike coasts 1-3 tiles after a long hold — confirmed Woj's suspicion about bike momentum.
+
+`scripts/` retains the spike for future tuning. Three new save states (`spike_eterna_open_ground`, `spike_eterna_open_bike_slow`, `spike_eterna_open_bike_fast`) at (304, 542) in Eterna City outdoor — 7+ tiles of clearance in most directions, no NPCs, no encounters.
+
+### Decomp on bike momentum
+
+Sub-agent dig (`pokeplatinum/src/player_avatar.c` + `src/unk_0205F180.c`): momentum IS `playerAvatar->speed` (0-3), incremented +1/frame on press, decremented -1/frame on release (via `sub_020603EC`). `PlayerAvatar_ClearSpeed` would zero it instantly. But — per Woj — any memory write for momentum would look like cheating for the LLM streaming context, so this stays an input-only problem.
+
+### Architecture decisions
+
+- **Running Shoes (B+dir) is the walking default.** 2× faster per-tile (8f vs 16f), clean release, no momentum. Harmlessly falls back to walking indoors.
+- **Bike is NOT the default for normal paths.** Only needed for upward bike slopes and bike ramps. Auto-mount is scoped to those specific cases.
+- **For downward slopes** the engine auto-slides on foot; no bike needed. This was the biggest surprise of the session — the pre-step auto-mount was firing on *all* slope tiles, including descents, introducing unneeded momentum.
+- **Per-tile primitive**: `nav_constants.step_hold(emu, direction, active_hold, aux_buttons)` does `advance_frames_until(cond=pos_changed, buttons=[dir, *aux], max_frames=hold*2+8)`.
+
+### Implementation
+
+Dropped per-tile cost from 24 frames (16 hold + 8 wait) to ~16 frames (the condition fires at RAM-update time and the next call absorbs any remaining animation). No measured per-tile-count improvement at the frame level — the engine's 16-frame walking animation runs end-to-end regardless — but the *engine-visible* behavior is a continuous hold, which is what bike ramps and slopes need.
+
+Call sites:
+- `nav_constants.py::step_hold` — new primitive.
+- `navigation.py::_execute_path` — replaces the inner `advance_frames(hold) + advance_frames(WAIT)` pair. Adds "b" to buttons when `active_hold == HOLD_FRAMES` (walking).
+- `navigation.py::_execute_path` pre-step slope-or-ramp check — only auto-mounts for `direction == "up"` on slopes (ascent) or for ramps (always).
+- `navigation.py::_execute_path` post-step settle — `advance_frames(WAIT_FRAMES)` after step_hold when `pre_obs` is a slope tile, so the engine's slope-slide-back animation resolves before the blocked-check reads position.
+- `navigation.py::_execute_path` end-of-path — short settle + verify we actually hit the BFS goal. If not, surface `stopped_early=True` with `blocked_reason="path_exhausted_before_target"`.
+- `navigation.py::_execute_path` slope-success branch — after `_traverse_bike_slope` succeeds, dismount the bike via `use_item("Bicycle")` + `_try_repath` from the actual landing tile. Bike momentum off slope-top is otherwise unpredictable (overshoots by 1-3 tiles); re-BFS'ing on foot from where we actually landed is more reliable than trying to predict the exit.
+- `navigation.py::_navigate_to_impl` adjacent-walk-in-warp check — skip when current position already matches the BFS goal (otherwise a grass/sign target near a warp gets shoved off-target by the warp-trigger press).
+- `fishing.py::seek_encounter` — dismount BEFORE the pre-pacing nav (pacing requires foot), and honor `stopped_early` from nav to emit a clean "blocked" diagnostic instead of silently pacing from the wrong tile.
+
+### Test updates
+
+- `TestBug031BikeSlopeTraversalFailure` deleted — BUG-031 (Wayward Cave north-bound slope refuses traversal) is fixed by the new primitive. Sustained hold is what the slope needed all along.
+- `test_close_target_overshoots_gracefully` → `test_close_target_near_slope_top` — the "overshoot" concept is obsolete under auto-dismount + repath. New test allows ±3 tiles of target tolerance when the target is on the slope boundary.
+- `test_auto_mounts_bike_when_walking` + `test_walk_from_distance_auto_mounts` — dropped assertions that the player remains cycling after slope (we now dismount intentionally).
+
+### Verification
+
+Full suite: **529 passed in 2:33**. Zero regressions across 42 test files. Every nav-touching area (ledges, 3D elevation, HM obstacles, clock puzzles, cycling-road auto-slide, fishing, adjacent targets) stayed green through each iterative change.
+
+### Commits
+
+1. `feat(nav): replace per-tile tap with sustained-hold primitive` (2a77959) — 526 pass / 5 bike-slope fail, the latter expected as pre-existing per Woj's prediction.
+2. `fix(nav): auto-dismount + repath after bike-slope traversal` (826d67a) — 528 pass / 1 fail (seek_encounter through slope).
+3. `fix(nav): skip bike auto-mount on downward slope descent` (12b7c03) — 529 pass.
+
+### Take-aways
+
+- Don't implement a fix before an empirical spike when the engine's behavior matters. The spike's momentum-slide data (EXP5) told us which cases to worry about and made the nav design decisions mechanical rather than speculative.
+- When one test fails after a cascade of fixes, stop and re-examine the premise before adding the next layer. Woj called this out and his pushback ("did we actually get off the bike after traversing the slope?") was the exact right question — my auto-dismount never fired for downward slopes because `_traverse_bike_slope` isn't called for them (engine auto-slides instead).
+- Delegate decomp digs for mechanic discovery, not for design decisions. The agent finding `PlayerAvatar_ClearSpeed` was load-bearing data; it didn't dictate any code change because the streaming audit rules out memory writes.
+- Bike is a niche tool under this architecture — only needed for upward slopes and ramps. Every other path runs on foot with Running Shoes. That's a simpler mental model for the nav layer and matches Woj's read of the game.
+
+### Relevant for next session(s)
+
+BUG-043 (gear-dependent ramp jump distance) is teed up: this session's continuous-hold primitive is the prerequisite for ramp traversal that needs momentum build-up. The BFS still uses the slow-gear jump model. Next ramp session can now add gear-dependent `_bike_ramp_landing`, and the `_execute_path` already holds direction continuously so ramp chains should work end-to-end. Open item filed in `project_tool_improvements.md` at current priority.
+
+Memory-write audit is a separate (streaming legitimacy) concern, filed for a dedicated session. Several writes exist in `cycling_road.py::_traverse_bike_slope` that may need input-only replacements.
+
 ## Dev Session: LEDGE_DIRECTIONS decomp fix + BUG-043 root-cause (2026-04-22 session 32)
 
 Parallel-dev session running against `.melonds_test_bridge.sock` while the playthrough agent drives `.melonds_bridge.sock` on its own story track. All probes in `/tmp`.
