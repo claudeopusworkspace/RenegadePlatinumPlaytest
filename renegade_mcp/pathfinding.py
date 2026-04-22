@@ -645,7 +645,13 @@ def _flood_fill_level(
 
     When ``max_steps`` is given, the flood stops expanding past that
     distance (measured from the start tile on this level).
+
+    ``npc_set`` may be 2D ``{(x, y)}`` — in which case an NPC blocks every
+    level at its tile — or 3D ``{(x, y, level)}`` for elevation-aware
+    blocking (a bridge-level trainer doesn't block ground traversal under
+    the bridge). The set type is detected from the first element.
     """
+    npc_is_3d = bool(npc_set) and len(next(iter(npc_set))) == 3
     if not (0 <= start_x < width and 0 <= start_y < height):
         return {}, {}
 
@@ -664,16 +670,24 @@ def _flood_fill_level(
 
     def _tile_on_level(tx: int, ty: int, level: int) -> bool:
         key = (tx, ty)
-        if key in ramp_tiles:
-            ri = ramp_tiles[key]
+        ri = ramp_tiles.get(key)
+        lvls = level_map.get(key)
+        # A tile can have BOTH a ramp plate AND a flat plate at overlapping
+        # (x, y) — a Cycling-Road ramp visibly sits over the ground tiles
+        # beneath it. Check each source independently and accept if either
+        # permits the level.
+        if ri is not None:
             if level in (ri["from_level"], ri["to_level"]):
                 return True
-            return _steppable(ri["from_level"]) or _steppable(ri["to_level"])
-        if key in level_map:
-            if level in level_map[key]:
+            if _steppable(ri["from_level"]) or _steppable(ri["to_level"]):
                 return True
-            return any(_steppable(lv) for lv in level_map[key])
-        return True
+        if lvls is not None:
+            if level in lvls:
+                return True
+            if any(_steppable(lv) for lv in lvls):
+                return True
+        # No BDHC data on this tile — permissive.
+        return ri is None and lvls is None
 
     reach: dict[tuple[int, int], int] = {(start_x, start_y): 0}
     queue: deque[tuple[int, int, int]] = deque([(start_x, start_y, 0)])
@@ -695,10 +709,15 @@ def _flood_fill_level(
                     transitions[ramp_idx] = (steps, (tx, ty), other)
             return
         # Multi-level flat tile: each "other" level is a separate transition.
+        # Only allow ML transitions between levels within STEPPABLE_HEIGHT —
+        # a tile whose BDHC reports both ground (h=16) and bridge (h=140)
+        # plates is not a teleporter; the player needs a ramp to switch.
         lvls = level_map.get((tx, ty))
         if lvls and len(lvls) > 1 and current_level in lvls:
             for other_lv in lvls:
                 if other_lv == current_level:
+                    continue
+                if not _steppable(other_lv):
                     continue
                 key = ("ml", tx, ty, other_lv)
                 if key not in transitions:
@@ -717,7 +736,10 @@ def _flood_fill_level(
                 continue
             if (nx, ny) in reach:
                 continue
-            if (nx, ny) in npc_set:
+            if npc_is_3d:
+                if (nx, ny, current_level) in npc_set:
+                    continue
+            elif (nx, ny) in npc_set:
                 continue
 
             passable, behavior = terrain_info[ny][nx]
@@ -825,12 +847,15 @@ def _bfs_reachable_3d(
     width: int = 32, height: int = 32,
     timeout: float = 1.5,
     max_steps: int | None = None,
-) -> dict[tuple[int, int], int]:
+) -> dict[tuple[int, int, int], int]:
     """Hierarchical flood-fill across elevation levels via ramp transitions.
 
-    Returns {(x, y): min_steps} for every tile reachable from
-    (start_x, start_y) on start_level or any level reachable through ramps
-    and multi-level flat-tile transitions.
+    Returns {(x, y, level): min_steps} for every (tile, level) pair
+    reachable from (start_x, start_y) on start_level or any level reachable
+    through ramps and multi-level flat-tile transitions. The elevation
+    dimension is preserved so callers can distinguish tiles reached only
+    at one level (e.g. a bridge tile reached via ramp from the bridge
+    plateau but not from the ground beneath it).
 
     Iterative (not recursive): each (tile, level) combo is flood-filled at
     most once across the whole search, bounded by O(tiles * levels). The
@@ -843,7 +868,7 @@ def _bfs_reachable_3d(
     followed.
     """
     deadline = time.monotonic() + timeout
-    reach: dict[tuple[int, int], int] = {}
+    reach: dict[tuple[int, int, int], int] = {}
     visited_level_starts: set[tuple[int, int, int]] = set()
 
     # Work queue: (flood_start_x, flood_start_y, level, base_steps).
@@ -864,13 +889,14 @@ def _bfs_reachable_3d(
             sx, sy, level, width=width, height=height,
             max_steps=level_budget,
         )
-        for pos, s in level_reach.items():
+        for (tx, ty), s in level_reach.items():
             total = base_steps + s
             if max_steps is not None and total > max_steps:
                 continue
-            prev = reach.get(pos)
+            key = (tx, ty, level)
+            prev = reach.get(key)
             if prev is None or total < prev:
-                reach[pos] = total
+                reach[key] = total
 
         for _key, (steps_to_t, (rx, ry), other_level) in level_transitions.items():
             seed = (rx, ry, other_level)

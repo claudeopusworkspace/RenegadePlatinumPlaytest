@@ -300,6 +300,99 @@ class TestBug029ElevationReachability:
         )
 
 
+class TestBug038UnderBridgeReachability:
+    """Regression: the inverse of BUG-029. With the player *under* the
+    Cycling Road bridge on Route 206, view_map must:
+
+    1. Not report bridge-level Cyclists as ground-reachable just because
+       BFS routing through multi-level overlap tiles accidentally floods
+       the bridge plate (the ``_steppable()`` gate on ML transitions).
+    2. Not let a bridge-level NPC's 2D (x, y) shadow block the ground
+       plate beneath them (the 3D ``npc_set`` with per-object elevation
+       from the MapObject height field).
+    3. Find ground tiles whose BDHC reports both a flat plate AND an
+       overhead bridge ramp at the same (x, y) — the fixed
+       ``_tile_on_level`` considers ramp and flat plates independently.
+    4. Match each POI's approach tile against the POI's OWN level
+       (inferred from its height), not any level the BFS reached the
+       adjacent tile at.
+
+    Save state ``session30_route206_under_bridge`` parks the player at
+    Route 206 (310, 608), one tile south of the east Wayward Cave warp
+    (warp:8 at 310, 607), with the Cycling Road bridge overhead. Before
+    the fix bridge Cyclists (obj:2 at 299,611 h=140; obj:4 at 304,631
+    h=112) were marked reachable while the ground-level Wayward Cave
+    warp under them (warp:7 at 299,611) was marked unreachable.
+    """
+
+    SAVE_STATE = "session30_route206_under_bridge"
+
+    def test_under_bridge_wayward_warp_reachable(self, emu: EmulatorClient):
+        """warp:7 at (299, 611) is the Wayward Cave ground-level entrance
+        sitting directly beneath obj:2 (bridge-level Cyclist). Must be
+        reachable from (310, 608) via the ground-plate path."""
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        reachable = [
+            e for e in result["interactibles"]
+            if e["kind"] == "warp"
+            and (e["x"], e["y"]) == (299, 611)
+            and e["preview"]["dest_map_name"] == "Wayward Cave"
+        ]
+        assert reachable, (
+            "Ground-level Wayward Cave warp at (299, 611) must be "
+            "reachable from under-bridge position (310, 608); got "
+            f"unreachable={[(e['x'], e['y']) for e in result['unreachable_interactibles']]}"
+        )
+
+    def test_bridge_cyclist_299_611_not_reachable(self, emu: EmulatorClient):
+        """obj:2 Cyclist at (299, 611) h=140 sits on the bridge plate ~124
+        units above the player. Must not be reachable from ground."""
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        reachable = {(e["x"], e["y"]) for e in result["interactibles"]}
+        unreachable = {(e["x"], e["y"]) for e in result["unreachable_interactibles"]}
+        assert (299, 611) not in {
+            (e["x"], e["y"]) for e in result["interactibles"]
+            if e["kind"] == "trainer"
+        }, f"Bridge Cyclist at (299, 611) must not be reachable; reachable={reachable}"
+        assert (299, 611) in unreachable, (
+            f"Bridge Cyclist at (299, 611) must appear in unreachable list; "
+            f"unreachable={unreachable}"
+        )
+
+    def test_bridge_cyclist_304_631_not_reachable(self, emu: EmulatorClient):
+        """obj:4 Cyclist at (304, 631) h=112 on the bridge. Ground player
+        has an ML overlap tile at (304, 632) with level_map=[1, 11] —
+        before the ``_steppable`` ML-transition gate, the BFS would
+        teleport to L11 and report obj:4 reachable."""
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        trainer_reach = {
+            (e["x"], e["y"]) for e in result["interactibles"]
+            if e["kind"] == "trainer"
+        }
+        assert (304, 631) not in trainer_reach, (
+            f"Bridge Cyclist at (304, 631) must not be reachable via the "
+            f"under-bridge ML overlap tile; trainer_reach={trainer_reach}"
+        )
+
+    def test_under_bridge_hiker_still_reachable(self, emu: EmulatorClient):
+        """obj:21 Hiker at (311, 622) h=16 stands on the ground plate
+        (L1) right next to the player's path. Must still be reachable."""
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.map_state import view_map
+        result = view_map(emu)
+        reachable = {(e["x"], e["y"]) for e in result["interactibles"]}
+        assert (311, 622) in reachable, (
+            f"Ground-level Hiker at (311, 622) must be reachable; "
+            f"reachable={reachable}"
+        )
+
+
 class TestFlatMultiChunkReachability:
     """Regression: on chunked maps whose BDHC is flat (one height across all
     chunks), view_map's 2D fallback must flood the full multi-chunk extent,

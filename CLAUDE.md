@@ -105,7 +105,7 @@ Letter grid coordinates (calibrated):
 
 - **Character**: CLAUDE | **Rival**: WOJ
 - **Badges**: 2 (Coal, Forest)
-- **Location**: Route 206 (310, 608) on foot, under the east side of the Cycling Road bridge — one tile south of the east Wayward Cave entrance (310, 607). Save state: `session29_exited_wayward_under_bridge`. Full team healed (Mira auto-heal on exit).
+- **Location**: Route 206 (310, 608) on foot, under the east side of the Cycling Road bridge — one tile south of the east Wayward Cave entrance (310, 607). Save state: `session30_route206_under_bridge`. Full team healed.
 - **Party order**: Monferno leads, then Luxray, Prinplup, Grotle, Swinub, Togepi.
 - **Monferno** Lv29 — Careful, Iron Fist. Charcoal. Low Kick / **Mach Punch** / **Flame Wheel** / Taunt.
 - **Luxray** Lv34 — Jolly, Guts. Scope Lens. Spark / **Crunch** / Howl / Ice Fang.
@@ -117,8 +117,8 @@ Letter grid coordinates (calibrated):
 - **HM plan**: Prinplup→Empoleon (Surf, Waterfall). Togepi→Togekiss (Fly). Grotle→Torterra / Swinub→Mamoswine / Larvitar→Tyranitar (Rock Climb options).
 - **Notable items**: Explorer Kit, **Hard Stone**, Dawn Stone, **Dusk Stone**, Wise Glasses, **TM74 Gyro Ball**, **TM32 Double Team**, **TM85 Dazzling Gleam** (new session 29, Mira quest reward — earmarked for Togepi post-evolution), **PP Up**, TM16 Light Screen, TM33 Reflect, TM73 Thunder Wave, **Focus Band**, Oval Stone, Fire Stone, Sun Stone, Never-Melt Ice. Bag: 7 Super Potions, 6 Repels, **0 Revival Herbs** (restock before Mt. Coronet).
 - **Wayward Cave status**: COMPLETE. All 10 trainers defeated across sessions 28+29. Mira's quest complete — found her Crimson Ribbon at (72, 11), received TM85 Dazzling Gleam, Mira departed. Cave freely traversable but no remaining objectives. One Pokéball at (57, 53) still puzzle-gated — skip unless easy.
-- **Route 206 under-bridge status**: Remaining undefeated Cyclist obj:4 at (304, 631). Pokéballs at (292, 623) + (314, 631) + Berry Soils at (293-294, 627). Cycling Road south gate warps at (301-305, 688) lead through the gate house to Route 207. **KNOWN BUG (session 30 dev target)**: `view_map` from (310, 608) misclassifies bridge-level Cyclists obj:2 (299, 611) and obj:4 (304, 631) as ground-reachable. They're supposed to be on the bridge 3 elevation levels up. Repro save `session29_exited_wayward_under_bridge`.
-- **Next**: **dev session before playthrough** to fix bridge-level-reachability bug + BUG-038 multi-level-cascade. After that: clear Cyclist obj:4, grab Pokéballs, south through gate to Route 207, clear Psychic Arianna, enter Mt. Coronet.
+- **Route 206 under-bridge status**: Remaining undefeated Cyclist obj:4 at (304, 631) — on the BRIDGE (not ground-reachable from (310, 608), need to approach from the cycling road). Pokéballs at (292, 623) + (314, 631) + Berry Soils at (293-294, 627) are all ground-level and reachable. Cycling Road south gate warps at (301-305, 688) lead through the gate house to Route 207. Ground-level west Wayward Cave warp at (299, 611) is reachable from here.
+- **Next**: Clear the reachable under-bridge Pokéballs + Berry Soils, then south through the gate house (warps at y=688) to Route 207, clear Psychic Arianna, enter Mt. Coronet. Undefeated bridge Cyclists (obj:2/4/6) can be tackled when we cross the bridge northbound on the bicycle.
 
 See GAME_HISTORY.md for full details (defeated trainers, story progress, box contents, items).
 

@@ -4,6 +4,58 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Fix view_map under-bridge elevation misclassification (2026-04-22 session 30b)
+
+Three-pronged fix for an interlocking bug cluster on Route 206 at (310, 608) (Cycling Road bridge overhead, player on the ground plate underneath). Repro: `session30_route206_under_bridge`. Before the fix, `view_map` reported bridge-level Cyclists as reachable from under the bridge, AND the ground-level Wayward Cave warp sitting directly beneath one of those Cyclists as unreachable. Same (x, y), opposite verdicts — clear signal that elevation info was being dropped inconsistently between the BFS and the POI classifier.
+
+### Investigation
+
+Followed the "instrument before theorize" rule. Added a debug dump inside `view_map` capturing the 3D BFS state at key tiles, then ran it via `reload_tools` so the live MCP process (with correct heap-shift detection) produced the data. Found three independent defects chained together:
+
+1. **ML teleports** — `_record_transitions` in `pathfinding.py` treated any tile whose BDHC reported multiple flat plates as a free level-switch point. Route 206 has ~16 under-bridge tiles where the bridge plate at h=112–140 physically overlaps the ground plate at h=16. The unconditional ML transition let the L1 flood "climb" to L11/L12/L14 in one step (a 96–124 unit vertical leap) and flood the bridge plate, making every on-bridge POI appear 2D-reachable.
+2. **Ramp shadows flat plates** — `_tile_on_level` returned early whenever a tile was in `ramp_tiles`, never consulting `level_map`. For tiles like (299, 617) which BDHC reports as BOTH a 14→12 bridge ramp AND a ground L1 flat plate, the function said "not on level 1" and blocked the L1 flood from crossing its own plate. Ground player couldn't walk under the bridge ramp even though the ground was clearly there.
+3. **2D-keyed reach + elevationless NPCs** — `_bfs_reachable_3d` flattened its output to `dict[(x, y), int]`, losing the level dimension the flood had just computed. `npc_set` was a 2D `set[(x, y)]`, so a Cyclist at (299, 611) h=140 on the bridge blocked the ground plate at the same tile. And `_build_interactibles` checked 4-adjacent reachability against the 2D reach without regard to the POI's own level — so a bridge trainer whose approach tile happened to also be reached at ground level was flagged reachable.
+
+The probe found the final piece: **objects carry a Y-height field in the MapObject struct that `read_objects` was discarding**. The three u32s at OBJ+0x70 are (fpx, fpy_height, fpz) — `read_player_height` has been reading the middle u32 all along, and it's the object's own world height for the other 63 slots too. Parsing it gave clean elevation tags per POI: Bridge Cyclists at h=96–152, under-bridge items/hikers at h=16, post-gatehouse objects at h=0.
+
+### Fix
+
+All edits in `renegade_mcp/`:
+
+- **`pathfinding.py::_record_transitions`** — ML transition gated by `_steppable()` (height diff ≤ STEPPABLE_HEIGHT=4). Overlap tiles no longer teleport between physically separated plates.
+- **`pathfinding.py::_tile_on_level`** — rewritten to check both ramp plate and flat plate independently; accept the tile if either source permits the level. Ground under an overhead bridge ramp is no longer hidden.
+- **`pathfinding.py::_flood_fill_level`** — `npc_set` accepts 3D `{(x, y, level)}` in addition to 2D (auto-detected from first element's tuple arity). 3D mode blocks only `(nx, ny, current_level)`, so a bridge-level NPC doesn't wall off the ground plate beneath them.
+- **`pathfinding.py::_bfs_reachable_3d`** — return type changed from `dict[(x, y), int]` to `dict[(x, y, level), int]`. Preserves the level dimension the per-level floods compute anyway; its one caller (view_map) needs that dimension for POI classification.
+- **`map_state.py::read_objects`** — now parses `fpy_height` from the discarded middle u32, applies fx32 → float conversion matching `read_player_height`, and exposes `obj["height"]`.
+- **`map_state.py::view_map`** — builds a 3D npc_set using each non-follower NPC's level (via `_height_to_level(o["height"], mc_elev, tile_x, tile_y)`), computes `object_levels[idx]` for the classifier, derives a 2D-collapsed `reachable_tiles` for back-compat, and packages the 3D reach + elevation + origin + per-object levels into a `reach_info_3d` dict passed down.
+- **`map_state.py::_build_interactibles`** — when `reach_info_3d` is present, 4-adjacent check becomes `(adj_x, adj_y, obj_level) in reach3d` instead of `(adj_x, adj_y) in reach2d`. Falls back to the original 2D path on flat maps where no 3D data exists.
+- **`map_state.py::_merge_adjacent_warps`** — warp reachability requires the warp's own tile to be in `reach3d` at SOME level that the tile actually has in `level_map[(wx, wy)]`. Picks the smallest step count across candidate levels.
+
+### Verification
+
+Ran `view_map` live on the repro save:
+
+| POI | Before | After |
+|-----|--------|-------|
+| obj:2 Cyclist (299, 611) h=140 | reachable 35 steps ❌ | **unreachable** ✓ |
+| obj:3 Cyclist (304, 622) h=124 | reachable 21 steps ❌ | **unreachable** ✓ |
+| obj:4 Cyclist (304, 631) h=112 | reachable 30 steps ❌ | **unreachable** ✓ |
+| warp:7 Wayward Cave (299, 611) | unreachable ❌ | **reachable 26 steps** ✓ |
+| obj:21 Hiker (311, 622) h=16 | reachable 14 | reachable 14 ✓ |
+| obj:22 Hiker (292, 643) h=0 | reachable 56 ❌ | **unreachable** ✓ (post-gatehouse, actually on map 351) |
+
+Other bridge-level trainers that were previously reachable-only-via-phantom-bridge-flood (obj:1, 5, 7) stay unreachable; post-gatehouse objects (obj:9 Arrow Signpost, obj:17/18 Berry Soils at h=0, obj:19 Trainer Tips Signpost) correctly become unreachable — they were spuriously reachable before because the BFS was flooding across elevation boundaries.
+
+4 new tests in `TestBug038UnderBridgeReachability` (warp reachability, two bridge-cyclist unreachability asserts, ground-hiker still-reachable regression guard). Full suite: **520 passed @ 2:31 (N=8)**. BUG-029's two tests still pass — the new `_tile_on_level` logic is strictly more permissive for legitimate tiles and the BUG-029 repro (on-bridge player, bridge Pokeball reachable, under-bridge Pokeball unreachable) is unaffected.
+
+### Take-away
+
+The probe-first discipline paid for itself. The 2D-vs-3D npc_set and the ML-teleport gate were obvious in hindsight, but the `_tile_on_level` ramp-shadows-flat case would have been easy to miss — I had to be *sitting* on `_dbg_lines.append(f"_tile_on_level(75,73,1)=False ... ramp(from=14,to=12)")` before I realized a tile could have both plate types. Also — the object height field was in the struct all along. 60 other tools use the MapObject array; nobody parsed the middle u32 because `read_player_height` reads it separately and nothing had a reason to ask "how high is that Cyclist?" Cheap reads, high leverage — worth sweeping the other struct fields when working in this area next.
+
+### BUG-040 filed + closed in session
+
+Tracking ID BUG-040 assigned to the elevation misclassification cluster. Opened, fixed, tested, and committed within the same session. No bug-backlog entry added to memory (per repro documentation feedback — the fix is in the code and the tests pin the behavior; commit message + this entry carry the narrative).
+
 ## Dev Session: Fix view_map BFS chunk window (2026-04-22 session 30)
 
 Pure dev session — no gameplay advance. Woj asked me to investigate save `bug_view_map_false_unreachable_wayward` (Wayward Cave main, (73, 29)): `view_map` was reporting 11 unreachable interactibles including `warp:1 to Route 206 (41, 53)` — the entry warp we had physically used earlier in the playthrough. One commit landed: `48432e4`.

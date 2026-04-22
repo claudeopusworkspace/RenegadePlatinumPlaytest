@@ -867,20 +867,31 @@ def read_objects(emu: EmulatorClient) -> list[dict[str, Any]]:
         if status == 0:
             continue
 
-        # fpx, skip(unk), fpy — three u32s starting at the +0x70 fpx offset.
-        # Unsigned matches the previous read_memory(size="long") default.
-        fpx, _, fpy = struct.unpack_from("<III", block, off + fpx_offset_within_slot)
+        # Three u32s at +0x70: fpx (tile_x fx32), fpy (height fx32), fpz
+        # (tile_y fx32). Naming matches `read_player_height` which reads
+        # the middle u32 from the same layout (OBJ_ARRAY_FPX_BASE + 4).
+        fpx, fpy_height, fpz = struct.unpack_from(
+            "<III", block, off + fpx_offset_within_slot,
+        )
         tile_x = (fpx >> 16) & 0xFFFF
-        tile_y = (fpy >> 16) & 0xFFFF
+        tile_y = (fpz >> 16) & 0xFFFF
         if tile_x > 10000 or tile_y > 10000:
             continue
+
+        # Object's world height (fx32 → units). Signed interpretation —
+        # under-ground heights exist but are rare; player height canary uses
+        # the same conversion in `read_player_height`.
+        height_raw = fpy_height
+        if height_raw >= 0x80000000:
+            height_raw -= 0x100000000
+        height_units = height_raw / 4096.0
 
         gfx_id = header[4]
         mv_id = header[5]
         obj: dict[str, Any] = {
             "index": i,
             "x": tile_x, "y": tile_y,
-            "fpx": fpx, "fpy": fpy,
+            "fpx": fpx, "fpy": fpz, "height": height_units,
             "local_id": header[2],
             "graphics_id": gfx_id,
             "name": GFX_NAMES.get(gfx_id, f"Unknown ({gfx_id})"),
@@ -1150,6 +1161,7 @@ def _merge_adjacent_warps(
     warps: list[dict[str, int]],
     reachable_tiles: dict[tuple[int, int], int],
     player_x: int, player_y: int,
+    reach_info_3d: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Cluster warps that share a destination AND are 4-adjacent.
 
@@ -1189,14 +1201,43 @@ def _merge_adjacent_warps(
                         i += 1
 
             # Pick the representative interaction tile.
+            # On 3D maps, a warp is reachable only if the BFS reached its
+            # tile at a level the tile actually has (level_map entry).
+            # Falls back to plain 2D lookup when 3D info isn't available.
             best_reach: tuple[int, tuple[int, int]] | None = None
             best_manh: tuple[int, tuple[int, int]] | None = None
             for w in current:
                 wx, wy = w["x"], w["y"]
-                if (wx, wy) in reachable_tiles:
-                    s = reachable_tiles[(wx, wy)]
-                    if best_reach is None or s < best_reach[0]:
-                        best_reach = (s, (wx, wy))
+                reach_s: int | None = None
+                if reach_info_3d is not None:
+                    elev = reach_info_3d["elevation"]
+                    ox, oy = reach_info_3d["origin"]
+                    reach3d = reach_info_3d["reach"]
+                    level_map = elev["level_map"]
+                    ramp_tiles = elev["ramp_tiles"]
+                    lx, ly = wx - ox, wy - oy
+                    tile_levels = level_map.get((lx, ly))
+                    if tile_levels is None:
+                        ri = ramp_tiles.get((lx, ly))
+                        if ri is not None:
+                            tile_levels = [ri["from_level"], ri["to_level"]]
+                    if tile_levels is None:
+                        # Tile not in BDHC → treat as any-level passable.
+                        if (wx, wy) in reachable_tiles:
+                            reach_s = reachable_tiles[(wx, wy)]
+                    else:
+                        for lv in tile_levels:
+                            s3 = reach3d.get((wx, wy, lv))
+                            if s3 is not None and (
+                                reach_s is None or s3 < reach_s
+                            ):
+                                reach_s = s3
+                elif (wx, wy) in reachable_tiles:
+                    reach_s = reachable_tiles[(wx, wy)]
+
+                if reach_s is not None:
+                    if best_reach is None or reach_s < best_reach[0]:
+                        best_reach = (reach_s, (wx, wy))
                 d = abs(wx - player_x) + abs(wy - player_y)
                 if best_manh is None or d < best_manh[0]:
                     best_manh = (d, (wx, wy))
@@ -1277,6 +1318,7 @@ def _build_interactibles(
     objects: list[dict[str, Any]],
     reachable_tiles: dict[tuple[int, int], int],
     player_x: int, player_y: int,
+    reach_info_3d: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Construct (reachable, unreachable) interactibles lists.
 
@@ -1328,13 +1370,23 @@ def _build_interactibles(
             label = sprite_name or f"Object {idx}"
 
         # Find best interaction tile.
+        # On 3D maps, the adjacent tile is only a valid approach if the
+        # BFS reached it at the object's own level — a ground-level tile
+        # under a bridge trainer doesn't let the player interact with
+        # someone standing 8 tiles above them in the Y axis.
         best: tuple[int, int, int, str] | None = None  # (steps, adj_x, adj_y, face)
+        obj_level: int | None = None
+        if reach_info_3d is not None:
+            obj_level = reach_info_3d["object_levels"].get(idx)
         for adj_dx, adj_dy, face in _INTERACTIBLE_ADJ:
             adj_gx, adj_gy = gx + adj_dx, gy + adj_dy
-            if (adj_gx, adj_gy) in reachable_tiles:
+            s: int | None = None
+            if reach_info_3d is not None and obj_level is not None:
+                s = reach_info_3d["reach"].get((adj_gx, adj_gy, obj_level))
+            elif (adj_gx, adj_gy) in reachable_tiles:
                 s = reachable_tiles[(adj_gx, adj_gy)]
-                if best is None or s < best[0]:
-                    best = (s, adj_gx, adj_gy, face)
+            if s is not None and (best is None or s < best[0]):
+                best = (s, adj_gx, adj_gy, face)
 
         entry: dict[str, Any] = {
             "id": f"obj:{idx}",
@@ -1358,6 +1410,7 @@ def _build_interactibles(
     all_warps = read_warps_from_rom(emu, map_id)
     clusters = _merge_adjacent_warps(
         all_warps, reachable_tiles, player_x, player_y,
+        reach_info_3d=reach_info_3d,
     )
     warp_idx = 0
     for c in clusters:
@@ -1530,6 +1583,9 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
     #    5×5 chunk multi-chunk cave has been comfortably fast at 500 steps.
     MAX_REACH_STEPS = 500
     reachable_tiles: dict[tuple[int, int], int] = {}
+    reachable_tiles_3d: dict[tuple[int, int, int], int] | None = None
+    object_levels: dict[int, int] = {}
+    mc_elev_for_classifier: dict | None = None
     reach_3d_ok = False
     mc_bounds: tuple[int, int, int, int] | None = None  # (ox, oy, w, h)
 
@@ -1567,21 +1623,45 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
                 )
                 if mc_player_level is not None:
                     from renegade_mcp.nav_constants import is_follower_npc
-                    mc_npc_positions = {
-                        (obj["x"] - mc_ox, obj["y"] - mc_oy)
-                        for obj in objects
-                        if obj["index"] != 0 and not is_follower_npc(obj)
-                    }
-                    reach = _bfs_reachable_3d(
-                        mc_terrain, mc_npc_positions, mc_elev,
+                    # Build 3D NPC blocker set. Each NPC blocks only the level
+                    # closest to its stored height — bridge-level trainers
+                    # don't block ground paths under the bridge and vice
+                    # versa.
+                    mc_npc_3d: set[tuple[int, int, int]] = set()
+                    object_levels: dict[int, int] = {}
+                    for o in objects:
+                        if o["index"] == 0 or is_follower_npc(o):
+                            continue
+                        olx, oly = o["x"] - mc_ox, o["y"] - mc_oy
+                        if not (0 <= olx < mc_w and 0 <= oly < mc_h):
+                            continue
+                        olevel = _height_to_level(
+                            o.get("height", 0.0), mc_elev,
+                            tile_x=olx, tile_y=oly,
+                        )
+                        if olevel is None:
+                            continue
+                        mc_npc_3d.add((olx, oly, olevel))
+                        object_levels[o["index"]] = olevel
+                    reach_3d_local = _bfs_reachable_3d(
+                        mc_terrain, mc_npc_3d, mc_elev,
                         px - mc_ox, py - mc_oy, mc_player_level,
                         width=mc_w, height=mc_h,
                         max_steps=MAX_REACH_STEPS,
                     )
-                    reachable_tiles = {
-                        (gx + mc_ox, gy + mc_oy): s
-                        for (gx, gy), s in reach.items()
+                    # 3D-keyed reach in global coords (x, y, level) → steps.
+                    reachable_tiles_3d: dict[tuple[int, int, int], int] = {
+                        (gx + mc_ox, gy + mc_oy, lv): s
+                        for (gx, gy, lv), s in reach_3d_local.items()
                     }
+                    # Flatten to 2D for back-compat with code paths that
+                    # only need tile-level reach info.
+                    reachable_tiles = {}
+                    for (gx, gy, _lv), s in reachable_tiles_3d.items():
+                        prev = reachable_tiles.get((gx, gy))
+                        if prev is None or s < prev:
+                            reachable_tiles[(gx, gy)] = s
+                    mc_elev_for_classifier = mc_elev
                     reach_3d_ok = True
 
     if not reach_3d_ok:
@@ -1631,8 +1711,21 @@ def view_map(emu: EmulatorClient, level: int = -1) -> dict[str, Any]:
                 for (lx, ly), s in reach2d.items()
             }
 
+    # Package 3D reach info for the elevation-aware POI classifier. The
+    # classifier needs to translate global coords to the BDHC's local grid
+    # (mc_ox, mc_oy origin) to look up per-tile level_map entries.
+    reach_info_3d: dict[str, Any] | None = None
+    if reachable_tiles_3d is not None and mc_elev_for_classifier is not None:
+        assert mc_bounds is not None
+        reach_info_3d = {
+            "reach": reachable_tiles_3d,
+            "object_levels": object_levels,
+            "elevation": mc_elev_for_classifier,
+            "origin": (mc_bounds[0], mc_bounds[1]),
+        }
     interactibles, unreachable_interactibles = _build_interactibles(
         emu, map_id, objects, reachable_tiles, px, py,
+        reach_info_3d=reach_info_3d,
     )
 
     map_str_with_axes = _render_with_axes(map_str, vp_x, vp_y, vp_w, vp_h)
