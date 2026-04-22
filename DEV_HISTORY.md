@@ -4,6 +4,39 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Retire BUG-024 length guard (2026-04-22 session 29)
+
+Mid-playtest, the BUG-024 "wander guard" (introduced session 19) fired inside Wayward Cave on what looked like legitimate navigation: `navigate_to(x=73, y=29)` from (72, 10) returned `No reasonable path ... BFS path is 136 steps for a 20-tile Manhattan distance`. The cave's east half has two chambers connected by a single ~100-step winding corridor — the path is real, the ratio just exceeds `max(manhattan*5, manhattan+30)`. Breaking the trip into two legs worked around it, but every cave/dungeon run was going to keep eating this false positive.
+
+### What the guard was for, and why it's now redundant
+
+BUG-024 repro is `route206_cyclingroad_end_nav_repro`: player standing on a side-S warp tile at (302, 681) at the south end of a Cycling Road gate house, target is the side-N warp at (302, 688) — 7 Manhattan tiles away, no walkable connection, only reachable by stepping through the gate house via warp. Pre-fix, BFS found a 93-step detour that looped most of the overworld and ended nowhere useful. The fix rejected paths exceeding the ratio threshold with a clear error + warp hint.
+
+Retested live with the guard disabled. Expected the pathological wander to return. It didn't — the **BUG-030 elevation validator** (session 21) now rejects the same call earlier, with a more specific message:
+
+```
+"No reasonable path at your current elevation (level 3).
+ The 2D fallback would step between incompatible layers.
+ Try a ramp or warp first, or use `navigate` with explicit directions."
+note: "You are standing on a directional warp tile.  Trigger it
+ with `press_buttons(['down'])` to transition, then navigate
+ from the other side."
+```
+
+Player on the Cycling Road bridge is level 3; target under the bridge is level 0. BUG-030's validator catches the layer-crossing attempt before the length guard ever gets a chance to look at the path. Same outcome (clean error, warp hint, no player movement) — different trigger point. The existing `TestQaBug024SideWarpCluster` test class already documents this in its docstring: *"Post-BUG-030: navigate_to no longer falls back to 2D BFS on elevated maps, so the refusal now fires from the elevation path rather than the sanity-cap step-count check."* The assertions (`"No reasonable path"` substring, `manhattan == 7`, `"down"` in note, no movement) all still pass via the BUG-030 path.
+
+### Fix
+
+`renegade_mcp/navigation.py:1225-1257` — deleted the length-guard block, left a comment explaining the BUG-024 scenario is now caught by BUG-030's elevation validator. No tests changed; `TestQaBug024SideWarpCluster` asserts on behavior-outcome and already passes via the elevation path (confirmed by the docstring note added in session 21).
+
+### Flat-map warp clusters — unresolved residual risk
+
+Theoretically, a gate house or side-warp cluster on a *flat, single-elevation* map could still produce the original pathological wander. The BUG-030 validator only rejects layer-crossing, so it wouldn't catch a wander on a flat map. I haven't found such a map in practice yet. If one surfaces, the right fix is probably the surgical option floated in session 29 (skip the guard when origin tile is *not* a warp) — the BUG-024 pathology requires the player to be standing on a warp for BFS to re-seed on the wrong cluster member.
+
+### BUG-038 repro filed (not fixed)
+
+Separate from the guard work: mid-Ruin-Maniac-fight, Togepi rode an Exp. Share from Lv1 to Lv9 in one battle, cascading through multiple move-learn prompts. Two tool issues surfaced: `battle_turn(forget_move=0)` at one learn advanced straight to SWITCH_PROMPT without a "learned Metronome" log entry (commit happened, but the log skipped it), and `battle_turn(forget_move=-1)` at a later learn returned `final_state=NO_TEXT` while the "Make it forget another move?" box was still on-screen. Also mid-transition `read_party` returned stale save-block data. Checkpoint saved as `bug_togepi_cascade_levelup` (frame 42674 of this playthrough) with full repro steps documented in SAVE_STATES.md + memory backlog. Not blocking — we worked around with manual B-presses.
+
 ## Dev Session: Party sub-menu offsets + reorder_party verify (2026-04-21 session 27)
 
 Short targeted fix session, one commit (`e6513bb`). Playtest instance filed BUG-033: `reorder_party(from=0, to=3)` reported `success: true` but nothing swapped. Grotle at slot 0 knows Cut, Monferno at slot 3.

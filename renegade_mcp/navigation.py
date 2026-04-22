@@ -1222,39 +1222,12 @@ def _navigate_to_impl(
 
     start_pos = _pos_with_map(px, py, map_id)
 
-    # ── Sanity cap: reject absurdly long paths vs manhattan distance ──
-    # When player is on a side-warp cluster (gate house, Cycling Road), BFS
-    # can find a technically valid path that loops all the way around the
-    # overworld to reach the other side of the gate.  The correct action is
-    # to trigger the warp, not walk 93 tiles for a 7-tile trip.
-    # Exception: when the chosen path traverses an HM tile (Rock Climb
-    # descent, Surf, Waterfall), the path legitimately can be long because
-    # the player is in a region whose only exits are HM tiles.  Skip the
-    # cap in that case.
-    path_uses_hm = (
-        obs_path is not None and path is obs_path
-        and any(ob["type"] in AUTO_NAVIGATE_TYPES for ob in obs_crossed)
-    )
-    if path is not None and len(path) > 0 and not path_uses_hm:
-        manhattan = abs(bfs_tx - bfs_sx) + abs(bfs_ty - bfs_sy)
-        limit = max(manhattan * 5, manhattan + 30)
-        if len(path) > limit:
-            target_gx = bfs_tx + repath_ox
-            target_gy = bfs_ty + repath_oy
-            result: dict[str, Any] = {
-                "error": (
-                    f"No reasonable path to ({target_gx}, {target_gy}): "
-                    f"BFS path is {len(path)} steps for a {manhattan}-tile "
-                    f"Manhattan distance.  Target is likely in a separate "
-                    f"walkable region reachable only via warp."
-                ),
-                "start": start_pos,
-                "target": {"x": target_x, "y": target_y},
-                "path_length": len(path),
-                "manhattan": manhattan,
-            }
-            _attach_warp_hint(result, terrain_info, bfs_sx, bfs_sy)
-            return result
+    # BUG-024 length guard removed 2026-04-22 session 29 — the Cycling Road
+    # gate-house scenario it was meant to catch is now rejected earlier by
+    # the BUG-030 elevation validator (incompatible-layer 2D fallback gets
+    # a specific "trigger the warp" message). The length guard was biting
+    # legitimate long winding dungeon paths (Wayward Cave 100-step, 17
+    # Manhattan) as false positives.
 
     if path is None:
         # Diagnose why BFS couldn't find a path
