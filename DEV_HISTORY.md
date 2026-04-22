@@ -4,6 +4,130 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Bike ramp BFS edges + auto-mount traversal (2026-04-22 session 31b)
+
+Second half of the session 31 dev pair, running in parallel with the playthrough agent on `.melonds_bridge.sock`. Standalone test emulator on `.melonds_test_bridge.sock`; all probe scripts in `/tmp`.
+
+Player agent handoff: save state `session31_wayward_cave_bike_ramps` (Wayward Cave map 285, player at (7, 22) facing up). `view_map` legend listed `?=bike_ramp_E` but emitted no `?` glyph in the grid — ramps rendered as generic `#` walls, and four east-side POIs (Pokeballs at (22, 9), (31, 16), (33, 8) and warp:0 at (43, 38)) all sat in `unreachable_interactibles` with BFS distances equal to Manhattan (no partial path). Same pattern Woj predicted would be nasty.
+
+### Mechanic (from decomp)
+
+Spent the first half of the investigation reading `ref/pokeplatinum/` to pin down the ramp jump exactly:
+
+- `include/constants/field/map_tile_behaviors.h`: `TILE_BEHAVIOR_BIKE_RAMP_EASTWARD = 0xD7`, `TILE_BEHAVIOR_BIKE_RAMP_WESTWARD = 0xD8` (no N/S variants in Gen 4 Platinum). Distinct from bike *slopes* at 0xD9/0xDA which are the Cycling Road / Wayward Cave slope mechanic already handled by `_traverse_bike_slope`.
+- `src/unk_0205F180.c::sub_02060EE4`: the trigger — if `param2 == 3` (east) and the neighbor tile is `BikeRampEastward`, or `param2 == 2` (west) and the neighbor is `BikeRampWestward`, return 1. Approach direction must match the ramp's facing; wrong-direction approaches just bump into the blocked tile.
+- `src/unk_020655F4.c::MovementAction_JumpFarEast_Step0`: `InitJump(mapObj, DIR_EAST, FX32_CONST(2), 16, ...)`. `MovementAction_Jump_Step1` accumulates `FX32_CONST(2)` per frame for 16 frames and fires `MapObject_StepDir` every time the accumulator crosses `FX32_CONST(16)` — net **2 tile displacement** from the entry tile over 16 frames. Landing = entry + 2 × (dx, dy), so the ramp tile itself is skipped.
+- Cycling is required (`PlayerAvatar_GetPlayerState == PLAYER_STATE_CYCLING`), but gear level doesn't gate the trigger — just being on the bike. Decomp line 1172 of `sub_0205F180.c` explicitly *blocks* gear-switching while on a ramp tile, which is the only hint that gear might matter. Confirmed with Woj: the mechanic works at any gear as long as the bike is mounted.
+
+Ramp tiles in our save-state map (`session31_wayward_cave_bike_ramps`, Wayward Cave B1F):
+
+- 13 × 0xD7 (east jump) — rows 6/10/17 forming the east-chamber traversal sequence
+- 3 × 0xD8 (west jump) — row 8/9/13 return paths
+- 4 × 0xD9/0xDA bike slopes — col 7 rows 8/9, 26/27, 37/38 (existing slope traversal handles these)
+
+Every ramp sits in a `[passable] → [ramp] → [passable] → [wall] → [passable]` pattern, so the 2-tile jump lands the player on the floor tile past the ramp, with the wall past that preventing further east motion without another ramp. Chained traversal is required to cross chambers.
+
+### Fix
+
+All edits in `renegade_mcp/`:
+
+- **`nav_constants.py`** — `BIKE_RAMP_BEHAVIORS = {0xD7, 0xD8}`, `BIKE_RAMP_DIRECTIONS = {0xD7: "right", 0xD8: "left"}`, `BIKE_RAMP_TYPES = {"bike_ramp"}`, `BIKE_RAMP_JUMP_TILES = 2`.
+- **`pathfinding.py::_bike_ramp_landing`** — new pure-function helper. Given `(x, y, direction, dx, dy, width, height)`, returns the 2-tile landing tile if the neighbor is a matching-direction ramp AND the landing is in-bounds + passable, else None. Doesn't check bicycle state — BFS assumes bike availability and navigate_to handles mounting at execution time, mirroring how Surf/Rock Climb treat badge-gated skills.
+- **`pathfinding.py`** BFS integration — `_bfs_reachable`, `_bfs_pathfind`, `_bfs_pathfind_level`, `_flood_fill_level` all get a new branch: when the neighbor step hits an impassable tile, consult `_bike_ramp_landing`. If it returns a landing, enqueue the landing as a single-direction jump edge (one direction string emitted for the 2-tile displacement). In the 3D variants the landing is level-validated against `current_level` so a ramp whose landing sits on a different BDHC level is correctly rejected.
+- **`map_state.py`** — `0xD7 → '>'`, `0xD8 → '<'` in `_BEHAVIOR_CHAR`. Ramps now render with directional glyphs plus legend entries, so view_map output visually distinguishes them from walls.
+- **`navigation.py::_execute_path`** — pre-step auto-mount: when `pre_obs.type in (BIKE_SLOPE_TYPES | BIKE_RAMP_TYPES)` and the player isn't cycling, reuse `_auto_mount_for_slope` to press Bicycle. If mount fails (no Bicycle in bag), return `blocked_reason="bike_ramp_requires_bicycle"` with a clear "get the Bicycle and retry" note. After mount, the press hold is `BIKE_HOLD_FRAMES + 24f` to cover the 16-frame jump animation plus settle, and the slow-terrain retry loop is **skipped** for ramp steps — a retry after a successful jump would re-press the direction and push the player one tile past the landing.
+- **`navigation.py`** path-scanner — the bike-slope population loop at `exec_obstacle_tiles` was iterating the BFS path tile-by-tile with `sx += sdx`. That breaks for ramp steps where one direction advances 2 tiles. Rewrote the loop: for each `step_dir`, inspect the next tile; if it's a ramp matching the direction, register `{"type": "bike_ramp", "behavior": nbeh}` at the ramp tile and advance `sx, sy` by `2*(sdx, sdy)` (to the landing); otherwise advance by 1 and run the existing bike-slope check.
+
+### Path encoding choice
+
+Considered two ways to represent ramp jumps in the BFS path:
+1. Emit two direction entries `['right', 'right']` and let `_execute_path` detect tiles_moved==2 to consume both, mirroring how multi-tile Rock Climb / Waterfall paths are handled.
+2. Emit one direction entry `['right']` per ramp, treating the jump as a single move (one engine press).
+
+Picked (2). Rationale: the engine really does interpret the input as a single movement action — one press triggers the full 2-tile `JumpFar` action — so matching that semantics keeps the path length equal to the number of presses the executor issues. This means `steps_taken` reflects actions, not tiles, and the `summarize_path` summary renders as e.g. `r1` for a single ramp hop. The path-scanner compensates by advancing its position tracker by 2 tiles across ramp entries so subsequent tile-based checks (slope detection, HM obstacles) see the correct player position.
+
+### Verification
+
+`_bike_ramp_landing` unit tests with synthetic terrain:
+- east ramp with passable landing → returns `(2, 0)`
+- wrong-direction approach (moving west into a ramp_E) → returns `None`
+- ramp with impassable landing → returns `None`
+
+Save-state test against `session31_wayward_cave_bike_ramps`:
+- 2D `_bfs_reachable` from player (7, 22) now reaches (11, 17) — the landing tile for ramp at (10, 17) — via the new ramp edge. Pre-fix this tile was walled off.
+- Companion `TestBug038UnderBridgeReachability` + `TestUnderBridgePathfind3d` from session 31a still green.
+
+Full regression sweep: **96 passed** across `test_navigation.py`, `test_map_tools.py`, `test_3d_nav_fallback.py`, `test_qa_bug017_clock_navigation.py` in 81s. Commit `390adf0`.
+
+### Known follow-up (filed as BUG-043 in backlog)
+
+The four east-chamber POIs in the repro save still sit in `unreachable_interactibles`. Ramp edges work correctly *per ramp* — the 2D BFS from (7, 22) reaches 172 tiles including `(11, 17)`, and probe scripts confirm `_bike_ramp_landing` fires for every 0xD7/0xD8 in the cave with a passable landing. The chambers are genuinely disconnected *without chained ramp+slope traversal through specific sequences* that the current BFS can't reconstruct. Likely contributors:
+
+- Some approach tiles for ramps further east (e.g. the entry tile (14, 17) for ramp at (15, 17)) are in chambers reachable only by chaining through *other* ramps first. The BFS handles chains naturally via its work queue, but only if each approach tile is reachable from the expanding frontier. When the first ramp lands on a tile that's a dead end (wall to the east), the next ramp in the chain is unreachable from that side and the BFS can't find it.
+- Row 22 ledges (`0x3B` jump-east ledges spanning x=11..35) only accept movement direction "right", so they're not usable as north-south connectors. They likely ARE usable as east-stretching connectors starting from the main corridor, but the approach tile (7, 22) is the player's starting tile and the tiles east of it (cols 8-10) are walled.
+- The col 7 bike slopes at rows 26/27 and 37/38 do transition levels (multi-level flat plates with no BDHC data), and the BFS reaches the row-23-24 wide corridor (cols 11-35) through them. But the row-17 corridor (containing the first 4 ramp landings) only connects to that southern corridor via unknown routing.
+
+Not attempted this session — the remaining work is topology instrumentation (walk the map with a human-driven player, log the actual traversal sequence the game expects) not BFS algorithmics. The ramp-edge work ships as-is and covers every individually-usable ramp; chamber connectivity is filed separately.
+
+### Also noted (unrelated, not fixed)
+
+Player agent flagged that `_traverse_bike_slope` mis-reports positions when auto-traversing a slope: "started at (7, 39) with target (7, 25); final was (7, 22) (3 past target); start was misreported as (7, 28); path: 'up x3' despite actual ~17-tile excursion across both slopes." Distinct code path from the ramp work (slopes use continuous-hold traversal, ramps use one-press animation). Filed as QA BUG-044 — worth a look next session when someone's running slope traversal.
+
+### Take-away
+
+Decomp reads paid for themselves again. Once `MovementAction_JumpFar_Step0` was in hand with its `FX32_CONST(2), 16` pair the mechanic was fully specified (2-tile jump, 16 frames, direction must match). That let me skip the empirical verification step — the initial `/tmp/verify_ramp3.py` walk-and-test attempt got stuck at (7, 19) with a black screenshot, and rather than re-debug the recording stall I trusted the decomp and moved to implementation. Got tripped up later by the topology debug (spent ~40 minutes confirming the map really is disconnected without further mechanics) but ultimately that confirms the fix is correct for ramps-specifically; the unresolved connectivity is a separate layer of work.
+
+Chamber connectivity stayed scoped-out per the decision to ship the mechanically-correct core. Filing it as a standalone backlog entry with actionable starting points (probe-log a real playthrough traversal, check whether certain chambers need map transitions, investigate ledge-chain routing) is more valuable than continuing to debug in this session.
+
+## Dev Session: navigate_to elevation-aware 3D pathfind under bridge (2026-04-22 session 31a)
+
+First half of a two-fix dev pair running in parallel with a live playthrough agent on `.melonds_bridge.sock`. All work against `.melonds_test_bridge.sock`, no MCP-level reloads on the playthrough process.
+
+Playthrough agent reported that `view_map` (post-BUG-040) correctly marks warp:7 — the east Wayward Cave entrance under the Cycling Road bridge — as reachable from under-bridge position (310, 608), but `navigate_to(poi="warp:7", flee_encounters=True)` still reports the warp unreachable. BUG-040 only touched `view_map`'s hierarchical reachability pass (`_flood_fill_level`, `_bfs_reachable_3d`); the navigate_to pathfind variants were left with the pre-BUG-040 `_tile_on_level` semantics.
+
+### Root cause
+
+`pathfinding.py::_bfs_pathfind_level._tile_on_level` — the single-level BFS that navigate_to uses when 3D routing is in effect — had the old early-return logic:
+
+```python
+def _tile_on_level(tx, ty, level):
+    key = (tx, ty)
+    if key in ramp_tiles:
+        ri = ramp_tiles[key]
+        if level in (ri["from_level"], ri["to_level"]):
+            return True
+        return _steppable(ri["from_level"]) or _steppable(ri["to_level"])  # early return
+    if key in level_map:
+        ...
+```
+
+On Route 206 under the Cycling Road, many ground tiles carry BOTH a bridge-ramp plate (overhead) AND a ground flat plate (underfoot) at the same XY. The early return after the ramp branch meant that for player_level=1 (ground), a tile whose ramp plate was from=14/to=12 answered "not on level 1" without ever consulting the flat plate — even though the ground plate at the same XY explicitly includes level 1. So every under-bridge-ramp ground tile looked like a wall to level-1 BFS.
+
+`_flood_fill_level` already had the permissive fix from BUG-040: check both ramp plate and flat plate independently, accept if either permits the level. `_bfs_pathfind_level` was missed, and so was `_validate_path_elevation` (which has a structurally similar "check ramp, continue; then check flat plate" pattern — same bug class one layer deeper).
+
+### Fix
+
+All edits in `renegade_mcp/pathfinding.py`:
+
+- **`_bfs_pathfind_level._tile_on_level`** — port the `_flood_fill_level` pattern directly: check `ramp_tiles.get(key)` and `level_map.get(key)` independently; if either source permits `level` (by membership or by `_steppable()`), accept the tile. Fall through to the permissive no-data case only when both are `None`.
+- **`_validate_path_elevation`** — rewrote the per-step level logic to compute a `next_levels` set from the ramp plate AND flat plate independently (instead of `if ramp: ...; continue; if lvls: ...`). The 2D-fallback path validator now matches the hierarchical BFS's tolerance of multi-plate tiles. This is a defensive fix — the 3D pathfind normally succeeds now, so the 2D-fallback validator isn't on the hot path for this repro, but the same bug class would bite other bridge-overlap maps.
+
+### Verification
+
+Wrote `/tmp/repro_warp7.py` to exercise the BFS stack in isolation against the existing save state (`session30_route206_under_bridge`). Before the fix: `view_map._bfs_reachable_3d` reached warp:7 on player level, `navigate_to._bfs_pathfind_3d` returned `None`, `_bfs_pathfind_level` on level 1 found no direct path and only reached a distant bridge-ramp (wrong direction). After the fix: `_bfs_pathfind_3d` returns a 26-step path on level 1, matching view_map's reported 26 steps exactly.
+
+Counter-check `/tmp/repro_bridge_blocked.py`: bridge-level Cyclist at (304, 631) remains unreachable from the ground — the permissive `_tile_on_level` rewrite doesn't accidentally let the ground player path UP onto the bridge.
+
+New test class `TestUnderBridgePathfind3d` in `tests/test_navigation.py` with two assertions:
+1. `_bfs_pathfind_3d` finds a ground-level path from under-bridge (310, 608) to warp:7 at (299, 611).
+2. The same BFS correctly returns `None` for the bridge Cyclist at (304, 631) — regression guard so the fix doesn't cascade into false positives.
+
+Full nav/map sweep: **86 passed** across `test_navigation.py`, `test_map_tools.py`, `test_3d_nav_fallback.py`, plus the auxiliary `test_qa_bug017_clock_navigation.py` (5 passed). Commit `1b7915e`.
+
+### Take-away
+
+BUG-040 was fixed as three separate defects in `view_map`'s reachability, but the companion navigate_to code path had the same pattern that should have been cleaned up in the same pass. Lesson for future bug-cluster fixes: when the fix is "replace early-return logic with independent-source checks on a common primitive", grep for that primitive across the module and apply the pattern everywhere — not just the call site in the repro.
+
 ## Dev Session: Berry-patch state in view_map (2026-04-22 session 30c)
 
 Ran in parallel with a live playthrough agent on `.melonds_bridge.sock`; all dev work used a dedicated test emulator on `.melonds_test_bridge.sock` and throwaway probe scripts in `/tmp`.
