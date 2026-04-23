@@ -418,9 +418,9 @@ def _flow_bicycle(
     """Bicycle toggle flow: USE → mount/dismount animation.
 
     On a successful mount (transition to on-bike), also ensures the bike
-    ends in fast gear (BIKE_GEAR_STATE_ADDR == 0). Fast is the only gear
-    we use intentionally — bike slopes and ramps both need the faster
-    momentum to behave, and slow gear halves the ramp-jump displacement.
+    ends in fast gear (BIKE_GEAR_STATE_ADDR == 0). Fast is the default
+    for bike slopes and long-jump ramps; callers that need slow gear
+    (e.g. near-jump ramps) flip it explicitly via ``_set_bike_gear``.
     Toggle is input-only (B press in the overworld), so no memory writes.
     """
     from renegade_mcp.addresses import BIKE_GEAR_STATE_ADDR, addr
@@ -458,19 +458,60 @@ def _flow_bicycle(
     }
 
 
-def _ensure_fast_gear(emu: EmulatorClient) -> None:
-    """Toggle to fast gear (byte=0) via a single B press if currently slow.
+def _set_bike_gear(
+    emu: EmulatorClient, target_gear: int, max_retries: int = 5,
+) -> bool:
+    """Ensure the bike is in ``target_gear`` (0=fast, 1=slow) via B-press input.
 
-    B toggles the gear in the overworld when on-bike (see BIKE_GEAR_STATE_ADDR
-    in addresses.py). Call only while actually cycling — in any other context
-    B would be interpreted as cancel/dialogue-advance.
+    B toggles the gear in the overworld when actually cycling, so we read,
+    toggle only if mismatched, and re-check. Memory writes to
+    BIKE_GEAR_STATE_ADDR get clobbered by the engine within a few frames
+    (empirically verified 2026-04-23) — input is the only reliable lever.
+
+    Preconditions:
+      • Player is CYCLING (``CYCLING_GEAR_ADDR`` truthy).  Pressing B while
+        walking/surfing/in-dialogue does something else entirely.
+      • Overworld is settled — no movement animation in flight, no open
+        menu, no dialogue box, no event blocker.  B gets eaten by those.
+
+    Retries up to ``max_retries`` times with a 15-frame window between
+    toggles to let the engine apply the input.  Returns True if the gear
+    byte matches ``target_gear`` at exit, False if we exhausted retries
+    without hitting the target.
     """
-    from renegade_mcp.addresses import BIKE_GEAR_STATE_ADDR
-    gear = emu.read_memory(BIKE_GEAR_STATE_ADDR, size="byte")
-    if gear == 0:
-        return
-    emu.press_buttons(["b"], frames=8)
-    emu.advance_frames(8)
+    from renegade_mcp.addresses import BIKE_GEAR_STATE_ADDR, addr
+
+    if not bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")):
+        return False  # not cycling — B would be misinterpreted
+
+    # B-press duration matches cycling_road.py's known-working slope prep
+    # (frames=8 + advance 8). Shorter presses have been observed to fail
+    # mid-execution when the player is just post-mount — the engine needs
+    # a clean edge and enough frames for input dispatch.
+    for _ in range(max_retries + 1):
+        gear = emu.read_memory(BIKE_GEAR_STATE_ADDR, size="byte")
+        if gear == target_gear:
+            return True
+        emu.press_buttons(["b"], frames=8)
+        emu.advance_frames(30)
+    return emu.read_memory(BIKE_GEAR_STATE_ADDR, size="byte") == target_gear
+
+
+def _ensure_fast_gear(emu: EmulatorClient) -> bool:
+    """Back-compat thin wrapper — ensure FAST gear (byte=0).
+
+    Empirically verified 2026-04-23 on Route 207 bike slope: a fresh save
+    state at the slope bottom reads ``BIKE_GEAR_STATE_ADDR == 1`` and
+    refuses to climb the slope; pressing B toggles the byte to 0 and the
+    slope climbs cleanly. So at this address 0=FAST, 1=SLOW.  (The decomp
+    ``PlayerAvatar_CyclingGear`` reads from a different mirror; the two
+    values are inverted — do not copy decomp's == 1 check.)
+
+    Returns the same success flag as ``_set_bike_gear``.  Existing
+    callers that didn't check the return value still work because
+    they'll only fail noisily downstream (ramp refuses, slope refuses).
+    """
+    return _set_bike_gear(emu, 0)
 
 
 def _flow_party_medicine(

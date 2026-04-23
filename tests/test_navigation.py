@@ -413,6 +413,92 @@ class TestBikeRampBfsEdges:
             f"Got reach={sorted(reach)}"
         )
 
+    def test_ramp_edges_near_jump_from_zero_momentum(self):
+        """Stationary/turn approach at momentum=0 admits a NEAR-jump edge
+        landing 2 tiles past the approach (ramp + 1), with post-momentum=1
+        so chained far-jumps can't immediately follow.
+        """
+        from renegade_mcp.pathfinding import _bike_ramp_edges
+        # 9-wide row: passable 0..3, ramp at 4, passable 5..8.
+        grid = [[(True, 0x08)] * 4 + [(False, 0xD7)] + [(True, 0x08)] * 4]
+        edges = _bike_ramp_edges(
+            grid, 3, 0, "right", 1, 0, width=9, height=1, momentum=0,
+        )
+        # Exactly one edge: the near-jump, landing at approach+2 = (5, 0).
+        assert edges == [(5, 0, 1)], (
+            f"momentum=0 should emit only NEAR-jump edge (5, 0, 1); got {edges}"
+        )
+
+    def test_ramp_edges_mid_range_momentum_emits_no_edge(self):
+        """Momentum=2 is in the dead zone — neither near nor far jumps
+        are emitted. BFS intentionally skips this regime; puzzles that
+        need it would require fresh empirical data.
+        """
+        from renegade_mcp.pathfinding import _bike_ramp_edges
+        grid = [[(True, 0x08)] * 4 + [(False, 0xD7)] + [(True, 0x08)] * 4]
+        edges = _bike_ramp_edges(
+            grid, 3, 0, "right", 1, 0, width=9, height=1, momentum=2,
+        )
+        assert edges == [], (
+            f"Mid-range momentum=2 should emit no edges; got {edges}"
+        )
+
+    def test_ramp_edges_far_jump_at_full_runway(self):
+        """Momentum=RUNWAY-1 admits the far-jump edge; near-jump is not
+        emitted when far qualifies (they're selected by momentum range,
+        not both simultaneously).
+        """
+        from renegade_mcp.pathfinding import _bike_ramp_edges
+        from renegade_mcp.nav_constants import BIKE_RAMP_RUNWAY_TILES
+        grid = [[(True, 0x08)] * 4 + [(False, 0xD7)] + [(True, 0x08)] * 4]
+        edges = _bike_ramp_edges(
+            grid, 3, 0, "right", 1, 0, width=9, height=1,
+            momentum=BIKE_RAMP_RUNWAY_TILES - 1,
+        )
+        # Exactly one edge: the far-jump at (8, 0), post-momentum=RUNWAY.
+        assert edges == [(8, 0, BIKE_RAMP_RUNWAY_TILES)], (
+            f"momentum={BIKE_RAMP_RUNWAY_TILES - 1} should emit only "
+            f"FAR-jump edge (8, 0, {BIKE_RAMP_RUNWAY_TILES}); got {edges}"
+        )
+
+    def test_2d_bfs_near_jump_landing_reachable(self):
+        """BFS must now admit near-jump landings — the ramp tile after a
+        turn (momentum=0) lands the player 1 tile past, not 4.
+
+        Layout (2D grid, approach reached via turn):
+
+          row 0:  ##.R###   (ramp at col 3, walls block col 4/5/6)
+          row 1:  .......  (travel lane)
+
+        The player reaches approach (3, 0) via up-turn from (3, 1),
+        so momentum at approach = 1 (just the turn step).  Actually —
+        the turn step SETS momentum=1 (not 0) because the "up" direction
+        is fresh.  We want to test the momentum=0 case; use a stationary
+        start at the approach.
+        """
+        from renegade_mcp.pathfinding import _bfs_reachable
+        # Simpler layout for near-jump: player at approach tile (3, 0)
+        # with no prior same-direction steps.  Ramp at (4, 0), near-jump
+        # lands at (5, 0), far-jump landing (8, 0) is behind a wall.
+        grid = [[
+            (True, 0x08), (True, 0x08), (True, 0x08),
+            (True, 0x08),       # approach (3, 0)
+            (False, 0xD7),      # ramp (4, 0)
+            (True, 0x08),       # near landing (5, 0)
+            (False, 0x00),      # wall (6, 0)
+            (False, 0x00),      # wall (7, 0)
+            (False, 0x00),      # far landing blocked (8, 0)
+        ]]
+        reach = _bfs_reachable(grid, set(), 3, 0, width=9, height=1)
+        assert (5, 0) in reach, (
+            f"Near-jump landing (5, 0) must be reachable from stationary "
+            f"approach with momentum=0; got reach={sorted(reach)}"
+        )
+        assert (8, 0) not in reach, (
+            f"Far-jump landing (8, 0) must not be reachable (blocked + "
+            f"insufficient momentum); got reach={sorted(reach)}"
+        )
+
     def test_2d_bfs_reaches_wayward_east_chamber_via_ramp_chain(
         self, emu: EmulatorClient,
     ):

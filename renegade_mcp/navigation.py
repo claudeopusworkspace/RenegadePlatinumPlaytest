@@ -49,6 +49,7 @@ from renegade_mcp.nav_constants import (  # noqa: F401
     BIKE_RAMP_BEHAVIORS,
     BIKE_RAMP_DIRECTIONS,
     BIKE_RAMP_JUMP_TILES,
+    BIKE_RAMP_NEAR_JUMP_TILES,
     BIKE_RAMP_RUNWAY_TILES,
     BIKE_RAMP_TYPES,
     BIKE_SLOPE_BACKUP_TILES,
@@ -310,8 +311,8 @@ def _auto_mount_for_slope(emu: EmulatorClient) -> bool:
 
     Always ends with the bike in fast gear (BIKE_GEAR_STATE_ADDR == 0) —
     `use_item("Bicycle")` already forces fast on fresh mount, and if the
-    player was already cycling we toggle here. Slopes and ramps only fire
-    reliably at fast gear.
+    player was already cycling we toggle here. Slopes and long-jump ramps
+    only fire reliably at fast gear (byte=0).
     """
     from renegade_mcp.addresses import addr
     from renegade_mcp.use_item import _ensure_fast_gear, use_item
@@ -339,27 +340,42 @@ def _auto_dismount_if_bike(emu: EmulatorClient) -> bool:
 def _bike_ramp_segment(
     directions: list[str], i: int, obstacle_tiles: dict, cur_x: int, cur_y: int,
 ) -> tuple[int, int, int, int, int] | None:
-    """If step i starts a contiguous same-direction bike-ramp segment
-    (runway tiles + at least one ramp entry + any chained ramps + trailing
-    momentum-carrying tiles), return
-    (segment_end_idx, landing_x, landing_y, last_ramp_tile_x, last_ramp_tile_y).
-    Otherwise return None — caller falls back to per-tile step execution.
+    """If step i starts a contiguous same-direction bike-ramp segment,
+    return ``(segment_end_idx, landing_x, landing_y, last_ramp_tile_x,
+    last_ramp_tile_y, target_gear)`` — otherwise ``None``, and the
+    caller falls back to per-tile step execution.
 
-    A segment is walked as ONE sustained direction hold. Releasing between
-    tiles drains the engine's bike-momentum timer (the fast-gear jump needs
-    continuous input through the runway), which causes ramps to fire at
-    slow-gear displacement — a 1-tile hop instead of the 4-tile jump.
+    A segment is walked as ONE sustained direction hold. Releasing
+    between tiles drains the engine's bike-speed accumulator, so an
+    in-chain far ramp would refuse entry (fast-gear step gate requires
+    speed ≥ 2) and the sequence breaks down.
 
-    The segment extends forward while:
-      • direction stays the same (momentum resets on turn)
-      • and the path keeps contributing to the next ramp's runway or is
-        itself a ramp entry.
-    It terminates at the last ramp's landing tile OR when direction changes.
+    The segment extends forward while direction stays the same
+    (momentum resets on turn), and terminates at the last ramp's
+    landing tile OR when direction changes.
 
-    The ``last_ramp_tile_*`` coords are the ramp tile that triggers the
-    final jump (not the landing); polling for that position and then idling
-    the 16f jump animation lets the engine place the player cleanly at the
-    landing tile with no bike-fast-gear drift past the target.
+    Momentum tracking matches BFS: same-direction steps accumulate
+    momentum (capped at RUNWAY), ramp entries fire either:
+      • FAR jump when ``momentum + 1 >= RUNWAY`` — lands at
+        approach + ``BIKE_RAMP_JUMP_TILES``, post-momentum = RUNWAY,
+        requires ``target_gear = 1`` (fast).
+      • NEAR jump when ``momentum == 0`` — lands at
+        approach + ``BIKE_RAMP_NEAR_JUMP_TILES``, post-momentum = 1,
+        requires ``target_gear = 0`` (slow).
+
+    A segment's ``target_gear`` is the gear required by the FIRST
+    ramp in the chain.  Subsequent ramps must match (BFS-planned
+    segments naturally don't mix — after a FAR landing momentum is
+    capped at RUNWAY so successors fire FAR; after a NEAR landing
+    momentum is 1, and any follow-up ramp can't satisfy either gate
+    in the same continuous hold).  If a mixed chain is somehow
+    encountered we bail (return None) and let per-tile execution
+    handle the tail.
+
+    The ``last_ramp_tile_*`` coords are the ramp tile that triggers
+    the final jump (not the landing); polling for that position +
+    idling the jump animation lets the engine place the player
+    cleanly on the landing with no drift past the target.
     """
     if i >= len(directions):
         return None
@@ -368,11 +384,12 @@ def _bike_ramp_segment(
     if dx == 0 and dy == 0:
         return None
 
-    # Scan forward, simulating tile trajectory including ramp jumps.
     fx, fy = cur_x, cur_y
+    momentum = 0
     last_ramp_idx = -1
     last_ramp_fx = last_ramp_fy = None
     last_ramp_tile_fx = last_ramp_tile_fy = None
+    segment_gear: int | None = None  # locked by first ramp; follow-ups must match
     j = i
     while j < len(directions):
         if directions[j] != d:
@@ -381,21 +398,43 @@ def _bike_ramp_segment(
         obs = obstacle_tiles.get((nx, ny))
         is_ramp_here = obs is not None and obs.get("type") in BIKE_RAMP_TYPES
         if is_ramp_here:
+            if momentum + 1 >= BIKE_RAMP_RUNWAY_TILES:
+                jump_tiles = BIKE_RAMP_JUMP_TILES
+                post_m = BIKE_RAMP_RUNWAY_TILES
+                this_gear = 0  # fast (BIKE_GEAR_STATE_ADDR byte=0)
+            elif momentum == 0:
+                jump_tiles = BIKE_RAMP_NEAR_JUMP_TILES
+                post_m = 1
+                this_gear = 1  # slow (BIKE_GEAR_STATE_ADDR byte=1)
+            else:
+                # Mid-range momentum — BFS doesn't plan into this regime,
+                # so if we're here the plan is inconsistent. Bail and let
+                # the per-tile fallback handle it.
+                return None
+            if segment_gear is None:
+                segment_gear = this_gear
+            elif segment_gear != this_gear:
+                # Mixed near+far in one continuous hold can't satisfy a
+                # single gear setting. Bail on the mix; per-tile handles
+                # the rest.
+                return None
             last_ramp_tile_fx, last_ramp_tile_fy = nx, ny
-            fx += dx * BIKE_RAMP_JUMP_TILES
-            fy += dy * BIKE_RAMP_JUMP_TILES
+            fx += dx * jump_tiles
+            fy += dy * jump_tiles
+            momentum = post_m
             last_ramp_idx = j
             last_ramp_fx, last_ramp_fy = fx, fy
         else:
             fx, fy = nx, ny
+            momentum = min(momentum + 1, BIKE_RAMP_RUNWAY_TILES)
         j += 1
 
-    if last_ramp_idx == -1:
+    if last_ramp_idx == -1 or segment_gear is None:
         return None
 
     return (
         last_ramp_idx, last_ramp_fx, last_ramp_fy,
-        last_ramp_tile_fx, last_ramp_tile_fy,
+        last_ramp_tile_fx, last_ramp_tile_fy, segment_gear,
     )
 
 
@@ -413,13 +452,17 @@ def _scan_path_for_bike_obstacles(
     the executor walks straight into the ramp tile on foot.
 
     Coordinates: ``start_gx/gy`` are the player's starting grid-local
-    position (grid_ox/oy is the grid→global offset). We simulate the
-    path's position tracker the same way navigate_to does — ramp entries
-    jump by BIKE_RAMP_JUMP_TILES in the ramp direction.
+    position (grid_ox/oy is the grid→global offset). Simulates
+    momentum (reset on direction change) so ramp entries advance by
+    far-jump or near-jump displacement matching what BFS planned.
     """
     sx, sy = start_gx, start_gy
+    last_dir: str | None = None
+    momentum = 0
     for step_dir in directions:
         sdx, sdy = _DIR_DELTAS.get(step_dir, (0, 0))
+        if step_dir != last_dir:
+            momentum = 0
         nx, ny = sx + sdx, sy + sdy
         is_ramp = False
         if 0 <= ny < len(terrain_info) and 0 <= nx < len(terrain_info[ny]):
@@ -434,10 +477,25 @@ def _scan_path_for_bike_obstacles(
                         "behavior": nbeh,
                     }
         if is_ramp:
-            sx = sx + sdx * BIKE_RAMP_JUMP_TILES
-            sy = sy + sdy * BIKE_RAMP_JUMP_TILES
+            if momentum + 1 >= BIKE_RAMP_RUNWAY_TILES:
+                jump_tiles = BIKE_RAMP_JUMP_TILES
+                momentum = BIKE_RAMP_RUNWAY_TILES
+            elif momentum == 0:
+                jump_tiles = BIKE_RAMP_NEAR_JUMP_TILES
+                momentum = 1
+            else:
+                # Mid-range momentum — BFS wouldn't have planned here;
+                # fall back to the old far-jump assumption so we don't
+                # desync the scanner on edge cases.
+                jump_tiles = BIKE_RAMP_JUMP_TILES
+                momentum = BIKE_RAMP_RUNWAY_TILES
+            sx = sx + sdx * jump_tiles
+            sy = sy + sdy * jump_tiles
+            last_dir = step_dir
             continue
         sx, sy = nx, ny
+        momentum = min(momentum + 1, BIKE_RAMP_RUNWAY_TILES)
+        last_dir = step_dir
         if 0 <= sy < len(terrain_info) and 0 <= sx < len(terrain_info[sy]):
             _passable, beh = terrain_info[sy][sx]
             if beh in BIKE_SLOPE_BEHAVIORS:
@@ -614,21 +672,42 @@ def _execute_path(
         if step_wants_bike:
             seg = _bike_ramp_segment(directions, i, obstacle_tiles, old_x, old_y)
             if seg is not None:
-                seg_end_idx, seg_fx, seg_fy, ramp_tile_x, ramp_tile_y = seg
-                from renegade_mcp.addresses import (
-                    BIKE_GEAR_STATE_ADDR,
-                    addr as _addr,
-                )
-                # Post-mount settle + double gear write. The engine's bike
-                # momentum counter is still ramping up in the frames right
-                # after a fresh mount; the 90f settle gives it time to
-                # stabilize and the trailing write re-asserts fast gear in
-                # case the engine auto-shifted during the settle. Matches
-                # the preconditions used by spike_ramp_poll_release.py,
-                # which reliably lands fast-gear ramps.
-                emu.write_memory(BIKE_GEAR_STATE_ADDR, value=0, size="byte")
+                seg_end_idx, seg_fx, seg_fy, ramp_tile_x, ramp_tile_y, seg_gear = seg
+                from renegade_mcp.addresses import addr as _addr
+                from renegade_mcp.use_item import _set_bike_gear
+                # Post-mount settle + gear toggle. 90f lets any mount
+                # animation fully apply so the player is PLAYER_STATE_CYCLING
+                # settled — a precondition for B-press to register as a
+                # gear toggle. Then set the gear the segment requires (1
+                # for far-jump chains, 0 for near-jump). Byte writes to
+                # BIKE_GEAR_STATE_ADDR are unreliable (engine re-syncs
+                # from an authoritative mirror within ~60f), so the
+                # helper uses B-press input.
                 emu.advance_frames(90)
-                emu.write_memory(BIKE_GEAR_STATE_ADDR, value=0, size="byte")
+                from renegade_mcp.addresses import (
+                    BIKE_GEAR_STATE_ADDR as _BGS_ADDR,
+                )
+                _pre_cycling = bool(
+                    emu.read_memory(_addr("CYCLING_GEAR_ADDR"), size="short")
+                )
+                _pre_gear = emu.read_memory(_BGS_ADDR, size="byte")
+                if not _set_bike_gear(emu, seg_gear):
+                    _post_cycling = bool(
+                        emu.read_memory(_addr("CYCLING_GEAR_ADDR"), size="short")
+                    )
+                    _post_gear = emu.read_memory(_BGS_ADDR, size="byte")
+                    nav_info["blocked_at"] = {
+                        "x": old_x, "y": old_y, "step": steps_taken,
+                    }
+                    nav_info["blocked_reason"] = "bike_gear_toggle_failed"
+                    nav_info["gear_debug"] = {
+                        "target": seg_gear,
+                        "pre_cycling": _pre_cycling,
+                        "pre_gear": _pre_gear,
+                        "post_cycling": _post_cycling,
+                        "post_gear": _post_gear,
+                    }
+                    return True, steps_taken, repaths_used, nav_info
                 # Poll for stepping ONTO the last ramp tile (not the landing).
                 # Releasing at the ramp tile, then idling the 16f jump
                 # animation lets the engine place the player exactly on the

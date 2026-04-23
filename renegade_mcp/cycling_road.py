@@ -263,19 +263,26 @@ def _traverse_bike_slope(
         from old_x/old_y to the final position (includes the slope tiles).
     """
     from renegade_mcp.addresses import BIKE_GEAR_STATE_ADDR
+    from renegade_mcp.use_item import _set_bike_gear, use_item
 
     opp = _OPPOSITE_DIR[direction]
     dx, dy = _DIR_DELTAS[direction]
 
-    # ── 1. Ensure fast gear (with B-press settle) ──
-    # Force gear=1 (slow) via memory write, then press B to toggle to fast.
-    # The B press is essential even when gear is already 0 (fast) — it
-    # settles the bike's internal state.  Without it (e.g. right after a
-    # fresh mount), the first backup press gets absorbed by residual mount-
-    # animation state and the momentum build-up fails.
-    emu.write_memory(BIKE_GEAR_STATE_ADDR, value=1, size="byte")
-    emu.press_buttons(["b"], frames=8)
-    emu.advance_frames(8)
+    # ── 1. Reset bike state via dismount + remount ──
+    # After several navigation repaths around the slope (oscillating
+    # UP/DOWN while BFS explores foot-paths around the chokepoint), the
+    # bike accumulates internal state that causes slope traversal to
+    # silently refuse, even when the surface-level gear byte looks right.
+    # `_set_bike_gear(0)` alone is not enough — the engine reverts the
+    # gear to slow during the backup hold in that stuck state.
+    # A full dismount + remount reliably clears the state.  Each trip
+    # through the bag costs ~400 frames; acceptable given slope traversal
+    # is an infrequent event on long routes.
+    use_item(emu, "Bicycle")   # dismount
+    emu.advance_frames(30)
+    use_item(emu, "Bicycle")   # remount (use_item forces fast gear)
+    emu.advance_frames(30)
+    _set_bike_gear(emu, 0)
 
     # ── 2. Back up 3 tiles for running start ──
     for _ in range(BIKE_SLOPE_BACKUP_TILES):
@@ -309,12 +316,12 @@ def _traverse_bike_slope(
         last_pos = (nx, ny)
 
     # ── 3b. Cancel fast gear and drain momentum ──
-    # Write slow gear (3rd) immediately so the bike stops auto-advancing,
-    # then idle for 120 frames (~2 sec) to fully drain the game engine's
+    # Drop to slow gear (byte=1) so the bike stops auto-advancing, then
+    # idle for 120 frames (~2 sec) to fully drain the game engine's
     # internal momentum counter.  Shorter settle periods look stable but
     # the bike resumes drifting when subsequent code advances frames
     # (e.g. the 300-frame post-navigation encounter poll).
-    emu.write_memory(BIKE_GEAR_STATE_ADDR, value=1, size="byte")
+    _set_bike_gear(emu, 1)
     emu.advance_frames(120)
 
     _, final_x, final_y = _read_position(emu)

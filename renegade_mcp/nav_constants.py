@@ -105,28 +105,38 @@ BIKE_SLOPE_MAX_FRAMES = 600  # safety cap for the continuous hold phase
 
 # ── Bike jump ramps (Wayward Cave etc.) ──
 # 0xD7 = BIKE_RAMP_EASTWARD, 0xD8 = BIKE_RAMP_WESTWARD (pokeplatinum decomp).
-# On a bicycle in fast gear, stepping INTO the ramp in the matching direction
-# with enough momentum launches the player 5 tiles from the approach tile
-# (= 4 tiles past the ramp tile). Per decomp `MOVEMENT_ACTION_JUMP_FARTHER_*`
-# at `src/unk_0205F180.c::sub_0205F95C` gear=1 branch. Empirically verified
-# on `session31_wayward_cave_bike_ramps` (scripts/spike_ramp_poll_release.py):
-# release button at ramp tile (x=10) and idle 32+ frames → player lands at
-# x=14 (= ramp + 4 = approach + 5). We always run fast gear — slow gear would
-# shorten the jump (`JUMP_NEAR_SLOW_*`) and is never a deliberate state.
+# On a bicycle, stepping INTO the ramp in the matching direction triggers
+# one of two jump actions, selected by the player's running-start momentum
+# at the ramp tile:
 #
-# The engine only launches the jump if the player has enough momentum when
-# stepping onto the ramp tile. Empirically (spike_ramp_runway.py on
-# session31_wayward_cave_bike_ramps): 0/1/2 approach tiles fail, 3+ approach
-# tiles fire. We require 4 tiles of continuous same-direction travel
-# (including the approach tile) for cold-start safety margin — that's the
-# length of the cold-start acceleration curve (12→12→8→6→4 f/tile).
+#   • FAR jump (`MOVEMENT_ACTION_JUMP_FARTHER_*`): fires with full momentum
+#     (≥ 4 tiles of continuous same-direction travel including the approach
+#     tile). Displaces 5 tiles from approach = 4 past the ramp. Empirically
+#     verified on `session31_wayward_cave_bike_ramps`
+#     (scripts/spike_ramp_poll_release.py): release at ramp tile x=10 + 32+f
+#     idle → land at x=14.
+#
+#   • NEAR jump (`MOVEMENT_ACTION_JUMP_NEAR_SLOW_*`): fires from a standing
+#     start (momentum = 0 at the approach tile). Displaces 2 tiles from
+#     approach = 1 past the ramp. Empirically verified 2026-04-23 on
+#     `spike_final_ramp_approach`: stationary at ramp-1, hold direction,
+#     land at ramp+1. The gear byte (BIKE_GEAR_STATE_ADDR) does NOT
+#     select between near/far — it controls bike tile-speed, but the
+#     jump-action selector reads running-start momentum.
+#
+# In-between momentum (1 or 2 tiles of runway) produced an inconclusive
+# result in our spike (the (28, 17) wall in Wayward Cave may have clamped
+# the landing), so BFS intentionally does not model those regimes: an
+# approach tile with momentum < RUNWAY but > 0 emits no ramp edge.
+# Puzzles that hinge on mid-range momentum would need fresh spiking.
 #
 # No N/S ramp variants exist in Gen 4 Platinum.
 BIKE_RAMP_BEHAVIORS = {0xD7, 0xD8}
 BIKE_RAMP_DIRECTIONS = {0xD7: "right", 0xD8: "left"}
 BIKE_RAMP_TYPES = {"bike_ramp"}
-BIKE_RAMP_JUMP_TILES = 5          # displacement from approach tile (= ramp+4, fast gear)
-BIKE_RAMP_RUNWAY_TILES = 4        # consecutive same-direction tiles required before ramp
+BIKE_RAMP_JUMP_TILES = 5          # far-jump displacement from approach tile (= ramp+4)
+BIKE_RAMP_NEAR_JUMP_TILES = 2     # near-jump displacement from approach tile (= ramp+1)
+BIKE_RAMP_RUNWAY_TILES = 4        # consecutive same-direction tiles required for FAR jump
 
 # ── Water / terrain obstacles ──
 WATER_BEHAVIORS = {0x10, 0x15}  # river, sea (surfable)

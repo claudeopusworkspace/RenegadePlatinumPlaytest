@@ -19,6 +19,7 @@ from renegade_mcp.nav_constants import (
     BIKE_RAMP_BEHAVIORS,
     BIKE_RAMP_DIRECTIONS,
     BIKE_RAMP_JUMP_TILES,
+    BIKE_RAMP_NEAR_JUMP_TILES,
     BIKE_RAMP_RUNWAY_TILES,
     BIKE_SLOPE_BEHAVIORS,
     BIKE_SLOPE_RUNWAY_TILES,
@@ -79,73 +80,102 @@ def _get_field_move_availability(emu: EmulatorClient) -> dict[str, bool]:
     return result
 
 
+def _bike_ramp_edges(
+    terrain_info: list, x: int, y: int, direction: str,
+    dx: int, dy: int, width: int, height: int,
+    momentum: int | None = None,
+) -> list[tuple[int, int, int]]:
+    """Return all ramp-jump edges admitted from stepping (x, y)→ramp in
+    ``direction``. Each edge is ``(landing_x, landing_y, post_momentum)``.
+
+    Two jump kinds, selected by running-start momentum at the approach:
+
+    - **FAR jump** — momentum at approach is at full runway
+      (``momentum + 1 >= BIKE_RAMP_RUNWAY_TILES``). Lands at
+      approach + BIKE_RAMP_JUMP_TILES (= ramp + 4).  Post-jump momentum
+      is RUNWAY so chained ramps can carry through.
+    - **NEAR jump** — momentum at approach is exactly 0 (standing start,
+      or just turned onto the approach).  Lands at approach +
+      BIKE_RAMP_NEAR_JUMP_TILES (= ramp + 1).  Post-jump momentum is 1
+      (one tile's worth — the jump itself, no runway built up).
+
+    Mid-range momentum (1 or 2 of the 3 runway prefixes) empirically did
+    not produce a clean intermediate landing in our spike (obstacles may
+    clamp the engine's natural displacement), so no edge is emitted.
+
+    ``momentum`` modes mirror the legacy single-landing helper:
+    - ``int`` — caller tracks per-state directional momentum precisely.
+    - ``None`` — caller doesn't track. Geometric fallback: the FAR edge
+      is admitted only if the RUNWAY-1 tiles behind (x, y) are clear
+      and not direction-gated; the NEAR edge is never emitted (the
+      caller has no way to assert standing-start).
+
+    Returns [] when there is no ramp, the ramp faces a different axis,
+    the landing is out of bounds, or the landing tile is impassable.
+    """
+    nx, ny = x + dx, y + dy
+    if not (0 <= nx < width and 0 <= ny < height):
+        return []
+    _ramp_passable, behavior = terrain_info[ny][nx]
+    if behavior not in BIKE_RAMP_BEHAVIORS:
+        return []
+    if BIKE_RAMP_DIRECTIONS[behavior] != direction:
+        return []
+
+    edges: list[tuple[int, int, int]] = []
+
+    # Helper: admit an edge if the landing is in-bounds and passable.
+    def _try_admit(jump_tiles: int, post_m: int) -> None:
+        lx, ly = x + dx * jump_tiles, y + dy * jump_tiles
+        if not (0 <= lx < width and 0 <= ly < height):
+            return
+        land_passable, _land_beh = terrain_info[ly][lx]
+        if not land_passable:
+            return
+        edges.append((lx, ly, post_m))
+
+    if momentum is None:
+        # Geometric fallback: can only reason about far-jump feasibility.
+        for i in range(1, BIKE_RAMP_RUNWAY_TILES):
+            bx, by = x - i * dx, y - i * dy
+            if not (0 <= bx < width and 0 <= by < height):
+                return []
+            back_passable, back_behavior = terrain_info[by][bx]
+            if not back_passable:
+                return []
+            if back_behavior in LEDGE_DIRECTIONS:
+                return []
+            if back_behavior in DIRECTIONAL_WARP:
+                return []
+        _try_admit(BIKE_RAMP_JUMP_TILES, BIKE_RAMP_RUNWAY_TILES)
+        return edges
+
+    # Integer momentum — caller knows exactly.
+    if momentum + 1 >= BIKE_RAMP_RUNWAY_TILES:
+        _try_admit(BIKE_RAMP_JUMP_TILES, BIKE_RAMP_RUNWAY_TILES)
+    if momentum == 0:
+        _try_admit(BIKE_RAMP_NEAR_JUMP_TILES, 1)
+    return edges
+
+
 def _bike_ramp_landing(
     terrain_info: list, x: int, y: int, direction: str,
     dx: int, dy: int, width: int, height: int,
     momentum: int | None = None,
 ) -> tuple[int, int] | None:
-    """If stepping from (x, y) in `direction` collides with a bike ramp
-    whose facing matches `direction`, return the fast-gear jump landing
-    tile (approach + BIKE_RAMP_JUMP_TILES = approach + 5 = ramp + 4).
+    """Legacy single-landing wrapper — returns just the FAR-jump landing
+    tile when a far-jump edge is admitted, else None.
 
-    Runway requirement: the player must have accumulated momentum in the
-    ramp direction before stepping onto it. The approach tile (x, y)
-    counts toward the runway, so `momentum + 1 >= BIKE_RAMP_RUNWAY_TILES`
-    (4 tiles total including approach) admits the edge.
-
-    `momentum` modes:
-    - ``int`` — caller tracks per-state directional momentum (number of
-      prior same-direction steps culminating at (x, y), capped at
-      BIKE_RAMP_RUNWAY_TILES). Trust it: no geometric fallback. If the
-      caller knows it arrived at (x, y) via a turn, it passes ``0``.
-    - ``None`` — caller doesn't track momentum. Fall back to a geometric
-      straight-line check: the BIKE_RAMP_RUNWAY_TILES - 1 tiles behind
-      (x, y) in the ramp direction must exist, be passable, and not be
-      direction-gated (no ledges, no directional warps). Approximate but
-      correct for open-corridor straight-line approaches.
-
-    Returns None when there is no ramp, the ramp faces a different axis,
-    the runway is insufficient, the landing is out of bounds, or the
-    landing tile is impassable.
+    Kept for callers that only care about the fast-gear far-jump (unit
+    tests, non-momentum-aware consumers).  BFS variants should call
+    :func:`_bike_ramp_edges` instead to also admit near-jumps.
     """
-    nx, ny = x + dx, y + dy
-    if not (0 <= nx < width and 0 <= ny < height):
-        return None
-    _ramp_passable, behavior = terrain_info[ny][nx]
-    if behavior not in BIKE_RAMP_BEHAVIORS:
-        return None
-    if BIKE_RAMP_DIRECTIONS[behavior] != direction:
-        return None
-
-    # Runway check.
-    if momentum is None:
-        # Geometric fallback: RUNWAY-1 tiles behind (x, y) must be a clear
-        # straight line (passable and not direction-gated).
-        for i in range(1, BIKE_RAMP_RUNWAY_TILES):
-            bx, by = x - i * dx, y - i * dy
-            if not (0 <= bx < width and 0 <= by < height):
-                return None
-            back_passable, back_behavior = terrain_info[by][bx]
-            if not back_passable:
-                return None
-            if back_behavior in LEDGE_DIRECTIONS:
-                return None
-            if back_behavior in DIRECTIONAL_WARP:
-                return None
-    elif momentum + 1 < BIKE_RAMP_RUNWAY_TILES:
-        # Trust the caller: insufficient tracked momentum → no jump.
-        return None
-
-    # Landing: approach tile (x, y) + JUMP_TILES in direction. Ramp tile
-    # (nx, ny) = (x + dx, y + dy) is skipped mid-jump, as is the wall one
-    # tile beyond on most ramp layouts.
-    lx, ly = x + dx * BIKE_RAMP_JUMP_TILES, y + dy * BIKE_RAMP_JUMP_TILES
-    if not (0 <= lx < width and 0 <= ly < height):
-        return None
-    land_passable, _land_beh = terrain_info[ly][lx]
-    if not land_passable:
-        return None
-    return (lx, ly)
+    for lx, ly, post_m in _bike_ramp_edges(
+        terrain_info, x, y, direction, dx, dy, width, height, momentum=momentum,
+    ):
+        if post_m == BIKE_RAMP_RUNWAY_TILES:
+            return (lx, ly)
+    return None
 
 
 def _bike_slope_entry_blocked(
@@ -220,20 +250,18 @@ def _bfs_reachable(
             passable, behavior = terrain_info[ny][nx]
             if not passable:
                 approach_m = m if last_d == direction else 0
-                landing = _bike_ramp_landing(
+                for lx, ly, post_m in _bike_ramp_edges(
                     terrain_info, x, y, direction, dx, dy, width, height,
                     momentum=approach_m,
-                )
-                if landing is None or landing in npc_set:
-                    continue
-                lx, ly = landing
-                # Post-jump: full carry-through in ramp direction.
-                new_state = (lx, ly, direction, runway)
-                if new_state in visited:
-                    continue
-                visited.add(new_state)
-                reachable.add(landing)
-                queue.append(new_state)
+                ):
+                    if (lx, ly) in npc_set:
+                        continue
+                    new_state = (lx, ly, direction, post_m)
+                    if new_state in visited:
+                        continue
+                    visited.add(new_state)
+                    reachable.add((lx, ly))
+                    queue.append(new_state)
                 continue
             if (nx, ny) in npc_set:
                 continue
@@ -492,23 +520,24 @@ def _bfs_pathfind(
             passable, behavior = terrain_info[ny][nx]
             if not passable:
                 approach_m = m if last_d == direction else 0
-                landing = _bike_ramp_landing(
+                goal_return = None
+                for lx, ly, post_m in _bike_ramp_edges(
                     terrain_info, x, y, direction, dx, dy, width, height,
                     momentum=approach_m,
-                )
-                if landing is None:
-                    continue
-                if landing in npc_set and landing != goal:
-                    continue
-                lx, ly = landing
-                new_state = (lx, ly, direction, runway)
-                if new_state in visited:
-                    continue
-                new_path = path + [direction]
-                if landing == goal:
-                    return new_path
-                visited.add(new_state)
-                queue.append((lx, ly, direction, runway, new_path))
+                ):
+                    if (lx, ly) in npc_set and (lx, ly) != goal:
+                        continue
+                    new_state = (lx, ly, direction, post_m)
+                    if new_state in visited:
+                        continue
+                    new_path = path + [direction]
+                    if (lx, ly) == goal:
+                        goal_return = new_path
+                        break
+                    visited.add(new_state)
+                    queue.append((lx, ly, direction, post_m, new_path))
+                if goal_return is not None:
+                    return goal_return
                 continue
 
             if (nx, ny) in npc_set and (nx, ny) != goal:
@@ -698,26 +727,27 @@ def _bfs_pathfind_level(
             passable, behavior = terrain_info[ny][nx]
             if not passable:
                 approach_m = m if last_d == direction else 0
-                landing = _bike_ramp_landing(
+                goal_return = None
+                for lx, ly, post_m in _bike_ramp_edges(
                     terrain_info, x, y, direction, dx, dy, width, height,
                     momentum=approach_m,
-                )
-                if landing is None:
-                    continue
-                lx, ly = landing
-                if landing in npc_set and landing != goal:
-                    continue
-                if not _tile_on_level(lx, ly, current_level):
-                    continue
-                new_state = (lx, ly, direction, runway)
-                if new_state in visited:
-                    continue
-                new_path = path + [direction]
-                if landing == (goal_x, goal_y):
-                    return new_path, reachable_ramps
-                visited.add(new_state)
-                tile_seen.add(landing)
-                queue.append((lx, ly, direction, runway, new_path))
+                ):
+                    if (lx, ly) in npc_set and (lx, ly) != goal:
+                        continue
+                    if not _tile_on_level(lx, ly, current_level):
+                        continue
+                    new_state = (lx, ly, direction, post_m)
+                    if new_state in visited:
+                        continue
+                    new_path = path + [direction]
+                    if (lx, ly) == (goal_x, goal_y):
+                        goal_return = new_path
+                        break
+                    visited.add(new_state)
+                    tile_seen.add((lx, ly))
+                    queue.append((lx, ly, direction, post_m, new_path))
+                if goal_return is not None:
+                    return goal_return, reachable_ramps
                 continue
 
             if (nx, ny) in npc_set and (nx, ny) != goal:
@@ -971,29 +1001,26 @@ def _flood_fill_level(
             passable, behavior = terrain_info[ny][nx]
             if not passable:
                 approach_m = m if last_d == direction else 0
-                landing = _bike_ramp_landing(
+                for lx, ly, post_m in _bike_ramp_edges(
                     terrain_info, x, y, direction, dx, dy, width, height,
                     momentum=approach_m,
-                )
-                if landing is None:
-                    continue
-                lx, ly = landing
-                if npc_is_3d:
-                    if (lx, ly, current_level) in npc_set:
+                ):
+                    if npc_is_3d:
+                        if (lx, ly, current_level) in npc_set:
+                            continue
+                    elif (lx, ly) in npc_set:
                         continue
-                elif landing in npc_set:
-                    continue
-                if not _tile_on_level(lx, ly, current_level):
-                    continue
-                new_state = (lx, ly, direction, runway)
-                if new_state in visited:
-                    continue
-                visited.add(new_state)
-                nd = d + 1
-                if landing not in reach:
-                    reach[landing] = nd
-                    _record_transitions(lx, ly, nd)
-                queue.append((lx, ly, direction, runway, nd))
+                    if not _tile_on_level(lx, ly, current_level):
+                        continue
+                    new_state = (lx, ly, direction, post_m)
+                    if new_state in visited:
+                        continue
+                    visited.add(new_state)
+                    nd = d + 1
+                    if (lx, ly) not in reach:
+                        reach[(lx, ly)] = nd
+                        _record_transitions(lx, ly, nd)
+                    queue.append((lx, ly, direction, post_m, nd))
                 continue
 
             if npc_is_3d:
