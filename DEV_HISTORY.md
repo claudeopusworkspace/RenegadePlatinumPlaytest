@@ -4,6 +4,51 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Bike-slope momentum gate + flee-loop start preservation (2026-04-23 session 37)
+
+BUG-045 (bike-slope BFS admits turn-into-approach) closed, plus BUG-044's primary symptom (mis-reported `start` field) fixed. Session-35 momentum-aware BFS extended from ramps to slopes.
+
+### Repro & spike
+
+Loaded `bug_bike_slope_turn_into_approach` (player at (8, 28), Wayward Cave B1F, on bike). Raw 2D BFS found a 22-step path starting `left → up x11` — exactly the turn-into-approach Woj described. Empirical spike `scripts/spike_bike_slope_runway.py` (and helper-direct test `scripts/spike_bike_slope_helper.py`) confirmed the engine's running-start detection is finicky on this save — no approach-length from my synthetic setup reliably crossed the slope. End-to-end navigate_to(7, 25) from (7, 31) *did* cross, so the engine works with natural south-approach; the helper backed-up + continuous-hold pattern doesn't reproduce the natural approach state.
+
+### Implementation — BFS momentum gate (BUG-045)
+
+`renegade_mcp/nav_constants.py`:
+- New constant `BIKE_SLOPE_RUNWAY_TILES = 4` (matches existing `BIKE_SLOPE_BACKUP_TILES=3` + approach tile, same shape as `BIKE_RAMP_RUNWAY_TILES=4`).
+- Comment block explains slopes are N-S only, `up` entries only are gated, descents auto-slide.
+
+`renegade_mcp/pathfinding.py`:
+- New `_bike_slope_entry_blocked(terrain_info, x, y, direction, dx, dy, momentum)` helper. Rules: (1) only `up` entries gated; (2) `momentum + 1 >= RUNWAY` admits; (3) slope-to-slope steps (source tile also 0xD9/0xDA) are ungated — the engine's running-start check fires once on initial entry, and BFS tile-by-tile model of the engine's single continuous climb would otherwise false-block step 2 on 3D-BFS recursions re-entering a slope tile at the destination level with fresh momentum=0.
+- Threaded into all four BFS variants (`_bfs_reachable`, `_bfs_pathfind`, `_bfs_pathfind_level`, `_flood_fill_level`). `_bfs_pathfind_obstacles` intentionally not gated — it's only chosen when HM obstacles are crossed, which doesn't intersect slope geometry.
+
+After fix, 3D BFS from (8, 28) to (7, 25) returns `down x3 → left → up x6` (10 steps) — south-approach built from runway, slope crossed reliably, tile (7, 25) reached on level 2.
+
+### Implementation — flee-loop start preservation (BUG-044 partial)
+
+`renegade_mcp/navigation.py::navigate_to`:
+- Outer flee-retry loop now saves `original_start = result.get("start")` from iteration 1 and restores it on the final result. Before: each `_navigate_to_impl` iteration captured its own `start_pos` from the current position, so retries after slope overshoot + wild encounter flee leaked an intermediate position into the final result.
+- Path-string mis-report (original BFS plan vs actual trajectory when mid-execution repath shortens the remainder) is still open — low priority, cosmetic; requires tracking the cumulative direction sequence through `_execute_path`.
+
+### Tests
+
+New `TestBikeSlopeBfsEdges` (9 tests in `test_navigation.py`):
+- 5 unit tests on `_bike_slope_entry_blocked` (blocked without momentum, admitted with full runway, ungated for descent / lateral / non-slope).
+- 3 synthetic-grid BFS tests: turn-refused, long-runway admitted, descent-no-runway.
+- 1 save-state integration test on `bug_bike_slope_turn_into_approach` asserting 3D BFS finds a south-approach path with ≥3 prior up-steps before the slope.
+
+New `TestBug044StartPreservedAcrossFleeLoop::test_start_preserved_after_flee_retry` — asserts `navigate_to(7, 25, flee_encounters=True)` from the slope repro save returns `start == initial_player_position` across slope overshoot + flee iterations.
+
+### End-to-end verification
+
+Live `navigate_to(poi="obj:2")` from (8, 28) now routes `down x3 -> left -> up x14 -> left -> right x9` — slope traversed cleanly in the first call (11 wild encounters fled, player ends at (8, 17) post-slope, well past the barrier). Chamber-beyond-chamber routing involves further ramp/slope chains out of scope for BUG-045.
+
+Full suite: **544 passed @ 2:40 (N=8)**. 10 new tests (9 slope + 1 BUG-044 start-preservation).
+
+### Engineering lesson
+
+The slope-to-slope skip came from debugging the 3D-BFS recursion: after transitioning levels via the slope ramp, `_bfs_pathfind_level` re-ran on the new level with fresh momentum state, and the gate incorrectly false-blocked the continuation step. The pokeplatinum engine only requires momentum on INITIAL slope entry — once on a slope tile a continuous hold carries through. The BFS gate must mirror that: don't over-gate BFS continuations on the same terrain feature when the engine doesn't re-check mid-traversal.
+
 ## Dev Session: Poll-based bike ramp execution + BFS landing off-by-one (2026-04-23 session 36)
 
 Follow-up to session 35. Woj flagged that although momentum-aware BFS predicted the east-chamber chain was reachable, attempting to actually execute the chain still failed on the second ramp — "presumably the direction button isn't being held continuously enough to go from one ramp to the next." Two bugs fell out of the investigation: a BFS landing off-by-one that had been latent since BUG-042, and an executor that released the direction button for 36 frames between every ramp step (draining bike fast-gear state).

@@ -916,8 +916,16 @@ def navigate_to(
         return _navigate_to_impl(emu, target_x, target_y, path_choice=path_choice, hold_frames=hold)
 
     flee_log: list[dict[str, Any]] = []
+    original_start: dict[str, Any] | None = None
     for _ in range(MAX_FLEE_ENCOUNTERS):
         result = _navigate_to_impl(emu, target_x, target_y, path_choice=path_choice, hold_frames=hold)
+        # Preserve the user-visible start from the first iteration — subsequent
+        # retries restart BFS from wherever the interrupt left the player, but
+        # the caller wants to know where they were when the call started.
+        # (BUG-044: slope overshoot + wild encounter fled, the retry's
+        # re-invocation produced a nonsensical `start` from mid-slope.)
+        if original_start is None:
+            original_start = result.get("start")
 
         # Only path_choice matters on the first call — after that we're repathing
         path_choice = None
@@ -969,6 +977,9 @@ def navigate_to(
     if flee_log:
         result["flee_log"] = flee_log
         result["encounters_fled"] = sum(1 for e in flee_log if e.get("fled"))
+
+    if original_start is not None:
+        result["start"] = original_start
 
     return result
 

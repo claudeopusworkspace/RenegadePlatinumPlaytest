@@ -85,9 +85,22 @@ LEDGE_DIRECTIONS = {
 }
 
 # ── Bike slopes ──
+# Slopes are N-S only in Gen 4 Platinum. 0xD9 (top) sits north of 0xDA (bottom);
+# climbing means stepping NORTH (up) onto 0xDA from the approach tile south of
+# it. Sliding down is auto-handled by the engine with no runway requirement.
+#
+# The engine's running-start detection rejects ascent attempts that arrive at
+# the approach tile via a turn — empirically verified session 37 on
+# `bug_bike_slope_turn_into_approach` (BUG-045). BFS enforces the same rule:
+# entering a slope tile going `up` requires BIKE_SLOPE_RUNWAY_TILES of
+# consecutive same-direction (up) motion ending at the slope tile itself
+# (approach tile counts toward the runway, same convention as bike ramps).
+# RUNWAY_TILES=4 matches the helper's BACKUP_TILES=3 plus the slope tile
+# itself — 3 tiles of south-approach momentum then stepping onto the slope.
 BIKE_SLOPE_BEHAVIORS = {0xD9, 0xDA}  # bike_slope_top, bike_slope_bottom
 BIKE_SLOPE_TYPES = {"bike_slope"}
 BIKE_SLOPE_BACKUP_TILES = 3  # tiles to back up before the running start
+BIKE_SLOPE_RUNWAY_TILES = 4  # consecutive up-direction tiles required before slope entry
 BIKE_SLOPE_MAX_FRAMES = 600  # safety cap for the continuous hold phase
 
 # ── Bike jump ramps (Wayward Cave etc.) ──

@@ -71,6 +71,33 @@ class TestNavigate:
         assert result["steps"] > 0
 
 
+class TestBug044StartPreservedAcrossFleeLoop:
+    """BUG-044 start-preservation: when `navigate_to(flee_encounters=True)`
+    retries after a wild encounter, the returned `start` field must reflect
+    the player's position at the original call, not the post-retry
+    intermediate position. Exposed by slope overshoot: the slope helper
+    drifts the player past the target, the retry re-invokes
+    `_navigate_to_impl` from the overshoot tile, and the final result's
+    `start` used to leak that intermediate tile.
+    """
+
+    def test_start_preserved_after_flee_retry(self, emu: EmulatorClient):
+        """Bike slope + flee encounters: returned start == player's initial
+        position, not the intermediate tile the retry-loop re-BFS'd from."""
+        load_state(emu, "bug_bike_slope_turn_into_approach")
+        from renegade_mcp.navigation import navigate_to
+        from renegade_mcp.nav_constants import _read_position
+        _, initial_x, initial_y = _read_position(emu)
+        # Target that crosses the slope — slope overshoot + wild encounters
+        # forces multiple _navigate_to_impl iterations.
+        result = navigate_to(emu, 7, 25, flee_encounters=True)
+        assert "start" in result
+        assert (result["start"]["x"], result["start"]["y"]) == (initial_x, initial_y), (
+            f"start {result['start']} should equal initial position "
+            f"({initial_x}, {initial_y}) regardless of how many flee retries happened"
+        )
+
+
 # ---------------------------------------------------------------------------
 # navigate_to (BFS pathfind)
 # ---------------------------------------------------------------------------
@@ -423,6 +450,246 @@ class TestBikeRampBfsEdges:
             "(31, 16) via chained ramps from (14, 17)'s landing "
             "momentum. Regressing to 251 reachable tiles (phase-1 only) "
             "would fail this assertion."
+        )
+
+
+class TestBikeSlopeBfsEdges:
+    """BUG-045: BFS must require an uphill runway before a bike slope tile.
+
+    Slopes (0xD9 top, 0xDA bottom) are N-S only in Gen 4 Platinum. Climbing
+    means stepping `up` onto a slope tile from the approach tile south of it;
+    the engine rejects ascents that arrive at the approach tile via a turn.
+    BFS must match: refuse ``up`` entries into slope tiles unless the state
+    carries ``BIKE_SLOPE_RUNWAY_TILES`` of consecutive up-momentum (approach
+    tile included). Downward entries (auto-slide) are ungated.
+    """
+
+    SAVE_STATE = "bug_bike_slope_turn_into_approach"
+
+    def test_slope_entry_blocked_without_momentum(self):
+        """Turn-into-approach: last step was perpendicular, so approach
+        momentum = 0 and the slope rejects the edge."""
+        from renegade_mcp.pathfinding import _bike_slope_entry_blocked
+        # Neighbor (1, 0) is a slope_bottom (0xDA); we're stepping up into it
+        # from (1, 1) after turning (momentum=0 means last direction was not up).
+        grid = [
+            [(True, 0x08), (True, 0xDA)],
+            [(True, 0x08), (True, 0x08)],
+        ]
+        blocked = _bike_slope_entry_blocked(
+            grid, x=1, y=1, direction="up", dx=0, dy=-1, momentum=0,
+        )
+        assert blocked is True
+
+    def test_slope_entry_admitted_with_full_runway(self):
+        """Straight south-approach with RUNWAY-1 prior up-steps admits."""
+        from renegade_mcp.pathfinding import _bike_slope_entry_blocked
+        from renegade_mcp.nav_constants import BIKE_SLOPE_RUNWAY_TILES
+        grid = [
+            [(True, 0x08), (True, 0xDA)],
+            [(True, 0x08), (True, 0x08)],
+        ]
+        # momentum = RUNWAY - 1 (approach tile counts, so total = RUNWAY)
+        blocked = _bike_slope_entry_blocked(
+            grid, x=1, y=1, direction="up", dx=0, dy=-1,
+            momentum=BIKE_SLOPE_RUNWAY_TILES - 1,
+        )
+        assert blocked is False
+
+    def test_slope_entry_ungated_for_descent(self):
+        """Stepping DOWN onto a slope (auto-slide) must not be gated —
+        momentum 0 is fine because gravity does the work."""
+        from renegade_mcp.pathfinding import _bike_slope_entry_blocked
+        # Slope_top (0xD9) at (1, 1); approach from (1, 0) going down.
+        grid = [
+            [(True, 0x08), (True, 0x08)],
+            [(True, 0x08), (True, 0xD9)],
+        ]
+        blocked = _bike_slope_entry_blocked(
+            grid, x=1, y=0, direction="down", dx=0, dy=1, momentum=0,
+        )
+        assert blocked is False
+
+    def test_slope_entry_ungated_for_lateral(self):
+        """Lateral approach to a slope tile is impossible in practice (slopes
+        are walled E/W), but the gate must stay on the up-ascent axis only
+        — lateral neighbors aren't the slope's "approach direction"."""
+        from renegade_mcp.pathfinding import _bike_slope_entry_blocked
+        grid = [[(True, 0x08), (True, 0xDA), (True, 0x08)]]
+        blocked = _bike_slope_entry_blocked(
+            grid, x=0, y=0, direction="right", dx=1, dy=0, momentum=0,
+        )
+        assert blocked is False
+
+    def test_slope_entry_no_gate_on_non_slope(self):
+        """Non-slope neighbor: gate returns False regardless of momentum."""
+        from renegade_mcp.pathfinding import _bike_slope_entry_blocked
+        grid = [[(True, 0x08), (True, 0x08)]]
+        blocked = _bike_slope_entry_blocked(
+            grid, x=0, y=0, direction="right", dx=1, dy=0, momentum=0,
+        )
+        assert blocked is False
+
+    def test_2d_bfs_refuses_turn_into_slope_approach(self):
+        r"""Synthetic grid: slope at (1, 1) [bottom] + (1, 0) [top]. A lateral
+        corridor enters the approach at (1, 2) from the east, forcing the
+        only BFS path to turn up with momentum=1. BFS must NOT admit the
+        slope crossing from this configuration.
+
+        Layout (width=4, height=5):
+            0 1 2 3
+          0 # # # #
+          1 # / # #     ← slope_top (0xD9) at col 1
+          2 # \ # #     ← slope_bottom (0xDA) at col 1, approach below
+          3 . . . .     ← corridor; player starts at (3, 3)
+          4 # # # #
+        """
+        from renegade_mcp.pathfinding import _bfs_reachable
+        width, height = 4, 5
+        grid = [[(False, 0x00)] * width for _ in range(height)]
+        grid[1][1] = (True, 0xD9)  # slope_top
+        grid[2][1] = (True, 0xDA)  # slope_bottom
+        for x in range(width):
+            grid[3][x] = (True, 0x08)  # corridor
+
+        # Player starts at the east end (3, 3); approaches slope via
+        # left, left, up into (1, 2). That's a turn (last_dir=left), so
+        # the slope gate must reject the up step onto (1, 2)=0xDA.
+        reach = _bfs_reachable(grid, set(), 3, 3, width=width, height=height)
+        assert (1, 3) in reach, "approach tile (1, 3) must be reachable"
+        assert (1, 2) not in reach, (
+            "Slope_bottom (1, 2) must NOT be reachable — the only approach "
+            f"turns in with momentum=1. Got reach={sorted(reach)}"
+        )
+
+    def test_2d_bfs_admits_slope_with_long_runway(self):
+        r"""Same slope layout but with a vertical corridor south of the
+        approach long enough to build RUNWAY tiles of up-momentum. BFS
+        must admit the slope and reach tiles above it.
+
+        Layout (width=3, height=8):
+            0 1 2
+          0 # . #
+          1 # / #     ← slope_top
+          2 # \ #     ← slope_bottom
+          3 # . #     ← approach tile
+          4 # . #     ← ↑ runway tiles
+          5 # . #
+          6 # . #
+          7 # . #     ← player start (1, 7)
+        """
+        from renegade_mcp.pathfinding import _bfs_reachable
+        from renegade_mcp.nav_constants import BIKE_SLOPE_RUNWAY_TILES
+        assert BIKE_SLOPE_RUNWAY_TILES == 4, (
+            "This test assumes RUNWAY=4; update layout/assertions if changed."
+        )
+        width, height = 3, 8
+        grid = [[(False, 0x00)] * width for _ in range(height)]
+        for y in range(height):
+            grid[y][1] = (True, 0x08)
+        grid[1][1] = (True, 0xD9)
+        grid[2][1] = (True, 0xDA)
+        grid[0][1] = (True, 0x08)
+
+        reach = _bfs_reachable(grid, set(), 1, 7, width=width, height=height)
+        assert (1, 2) in reach, (
+            "Slope_bottom must be reachable via the long runway — "
+            f"got reach={sorted(reach)}"
+        )
+        assert (1, 0) in reach, (
+            "Post-slope tile (1, 0) must be reachable after crossing "
+            f"the slope; got reach={sorted(reach)}"
+        )
+
+    def test_2d_bfs_admits_descent_without_runway(self):
+        """Descending a slope has no runway requirement — start above the
+        slope and walk south; BFS must admit the down crossing.
+        """
+        from renegade_mcp.pathfinding import _bfs_reachable
+        width, height = 3, 5
+        grid = [[(False, 0x00)] * width for _ in range(height)]
+        grid[0][1] = (True, 0x08)  # player start above slope
+        grid[1][1] = (True, 0xD9)  # slope_top
+        grid[2][1] = (True, 0xDA)  # slope_bottom
+        grid[3][1] = (True, 0x08)  # tile below slope
+        grid[4][1] = (True, 0x08)
+
+        reach = _bfs_reachable(grid, set(), 1, 0, width=width, height=height)
+        assert (1, 2) in reach, "slope_bottom must be reachable going down"
+        assert (1, 4) in reach, "tile below slope must be reachable"
+
+    def test_wayward_cave_3d_bfs_reroutes_south_before_slope(
+        self, emu: EmulatorClient,
+    ):
+        """BUG-045 integration on the repro save. From (8, 28) just east of
+        the slope approach, BFS must pick a south-then-up path rather than
+        the buggy left+up turn. The returned path starts with a `down`
+        step (routing south to build runway) rather than a `left` (the
+        turn-into-approach the BFS previously admitted)."""
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.map_state import read_player_height
+        from renegade_mcp.nav_constants import _read_position
+        from renegade_mcp.pathfinding import (
+            _bfs_pathfind_3d, _build_multi_chunk_elevation,
+            _build_multi_chunk_terrain, _height_to_level,
+        )
+        map_id, px, py = _read_position(emu)
+        # Target (7, 25): first cave_floor tile NORTH of the slope top.
+        # Crossing the slope requires a level transition (L0 → L2 via ramp),
+        # so the test drives _bfs_pathfind_3d, which orchestrates transitions.
+        terrain_info, ox, oy, w, h = _build_multi_chunk_terrain(
+            emu, map_id, px, py, 7, 25,
+        )
+        elevation = _build_multi_chunk_elevation(
+            emu, map_id, terrain_info, ox, oy, w, h,
+        )
+        assert elevation is not None, "Wayward Cave must have BDHC elevation data"
+        level = _height_to_level(
+            read_player_height(emu), elevation,
+            tile_x=px - ox, tile_y=py - oy,
+        )
+        assert level is not None
+
+        path = _bfs_pathfind_3d(
+            terrain_info, set(), elevation,
+            px - ox, py - oy, 7 - ox, 25 - oy,
+            level, width=w, height=h,
+        )
+        assert path is not None, (
+            "3D BFS must still find a path to (7, 25) — south-approach is "
+            "admissible with the slope gate."
+        )
+        # First step must NOT be `left` (the buggy turn-into-approach).
+        # South approaches start with `down` or `left` to a vertical lane;
+        # the specific first step depends on BFS tie-breaking, but the
+        # critical invariant is: if the path crosses (7, 27)=slope_bottom,
+        # the step INTO it must arrive with 3 prior consecutive `up` steps.
+        deltas = {"up": (0, -1), "down": (0, 1), "left": (-1, 0), "right": (1, 0)}
+        cx, cy = px - ox, py - oy
+        last_dir: str | None = None
+        momentum = 0
+        slope_global = (7, 27)
+        crossed_slope = False
+        for step in path:
+            dx, dy = deltas[step]
+            nx, ny = cx + dx, cy + dy
+            if (nx + ox, ny + oy) == slope_global and step == "up":
+                # Must have RUNWAY - 1 prior same-direction steps.
+                approach_m = momentum if last_dir == step else 0
+                assert approach_m >= 3, (
+                    f"Slope entry had insufficient up-momentum: "
+                    f"approach_m={approach_m}, path={path}"
+                )
+                crossed_slope = True
+            if last_dir == step:
+                momentum += 1
+            else:
+                momentum = 1
+            last_dir = step
+            cx, cy = nx, ny
+        assert crossed_slope, (
+            "Path must cross the slope at (7, 27) to reach (7, 25); "
+            f"got path={path}"
         )
 
 

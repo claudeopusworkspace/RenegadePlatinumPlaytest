@@ -20,6 +20,8 @@ from renegade_mcp.nav_constants import (
     BIKE_RAMP_DIRECTIONS,
     BIKE_RAMP_JUMP_TILES,
     BIKE_RAMP_RUNWAY_TILES,
+    BIKE_SLOPE_BEHAVIORS,
+    BIKE_SLOPE_RUNWAY_TILES,
     CLEARABLE_OBSTACLES,
     DIRECTIONAL_BLOCKS,
     DIRECTIONAL_WARP,
@@ -146,6 +148,49 @@ def _bike_ramp_landing(
     return (lx, ly)
 
 
+def _bike_slope_entry_blocked(
+    terrain_info: list, x: int, y: int, direction: str,
+    dx: int, dy: int, momentum: int,
+) -> bool:
+    """Return True iff the step from (x, y) in `direction` enters a bike slope
+    tile (0xD9/0xDA) going *up* without enough approach momentum.
+
+    Gen 4 Platinum slopes are N-S only: climbing means stepping `up` onto a
+    slope tile. The engine's running-start detection fires only on *initial*
+    entry to the slope — once the player is on a slope tile, a continuous
+    hold carries them through the rest of the slope without re-checking
+    momentum. BFS matches: gate only the step from a NON-slope approach tile
+    onto a slope tile. Continued up-steps from one slope tile to another
+    (tile-by-tile model of the engine's single continuous climb) are not
+    gated.
+
+    Non-slope neighbors, non-ascent directions, and slope-to-slope steps are
+    not gated and this returns False (caller proceeds with ordinary
+    passability logic). The approach tile (x, y) counts toward the runway,
+    so `momentum + 1 >= RUNWAY` admits — same convention as
+    `_bike_ramp_landing`.
+
+    `momentum` is the approach momentum (prior consecutive same-direction
+    steps including arrival at (x, y)) — caller passes 0 when arriving at
+    (x, y) via a turn so the slope correctly rejects.
+    """
+    if direction != "up":
+        return False
+    ny = y + dy
+    nx = x + dx
+    if not (0 <= ny < len(terrain_info)) or not (0 <= nx < len(terrain_info[0])):
+        return False
+    _, behavior = terrain_info[ny][nx]
+    if behavior not in BIKE_SLOPE_BEHAVIORS:
+        return False
+    # Slope-to-slope continuation: player already mid-climb, no gate.
+    if 0 <= y < len(terrain_info) and 0 <= x < len(terrain_info[0]):
+        _, src_behavior = terrain_info[y][x]
+        if src_behavior in BIKE_SLOPE_BEHAVIORS:
+            return False
+    return momentum + 1 < BIKE_SLOPE_RUNWAY_TILES
+
+
 def _bfs_reachable(
     terrain_info: list, npc_set: set,
     start_x: int, start_y: int,
@@ -195,6 +240,11 @@ def _bfs_reachable(
             if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
                 continue
             if behavior in LEDGE_DIRECTIONS and LEDGE_DIRECTIONS[behavior] != direction:
+                continue
+            approach_m = m if last_d == direction else 0
+            if _bike_slope_entry_blocked(
+                terrain_info, x, y, direction, dx, dy, approach_m,
+            ):
                 continue
             new_m = min(m + 1, runway) if last_d == direction else 1
             new_state = (nx, ny, direction, new_m)
@@ -470,6 +520,12 @@ def _bfs_pathfind(
             if behavior in LEDGE_DIRECTIONS and LEDGE_DIRECTIONS[behavior] != direction:
                 continue
 
+            approach_m = m if last_d == direction else 0
+            if _bike_slope_entry_blocked(
+                terrain_info, x, y, direction, dx, dy, approach_m,
+            ):
+                continue
+
             new_m = min(m + 1, runway) if last_d == direction else 1
             new_state = (nx, ny, direction, new_m)
             if new_state in visited:
@@ -680,6 +736,12 @@ def _bfs_pathfind_level(
 
             # Level constraint
             if not _tile_on_level(nx, ny, current_level):
+                continue
+
+            approach_m = m if last_d == direction else 0
+            if _bike_slope_entry_blocked(
+                terrain_info, x, y, direction, dx, dy, approach_m,
+            ):
                 continue
 
             new_m = min(m + 1, runway) if last_d == direction else 1
@@ -949,6 +1011,12 @@ def _flood_fill_level(
                 continue
 
             if not _tile_on_level(nx, ny, current_level):
+                continue
+
+            approach_m = m if last_d == direction else 0
+            if _bike_slope_entry_blocked(
+                terrain_info, x, y, direction, dx, dy, approach_m,
+            ):
                 continue
 
             new_m = min(m + 1, runway) if last_d == direction else 1
