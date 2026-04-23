@@ -49,10 +49,12 @@ from renegade_mcp.nav_constants import (  # noqa: F401
     BIKE_RAMP_BEHAVIORS,
     BIKE_RAMP_DIRECTIONS,
     BIKE_RAMP_JUMP_TILES,
+    BIKE_RAMP_RUNWAY_TILES,
     BIKE_RAMP_TYPES,
     BIKE_SLOPE_BACKUP_TILES,
     BIKE_SLOPE_BEHAVIORS,
     BIKE_SLOPE_MAX_FRAMES,
+    BIKE_SLOPE_RUNWAY_TILES,
     BIKE_SLOPE_TYPES,
     CLEARABLE_OBSTACLES,
     CLEARABLE_TYPES,
@@ -321,6 +323,132 @@ def _auto_mount_for_slope(emu: EmulatorClient) -> bool:
     return bool(mount.get("success"))
 
 
+def _auto_dismount_if_bike(emu: EmulatorClient) -> bool:
+    """Dismount the bicycle if currently mounted. Returns True if the player
+    is off-bike at exit (including the no-op case where they were already on
+    foot). False only when a dismount was attempted and failed."""
+    from renegade_mcp.addresses import addr
+    from renegade_mcp.use_item import use_item
+
+    if not bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")):
+        return True
+    result = use_item(emu, "Bicycle")
+    return bool(result.get("success"))
+
+
+def _bike_ramp_segment(
+    directions: list[str], i: int, obstacle_tiles: dict, cur_x: int, cur_y: int,
+) -> tuple[int, int, int, int, int] | None:
+    """If step i starts a contiguous same-direction bike-ramp segment
+    (runway tiles + at least one ramp entry + any chained ramps + trailing
+    momentum-carrying tiles), return
+    (segment_end_idx, landing_x, landing_y, last_ramp_tile_x, last_ramp_tile_y).
+    Otherwise return None — caller falls back to per-tile step execution.
+
+    A segment is walked as ONE sustained direction hold. Releasing between
+    tiles drains the engine's bike-momentum timer (the fast-gear jump needs
+    continuous input through the runway), which causes ramps to fire at
+    slow-gear displacement — a 1-tile hop instead of the 4-tile jump.
+
+    The segment extends forward while:
+      • direction stays the same (momentum resets on turn)
+      • and the path keeps contributing to the next ramp's runway or is
+        itself a ramp entry.
+    It terminates at the last ramp's landing tile OR when direction changes.
+
+    The ``last_ramp_tile_*`` coords are the ramp tile that triggers the
+    final jump (not the landing); polling for that position and then idling
+    the 16f jump animation lets the engine place the player cleanly at the
+    landing tile with no bike-fast-gear drift past the target.
+    """
+    if i >= len(directions):
+        return None
+    d = directions[i]
+    dx, dy = _DIR_DELTAS.get(d, (0, 0))
+    if dx == 0 and dy == 0:
+        return None
+
+    # Scan forward, simulating tile trajectory including ramp jumps.
+    fx, fy = cur_x, cur_y
+    last_ramp_idx = -1
+    last_ramp_fx = last_ramp_fy = None
+    last_ramp_tile_fx = last_ramp_tile_fy = None
+    j = i
+    while j < len(directions):
+        if directions[j] != d:
+            break
+        nx, ny = fx + dx, fy + dy
+        obs = obstacle_tiles.get((nx, ny))
+        is_ramp_here = obs is not None and obs.get("type") in BIKE_RAMP_TYPES
+        if is_ramp_here:
+            last_ramp_tile_fx, last_ramp_tile_fy = nx, ny
+            fx += dx * BIKE_RAMP_JUMP_TILES
+            fy += dy * BIKE_RAMP_JUMP_TILES
+            last_ramp_idx = j
+            last_ramp_fx, last_ramp_fy = fx, fy
+        else:
+            fx, fy = nx, ny
+        j += 1
+
+    if last_ramp_idx == -1:
+        return None
+
+    return (
+        last_ramp_idx, last_ramp_fx, last_ramp_fy,
+        last_ramp_tile_fx, last_ramp_tile_fy,
+    )
+
+
+def _step_needs_bike(
+    directions: list[str], i: int, obstacle_tiles: dict, cur_x: int, cur_y: int,
+) -> bool:
+    """Return True if executing step ``i`` from (cur_x, cur_y) requires the
+    bicycle.
+
+    Two conditions qualify:
+      • A bike-ramp entry within the same-direction runway window
+        (BIKE_RAMP_RUNWAY_TILES): stay on bike through approach + chain so
+        the engine's running-start detection fires the jump.
+      • The IMMEDIATE next tile is a bike-slope ascent (up direction): mount
+        before step_hold runs so step_hold-on-bike cleanly blocks, letting
+        the slope branch fire the backup+run traversal. Walking onto a
+        slope on foot "succeeds" briefly (position changes) before the
+        engine slides the player back south, evading the blocked check
+        (BUG-025). We ONLY check the immediate tile for slopes — not the
+        runway ahead — because the BFS slope-runway rule (BUG-045) plans a
+        south backup before the climb. A runway-style lookahead would
+        mount the bike while the plan still has down-steps left, causing
+        mount/dismount thrashing and oscillation against the repath loop.
+    """
+    if i >= len(directions):
+        return False
+    d = directions[i]
+    dx, dy = _DIR_DELTAS.get(d, (0, 0))
+    if dx == 0 and dy == 0:
+        return False
+
+    # Slope ascent — immediate next tile only.
+    if d == "up":
+        imm = obstacle_tiles.get((cur_x + dx, cur_y + dy))
+        if imm is not None and imm.get("type") in BIKE_SLOPE_TYPES:
+            return True
+
+    # Ramp runway — look ahead up to RUNWAY tiles, same direction only.
+    x, y = cur_x, cur_y
+    for k in range(BIKE_RAMP_RUNWAY_TILES):
+        j = i + k
+        if j >= len(directions):
+            break
+        if directions[j] != d:
+            break  # direction change resets momentum — no runway past here
+        nx, ny = x + dx, y + dy
+        obs = obstacle_tiles.get((nx, ny))
+        if obs is not None and obs.get("type") in BIKE_RAMP_TYPES:
+            return True
+        x, y = nx, ny
+    return False
+
+
 # ── Path execution ──
 
 def _execute_path(
@@ -364,37 +492,137 @@ def _execute_path(
         direction = directions[i]
         old_map, old_x, old_y = _read_position(emu)
         dx, dy = _DIR_DELTAS.get(direction, (0, 0))
-
-        # Pre-step: approaching a bike slope/ramp, we may need the bike.
-        # - Slopes always auto-slide south. Going against the slide (up) needs
-        #   fast gear + a running start — pre-mount so the blocked-branch
-        #   slope traversal can handle it. Going with the slide (down) works
-        #   on foot — the engine just slides us south, no bike required, and
-        #   mounting would add unwanted momentum that overshoots the target.
-        # - Ramps (Wayward Cave) always need the bike regardless of direction.
         pre_target = (old_x + dx, old_y + dy)
         pre_obs = obstacle_tiles.get(pre_target)
-        is_slope_ascent = (
-            pre_obs is not None
-            and pre_obs.get("type") in BIKE_SLOPE_TYPES
-            and direction == "up"
+
+        # Decide bike state for this step. Bike momentum carries across
+        # direction changes — if the previous step moved the bike, the engine
+        # finishes that in-progress move before accepting a new direction,
+        # which can shift the player diagonally and off-path. So we only
+        # keep the bike mounted during ramp/slope approaches (runway + chain);
+        # every other tile is walked on foot where direction changes are safe.
+        from renegade_mcp.addresses import addr as _addr
+        on_bike = bool(emu.read_memory(_addr("CYCLING_GEAR_ADDR"), size="short"))
+        step_wants_bike = _step_needs_bike(
+            directions, i, obstacle_tiles, old_x, old_y,
         )
-        is_ramp = pre_obs is not None and pre_obs.get("type") in BIKE_RAMP_TYPES
-        if is_slope_ascent or is_ramp:
-            from renegade_mcp.addresses import addr as _addr
-            on_bike = bool(emu.read_memory(_addr("CYCLING_GEAR_ADDR"), size="short"))
-            if not on_bike:
-                if not _auto_mount_for_slope(emu):
-                    kind = "bike_ramp" if is_ramp else "bike_slope"
-                    nav_info["blocked_at"] = {"x": old_x, "y": old_y, "step": steps_taken}
-                    nav_info["blocked_reason"] = f"{kind}_requires_bicycle"
-                    nav_info["note"] = (
-                        f"{kind.replace('_', ' ').capitalize()} at "
-                        f"({pre_target[0]}, {pre_target[1]}) requires the "
-                        f"Bicycle key item.  Get the Bicycle and retry."
-                    )
-                    return True, steps_taken, repaths_used, nav_info
-                active_hold = BIKE_HOLD_FRAMES
+        if step_wants_bike and not on_bike:
+            # Settle after any prior on-foot motion so the engine's player-
+            # state is quiesced before the mount + ramp sequence. The mount
+            # menu writes to player state; if a walk step is still in-
+            # flight, the post-mount bike state can be inconsistent and the
+            # first ramp of the chain fires at slow-gear displacement.
+            emu.advance_frames(WAIT_FRAMES)
+            if not _auto_mount_for_slope(emu):
+                is_ramp_here = pre_obs is not None and pre_obs.get("type") in BIKE_RAMP_TYPES
+                kind = "bike_ramp" if is_ramp_here else "bike_slope"
+                nav_info["blocked_at"] = {"x": old_x, "y": old_y, "step": steps_taken}
+                nav_info["blocked_reason"] = f"{kind}_requires_bicycle"
+                nav_info["note"] = (
+                    f"{kind.replace('_', ' ').capitalize()} approach at "
+                    f"({old_x}, {old_y}) requires the Bicycle key item.  "
+                    f"Get the Bicycle and retry."
+                )
+                return True, steps_taken, repaths_used, nav_info
+            active_hold = BIKE_HOLD_FRAMES
+        elif not step_wants_bike and on_bike:
+            # CYCLING_GEAR_ADDR is also non-zero during surf/waterfall, but
+            # the player isn't on the bike — use_item(Bicycle) fails, and
+            # the menu open/close frames let in-flight surf movement drift
+            # the player off the movement axis (observed: 1 tile south per
+            # spurious dismount attempt during westward surf).
+            is_surfing = (
+                (repath_ctx is not None and repath_ctx.get("surfing"))
+                or active_hold == SURF_HOLD_FRAMES
+            )
+            if not is_surfing:
+                _auto_dismount_if_bike(emu)
+                active_hold = hold_frames
+
+        # Sustained bike-ramp segment — runway + chained ramps as ONE
+        # continuous hold. Per-tile step_hold releases the direction between
+        # tiles, draining the engine's bike-momentum timer; a subsequent
+        # ramp entry then fires at slow-gear displacement (~1 tile instead
+        # of 4). Releasing only after the last ramp's settle preserves
+        # momentum through the whole chain.
+        if step_wants_bike:
+            seg = _bike_ramp_segment(directions, i, obstacle_tiles, old_x, old_y)
+            if seg is not None:
+                seg_end_idx, seg_fx, seg_fy, ramp_tile_x, ramp_tile_y = seg
+                from renegade_mcp.addresses import (
+                    BIKE_GEAR_STATE_ADDR,
+                    addr as _addr,
+                )
+                # Post-mount settle + double gear write. The engine's bike
+                # momentum counter is still ramping up in the frames right
+                # after a fresh mount; the 90f settle gives it time to
+                # stabilize and the trailing write re-asserts fast gear in
+                # case the engine auto-shifted during the settle. Matches
+                # the preconditions used by spike_ramp_poll_release.py,
+                # which reliably lands fast-gear ramps.
+                emu.write_memory(BIKE_GEAR_STATE_ADDR, value=0, size="byte")
+                emu.advance_frames(90)
+                emu.write_memory(BIKE_GEAR_STATE_ADDR, value=0, size="byte")
+                # Poll for stepping ONTO the last ramp tile (not the landing).
+                # Releasing at the ramp tile, then idling the 16f jump
+                # animation lets the engine place the player exactly on the
+                # landing with no fast-gear drift past it. Matches the
+                # "release at ramp tile + 36f idle" pattern validated by
+                # spike_ramp_poll_release.py.
+                axis_offset = 8 if direction in ("left", "right") else 12
+                final_coord = (
+                    ramp_tile_x if direction in ("left", "right") else ramp_tile_y
+                )
+                operator = ">=" if (dx + dy) > 0 else "<="
+                # Generous max: worst case ~BIKE_HOLD_FRAMES per runway tile
+                # + 36f for the last ramp's jump animation. Multiply by 4 for
+                # slow-gear-early-tiles tolerance.
+                seg_len = seg_end_idx - i + 1
+                max_f = max(BIKE_HOLD_FRAMES * seg_len * 4, 180)
+                emu.advance_frames_until(
+                    max_frames=max_f,
+                    conditions=[{
+                        "type": "value",
+                        "address": _addr("PLAYER_POS_BASE") + axis_offset,
+                        "size": "long",
+                        "operator": operator,
+                        "value": final_coord,
+                    }],
+                    poll_interval=1,
+                    buttons=[direction],
+                )
+                emu.advance_frames(36)  # let the final ramp jump animate
+                new_map, new_x, new_y = _read_position(emu)
+                reached = (new_x, new_y) == (seg_fx, seg_fy)
+                if reached:
+                    steps_taken += seg_len
+                    # Clear consumed ramp tiles from tracking so the next
+                    # BFS repath (if any) doesn't re-attempt them. We walk
+                    # the path from start, detect ramps by dest-tile lookup,
+                    # and delete each ramp key we crossed.
+                    sim_x, sim_y = old_x, old_y
+                    for k in range(i, seg_end_idx + 1):
+                        kdx, kdy = _DIR_DELTAS.get(directions[k], (0, 0))
+                        dest = (sim_x + kdx, sim_y + kdy)
+                        obs_here = obstacle_tiles.get(dest)
+                        if obs_here is not None and obs_here.get("type") in BIKE_RAMP_TYPES:
+                            obstacle_tiles.pop(dest, None)
+                            sim_x += kdx * BIKE_RAMP_JUMP_TILES
+                            sim_y += kdy * BIKE_RAMP_JUMP_TILES
+                        else:
+                            sim_x, sim_y = dest
+                    nav_info.setdefault("obstacles_cleared", []).append({
+                        "type": "bike_ramp_segment",
+                        "tiles": seg_len,
+                        "start_x": old_x, "start_y": old_y,
+                        "final_x": seg_fx, "final_y": seg_fy,
+                    })
+                    last_step_was_ramp = True
+                    i = seg_end_idx + 1
+                    continue
+                # Segment didn't land on predicted tile — fall through to
+                # the per-tile logic, which will detect blocked + repath.
+                last_step_was_ramp = False
 
         is_ramp_step = (
             pre_obs is not None

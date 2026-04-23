@@ -453,6 +453,67 @@ class TestBikeRampBfsEdges:
         )
 
 
+class TestBikeRampSegmentExecution:
+    """Session-38 follow-up to BUG-043: end-to-end ramp chain execution.
+
+    The momentum-aware BFS (session 35) + poll-release primitive (session
+    36) unblocked the east-chamber plan. But executing the plan from the
+    live ``bug_bike_ramps_repel`` save still failed: per-tile step_holds on
+    the bike carried momentum across direction changes, so the
+    ``up x5 → left → right x9`` plan slipped diagonally at the up→left
+    turn (bike finished the pending up-step during the left press, landing
+    at (6, 16) instead of (6, 17)).
+
+    Fix: the executor now dismounts for any step that isn't within a
+    ramp/slope runway + chain, and executes the runway+chain as ONE
+    sustained direction hold (no per-tile release) with the button
+    released at the last ramp tile so the jump animation settles the
+    player cleanly on the landing.
+
+    This test covers the end-to-end path: start on bike at (7, 22), walk
+    up+left on foot (no slip), mount for the right-segment, sustain
+    through 4 chained ramps, land at the Pokéball interaction tile
+    (31, 17).
+    """
+
+    SAVE_STATE = "bug_bike_ramps_repel"
+
+    def test_navigate_reaches_east_chamber_pokeball(self, emu: EmulatorClient):
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.nav_constants import _read_position
+        from renegade_mcp.navigation import navigate_to
+        _, start_x, start_y = _read_position(emu)
+        assert (start_x, start_y) == (7, 22), "save state must start at (7, 22)"
+
+        result = navigate_to(emu, target_x=31, target_y=17, flee_encounters=True)
+        _, end_x, end_y = _read_position(emu)
+        assert (end_x, end_y) == (31, 17), (
+            f"expected final position (31, 17); got ({end_x}, {end_y}).  "
+            f"Result: {result}"
+        )
+        # The final position must match — repaths are tolerated (cold-mount
+        # state can require a retry before the sustained segment lands
+        # cleanly). The invariant is reaching the target, not the path
+        # efficiency.
+
+    def test_on_foot_during_non_ramp_walking(self, emu: EmulatorClient):
+        """Confirm the new dismount-for-walking behavior: after the initial
+        `up` phase, the player should be off the bicycle (bike momentum
+        can't slip non-runway steps).
+        """
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.addresses import addr
+        from renegade_mcp.navigation import navigate_to
+        # Navigate to the tile before the runway — no ramp segment.
+        navigate_to(emu, target_x=6, target_y=17, flee_encounters=True)
+        cycling = bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short"))
+        assert cycling is False, (
+            "After navigating to a non-ramp target, the player must be on "
+            "foot — bike momentum across direction changes caused the "
+            "up→left slip that motivated this fix."
+        )
+
+
 class TestBikeSlopeBfsEdges:
     """BUG-045: BFS must require an uphill runway before a bike slope tile.
 
