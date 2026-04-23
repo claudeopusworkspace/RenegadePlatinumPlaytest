@@ -4,6 +4,58 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Poll-based bike ramp execution + BFS landing off-by-one (2026-04-23 session 36)
+
+Follow-up to session 35. Woj flagged that although momentum-aware BFS predicted the east-chamber chain was reachable, attempting to actually execute the chain still failed on the second ramp — "presumably the direction button isn't being held continuously enough to go from one ramp to the next." Two bugs fell out of the investigation: a BFS landing off-by-one that had been latent since BUG-042, and an executor that released the direction button for 36 frames between every ramp step (draining bike fast-gear state).
+
+### Spike first
+
+`scripts/spike_ramp_pos_sampling.py` — frame-by-frame sampling of `PLAYER_POS_BASE+8` during a ramp jump. Question was whether the tile-x field is tile-quantized or fx32 sub-tile (per `step_hold`'s `"changed"` primitive, tile-quantized was the strong prior). Result: **field is tile-quantized, every single integer tile is written, no skips.** `advance_frames_until(value == landing_x)` at `poll_interval=1` cannot miss the landing; `>=` is strictly safer and costs nothing.
+
+`scripts/spike_ramp_poll_release.py` — measure where the player comes to rest when we poll-and-release at various tiles. Surprise result: **releasing at BFS-predicted landing (x=13 = approach+4) with ≥8 frames of idle drifts the player to x=14**. Releasing AT the ramp tile (x=10) with 32+ frames of idle stably lands at x=14. The true fast-gear landing is `approach + 5 = ramp + 4`, one tile further than the `BIKE_RAMP_JUMP_TILES=4` constant predicted — **BFS was off by one, and the decomp citation of "3 past ramp" from `src/unk_020655F4.c:994` didn't match the engine's actual behavior** (`JumpFartherEast` = FX32_CONST(4), 12 frames).
+
+### Implementation
+
+`renegade_mcp/nav_constants.py`:
+- `BIKE_RAMP_JUMP_TILES = 4 → 5` (displacement from approach tile = ramp + 4, fast gear). Comment block updated to cite the empirical spike result as ground truth, overriding the prior decomp-based "3 past ramp" interpretation.
+
+`renegade_mcp/navigation.py::_execute_path` — ramp branch:
+- Replaced `advance_frames(BIKE_HOLD_FRAMES, buttons=[dir]) + advance_frames(36)` with `advance_frames_until` polling the direction until the player steps ONTO the ramp tile (`approach + 1`), then releases and idles 36f for the discrete `JumpFartherEast` animation to play out. Poll-driven entry preserves bike fast-gear state across adjacent loop iterations (brief inter-iteration release instead of 36f gap), unblocking the chained-ramp case while still letting the jump complete at its natural `+4` landing.
+- Tried polling *through* the landing first — catches the landing tile cleanly, but because the button is still held during the engine's discrete jump, bike fast-gear continues past the natural end and releasing mid-animation drifts the player +1 to +4 tiles depending on subsequent idle time. Releasing at the ramp tile (before the jump fires) and letting the engine play out atomically is the only pattern that stably lands at `approach+5`.
+- New `last_step_was_ramp` flag. When the final step of a path was a ramp, skip the end-of-path `advance_frames(WAIT_FRAMES)` settle — the 36f in-ramp idle already settled the jump, and an extra 8f of no-input would drift the player +1 past the landing (drift saturates at +1 per spike data).
+
+`renegade_mcp/pathfinding.py::_bike_ramp_landing`:
+- Docstring updated to reflect the new `approach + 5 = ramp + 4` landing.
+
+`renegade_mcp/navigation.py` path scanner (line ~1468):
+- Comment block updated.
+
+### Tests
+
+All 10 `TestBikeRampBfsEdges` tests updated to the new constant:
+- 4 `_bike_ramp_landing` unit tests widened their grids from 8 to 9 cols and bumped expected landings by 1 (e.g. approach `(3, 0)` with ramp at `(4, 0)` now lands at `(8, 0)` instead of `(7, 0)`).
+- `test_2d_bfs_crosses_ramp_in_wayward_cave` — ramp landing assertion `(13, 17) → (14, 17)`.
+- `test_2d_bfs_chains_ramps_via_momentum_carry` — synthetic 2-ramp layout: mid-jump walls expanded to cols 7-9 + 12-14 (3 tiles each instead of 2), landing assertions moved to (10, 0) and (15, 0). Chained path shrank from **9 edges to 7** because ramp1's landing now coincides with ramp2's approach tile, dropping the intermediate walk step.
+- `test_2d_bfs_turn_resets_momentum_before_ramp` — grid widened to 11 cols with 3 walls between ramp and landing instead of 2.
+- `test_2d_bfs_reaches_wayward_east_chamber_via_ramp_chain` — phase-1 landing assertion updated from `(13, 17)` to `(14, 17)`.
+
+Empirical end-to-end verification on `session31_wayward_cave_bike_ramps`:
+- **Single ramp**: `navigate_to((14, 17))` from start (7, 22) lands exactly at (14, 17) ✓
+- **Chain**: debug trace confirms ramp1 at `(9, 17)` and ramp2 at `(14, 17)` both fire in the same `navigate_to((31, 16))` call. Reaching (31, 16) itself is blocked on a wild encounter further east — unrelated to ramp mechanics and out of scope for this fix.
+
+Full suite: **534 passed** in 13:33 (single-emu sequential run). New empirical spikes checked in as `scripts/spike_ramp_pos_sampling.py`, `scripts/spike_ramp_poll_release.py`, and `scripts/spike_ramp_chain_exec.py` per the `spike_before_redesign` memory.
+
+### Commits
+
+1. `fix(nav): poll-based bike ramp execution + correct landing tile` (40c6f41)
+
+### Take-aways
+
+- **The decomp citation was wrong, and only empirical evidence caught it.** Session 32 called out "decomp cites can match the wrong function; empirically verify mechanics in-emulator before shipping them" — and that lesson repeated itself here at one level deeper. The `JumpFartherEast` action text really is in the decomp; the tile-displacement constant we inferred from it didn't match the engine's actual landing. Future ramp-like mechanics: always run the release-at-entry spike across the actual regime before trusting a constant.
+- **Continuous-hold vs discrete-action tension.** Held button through a discrete engine action (ramp jump) → bike fast-gear keeps running past the action's natural end → release-drift is a function of idle time, not a fixed overshoot. Release BEFORE the action triggers → the action plays out atomically → lands at the engine's chosen tile regardless of subsequent idle. For any engine-level "trigger + play-out" mechanic, release on entry and let the engine drive.
+- **Poll-driven entry ≠ continuous hold.** My first instinct was "hold the button through the whole thing so the engine never sees a release." That pattern works for regular tile steps (the `step_hold` idiom) because the engine fully consumes one tile's worth of input and then stops. It does NOT work for ramp jumps because the engine has its own in-flight displacement action that responds to held input by continuing past the landing. Poll-driven entry + release-at-trigger is the right idiom for any primitive where the engine drives the motion after a threshold crossing.
+- **End-of-path `WAIT_FRAMES` assumes per-tile step_hold semantics.** The 8f trailing settle was added for `step_hold`'s position-change-exit race (position updates at tile entry, animation completes a few frames later). For ramp-step endings, the 36f in-ramp idle already settles the jump fully — an extra 8f is pure drift. When adding new end-of-step primitives in the future, check whether the trailing settle is redundant or harmful.
+
 ## Dev Session: Momentum-aware BFS for bike-ramp chaining (2026-04-23 session 35)
 
 Phase 3 of BUG-043. Session 34 landed the single-ramp runway check + fast-gear jump distance, but the geometric runway fallback couldn't model the chained-ramp case — where the landing from one ramp carries full momentum into the next, even across a 1-tile gap that wouldn't satisfy a fresh 3-tile-straight-line check. Session 34's spike had already confirmed the empirical chain (ramp1@10 → land 13 → walk 14 → ramp2@15 fires). This session wired that empirical fact into the BFS.
