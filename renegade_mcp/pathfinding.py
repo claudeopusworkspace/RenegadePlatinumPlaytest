@@ -80,24 +80,27 @@ def _get_field_move_availability(emu: EmulatorClient) -> dict[str, bool]:
 def _bike_ramp_landing(
     terrain_info: list, x: int, y: int, direction: str,
     dx: int, dy: int, width: int, height: int,
-    momentum: int = 0,
+    momentum: int | None = None,
 ) -> tuple[int, int] | None:
     """If stepping from (x, y) in `direction` collides with a bike ramp
     whose facing matches `direction`, return the fast-gear 4-tile jump
     landing tile (entry tile + 3 past ramp).
 
     Runway requirement: the player must have accumulated momentum in the
-    ramp direction before stepping onto it. The caller passes `momentum` —
-    the number of consecutive same-direction steps the player took to reach
-    (x, y), capped at BIKE_RAMP_RUNWAY_TILES. The approach tile (x, y)
+    ramp direction before stepping onto it. The approach tile (x, y)
     counts toward the runway, so `momentum + 1 >= BIKE_RAMP_RUNWAY_TILES`
     (4 tiles total including approach) admits the edge.
 
-    For BFS variants that don't track directional momentum, `momentum=0`
-    falls back to a geometric check: the BIKE_RAMP_RUNWAY_TILES - 1 tiles
-    behind (x, y) in the ramp direction must exist and be passable.
-    Approximate but correct for straight-line approaches, which is what
-    BFS shortest paths produce in open corridors.
+    `momentum` modes:
+    - ``int`` — caller tracks per-state directional momentum (number of
+      prior same-direction steps culminating at (x, y), capped at
+      BIKE_RAMP_RUNWAY_TILES). Trust it: no geometric fallback. If the
+      caller knows it arrived at (x, y) via a turn, it passes ``0``.
+    - ``None`` — caller doesn't track momentum. Fall back to a geometric
+      straight-line check: the BIKE_RAMP_RUNWAY_TILES - 1 tiles behind
+      (x, y) in the ramp direction must exist, be passable, and not be
+      direction-gated (no ledges, no directional warps). Approximate but
+      correct for open-corridor straight-line approaches.
 
     Returns None when there is no ramp, the ramp faces a different axis,
     the runway is insufficient, the landing is out of bounds, or the
@@ -112,13 +115,10 @@ def _bike_ramp_landing(
     if BIKE_RAMP_DIRECTIONS[behavior] != direction:
         return None
 
-    # Runway check. `momentum` is the number of prior same-direction steps
-    # (from the BFS's directional state); (x, y) itself adds one toward the
-    # required total.
-    if momentum + 1 < BIKE_RAMP_RUNWAY_TILES:
-        # Fall back to geometric straight-line check when momentum is
-        # unknown. BFS shortest paths through open corridors typically
-        # satisfy this; tight hallway approaches that force a turn don't.
+    # Runway check.
+    if momentum is None:
+        # Geometric fallback: RUNWAY-1 tiles behind (x, y) must be a clear
+        # straight line (passable and not direction-gated).
         for i in range(1, BIKE_RAMP_RUNWAY_TILES):
             bx, by = x - i * dx, y - i * dy
             if not (0 <= bx < width and 0 <= by < height):
@@ -126,12 +126,13 @@ def _bike_ramp_landing(
             back_passable, back_behavior = terrain_info[by][bx]
             if not back_passable:
                 return None
-            # Direction-gated tiles (ledges, directional warps) can't carry
-            # straight-line momentum since the engine forces a transition.
             if back_behavior in LEDGE_DIRECTIONS:
                 return None
             if back_behavior in DIRECTIONAL_WARP:
                 return None
+    elif momentum + 1 < BIKE_RAMP_RUNWAY_TILES:
+        # Trust the caller: insufficient tracked momentum → no jump.
+        return None
 
     # Landing: approach tile (x, y) + JUMP_TILES in direction. Ramp tile
     # (nx, ny) = (x + dx, y + dy) is skipped mid-jump, as is the wall one
@@ -150,35 +151,59 @@ def _bfs_reachable(
     start_x: int, start_y: int,
     width: int, height: int,
 ) -> set[tuple[int, int]]:
-    """Flood-fill BFS from start. Returns set of all reachable (x, y) tiles."""
+    """Flood-fill BFS from start. Returns set of all reachable (x, y) tiles.
+
+    Momentum-aware: state is (x, y, last_dir, momentum) so that bike ramps
+    requiring a multi-tile runway are admitted exactly when the player can
+    build up same-direction travel to reach them. Landing from a ramp
+    jump sets momentum=RUNWAY in the ramp direction, enabling chained
+    ramp sequences across short intermediate gaps.
+    """
     if not (0 <= start_x < width and 0 <= start_y < height):
         return set()
-    visited = {(start_x, start_y)}
-    queue = deque([(start_x, start_y)])
+    reachable: set[tuple[int, int]] = {(start_x, start_y)}
+    start_state = (start_x, start_y, None, 0)
+    visited: set[tuple[int, int, str | None, int]] = {start_state}
+    queue: deque[tuple[int, int, str | None, int]] = deque([start_state])
+    runway = BIKE_RAMP_RUNWAY_TILES
     while queue:
-        x, y = queue.popleft()
+        x, y, last_d, m = queue.popleft()
         for dx, dy, direction in BFS_MOVES:
             nx, ny = x + dx, y + dy
             if not (0 <= nx < width and 0 <= ny < height):
                 continue
             passable, behavior = terrain_info[ny][nx]
             if not passable:
+                approach_m = m if last_d == direction else 0
                 landing = _bike_ramp_landing(
                     terrain_info, x, y, direction, dx, dy, width, height,
+                    momentum=approach_m,
                 )
-                if landing is not None and landing not in visited and landing not in npc_set:
-                    visited.add(landing)
-                    queue.append(landing)
+                if landing is None or landing in npc_set:
+                    continue
+                lx, ly = landing
+                # Post-jump: full carry-through in ramp direction.
+                new_state = (lx, ly, direction, runway)
+                if new_state in visited:
+                    continue
+                visited.add(new_state)
+                reachable.add(landing)
+                queue.append(new_state)
                 continue
-            if (nx, ny) in visited or (nx, ny) in npc_set:
+            if (nx, ny) in npc_set:
                 continue
             if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
                 continue
             if behavior in LEDGE_DIRECTIONS and LEDGE_DIRECTIONS[behavior] != direction:
                 continue
-            visited.add((nx, ny))
-            queue.append((nx, ny))
-    return visited
+            new_m = min(m + 1, runway) if last_d == direction else 1
+            new_state = (nx, ny, direction, new_m)
+            if new_state in visited:
+                continue
+            visited.add(new_state)
+            reachable.add((nx, ny))
+            queue.append(new_state)
+    return reachable
 
 
 def _find_nearest_reachable(
@@ -385,7 +410,12 @@ def _bfs_pathfind(
     start_x: int, start_y: int, goal_x: int, goal_y: int,
     width: int = 32, height: int = 32,
 ) -> list[str] | None:
-    """BFS shortest path with ledge awareness. Returns direction list or None."""
+    """BFS shortest path with ledge and bike-ramp awareness.
+
+    Momentum-aware: state is (x, y, last_dir, momentum) so chained bike
+    ramps (landing carries full momentum into the next ramp) are admitted.
+    Returns direction list or None.
+    """
     if not (0 <= start_x < width and 0 <= start_y < height):
         return None
     if not (0 <= goal_x < width and 0 <= goal_y < height):
@@ -393,13 +423,16 @@ def _bfs_pathfind(
     if (start_x, start_y) == (goal_x, goal_y):
         return []
 
-    visited = {(start_x, start_y)}
-    queue = deque([(start_x, start_y, [])])
-
+    start_state = (start_x, start_y, None, 0)
+    visited: set[tuple[int, int, str | None, int]] = {start_state}
+    queue: deque[tuple[int, int, str | None, int, list[str]]] = deque(
+        [(start_x, start_y, None, 0, [])]
+    )
     goal = (goal_x, goal_y)
+    runway = BIKE_RAMP_RUNWAY_TILES
 
     while queue:
-        x, y, path = queue.popleft()
+        x, y, last_d, m, path = queue.popleft()
 
         for dx, dy, direction in BFS_MOVES:
             nx, ny = x + dx, y + dy
@@ -408,38 +441,44 @@ def _bfs_pathfind(
 
             passable, behavior = terrain_info[ny][nx]
             if not passable:
+                approach_m = m if last_d == direction else 0
                 landing = _bike_ramp_landing(
                     terrain_info, x, y, direction, dx, dy, width, height,
+                    momentum=approach_m,
                 )
-                if landing is None or landing in visited:
+                if landing is None:
                     continue
                 if landing in npc_set and landing != goal:
+                    continue
+                lx, ly = landing
+                new_state = (lx, ly, direction, runway)
+                if new_state in visited:
                     continue
                 new_path = path + [direction]
                 if landing == goal:
                     return new_path
-                visited.add(landing)
-                queue.append((landing[0], landing[1], new_path))
+                visited.add(new_state)
+                queue.append((lx, ly, direction, runway, new_path))
                 continue
 
-            if (nx, ny) in visited:
-                continue
             if (nx, ny) in npc_set and (nx, ny) != goal:
                 continue
 
-            # Directional warps only allow entry from the correct direction
             if behavior in DIRECTIONAL_WARP and DIRECTIONAL_WARP[behavior] != direction:
                 continue
 
             if behavior in LEDGE_DIRECTIONS and LEDGE_DIRECTIONS[behavior] != direction:
                 continue
 
+            new_m = min(m + 1, runway) if last_d == direction else 1
+            new_state = (nx, ny, direction, new_m)
+            if new_state in visited:
+                continue
             new_path = path + [direction]
             if (nx, ny) == goal:
                 return new_path
-
-            visited.add((nx, ny))
-            queue.append((nx, ny, new_path))
+            visited.add(new_state)
+            queue.append((nx, ny, direction, new_m, new_path))
 
     return None
 
@@ -583,12 +622,17 @@ def _bfs_pathfind_level(
         return ri is None and lvls is None
 
     goal = (goal_x, goal_y)
-    visited = {(start_x, start_y)}
-    queue: deque[tuple[int, int, list[str]]] = deque([(start_x, start_y, [])])
+    start_state = (start_x, start_y, None, 0)
+    visited: set[tuple[int, int, str | None, int]] = {start_state}
+    tile_seen: set[tuple[int, int]] = {(start_x, start_y)}
+    queue: deque[tuple[int, int, str | None, int, list[str]]] = deque(
+        [(start_x, start_y, None, 0, [])]
+    )
     reachable_ramps: dict[int, tuple[list[str], tuple[int, int], int]] = {}
+    runway = BIKE_RAMP_RUNWAY_TILES
 
     while queue:
-        x, y, path = queue.popleft()
+        x, y, last_d, m, path = queue.popleft()
 
         for dx, dy, direction in BFS_MOVES:
             nx, ny = x + dx, y + dy
@@ -597,25 +641,29 @@ def _bfs_pathfind_level(
 
             passable, behavior = terrain_info[ny][nx]
             if not passable:
+                approach_m = m if last_d == direction else 0
                 landing = _bike_ramp_landing(
                     terrain_info, x, y, direction, dx, dy, width, height,
+                    momentum=approach_m,
                 )
-                if landing is None or landing in visited:
+                if landing is None:
                     continue
                 lx, ly = landing
                 if landing in npc_set and landing != goal:
                     continue
                 if not _tile_on_level(lx, ly, current_level):
                     continue
+                new_state = (lx, ly, direction, runway)
+                if new_state in visited:
+                    continue
                 new_path = path + [direction]
-                visited.add(landing)
                 if landing == (goal_x, goal_y):
                     return new_path, reachable_ramps
-                queue.append((lx, ly, new_path))
+                visited.add(new_state)
+                tile_seen.add(landing)
+                queue.append((lx, ly, direction, runway, new_path))
                 continue
 
-            if (nx, ny) in visited:
-                continue
             if (nx, ny) in npc_set and (nx, ny) != goal:
                 continue
 
@@ -634,12 +682,16 @@ def _bfs_pathfind_level(
             if not _tile_on_level(nx, ny, current_level):
                 continue
 
+            new_m = min(m + 1, runway) if last_d == direction else 1
+            new_state = (nx, ny, direction, new_m)
+            if new_state in visited:
+                continue
             new_path = path + [direction]
-            visited.add((nx, ny))
+            visited.add(new_state)
 
-            # Record ramp transitions to other levels
+            # Record ramp transitions to other levels (first discovery only).
             ramp_key = (nx, ny)
-            if ramp_key in ramp_tiles:
+            if ramp_key not in tile_seen and ramp_key in ramp_tiles:
                 ri = ramp_tiles[ramp_key]
                 ramp_idx = ri["ramp_index"]
                 if ramp_idx not in reachable_ramps:
@@ -651,11 +703,12 @@ def _bfs_pathfind_level(
                         other = None
                     if other is not None and other != current_level:
                         reachable_ramps[ramp_idx] = (new_path, (nx, ny), other)
+            tile_seen.add(ramp_key)
 
             if (nx, ny) == (goal_x, goal_y):
                 return new_path, reachable_ramps
 
-            queue.append((nx, ny, new_path))
+            queue.append((nx, ny, direction, new_m, new_path))
 
     return None, reachable_ramps
 
@@ -803,8 +856,13 @@ def _flood_fill_level(
         return ri is None and lvls is None
 
     reach: dict[tuple[int, int], int] = {(start_x, start_y): 0}
-    queue: deque[tuple[int, int, int]] = deque([(start_x, start_y, 0)])
+    start_state = (start_x, start_y, None, 0)
+    visited: set[tuple[int, int, str | None, int]] = {start_state}
+    queue: deque[tuple[int, int, str | None, int, int]] = deque(
+        [(start_x, start_y, None, 0, 0)]
+    )
     transitions: dict[object, tuple[int, tuple[int, int], int]] = {}
+    runway = BIKE_RAMP_RUNWAY_TILES
 
     def _record_transitions(tx: int, ty: int, steps: int) -> None:
         # Ramp tile: record once per ramp index.
@@ -840,7 +898,7 @@ def _flood_fill_level(
     _record_transitions(start_x, start_y, 0)
 
     while queue:
-        x, y, d = queue.popleft()
+        x, y, last_d, m, d = queue.popleft()
         if max_steps is not None and d >= max_steps:
             continue
         for dx, dy, direction in BFS_MOVES:
@@ -850,10 +908,12 @@ def _flood_fill_level(
 
             passable, behavior = terrain_info[ny][nx]
             if not passable:
+                approach_m = m if last_d == direction else 0
                 landing = _bike_ramp_landing(
                     terrain_info, x, y, direction, dx, dy, width, height,
+                    momentum=approach_m,
                 )
-                if landing is None or landing in reach:
+                if landing is None:
                     continue
                 lx, ly = landing
                 if npc_is_3d:
@@ -863,14 +923,17 @@ def _flood_fill_level(
                     continue
                 if not _tile_on_level(lx, ly, current_level):
                     continue
+                new_state = (lx, ly, direction, runway)
+                if new_state in visited:
+                    continue
+                visited.add(new_state)
                 nd = d + 1
-                reach[landing] = nd
-                _record_transitions(lx, ly, nd)
-                queue.append((lx, ly, nd))
+                if landing not in reach:
+                    reach[landing] = nd
+                    _record_transitions(lx, ly, nd)
+                queue.append((lx, ly, direction, runway, nd))
                 continue
 
-            if (nx, ny) in reach:
-                continue
             if npc_is_3d:
                 if (nx, ny, current_level) in npc_set:
                     continue
@@ -888,11 +951,17 @@ def _flood_fill_level(
             if not _tile_on_level(nx, ny, current_level):
                 continue
 
+            new_m = min(m + 1, runway) if last_d == direction else 1
+            new_state = (nx, ny, direction, new_m)
+            if new_state in visited:
+                continue
+            visited.add(new_state)
             nd = d + 1
-            reach[(nx, ny)] = nd
-            _record_transitions(nx, ny, nd)
+            if (nx, ny) not in reach:
+                reach[(nx, ny)] = nd
+                _record_transitions(nx, ny, nd)
 
-            queue.append((nx, ny, nd))
+            queue.append((nx, ny, direction, new_m, nd))
 
     return reach, transitions
 

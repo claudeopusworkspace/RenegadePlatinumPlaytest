@@ -4,6 +4,45 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Momentum-aware BFS for bike-ramp chaining (2026-04-23 session 35)
+
+Phase 3 of BUG-043. Session 34 landed the single-ramp runway check + fast-gear jump distance, but the geometric runway fallback couldn't model the chained-ramp case — where the landing from one ramp carries full momentum into the next, even across a 1-tile gap that wouldn't satisfy a fresh 3-tile-straight-line check. Session 34's spike had already confirmed the empirical chain (ramp1@10 → land 13 → walk 14 → ramp2@15 fires). This session wired that empirical fact into the BFS.
+
+### Implementation
+
+`pathfinding.py::_bike_ramp_landing`:
+- `momentum` parameter semantic change: `None` (new default) = caller doesn't track momentum, use geometric fallback (unchanged behavior). `int` = caller tracks momentum, trust it — no geometric fallback. This closes a subtle mis-admit: momentum-aware BFS that reaches an approach tile via a turning path now correctly passes `momentum=0` and rejects the ramp, where the old `momentum=0` default would fall back to geometric and incorrectly admit.
+
+`pathfinding.py::_bfs_reachable`, `_bfs_pathfind`, `_bfs_pathfind_level`, `_flood_fill_level`:
+- BFS state augmented from `(x, y)` to `(x, y, last_dir, momentum)` where `last_dir ∈ {up, down, left, right, None}` and `momentum ∈ [0, RUNWAY]`.
+- Same-direction step: `m' = min(m+1, RUNWAY)`. Direction change: `m' = 1`.
+- Ramp approach passes `approach_m = m if last_d == direction else 0` — the turn-reset is explicit and the geometric fallback is disabled in these callers.
+- Post-jump landing state: `(lx, ly, direction, RUNWAY)` — full carry-through per session-34 spike data. This is the chain-enabling edge.
+- Visited set keyed on the full 4-tuple so each tile is explored with up to 4×(RUNWAY+1) = 20 distinct momentum contexts. Bounded and cheap on 32×32 chunks.
+- `_bfs_pathfind_level` records ramp transitions on *first* tile discovery (via `tile_seen`) so the expanded state space doesn't inflate the transition map.
+
+Impact on `_bfs_reachable_3d` / `view_map`: delegated through `_flood_fill_level`, so the 3D flood inherits chain-awareness for free.
+
+### Tests
+
+`tests/test_navigation.py::TestBikeRampBfsEdges`:
+- `test_2d_bfs_chains_ramps_via_momentum_carry` — synthetic 16-col grid with two east ramps where the second ramp's geometric runway has a wall at the third back-tile. Pre-session BFS would reject the chain; momentum-aware BFS reaches landing2 and returns a 9-edge path.
+- `test_2d_bfs_turn_resets_momentum_before_ramp` — 10×3 grid forcing a turn onto the ramp approach tile. Asserts the landing is NOT reached, confirming the turn-reset rule hasn't regressed now that the geometric fallback is off.
+- `test_2d_bfs_reaches_wayward_east_chamber_via_ramp_chain` — integration test on `session31_wayward_cave_bike_ramps`. Asserts the east-chamber Pokéball at `(31, 16)` is reachable. Before: only `(13, 17)` was; after: `(13, 17)` + `(31, 16)`. The Pokéballs at `(22, 9)`, `(33, 8)`, and warp:0 at `(43, 38)` remain out of reach — they gate on additional ramps/puzzle elements beyond chain-awareness.
+
+Full suite: **534 passed** (+3 new tests, zero regressions) in ~2:35.
+
+### Commits
+
+1. _pending commit at session end_
+
+### Take-aways
+
+- The geometric-fallback → trust-the-caller transition via `None` sentinel was the cleanest way to keep the legacy test surface and unit-testable contracts intact while letting BFS be strict. A boolean flag would have worked too; the sentinel self-documents "I don't know momentum, please guess geometrically."
+- State expansion 20× per tile sounds like a lot but at 32×32 chunks the visited set stays well under 20k entries and the full suite didn't get noticeably slower. Never optimized — dominance pruning (`best_m[(x, y, last_dir)]`) stays in reserve.
+- Landing momentum `RUNWAY` (not 0) is the whole point: it says "after a ramp, you're at full speed in this direction, not resetting." Without it the chain doesn't exist, regardless of runway math.
+- BUG-043's full closure needs the rest of the east-chamber ramps (and whatever puzzle the `(43, 38)` warp gates on) — but that's a gameplay exploration task now, not a BFS-tool task.
+
 ## Dev Session: Bike ramp fast-gear fix + runway check + fast-gear mount (2026-04-23 session 34)
 
 Follow-up to session 33's sustained-hold primitive. Session 32's decomp dive + session 33's hold primitive had teed up BUG-043 (Wayward Cave B1F east chamber unreachable); this session closed the tool-side gap. Woj's brief: make the BFS aware that ramps need a few tiles of approach runway in the ramp direction, and that our playthrough always runs fast gear.
