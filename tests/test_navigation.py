@@ -513,6 +513,31 @@ class TestBikeRampSegmentExecution:
             "up→left slip that motivated this fix."
         )
 
+    def test_poi_pickup_reaches_east_chamber_pokeball(self, emu: EmulatorClient):
+        """Regression: interact_with (the POI dispatcher for items) calls
+        _execute_path directly without pre-populating obstacle_tiles with
+        the path's ramp/slope entries. Before the fix, _step_needs_bike
+        saw an empty obstacle map, never mounted, and the player charged
+        at the ramp on foot until MAX_REPATHS gave up. _execute_path now
+        scans the path itself from repath_ctx['terrain_info'] so any
+        caller gets the ramp lookahead.
+        """
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.interaction import interact_with
+        from renegade_mcp.nav_constants import _read_position
+
+        result = interact_with(emu, object_index=2, flee_encounters=True)
+        assert "error" not in result, f"interact_with failed: {result}"
+        assert not result.get("stopped_early"), (
+            f"nav stopped early: blocked_at={result.get('blocked_at')}.  "
+            f"This indicates the ramp mount didn't fire (pre-fix symptom: "
+            f"player charged the ramp on foot).  Full result: {result}"
+        )
+        _, end_x, end_y = _read_position(emu)
+        assert (end_x, end_y) == (31, 17), (
+            f"expected final position (31, 17); got ({end_x}, {end_y})"
+        )
+
 
 class TestBikeSlopeBfsEdges:
     """BUG-045: BFS must require an uphill runway before a bike slope tile.

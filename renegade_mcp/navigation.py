@@ -399,6 +399,56 @@ def _bike_ramp_segment(
     )
 
 
+def _scan_path_for_bike_obstacles(
+    directions: list[str], terrain_info: list, start_gx: int, start_gy: int,
+    grid_ox: int, grid_oy: int, obstacle_tiles: dict,
+) -> None:
+    """Populate ``obstacle_tiles`` with bike-ramp/slope tiles crossed by the
+    planned path. Idempotent — existing keys are kept.
+
+    Mirrors the scanner in _navigate_to_impl (which builds the same map
+    from obs_crossed), but works for callers like interact_with that
+    dispatch directly to _execute_path without a navigate_to detour.
+    Without these entries, _step_needs_bike can't detect ramps ahead and
+    the executor walks straight into the ramp tile on foot.
+
+    Coordinates: ``start_gx/gy`` are the player's starting grid-local
+    position (grid_ox/oy is the grid→global offset). We simulate the
+    path's position tracker the same way navigate_to does — ramp entries
+    jump by BIKE_RAMP_JUMP_TILES in the ramp direction.
+    """
+    sx, sy = start_gx, start_gy
+    for step_dir in directions:
+        sdx, sdy = _DIR_DELTAS.get(step_dir, (0, 0))
+        nx, ny = sx + sdx, sy + sdy
+        is_ramp = False
+        if 0 <= ny < len(terrain_info) and 0 <= nx < len(terrain_info[ny]):
+            _, nbeh = terrain_info[ny][nx]
+            if (nbeh in BIKE_RAMP_BEHAVIORS
+                    and BIKE_RAMP_DIRECTIONS[nbeh] == step_dir):
+                is_ramp = True
+                gx, gy = nx + grid_ox, ny + grid_oy
+                if (gx, gy) not in obstacle_tiles:
+                    obstacle_tiles[(gx, gy)] = {
+                        "type": "bike_ramp",
+                        "behavior": nbeh,
+                    }
+        if is_ramp:
+            sx = sx + sdx * BIKE_RAMP_JUMP_TILES
+            sy = sy + sdy * BIKE_RAMP_JUMP_TILES
+            continue
+        sx, sy = nx, ny
+        if 0 <= sy < len(terrain_info) and 0 <= sx < len(terrain_info[sy]):
+            _passable, beh = terrain_info[sy][sx]
+            if beh in BIKE_SLOPE_BEHAVIORS:
+                gx, gy = sx + grid_ox, sy + grid_oy
+                if (gx, gy) not in obstacle_tiles:
+                    obstacle_tiles[(gx, gy)] = {
+                        "type": "bike_slope",
+                        "behavior": beh,
+                    }
+
+
 def _step_needs_bike(
     directions: list[str], i: int, obstacle_tiles: dict, cur_x: int, cur_y: int,
 ) -> bool:
@@ -477,6 +527,22 @@ def _execute_path(
         track_npcs = True
     if obstacle_tiles is None:
         obstacle_tiles = {}
+
+    # Callers that dispatch directly here (e.g. interact_with) don't populate
+    # ramp/slope entries. Without them, _step_needs_bike is blind to ramps
+    # ahead and the executor walks on foot into the ramp tile, bonks, and
+    # repaths forever. Scan the path ourselves when terrain + grid offsets
+    # are in scope.
+    if repath_ctx is not None and "terrain_info" in repath_ctx:
+        terr = repath_ctx["terrain_info"]
+        gox = repath_ctx.get("grid_ox", 0)
+        goy = repath_ctx.get("grid_oy", 0)
+        _, start_gx_g, start_gy_g = _read_position(emu)
+        _scan_path_for_bike_obstacles(
+            directions, terr,
+            start_gx_g - gox, start_gy_g - goy,
+            gox, goy, obstacle_tiles,
+        )
 
     steps_taken = 0
     repaths_used = 0
