@@ -48,6 +48,7 @@ from renegade_mcp.nav_constants import (  # noqa: F401
     BIKE_HOLD_FRAMES,
     BIKE_RAMP_BEHAVIORS,
     BIKE_RAMP_DIRECTIONS,
+    BIKE_RAMP_JUMP_TILES,
     BIKE_RAMP_TYPES,
     BIKE_SLOPE_BACKUP_TILES,
     BIKE_SLOPE_BEHAVIORS,
@@ -392,16 +393,17 @@ def _execute_path(
             and pre_obs.get("type") in BIKE_RAMP_TYPES
         )
         if is_ramp_step:
-            # Bike ramp jump — engine plays a 2-tile JumpFar animation
-            # (FX32_CONST(2) * 16 frames = 2-tile displacement over 16
-            # frames, per pokeplatinum/src/unk_020655F4.c). Hold the
-            # direction long enough to cover both animation frames and the
-            # brief press window before it; then settle. Single press
+            # Bike ramp jump — engine plays a fast-gear JumpFartherEast
+            # animation (FX32_CONST(4) * 12 frames = 4-tile displacement over
+            # 12 frames post-entry, per pokeplatinum/src/unk_020655F4.c:994).
+            # Empirically (spike_ramp_runway.py): entry→landing spans ~20
+            # frames; we hold for BIKE_HOLD_FRAMES + 36 to cover the entry
+            # press, the jump, and a post-settle margin. Single press
             # triggers a single jump — do NOT retry in the slow-terrain
             # loop below, since a retry re-presses the direction after
             # the jump and would step one tile past the landing.
             emu.advance_frames(BIKE_HOLD_FRAMES, buttons=[direction])
-            emu.advance_frames(24)  # cover 16-frame jump + settle
+            emu.advance_frames(36)  # cover ~20f jump animation + settle
         else:
             # Hold direction until the movement-axis coord changes (or max
             # frames elapse). Including "b" when walking engages Running Shoes
@@ -1425,9 +1427,10 @@ def _navigate_to_impl(
 
     # Scan the chosen path for bike slope and bike ramp tiles. Bike ramps
     # (0xD7/0xD8) appear in the path as a single direction step representing
-    # a 2-tile jump — the ramp tile itself is impassable and never "walked"
-    # onto, so the scanner must detect the ramp on the NEXT tile in direction
-    # and advance the position tracker by 2 tiles (to the landing).
+    # a fast-gear 4-tile jump — the ramp tile itself is impassable and never
+    # "walked" onto, so the scanner must detect the ramp on the NEXT tile in
+    # direction and advance the position tracker by BIKE_RAMP_JUMP_TILES (to
+    # the landing = approach + 4 in the ramp direction).
     if path and terrain_info:
         sx, sy = bfs_sx, bfs_sy
         for step_dir in path:
@@ -1446,7 +1449,9 @@ def _navigate_to_impl(
                             "behavior": nbeh,
                         }
             if is_ramp:
-                sx, sy = nx + sdx, ny + sdy  # jump 2 tiles
+                # Advance to landing: approach (sx, sy) + JUMP_TILES * dir.
+                sx = sx + sdx * BIKE_RAMP_JUMP_TILES
+                sy = sy + sdy * BIKE_RAMP_JUMP_TILES
                 continue
             sx, sy = nx, ny
             if 0 <= sy < len(terrain_info) and 0 <= sx < len(terrain_info[sy]):

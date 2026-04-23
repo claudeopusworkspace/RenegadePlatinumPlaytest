@@ -18,6 +18,8 @@ from renegade_mcp.nav_constants import (
     BFS_MOVES,
     BIKE_RAMP_BEHAVIORS,
     BIKE_RAMP_DIRECTIONS,
+    BIKE_RAMP_JUMP_TILES,
+    BIKE_RAMP_RUNWAY_TILES,
     CLEARABLE_OBSTACLES,
     DIRECTIONAL_BLOCKS,
     DIRECTIONAL_WARP,
@@ -78,18 +80,28 @@ def _get_field_move_availability(emu: EmulatorClient) -> dict[str, bool]:
 def _bike_ramp_landing(
     terrain_info: list, x: int, y: int, direction: str,
     dx: int, dy: int, width: int, height: int,
+    momentum: int = 0,
 ) -> tuple[int, int] | None:
     """If stepping from (x, y) in `direction` collides with a bike ramp
-    whose facing matches `direction`, return the 2-tile jump landing tile.
+    whose facing matches `direction`, return the fast-gear 4-tile jump
+    landing tile (entry tile + 3 past ramp).
+
+    Runway requirement: the player must have accumulated momentum in the
+    ramp direction before stepping onto it. The caller passes `momentum` —
+    the number of consecutive same-direction steps the player took to reach
+    (x, y), capped at BIKE_RAMP_RUNWAY_TILES. The approach tile (x, y)
+    counts toward the runway, so `momentum + 1 >= BIKE_RAMP_RUNWAY_TILES`
+    (4 tiles total including approach) admits the edge.
+
+    For BFS variants that don't track directional momentum, `momentum=0`
+    falls back to a geometric check: the BIKE_RAMP_RUNWAY_TILES - 1 tiles
+    behind (x, y) in the ramp direction must exist and be passable.
+    Approximate but correct for straight-line approaches, which is what
+    BFS shortest paths produce in open corridors.
 
     Returns None when there is no ramp, the ramp faces a different axis,
-    the landing is out of bounds, or the landing tile is impassable.
-
-    Caller is responsible for deciding whether the player can actually use
-    the ramp (e.g., bicycle equipped). BFS treats bike availability as
-    given so navigate_to can auto-mount on execution — if the player lacks
-    the Bicycle item the auto-mount fails and the step surfaces as
-    blocked, same as a missing HM badge on a Surf/Waterfall edge.
+    the runway is insufficient, the landing is out of bounds, or the
+    landing tile is impassable.
     """
     nx, ny = x + dx, y + dy
     if not (0 <= nx < width and 0 <= ny < height):
@@ -99,7 +111,32 @@ def _bike_ramp_landing(
         return None
     if BIKE_RAMP_DIRECTIONS[behavior] != direction:
         return None
-    lx, ly = nx + dx, ny + dy
+
+    # Runway check. `momentum` is the number of prior same-direction steps
+    # (from the BFS's directional state); (x, y) itself adds one toward the
+    # required total.
+    if momentum + 1 < BIKE_RAMP_RUNWAY_TILES:
+        # Fall back to geometric straight-line check when momentum is
+        # unknown. BFS shortest paths through open corridors typically
+        # satisfy this; tight hallway approaches that force a turn don't.
+        for i in range(1, BIKE_RAMP_RUNWAY_TILES):
+            bx, by = x - i * dx, y - i * dy
+            if not (0 <= bx < width and 0 <= by < height):
+                return None
+            back_passable, back_behavior = terrain_info[by][bx]
+            if not back_passable:
+                return None
+            # Direction-gated tiles (ledges, directional warps) can't carry
+            # straight-line momentum since the engine forces a transition.
+            if back_behavior in LEDGE_DIRECTIONS:
+                return None
+            if back_behavior in DIRECTIONAL_WARP:
+                return None
+
+    # Landing: approach tile (x, y) + JUMP_TILES in direction. Ramp tile
+    # (nx, ny) = (x + dx, y + dy) is skipped mid-jump, as is the wall one
+    # tile beyond on most ramp layouts.
+    lx, ly = x + dx * BIKE_RAMP_JUMP_TILES, y + dy * BIKE_RAMP_JUMP_TILES
     if not (0 <= lx < width and 0 <= ly < height):
         return None
     land_passable, _land_beh = terrain_info[ly][lx]

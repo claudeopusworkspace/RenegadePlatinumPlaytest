@@ -92,14 +92,26 @@ BIKE_SLOPE_MAX_FRAMES = 600  # safety cap for the continuous hold phase
 
 # ── Bike jump ramps (Wayward Cave etc.) ──
 # 0xD7 = BIKE_RAMP_EASTWARD, 0xD8 = BIKE_RAMP_WESTWARD (pokeplatinum decomp).
-# The tile is hard-blocked (0x8000) on foot; when on a bicycle and stepping
-# INTO the ramp in the matching direction, the engine launches the player
-# 2 tiles (MOVEMENT_ACTION_JUMP_FAR_*, FX32_CONST(2)*16=2-tile displacement).
+# On a bicycle in fast gear, stepping INTO the ramp in the matching direction
+# with enough momentum launches the player 4 tiles (entry + 3 past ramp). Per
+# decomp `MOVEMENT_ACTION_JUMP_FARTHER_EAST` (FX32_CONST(4), duration 12) at
+# `src/unk_0205F180.c::sub_0205F95C` gear=1 branch. We always run fast gear —
+# slow gear would halve the jump (`JUMP_NEAR_SLOW_*`) and is never a
+# deliberate state in our playthrough.
+#
+# The engine only launches the jump if the player has enough momentum when
+# stepping onto the ramp tile. Empirically (spike_ramp_runway.py on
+# session31_wayward_cave_bike_ramps): 0/1/2 approach tiles fail, 3+ approach
+# tiles fire. We require 4 tiles of continuous same-direction travel
+# (including the approach tile) for cold-start safety margin — that's the
+# length of the cold-start acceleration curve (12→12→8→6→4 f/tile).
+#
 # No N/S ramp variants exist in Gen 4 Platinum.
 BIKE_RAMP_BEHAVIORS = {0xD7, 0xD8}
 BIKE_RAMP_DIRECTIONS = {0xD7: "right", 0xD8: "left"}
 BIKE_RAMP_TYPES = {"bike_ramp"}
-BIKE_RAMP_JUMP_TILES = 2  # total tile displacement from the entry tile
+BIKE_RAMP_JUMP_TILES = 4          # total tile displacement from entry tile (fast gear)
+BIKE_RAMP_RUNWAY_TILES = 4        # consecutive same-direction tiles required before ramp
 
 # ── Water / terrain obstacles ──
 WATER_BEHAVIORS = {0x10, 0x15}  # river, sea (surfable)
