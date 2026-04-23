@@ -93,11 +93,13 @@ BIKE_SLOPE_MAX_FRAMES = 600  # safety cap for the continuous hold phase
 # ── Bike jump ramps (Wayward Cave etc.) ──
 # 0xD7 = BIKE_RAMP_EASTWARD, 0xD8 = BIKE_RAMP_WESTWARD (pokeplatinum decomp).
 # On a bicycle in fast gear, stepping INTO the ramp in the matching direction
-# with enough momentum launches the player 4 tiles (entry + 3 past ramp). Per
-# decomp `MOVEMENT_ACTION_JUMP_FARTHER_EAST` (FX32_CONST(4), duration 12) at
-# `src/unk_0205F180.c::sub_0205F95C` gear=1 branch. We always run fast gear —
-# slow gear would halve the jump (`JUMP_NEAR_SLOW_*`) and is never a
-# deliberate state in our playthrough.
+# with enough momentum launches the player 5 tiles from the approach tile
+# (= 4 tiles past the ramp tile). Per decomp `MOVEMENT_ACTION_JUMP_FARTHER_*`
+# at `src/unk_0205F180.c::sub_0205F95C` gear=1 branch. Empirically verified
+# on `session31_wayward_cave_bike_ramps` (scripts/spike_ramp_poll_release.py):
+# release button at ramp tile (x=10) and idle 32+ frames → player lands at
+# x=14 (= ramp + 4 = approach + 5). We always run fast gear — slow gear would
+# shorten the jump (`JUMP_NEAR_SLOW_*`) and is never a deliberate state.
 #
 # The engine only launches the jump if the player has enough momentum when
 # stepping onto the ramp tile. Empirically (spike_ramp_runway.py on
@@ -110,7 +112,7 @@ BIKE_SLOPE_MAX_FRAMES = 600  # safety cap for the continuous hold phase
 BIKE_RAMP_BEHAVIORS = {0xD7, 0xD8}
 BIKE_RAMP_DIRECTIONS = {0xD7: "right", 0xD8: "left"}
 BIKE_RAMP_TYPES = {"bike_ramp"}
-BIKE_RAMP_JUMP_TILES = 4          # total tile displacement from entry tile (fast gear)
+BIKE_RAMP_JUMP_TILES = 5          # displacement from approach tile (= ramp+4, fast gear)
 BIKE_RAMP_RUNWAY_TILES = 4        # consecutive same-direction tiles required before ramp
 
 # ── Water / terrain obstacles ──

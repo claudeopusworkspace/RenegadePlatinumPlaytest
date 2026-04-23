@@ -357,6 +357,7 @@ def _execute_path(
     prev_npcs = _read_npc_positions(emu) if track_npcs else {}
     nav_info: dict = {}
     active_hold = hold_frames  # may change to SURF_HOLD_FRAMES after Surf activation
+    last_step_was_ramp = False  # suppresses end-of-path settle that would drift past landing
 
     i = 0
     while i < len(directions):
@@ -400,18 +401,41 @@ def _execute_path(
             and pre_obs.get("type") in BIKE_RAMP_TYPES
         )
         if is_ramp_step:
-            # Bike ramp jump — engine plays a fast-gear JumpFartherEast
-            # animation (FX32_CONST(4) * 12 frames = 4-tile displacement over
-            # 12 frames post-entry, per pokeplatinum/src/unk_020655F4.c:994).
-            # Empirically (spike_ramp_runway.py): entry→landing spans ~20
-            # frames; we hold for BIKE_HOLD_FRAMES + 36 to cover the entry
-            # press, the jump, and a post-settle margin. Single press
-            # triggers a single jump — do NOT retry in the slow-terrain
-            # loop below, since a retry re-presses the direction after
-            # the jump and would step one tile past the landing.
-            emu.advance_frames(BIKE_HOLD_FRAMES, buttons=[direction])
-            emu.advance_frames(36)  # cover ~20f jump animation + settle
+            # Bike ramp jump — hold direction until the player steps ONTO the
+            # ramp tile (approach + 1), then release. The engine plays out
+            # the discrete JumpFartherEast action (4-tile displacement past
+            # the ramp) during the subsequent idle, landing the player at
+            # ramp+4 = approach+BIKE_RAMP_JUMP_TILES. Holding the button
+            # *through* the jump instead causes bike fast-gear to continue
+            # past the natural landing (+1 to +4 tiles depending on idle),
+            # so we release at ramp entry — the same moment the old fixed-
+            # press path released, but with poll-driven entry timing.
+            # Empirically (scripts/spike_ramp_poll_release.py on session31
+            # save): release at ramp tile + 32+f idle → stable landing at
+            # ramp+4 with no drift.
+            from renegade_mcp.addresses import addr as _addr
+            ramp_dx, ramp_dy = _DIR_DELTAS[direction]
+            ramp_x = old_x + ramp_dx
+            ramp_y = old_y + ramp_dy
+            axis_offset = 8 if direction in ("left", "right") else 12
+            ramp_coord = ramp_x if direction in ("left", "right") else ramp_y
+            operator = ">=" if (ramp_dx + ramp_dy) > 0 else "<="
+            emu.advance_frames_until(
+                max_frames=BIKE_HOLD_FRAMES * 3,
+                conditions=[{
+                    "type": "value",
+                    "address": _addr("PLAYER_POS_BASE") + axis_offset,
+                    "size": "long",
+                    "operator": operator,
+                    "value": ramp_coord,
+                }],
+                poll_interval=1,
+                buttons=[direction],
+            )
+            emu.advance_frames(36)  # covers ~16f jump animation + settle
+            last_step_was_ramp = True
         else:
+            last_step_was_ramp = False
             # Hold direction until the movement-axis coord changes (or max
             # frames elapse). Including "b" when walking engages Running Shoes
             # (~2x speed outdoors, harmless otherwise). Bike/surf: "b" would
@@ -666,8 +690,12 @@ def _execute_path(
     # pos-change, so the last step's animation can continue briefly after we
     # release input — give it time to settle before checking whether we made
     # it to the goal. For manual walking (no repath_ctx) there's no goal.
+    # Exception: bike-ramp final step already settled its own animation; an
+    # additional WAIT_FRAMES of idle lets bike momentum drift the player one
+    # tile past the landing (empirically: 8f idle → +1 tile drift).
     if repath_ctx is not None:
-        emu.advance_frames(WAIT_FRAMES)
+        if not last_step_was_ramp:
+            emu.advance_frames(WAIT_FRAMES)
         goal_gx = repath_ctx["grid_ox"] + repath_ctx["goal_x"]
         goal_gy = repath_ctx["grid_oy"] + repath_ctx["goal_y"]
         _, cur_x, cur_y = _read_position(emu)
@@ -1434,10 +1462,10 @@ def _navigate_to_impl(
 
     # Scan the chosen path for bike slope and bike ramp tiles. Bike ramps
     # (0xD7/0xD8) appear in the path as a single direction step representing
-    # a fast-gear 4-tile jump — the ramp tile itself is impassable and never
+    # a fast-gear jump — the ramp tile itself is impassable and never
     # "walked" onto, so the scanner must detect the ramp on the NEXT tile in
-    # direction and advance the position tracker by BIKE_RAMP_JUMP_TILES (to
-    # the landing = approach + 4 in the ramp direction).
+    # direction and advance the position tracker by BIKE_RAMP_JUMP_TILES
+    # (landing = approach + 5 = ramp + 4 in the ramp direction).
     if path and terrain_info:
         sx, sy = bfs_sx, bfs_sy
         for step_dir in path:

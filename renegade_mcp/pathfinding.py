@@ -83,8 +83,8 @@ def _bike_ramp_landing(
     momentum: int | None = None,
 ) -> tuple[int, int] | None:
     """If stepping from (x, y) in `direction` collides with a bike ramp
-    whose facing matches `direction`, return the fast-gear 4-tile jump
-    landing tile (entry tile + 3 past ramp).
+    whose facing matches `direction`, return the fast-gear jump landing
+    tile (approach + BIKE_RAMP_JUMP_TILES = approach + 5 = ramp + 4).
 
     Runway requirement: the player must have accumulated momentum in the
     ramp direction before stepping onto it. The approach tile (x, y)

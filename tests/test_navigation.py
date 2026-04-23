@@ -176,13 +176,14 @@ class TestBikeRampBfsEdges:
 
     The ramp tile is hard-blocked on foot; on a bicycle in fast gear,
     stepping INTO the ramp in the matching direction with enough momentum
-    launches the player 4 tiles in that direction — entry tile + 3 past
-    the ramp (`MOVEMENT_ACTION_JUMP_FARTHER_EAST`, pokeplatinum
+    launches the player 5 tiles from the approach tile — ramp tile + 4
+    (`MOVEMENT_ACTION_JUMP_FARTHER_EAST`, pokeplatinum
     src/unk_0205F180.c:613-629 + src/unk_020655F4.c:994, empirically
-    verified in scripts/spike_ramp_runway.py). BFS represents the jump as
-    a single directional edge from the approach tile (ramp - 1) to the
-    landing tile (ramp + 3), skipping the ramp tile itself and whatever
-    walls sit in the intermediate tiles.
+    verified in scripts/spike_ramp_poll_release.py: release button at
+    ramp tile and idle 32+ frames → player lands at ramp+4). BFS
+    represents the jump as a single directional edge from the approach
+    tile (ramp - 1) to the landing tile (ramp + 4), skipping the ramp
+    tile itself and whatever walls sit in the intermediate tiles.
 
     The engine requires momentum to fire the jump. Empirically 0-2
     approach tiles fail, 3+ succeed; we use BIKE_RAMP_RUNWAY_TILES=4 for
@@ -193,32 +194,32 @@ class TestBikeRampBfsEdges:
     SAVE_STATE = "session31_wayward_cave_bike_ramps"
 
     def test_ramp_landing_helper_east(self):
-        """_bike_ramp_landing returns the 4-tile-east landing when the ramp
+        """_bike_ramp_landing returns the approach+5 landing when the ramp
         faces east, the landing is passable, and momentum is sufficient."""
         from renegade_mcp.pathfinding import _bike_ramp_landing
-        # 8-wide row with approach at (3, 0), ramp at (4, 0), landing at (7, 0).
+        # 9-wide row with approach at (3, 0), ramp at (4, 0), landing at (8, 0).
         # Tiles behind approach (0..2) are passable → geometric runway check
         # succeeds even without an explicit momentum arg.
-        grid = [[(True, 0x08)] * 4 + [(False, 0xD7)] + [(True, 0x08)] * 3]
-        landing = _bike_ramp_landing(grid, 3, 0, "right", 1, 0, width=8, height=1)
-        assert landing == (7, 0)
+        grid = [[(True, 0x08)] * 4 + [(False, 0xD7)] + [(True, 0x08)] * 4]
+        landing = _bike_ramp_landing(grid, 3, 0, "right", 1, 0, width=9, height=1)
+        assert landing == (8, 0)
 
     def test_ramp_landing_wrong_direction(self):
         """Ramp only triggers in its facing direction — approaching a
         ramp_E from the east (moving left) must not produce a jump."""
         from renegade_mcp.pathfinding import _bike_ramp_landing
-        grid = [[(True, 0x08)] * 4 + [(False, 0xD7)] + [(True, 0x08)] * 3]
+        grid = [[(True, 0x08)] * 4 + [(False, 0xD7)] + [(True, 0x08)] * 4]
         # Stepping left from (5, 0): neighbor (4, 0) is ramp_E but facing
         # east doesn't match the westward approach direction.
-        landing = _bike_ramp_landing(grid, 5, 0, "left", -1, 0, width=8, height=1)
+        landing = _bike_ramp_landing(grid, 5, 0, "left", -1, 0, width=9, height=1)
         assert landing is None
 
     def test_ramp_landing_blocked_landing(self):
         """If the landing tile is impassable, the ramp edge does not fire."""
         from renegade_mcp.pathfinding import _bike_ramp_landing
-        # Approach passable, ramp, then walls — landing at (7, 0) blocked.
-        grid = [[(True, 0x08)] * 4 + [(False, 0xD7)] + [(False, 0x00)] * 3]
-        landing = _bike_ramp_landing(grid, 3, 0, "right", 1, 0, width=8, height=1)
+        # Approach passable, ramp, then walls — landing at (8, 0) blocked.
+        grid = [[(True, 0x08)] * 4 + [(False, 0xD7)] + [(False, 0x00)] * 4]
+        landing = _bike_ramp_landing(grid, 3, 0, "right", 1, 0, width=9, height=1)
         assert landing is None
 
     def test_ramp_landing_insufficient_runway(self):
@@ -230,10 +231,10 @@ class TestBikeRampBfsEdges:
         """
         from renegade_mcp.pathfinding import _bike_ramp_landing
         # Only 2 passable tiles before approach (wall at col 0). Approach at
-        # (3, 0), ramp at (4, 0), landing at (7, 0).
+        # (3, 0), ramp at (4, 0), landing at (8, 0).
         grid = [[(False, 0x00)] + [(True, 0x08)] * 3 + [(False, 0xD7)]
-                + [(True, 0x08)] * 3]
-        landing = _bike_ramp_landing(grid, 3, 0, "right", 1, 0, width=8, height=1)
+                + [(True, 0x08)] * 4]
+        landing = _bike_ramp_landing(grid, 3, 0, "right", 1, 0, width=9, height=1)
         assert landing is None
 
     def test_ramp_landing_momentum_override(self):
@@ -243,18 +244,19 @@ class TestBikeRampBfsEdges:
         from renegade_mcp.pathfinding import _bike_ramp_landing
         from renegade_mcp.nav_constants import BIKE_RAMP_RUNWAY_TILES
         # Short geometric runway (1 tile) but momentum=RUNWAY-1 supplied.
+        # Approach at (2, 0), ramp at (3, 0), landing = 2 + 5 = (7, 0).
         grid = [[(False, 0x00)] * 2 + [(True, 0x08), (False, 0xD7)]
                 + [(True, 0x08)] * 4]
         landing = _bike_ramp_landing(
             grid, 2, 0, "right", 1, 0, width=8, height=1,
             momentum=BIKE_RAMP_RUNWAY_TILES - 1,
         )
-        assert landing == (6, 0)
+        assert landing == (7, 0)
 
     def test_2d_bfs_crosses_ramp_in_wayward_cave(self, emu: EmulatorClient):
         """From the west-chamber corridor, the 2D BFS must reach the landing
-        tile (13, 17) past the east ramp at (10, 17). Fast-gear jump lands
-        3 tiles past the ramp (4 from approach); (13, 17) is the first
+        tile (14, 17) past the east ramp at (10, 17). Fast-gear jump lands
+        4 tiles past the ramp (5 from approach); (14, 17) is the first
         passable landing on row 17 in Wayward Cave B1F."""
         load_state(emu, self.SAVE_STATE)
         from renegade_mcp.nav_constants import _read_position
@@ -266,8 +268,8 @@ class TestBikeRampBfsEdges:
             emu, map_id, px, py, 43, 38,
         )
         reach = _bfs_reachable(ti, set(), px - ox, py - oy, w, h)
-        assert (13 - ox, 17 - oy) in reach, (
-            "2D BFS must reach ramp landing (13, 17) from the player "
+        assert (14 - ox, 17 - oy) in reach, (
+            "2D BFS must reach ramp landing (14, 17) from the player "
             "corridor via the ramp_E at (10, 17); got "
             f"{len(reach)} tiles, ramp edge missing."
         )
@@ -301,44 +303,45 @@ class TestBikeRampBfsEdges:
 
         Layout (single row, east-facing ramps at cols 6 and 11):
 
-            0 1 2 3 4 5 R 8 9 10 R 12 13 14 15
-                       ^         ^
-                       ramp1     ramp2
+            0 1 2 3 4 5 R 7 8 9 10 R 12 13 14 15
+                       ^           ^
+                       ramp1       ramp2
 
-        Cols 7-8 (mid-jump of ramp1) and 12-13 (mid-jump of ramp2) are
-        walls, so the 3 tiles behind ramp2's approach (col 10) contain a
-        wall at col 8 — the geometric fallback would reject ramp2. Only
-        momentum carry-through from landing (9, 0) admits the chain to
-        landing (14, 0). Matches the empirical chain observed in
-        scripts/spike_ramp_runway.py (ramp1@10 → land 13 → walk 14 →
-        ramp2@15 → land 18).
+        Cols 7-9 (mid-jump of ramp1) and 12-14 (mid-jump of ramp2) are
+        walls, so the 3 tiles behind ramp2's approach (col 10) contain
+        all walls — the geometric fallback would reject ramp2. Only
+        momentum carry-through from landing (10, 0) admits the chain to
+        landing (15, 0). With BIKE_RAMP_JUMP_TILES=5, ramp1's landing
+        is exactly ramp2's approach (both col 10), so no intermediate
+        walk step is needed.
         """
         from renegade_mcp.pathfinding import _bfs_reachable, _bfs_pathfind
         row: list[tuple[bool, int]] = []
         for i in range(16):
             if i in (6, 11):
                 row.append((False, 0xD7))        # east ramp
-            elif i in (7, 8, 12, 13):
+            elif i in (7, 8, 9, 12, 13, 14):
                 row.append((False, 0x00))        # mid-jump walls
             else:
                 row.append((True, 0x08))         # passable
         grid = [row]
 
         reach = _bfs_reachable(grid, set(), 0, 0, width=16, height=1)
-        assert (9, 0) in reach, "ramp1 landing (9, 0) must be reachable"
-        assert (14, 0) in reach, (
-            "ramp2 landing (14, 0) must be reachable via momentum carry "
+        assert (10, 0) in reach, "ramp1 landing (10, 0) must be reachable"
+        assert (15, 0) in reach, (
+            "ramp2 landing (15, 0) must be reachable via momentum carry "
             f"from ramp1 — got reach={sorted(reach)}"
         )
 
         path = _bfs_pathfind(grid, set(), 0, 0, 15, 0, width=16, height=1)
         assert path is not None, "path to (15, 0) must exist via chained ramps"
-        # 5 walks + ramp1 + 1 walk + ramp2 + 1 walk = 9 edges.
-        assert len(path) == 9, (
-            f"Expected 9-edge chained path (5 walk + ramp + walk + ramp + walk), "
+        # 5 walks + ramp1 + ramp2 = 7 edges (ramp1 lands exactly on ramp2's
+        # approach tile, so no intermediate walk edge is needed).
+        assert len(path) == 7, (
+            f"Expected 7-edge chained path (5 walk + ramp + ramp), "
             f"got {len(path)}: {path}"
         )
-        assert path.count("right") == 9
+        assert path.count("right") == 7
 
     def test_2d_bfs_turn_resets_momentum_before_ramp(self):
         """A ramp requires momentum in its facing direction. A BFS path
@@ -357,9 +360,9 @@ class TestBikeRampBfsEdges:
         onto the approach tile, leaving just 1 tile of east momentum.
         """
         from renegade_mcp.pathfinding import _bfs_reachable
-        # 10-wide, 3-tall grid. Walls block horizontal travel on row 0
+        # 11-wide, 3-tall grid. Walls block horizontal travel on row 0
         # except for the final approach tile + ramp + landing.
-        width, height = 10, 3
+        width, height = 11, 3
         grid = [[(False, 0x00)] * width for _ in range(height)]
         # Fill row 2 fully passable (travel lane).
         for x in range(width):
@@ -367,17 +370,18 @@ class TestBikeRampBfsEdges:
         # Fill column 4 passable (vertical channel up to the approach).
         for y in range(height):
             grid[y][4] = (True, 0x08)
-        # Row 0: approach at x=4, ramp at x=5, landing zone 6-8.
+        # Row 0: approach at x=4, ramp at x=5, landing at x=9 (= approach+5).
         grid[0][4] = (True, 0x08)
         grid[0][5] = (False, 0xD7)
         grid[0][6] = (False, 0x00)
         grid[0][7] = (False, 0x00)
-        grid[0][8] = (True, 0x08)
+        grid[0][8] = (False, 0x00)
+        grid[0][9] = (True, 0x08)
 
         reach = _bfs_reachable(grid, set(), 0, 2, width=width, height=height)
         assert (4, 0) in reach, "approach tile (4, 0) must be reachable"
-        assert (8, 0) not in reach, (
-            "Landing (8, 0) must NOT be reachable — only 1 tile of east "
+        assert (9, 0) not in reach, (
+            "Landing (9, 0) must NOT be reachable — only 1 tile of east "
             "momentum after turning up onto approach. "
             f"Got reach={sorted(reach)}"
         )
@@ -388,7 +392,7 @@ class TestBikeRampBfsEdges:
         """BUG-043 closure (phase 3): chained-ramp momentum carry-through
         unblocks the Wayward Cave B1F east chamber.
 
-        From (7, 22), phase-1 BFS reached (13, 17) — the first ramp's
+        From (7, 22), phase-1 BFS reached (14, 17) — the first ramp's
         landing — but could not proceed because the next ramp's
         approach has only a 1-tile geometric runway behind it. With
         momentum-aware BFS, the landing's carried momentum (m=RUNWAY in
@@ -410,13 +414,13 @@ class TestBikeRampBfsEdges:
             extra_targets=[(22, 9), (31, 16), (33, 8)],
         )
         reach = _bfs_reachable(ti, set(), px - ox, py - oy, w, h)
-        assert (13 - ox, 17 - oy) in reach, (
-            "Regression: phase-1 ramp edge to (13, 17) must still be "
+        assert (14 - ox, 17 - oy) in reach, (
+            "Regression: phase-1 ramp edge to (14, 17) must still be "
             "admitted by the momentum-aware BFS."
         )
         assert (31 - ox, 16 - oy) in reach, (
             "Chain-aware BFS must reach the east-chamber Pokéball at "
-            "(31, 16) via chained ramps from (13, 17)'s landing "
+            "(31, 16) via chained ramps from (14, 17)'s landing "
             "momentum. Regressing to 251 reachable tiles (phase-1 only) "
             "would fail this assertion."
         )
