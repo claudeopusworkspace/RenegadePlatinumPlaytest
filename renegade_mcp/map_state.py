@@ -80,10 +80,17 @@ BEHAVIORS = {
     0xD9: "bike_slope_top", 0xDA: "bike_slope_bottom", 0xDB: "bike_parking",
 }
 
-# Behavior bytes that indicate cycling road bridge tiles (forced downhill slide
-# when FLAG_ON_CYCLING_ROAD is set). Used by navigation to detect/refuse sliding.
-BIKE_BRIDGE_BEHAVIORS = frozenset({0x70, 0x71, 0x76, 0x77, 0x78, 0x79,
-                                    0x7A, 0x7B, 0x7C, 0x7D})
+# Behavior bytes that indicate Cycling Road forced-slide bridge tiles.
+# 0x70 = bridge_start, 0x71 = bridge body. `is_on_cycling_road` uses this
+# set to dispatch into the auto-slide traversal on Route 206.
+# IMPORTANT: the Wayward-style bike bridges (0x76–0x7D) are NOT included
+# here — those are bike-required but have NO forced slide, and must not
+# go through `_navigate_cycling_road`. They are handled in nav_constants
+# as `BIKE_BRIDGE_BEHAVIORS` and routed via `_step_needs_bike`.
+# `BIKE_BRIDGE_BEHAVIORS` kept as an alias for backward compatibility
+# with existing test imports.
+CYCLING_ROAD_BRIDGE_BEHAVIORS = frozenset({0x70, 0x71})
+BIKE_BRIDGE_BEHAVIORS = CYCLING_ROAD_BRIDGE_BEHAVIORS
 
 # Cycling road flag — set by gate scripts, forces bike + downhill slide
 FLAG_ON_CYCLING_ROAD = 2453
@@ -121,24 +128,24 @@ def is_on_cycling_road(emu: "EmulatorClient", target_x: int = -1, target_y: int 
     # Check current tile
     if 0 <= ly < len(terrain) and 0 <= lx < len(terrain[ly]):
         behavior = terrain[ly][lx] & 0x00FF
-        if behavior in BIKE_BRIDGE_BEHAVIORS:
+        if behavior in CYCLING_ROAD_BRIDGE_BEHAVIORS:
             return True
 
-    # Check target tile if provided
+    # Column-scan heuristic for "player about to step onto bridge body from
+    # above". Skipping a naive target-tile behavior check — `bridge_start`
+    # (0x70) appears as bookend tiles on Wayward-style bike bridges that
+    # are NOT forced-slide, and triggering cycling_road dispatch for
+    # those produces a false positive (the Wayward bridges are bike-
+    # required but not auto-slide).
+    # Only valid when the player is actually at bridge elevation —
+    # an under-bridge player on ground shares the bridge's 2D column but is
+    # physically below it, and sliding would be wrong. Compare player
+    # height to typical bridge body height (>= 40 in fx32 units for Cycling
+    # Road's L3 bridge body). Skip scan if we can't read height.
     if target_x >= 0 and target_y >= 0:
         tlx = target_x - ox
         tly = target_y - oy
-        if 0 <= tly < len(terrain) and 0 <= tlx < len(terrain[tly]):
-            t_behavior = terrain[tly][tlx] & 0x00FF
-            if t_behavior in BIKE_BRIDGE_BEHAVIORS:
-                return True
 
-        # Column-scan heuristic for "player about to step onto bridge body from
-        # above". Only valid when the player is actually at bridge elevation —
-        # an under-bridge player on ground shares the bridge's 2D column but is
-        # physically below it, and sliding would be wrong. Compare player
-        # height to typical bridge body height (>= 40 in fx32 units for Cycling
-        # Road's L3 bridge body). Skip scan if we can't read height.
         try:
             player_h = read_player_height(emu)
         except Exception:

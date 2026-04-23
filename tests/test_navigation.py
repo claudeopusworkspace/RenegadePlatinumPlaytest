@@ -625,6 +625,96 @@ class TestBikeRampSegmentExecution:
         )
 
 
+class TestBikeBridgeTraversal:
+    """Wayward Cave bike-only suspension bridges (behaviors 0x76–0x7D).
+
+    On-foot stepping onto a ``bike_bridge_*`` body tile is blocked by the
+    engine; the player must be on the bicycle. The engine also refuses
+    ``use_item("Bicycle")`` while standing on a body tile, so mid-bridge
+    dismount is impossible — the bike stays on until the player exits
+    onto a non-body tile.
+
+    The executor auto-mounts before stepping onto a body tile, stays on
+    bike across the whole span, and auto-dismounts on the first non-body
+    step. Bike momentum on open terrain produces a few tiles of fast-gear
+    coast after the button release; the overshoot-retry wrapper
+    (``_nav_impl_with_overshoot_retry``) absorbs that by re-BFS-ing on
+    foot from the coast-settled position.
+
+    Save state: ``bug_bike_bridge_unknown`` — player on foot at (22, 13),
+    standing on a ``bridge_start`` tile directly east of the south bridge
+    body (behaviors 0x7A/0x7B at x=16–21).
+    """
+
+    SAVE_STATE = "bug_bike_bridge_unknown"
+
+    def test_navigate_west_across_bridge(self, emu: EmulatorClient):
+        """Cross the south bridge east→west and land on target (14, 13).
+
+        The west trip uses slow-gear mounts so bike coasting is minimal;
+        the executor should reach target in one pass without retries.
+        """
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.nav_constants import _read_position
+        from renegade_mcp.navigation import navigate_to
+
+        _, sx, sy = _read_position(emu)
+        assert (sx, sy) == (22, 13), "save state must start at (22, 13)"
+
+        result = navigate_to(emu, target_x=14, target_y=13, flee_encounters=True)
+        _, ex, ey = _read_position(emu)
+        assert (ex, ey) == (14, 13), (
+            f"expected (14, 13); got ({ex}, {ey}).  Result: {result}"
+        )
+        assert not result.get("stopped_early"), (
+            f"unexpected stopped_early: {result}"
+        )
+
+    def test_on_foot_stepping_onto_bridge_body_is_blocked_without_bike(
+        self, emu: EmulatorClient,
+    ):
+        """Without the bicycle auto-mount, the player bonks on the bridge.
+
+        Sanity-check: manual walk into the first body tile with no
+        auto-mount produces zero displacement. Confirms the engine's
+        on-foot rejection is the invariant the executor relies on.
+        """
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.addresses import addr
+        from renegade_mcp.nav_constants import _read_position, step_hold, HOLD_FRAMES
+
+        _, sx, sy = _read_position(emu)
+        assert (sx, sy) == (22, 13)
+        cycling = bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short"))
+        assert cycling is False, "save state must be on foot"
+
+        # Manual step_hold west — onto (21, 13) bike_bridge_EW body.
+        step_hold(emu, "left", HOLD_FRAMES)
+        _, ex, ey = _read_position(emu)
+        assert (ex, ey) == (22, 13), (
+            f"on-foot step onto bridge body should be blocked; "
+            f"player moved to ({ex}, {ey})"
+        )
+
+    def test_dismounts_after_bridge_exit(self, emu: EmulatorClient):
+        """After crossing the bridge, the player ends off-bike.
+
+        Bike bridges share the "dismount for non-segment walking" rule
+        with ramps: once the last body tile is behind us, the executor
+        auto-dismounts so subsequent walking has no momentum carryover.
+        """
+        load_state(emu, self.SAVE_STATE)
+        from renegade_mcp.addresses import addr
+        from renegade_mcp.navigation import navigate_to
+
+        navigate_to(emu, target_x=14, target_y=13, flee_encounters=True)
+        cycling = bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short"))
+        assert cycling is False, (
+            "Player must be off-bike after bridge crossing so that "
+            "subsequent on-foot walks don't inherit bike momentum."
+        )
+
+
 class TestBikeSlopeBfsEdges:
     """BUG-045: BFS must require an uphill runway before a bike slope tile.
 

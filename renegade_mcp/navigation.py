@@ -52,6 +52,8 @@ from renegade_mcp.nav_constants import (  # noqa: F401
     BIKE_RAMP_NEAR_JUMP_TILES,
     BIKE_RAMP_RUNWAY_TILES,
     BIKE_RAMP_TYPES,
+    BIKE_BRIDGE_BEHAVIORS,
+    BIKE_BRIDGE_TYPES,
     BIKE_SLOPE_BACKUP_TILES,
     BIKE_SLOPE_BEHAVIORS,
     BIKE_SLOPE_MAX_FRAMES,
@@ -505,6 +507,13 @@ def _scan_path_for_bike_obstacles(
                         "type": "bike_slope",
                         "behavior": beh,
                     }
+            elif beh in BIKE_BRIDGE_BEHAVIORS:
+                gx, gy = sx + grid_ox, sy + grid_oy
+                if (gx, gy) not in obstacle_tiles:
+                    obstacle_tiles[(gx, gy)] = {
+                        "type": "bike_bridge",
+                        "behavior": beh,
+                    }
 
 
 def _step_needs_bike(
@@ -513,7 +522,7 @@ def _step_needs_bike(
     """Return True if executing step ``i`` from (cur_x, cur_y) requires the
     bicycle.
 
-    Two conditions qualify:
+    Three conditions qualify:
       • A bike-ramp entry within the same-direction runway window
         (BIKE_RAMP_RUNWAY_TILES): stay on bike through approach + chain so
         the engine's running-start detection fires the jump.
@@ -527,6 +536,13 @@ def _step_needs_bike(
         south backup before the climb. A runway-style lookahead would
         mount the bike while the plan still has down-steps left, causing
         mount/dismount thrashing and oscillation against the repath loop.
+      • The current OR immediate-next tile is a bike-bridge body
+        (BIKE_BRIDGE_TYPES). The engine rejects on-foot entry to body
+        tiles AND rejects mid-bridge dismounts, so the bike must be on
+        across the whole span. Including the current tile in the check
+        keeps the bike active for the last step that exits the bridge
+        (body → bridge_start) so we don't emit a doomed dismount call
+        from a body tile.
     """
     if i >= len(directions):
         return False
@@ -534,6 +550,14 @@ def _step_needs_bike(
     dx, dy = _DIR_DELTAS.get(d, (0, 0))
     if dx == 0 and dy == 0:
         return False
+
+    # Bike bridge — current or immediate-next tile.
+    cur = obstacle_tiles.get((cur_x, cur_y))
+    if cur is not None and cur.get("type") in BIKE_BRIDGE_TYPES:
+        return True
+    imm_bridge = obstacle_tiles.get((cur_x + dx, cur_y + dy))
+    if imm_bridge is not None and imm_bridge.get("type") in BIKE_BRIDGE_TYPES:
+        return True
 
     # Slope ascent — immediate next tile only.
     if d == "up":
@@ -638,8 +662,14 @@ def _execute_path(
             # first ramp of the chain fires at slow-gear displacement.
             emu.advance_frames(WAIT_FRAMES)
             if not _auto_mount_for_slope(emu):
-                is_ramp_here = pre_obs is not None and pre_obs.get("type") in BIKE_RAMP_TYPES
-                kind = "bike_ramp" if is_ramp_here else "bike_slope"
+                cur_obs = obstacle_tiles.get((old_x, old_y))
+                if (pre_obs is not None and pre_obs.get("type") in BIKE_BRIDGE_TYPES) \
+                        or (cur_obs is not None and cur_obs.get("type") in BIKE_BRIDGE_TYPES):
+                    kind = "bike_bridge"
+                elif pre_obs is not None and pre_obs.get("type") in BIKE_RAMP_TYPES:
+                    kind = "bike_ramp"
+                else:
+                    kind = "bike_slope"
                 nav_info["blocked_at"] = {"x": old_x, "y": old_y, "step": steps_taken}
                 nav_info["blocked_reason"] = f"{kind}_requires_bicycle"
                 nav_info["note"] = (
@@ -648,6 +678,24 @@ def _execute_path(
                     f"Get the Bicycle and retry."
                 )
                 return True, steps_taken, repaths_used, nav_info
+            # Bike-bridge mounts use SLOW gear (byte=1). Slow gear prevents
+            # the fast-gear bike's ~3-tile coast-on-release that otherwise
+            # carries the player past the bridge exit during the dismount
+            # menu open (the menu's verification `down` press then reads as
+            # overworld input, adding a +1 south drift on top of the
+            # westward coast). Bridges don't need momentum — slow gear is
+            # fine. Ramps/slopes keep fast gear, which is asserted later.
+            pre_obs_bridge = obstacle_tiles.get(pre_target)
+            cur_obs_bridge = obstacle_tiles.get((old_x, old_y))
+            on_bridge_segment = (
+                (pre_obs_bridge is not None
+                 and pre_obs_bridge.get("type") in BIKE_BRIDGE_TYPES)
+                or (cur_obs_bridge is not None
+                    and cur_obs_bridge.get("type") in BIKE_BRIDGE_TYPES)
+            )
+            if on_bridge_segment:
+                from renegade_mcp.use_item import _set_bike_gear
+                _set_bike_gear(emu, 1)
             active_hold = BIKE_HOLD_FRAMES
         elif not step_wants_bike and on_bike:
             # CYCLING_GEAR_ADDR is also non-zero during surf/waterfall, but
@@ -1284,14 +1332,17 @@ def navigate_to(
             flee_encounters=flee_encounters,
         )
 
-    hold = _get_move_hold(emu)
     if not flee_encounters:
-        return _navigate_to_impl(emu, target_x, target_y, path_choice=path_choice, hold_frames=hold)
+        return _nav_impl_with_overshoot_retry(
+            emu, target_x, target_y, path_choice=path_choice,
+        )
 
     flee_log: list[dict[str, Any]] = []
     original_start: dict[str, Any] | None = None
     for _ in range(MAX_FLEE_ENCOUNTERS):
-        result = _navigate_to_impl(emu, target_x, target_y, path_choice=path_choice, hold_frames=hold)
+        result = _nav_impl_with_overshoot_retry(
+            emu, target_x, target_y, path_choice=path_choice,
+        )
         # Preserve the user-visible start from the first iteration — subsequent
         # retries restart BFS from wherever the interrupt left the player, but
         # the caller wants to know where they were when the call started.
@@ -1425,6 +1476,53 @@ def _navigate_to_poi(
     from renegade_mcp.interaction import interact_with
     result = interact_with(emu, object_index=obj_idx, flee_encounters=flee_encounters)
     result["poi_resolved"] = resolved
+    return result
+
+
+def _nav_impl_with_overshoot_retry(
+    emu: EmulatorClient, target_x: int, target_y: int,
+    path_choice: str | None = None,
+    max_retries: int = 3,
+) -> dict[str, Any]:
+    """Call `_navigate_to_impl`; if it finishes short of target because the
+    plan ran out (`path_exhausted_before_target`), re-BFS from the current
+    position and retry up to ``max_retries`` times.
+
+    Motivation: bike-bridge traversal leaves the player on a bike with a
+    few tiles of fast-gear coasting momentum; the dismount menu takes
+    long enough that the player can drift past the planned final tile.
+    Rather than tune the coasting out (fragile), we just repath on foot
+    from wherever we ended up. Covers any future "plan-followed-exactly-
+    but-engine-carried-us-further" case without specializing on bikes.
+
+    ``path_choice`` is only honored on the first attempt — subsequent
+    retries are treated as repaths and should not re-ask the user.
+    """
+    result = _navigate_to_impl(emu, target_x, target_y, path_choice=path_choice)
+    attempts_used = 0
+    while (
+        attempts_used < max_retries
+        and result.get("stopped_early")
+        and result.get("blocked_reason") == "path_exhausted_before_target"
+    ):
+        final = result.get("final") or {}
+        if final.get("x") == target_x and final.get("y") == target_y:
+            break  # already there — no-op
+        # Re-BFS from current position. Drop path_choice so the retry
+        # doesn't trip the "obstacle path requires choice" prompt.
+        retry_result = _navigate_to_impl(
+            emu, target_x, target_y, path_choice=None,
+        )
+        # Preserve the original start position — otherwise successive retries
+        # would shadow the caller's "where did we begin" expectation.
+        if "start" in result:
+            retry_result["start"] = result["start"]
+        # Sum step counts across retries so the caller sees total movement.
+        retry_result["steps"] = result.get("steps", 0) + retry_result.get("steps", 0)
+        result = retry_result
+        attempts_used += 1
+    if attempts_used > 0:
+        result["overshoot_repaths"] = attempts_used
     return result
 
 

@@ -138,6 +138,28 @@ BIKE_RAMP_JUMP_TILES = 5          # far-jump displacement from approach tile (= 
 BIKE_RAMP_NEAR_JUMP_TILES = 2     # near-jump displacement from approach tile (= ramp+1)
 BIKE_RAMP_RUNWAY_TILES = 4        # consecutive same-direction tiles required for FAR jump
 
+# ── Bike bridges (Wayward Cave etc.) ──
+# Wooden bike-only bridges whose body tiles reject on-foot entry. Mount the
+# bike to cross, dismount on the first non-body tile on the far side. No
+# momentum requirement — slow or fast gear both traverse cleanly.
+#
+# Body behaviors (pokeplatinum decomp map_tile_behaviors.h):
+#   0x76 BIKE_BRIDGE_NS / 0x77 BIKE_BRIDGE_NS_ENCOUNTER
+#   0x78 BIKE_BRIDGE_NS_WATER / 0x79 BIKE_BRIDGE_NS_SAND
+#   0x7A BIKE_BRIDGE_EW / 0x7B BIKE_BRIDGE_EW_ENCOUNTER
+#   0x7C BIKE_BRIDGE_EW_WATER / 0x7D BIKE_BRIDGE_EW_SAND
+#
+# Excludes 0x70 BRIDGE_START and 0x71 BRIDGE — those are the Cycling Road
+# forced-slide bridge body and are handled by cycling_road.py via
+# FLAG_ON_CYCLING_ROAD. 0x70 at the mouth of a bike bridge is walkable on
+# foot AND bike; we intentionally do NOT require bike for 0x70 entry,
+# which lets the mount happen on the bridge_start tile itself.
+#
+# Empirical invariant: the engine refuses `use_item("Bicycle")` while the
+# player is on a body tile — "stuck mid-bridge" is not reachable.
+BIKE_BRIDGE_BEHAVIORS = {0x76, 0x77, 0x78, 0x79, 0x7A, 0x7B, 0x7C, 0x7D}
+BIKE_BRIDGE_TYPES = {"bike_bridge"}
+
 # ── Water / terrain obstacles ──
 WATER_BEHAVIORS = {0x10, 0x15}  # river, sea (surfable)
 WATERFALL_BEHAVIOR = 0x13
