@@ -34,7 +34,7 @@ Full suite: **534 passed** (+3 new tests, zero regressions) in ~2:35.
 
 ### Commits
 
-1. _pending commit at session end_
+1. `feat(nav): momentum-aware BFS for chained bike ramps` (a5183c9)
 
 ### Take-aways
 
