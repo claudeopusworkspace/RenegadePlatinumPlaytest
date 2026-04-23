@@ -1,6 +1,0 @@
-{"type":"commentary","stream_time":0.0,"text":"Now let me load the ROM and the first bug state.","style":"normal"}
-{"type":"commentary","stream_time":0.0,"text":"Let me start with the simplest bug first \u2014 BUG-001 (throw_ball formatter). This is likely a code-level analysis since the bug is in the formatter output.","style":"normal"}
-{"type":"commentary","stream_time":0.0,"text":"Found BUG-001 root causes. Let me look at how text is decoded to confirm the `[FFFE]` issue.","style":"normal"}
-{"type":"load_state","path":"/workspace/RenegadePlatinumPlaytest/savestates/bug_qa_throw_ball_state_mismatch.mst"}
-{"type":"commentary","stream_time":0.0,"text":"BUG-001 is analytically clear. Let me verify by loading the state.","style":"normal"}
-{"type":"shutdown"}
