@@ -304,11 +304,18 @@ def _try_repath(
 
 
 def _auto_mount_for_slope(emu: EmulatorClient) -> bool:
-    """Mount the bicycle if not already on it. Returns True on success."""
+    """Mount the bicycle if not already on it. Returns True on success.
+
+    Always ends with the bike in fast gear (BIKE_GEAR_STATE_ADDR == 0) —
+    `use_item("Bicycle")` already forces fast on fresh mount, and if the
+    player was already cycling we toggle here. Slopes and ramps only fire
+    reliably at fast gear.
+    """
     from renegade_mcp.addresses import addr
-    from renegade_mcp.use_item import use_item
+    from renegade_mcp.use_item import _ensure_fast_gear, use_item
 
     if bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short")):
+        _ensure_fast_gear(emu)
         return True
     mount = use_item(emu, "Bicycle")
     return bool(mount.get("success"))

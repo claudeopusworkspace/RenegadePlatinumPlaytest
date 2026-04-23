@@ -415,8 +415,15 @@ def _flow_bicycle(
     item_index: int,
     item_entry: dict,
 ) -> dict[str, Any]:
-    """Bicycle toggle flow: USE → mount/dismount animation."""
-    from renegade_mcp.addresses import addr
+    """Bicycle toggle flow: USE → mount/dismount animation.
+
+    On a successful mount (transition to on-bike), also ensures the bike
+    ends in fast gear (BIKE_GEAR_STATE_ADDR == 0). Fast is the only gear
+    we use intentionally — bike slopes and ramps both need the faster
+    momentum to behave, and slow gear halves the ramp-jump displacement.
+    Toggle is input-only (B press in the overworld), so no memory writes.
+    """
+    from renegade_mcp.addresses import BIKE_GEAR_STATE_ADDR, addr
     was_cycling = bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short"))
 
     if not _navigate_to_bag_pocket(emu, pocket_name, item_index):
@@ -438,6 +445,9 @@ def _flow_bicycle(
             "May not be usable here (indoors, etc.)."
         )
 
+    if is_cycling:
+        _ensure_fast_gear(emu)
+
     action = "mounted" if is_cycling else "dismounted"
     return {
         "success": True,
@@ -446,6 +456,21 @@ def _flow_bicycle(
         "on_bicycle": is_cycling,
         "formatted": f"{action.capitalize()} Bicycle.",
     }
+
+
+def _ensure_fast_gear(emu: EmulatorClient) -> None:
+    """Toggle to fast gear (byte=0) via a single B press if currently slow.
+
+    B toggles the gear in the overworld when on-bike (see BIKE_GEAR_STATE_ADDR
+    in addresses.py). Call only while actually cycling — in any other context
+    B would be interpreted as cancel/dialogue-advance.
+    """
+    from renegade_mcp.addresses import BIKE_GEAR_STATE_ADDR
+    gear = emu.read_memory(BIKE_GEAR_STATE_ADDR, size="byte")
+    if gear == 0:
+        return
+    emu.press_buttons(["b"], frames=8)
+    emu.advance_frames(8)
 
 
 def _flow_party_medicine(
