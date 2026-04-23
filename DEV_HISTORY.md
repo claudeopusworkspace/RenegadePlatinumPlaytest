@@ -4,6 +4,87 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Bike-ramp segment execution + POI-path ramp scanner (2026-04-23 session 38)
+
+Goal that kicked off the session: auto-navigate to the east-chamber Pokéball in Wayward Cave (`bug_bike_ramps_repel`, target (31, 17) via a 4-ramp chain). Session 37 had closed the BFS side; session 38 closed the executor side. **Goal achieved: `navigate_to(poi="obj:2")` picks up the Max Ether in 8 steps with 1 repath.**
+
+### Repro with Repel
+
+Woj noted the previous spike was being swamped by wild encounters. Built a dedicated save state `bug_bike_ramps_repel` (player at (7, 22) on bike, Repel active) so diagnostic spikes see clean executor behavior without 11 encounter-flee interruptions per run. Checked-in `scripts/spike_debug_ramp_nav.py` monkey-patches `_step_needs_bike`, `_bike_ramp_segment`, `_auto_mount/dismount`, and `step_hold` to log per-step decisions.
+
+### Problem 1: cross-axis momentum slip at direction changes
+
+First spike revealed: `up x5` on bike → first `left` step landed at (6, **16**) instead of (6, 17). The bike finishes its in-flight up-step during the `left` press, shifting the player diagonally off the planned path. `step_hold`'s axis-change exit condition misses the cross-axis drift because it only watches the target axis.
+
+**Fix direction (from Woj):** "make sure that any movement outside of actual slope/ramp runs is off the bike entirely." Dismount aggressively — the bike is only on during runway + ramp/slope chains, walking on foot everywhere else.
+
+### Implementation — `_step_needs_bike` + dismount-between-segments
+
+`renegade_mcp/navigation.py`:
+
+- `_auto_dismount_if_bike(emu)` — no-op when already off-bike; otherwise uses the Bicycle item.
+- `_step_needs_bike(directions, i, obstacle_tiles, cur_x, cur_y)` — True when the step is a slope ascent on the IMMEDIATE next tile OR a ramp appears within `BIKE_RAMP_RUNWAY_TILES` ahead (same direction only — momentum resets on turn). Slope check limited to the immediate tile (not full runway) so the BUG-045 slope-runway backup plan doesn't cause mount/dismount thrashing against the BFS repath loop.
+- `_bike_ramp_segment(...)` — forward-simulates the path through chained ramps and returns `(segment_end_idx, landing_x, landing_y, last_ramp_tile_x, last_ramp_tile_y)` when a runway + ramp chain exists starting at step `i`.
+- `_execute_path` gets a new mount/dismount decision at the top of the loop:
+  - `step_wants_bike and not on_bike` → settle `WAIT_FRAMES` + mount + `active_hold = BIKE_HOLD_FRAMES`.
+  - `not step_wants_bike and on_bike` → dismount + `active_hold = hold_frames` (gated on non-surfing, see Problem 3).
+
+### Implementation — sustained-hold ramp chain
+
+Per-tile `step_hold` during a ramp chain releases the direction button between tiles, draining the engine's bike-momentum timer. On the second ramp of the chain the ramp fires at slow-gear displacement (1-tile hop instead of 5). Matches the "direction button isn't being held continuously enough" symptom Woj flagged in session 36.
+
+New branch in `_execute_path`: when `step_wants_bike` and `_bike_ramp_segment` returns a segment, execute the whole runway + chain as ONE continuous hold:
+
+```
+write BIKE_GEAR_STATE_ADDR = 0 (fast)
+advance_frames(90)                  # post-mount settle
+write BIKE_GEAR_STATE_ADDR = 0      # re-assert fast gear
+advance_frames_until(
+    buttons=[direction],
+    until: PLAYER_POS_axis reaches last-ramp-tile coord
+)
+advance_frames(36)                  # let the final jump animate
+```
+
+Polling for the LAST RAMP TILE (not the landing) and then idling 36f matches the `spike_ramp_poll_release.py` pattern from session 36 — releasing mid-jump drifts +1 past the landing. On `reached=True`, clears the crossed ramp tiles from `obstacle_tiles` so repaths don't re-plan them. On `reached=False`, falls through to per-tile logic (which detects the blocked step and triggers repath — cold-mount flakiness self-recovers on the second attempt).
+
+### Problem 2: the POI path didn't mount at all
+
+First end-to-end test via `navigate_to(poi="obj:2")` on the interactive emulator: player walked to (9, 17) on foot and looped repeatedly charging at the ramp. 99 steps, `blocked_at (9, 17)`. Coordinate mode (`navigate_to(31, 17)`) worked fine.
+
+Root cause: POI items dispatch through `interaction.py::interact_with`, which calls `_execute_path` directly without pre-populating `obstacle_tiles`. The ramp-scanner lived only in `_navigate_to_impl`, so `_step_needs_bike` saw an empty obstacle map, never returned True, and the mount branch never fired.
+
+**Fix:** extracted `_scan_path_for_bike_obstacles(directions, terrain_info, start_gx, start_gy, grid_ox, grid_oy, obstacle_tiles)` and moved the scan into `_execute_path` itself — runs whenever `repath_ctx` carries `terrain_info` (both navigate_to and interact_with populate it). Idempotent: navigate_to's pre-population is kept.
+
+### Problem 3: surf regression from the new dismount branch
+
+Full suite after the dismount fix failed 2 tests: `test_navigate_across_water` (1 tile too far south), `test_navigate_through_waterfall` (5 tiles too far south). Both pass at HEAD.
+
+Instrumented the surf path: `CYCLING_GEAR_ADDR` is named "0=walking, 1=cycling" but empirically reads as **1 during surf** too. My dismount branch fired, `use_item("Bicycle")` failed (can't dismount what isn't the bike), but the bag menu open/close frames let in-flight surf motion drift the player 1 tile off-axis per spurious attempt.
+
+**Fix:** gate the dismount on `not is_surfing` where `is_surfing = repath_ctx.get("surfing") or active_hold == SURF_HOLD_FRAMES`. Both signals are set by the existing Surf/Waterfall activation branches.
+
+### Tests
+
+`TestBikeRampSegmentExecution` (3 tests in `test_navigation.py`):
+- `test_navigate_reaches_east_chamber_pokeball` — coordinate-mode navigate_to(31, 17) from (7, 22) reaches target. Repaths tolerated (cold-mount flakiness self-recovers).
+- `test_on_foot_during_non_ramp_walking` — navigate_to(6, 17) ends with `CYCLING_GEAR_ADDR == 0`. Validates the aggressive-dismount behavior.
+- `test_poi_pickup_reaches_east_chamber_pokeball` — `interact_with(object_index=2)` reaches (31, 17) without `stopped_early`. Covers the interact_with path specifically.
+
+Full suite: **546 passed @ 3:26 (N=8)**.
+
+### Commits
+- `0091034` — dismount-between-segments + sustained bike-ramp segment + surf gate
+- `13f6bf7` — _execute_path auto-scans ramps/slopes for callers that skip navigate_to
+
+### Memory saved
+- `reference_cycling_gear_mount_states.md` — CYCLING_GEAR_ADDR is overloaded across bike + surf; disambiguate via `repath_ctx['surfing']` or `active_hold == SURF_HOLD_FRAMES`.
+
+### Engineering lessons
+1. **Don't rely on memory byte naming.** `CYCLING_GEAR_ADDR` was documented as bike-only but was actually a general mount-state flag. Empirical observation trumps the documented semantic, just like the session 36 ramp-landing constant that contradicted the decomp.
+2. **Check every caller of a primitive when you change its contract.** Adding "obstacle_tiles must contain ramp entries" as a precondition for correct `_step_needs_bike` behavior silently broke `interact_with` — it's a direct caller that wasn't in the head when the primitive was tweaked. Scanning for call sites before merging would have surfaced this pre-commit.
+3. **Woj's "dismount for all non-ramp walking" framing** was the key simplification. I was chasing "why does bike momentum slip cross-axis?" at the primitive level when the answer was "avoid the regime entirely."
+
 ## Dev Session: Bike-slope momentum gate + flee-loop start preservation (2026-04-23 session 37)
 
 BUG-045 (bike-slope BFS admits turn-into-approach) closed, plus BUG-044's primary symptom (mis-reported `start` field) fixed. Session-35 momentum-aware BFS extended from ramps to slopes.
