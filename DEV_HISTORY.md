@@ -4,6 +4,63 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Near-jump ramp BFS + gear encoding empirical verification + slope-remount reset (2026-04-23 session 39)
+
+Goal that kicked off the session: the Wayward Cave 4-ramp chain puzzle. The solution isn't "hit every ramp at full momentum" — the LAST ramp in the chain has to fire a **near-jump** (land 1 tile past the ramp, not 4) so the player threads the correct corridor instead of overshooting into a consolation dead-end Pokéball. Extended BFS to admit near-jumps, unified gear control via `_set_bike_gear`, and — after a painful encoding misstep — documented the true empirical semantics of `BIKE_GEAR_STATE_ADDR`. Closes the puzzle. Full regression suite green (551 passed, 3:43).
+
+### Problem 1 — BFS only planned far-jumps
+
+`_bike_ramp_edges` in pathfinding.py now emits **two** edge classes per ramp:
+- `momentum + 1 >= RUNWAY` → far jump (5-tile displacement, post-momentum = RUNWAY)
+- `momentum == 0` → near jump (2-tile displacement, post-momentum = 1)
+- mid-range momentum (1–2 prior same-direction tiles) → NO edge. The in-between regime is untested; BFS intentionally refuses to plan into it.
+
+Wired into all four BFS variants (`_bfs_reachable`, `_bfs_pathfind`, `_bfs_pathfind_level`, `_flood_fill_level`). `navigation._bike_ramp_segment` locks `segment_gear` from the first ramp's momentum class and bails if a subsequent ramp in the same hold-chain wants the opposite gear — a mixed far+near chain can't satisfy one sustained hold, so the per-tile fallback takes over.
+
+### Problem 2 — gear control as input, not memory-write
+
+Old code used `emu.write_memory(BIKE_GEAR_STATE_ADDR, value=1)` to flip gear mid-traversal. This was unreliable: the engine re-syncs the byte from an authoritative mirror within ~60f, so writes silently revert. New helper `_set_bike_gear(emu, target_gear)` in `use_item.py`:
+
+- Reads current gear byte.
+- If mismatched, emits `press_buttons(["b"], frames=8) + advance_frames(30)` (matches cycling_road.py's known-working slope-prep pattern).
+- Retries up to 5× with a 15f window.
+- Requires `CYCLING_GEAR_ADDR` truthy (pressing B while walking/surfing/in-dialogue does something else entirely).
+
+`_ensure_fast_gear` is a thin wrapper around `_set_bike_gear(emu, <fast>)`. The segment executor threads the segment's required gear through and calls `_set_bike_gear` once before the hold-chain.
+
+### Problem 3 — the decomp encoding trap (and the rollback)
+
+The decomp at `ref/pokeplatinum/src/player_avatar.c:438` says `PlayerData_Init` sets `cyclingGear = 0`, and `sub_0205F95C` in `unk_0205F180.c:618` branches `gear == 1` to the bigger-jump action. Read naively, this says byte=0 is slow and byte=1 is fast. Based on that, I flipped the encoding assumption in `_ensure_fast_gear`, `_set_bike_gear`, and the segment simulator. Ramp tests passed. Two cycling-road slope tests regressed.
+
+**Empirical re-verification on `route207_at_bike_slope_bottom`:**
+- Initial byte=1 at save state — slope bounces player back, can't climb.
+- After one B-press: byte=0 — slope climbs cleanly on running-start hold.
+
+`BIKE_GEAR_STATE_ADDR` is NOT `PlayerData.cyclingGear`. It's a different mirror whose semantics are **inverted** from the decomp's `CyclingGear`. Byte **0 = FAST** (climbs slopes, fires far-jump with momentum), byte **1 = SLOW** (default after mount, bounces off slopes). Rolled back all call sites. Added a comment block to `addresses.py` warning against copying decomp `== 1` checks. Saved `reference_bike_gear_encoding.md` memory so future sessions don't walk into the same trap.
+
+### Problem 4 — slope traversal fails after nav-repath churn
+
+Even with the correct encoding, `test_close_target_near_slope_top` and two peers still failed inside `_navigate_to_impl(306, 710)` from `route207_at_bike_slope_bottom`. Directly calling `_traverse_bike_slope` after a single failed step_hold worked fine; under the full nav flow it didn't.
+
+Traced it: BFS plans "down x3 -> up x13" (a south backup then climb), and because the slope is a chokepoint, the path oscillates UP/DOWN for ~30 step_hold calls before committing to the climb. By the time the blocked-check triggers the slope branch, the bike's internal state (movement queue, momentum counter, dir-lock) is in a configuration where `_set_bike_gear(0)` — which reads the post-bounce transient byte=0 and no-ops — isn't enough to get the slope to fire. Backup presses then re-sync gear to 1 and the climb refuses.
+
+**Fix:** `_traverse_bike_slope` now does a full dismount+remount at the top (`use_item("Bicycle")` twice, 30f between). Cost ~400f (~7s) per slope traversal, acceptable for an infrequent primitive. Nine slope tests now pass.
+
+### Files touched
+
+- `renegade_mcp/pathfinding.py` — `_bike_ramp_edges()` (new), wired into 4 BFS variants.
+- `renegade_mcp/navigation.py` — `_bike_ramp_segment` returns `segment_gear`; executor threads it into `_set_bike_gear` before the hold-chain.
+- `renegade_mcp/nav_constants.py` — `BIKE_RAMP_NEAR_JUMP_TILES = 2` + updated comment block on the two-case model.
+- `renegade_mcp/use_item.py` — `_set_bike_gear` (new), `_ensure_fast_gear` rewritten to use it.
+- `renegade_mcp/cycling_road.py` — `_traverse_bike_slope` prelude is now dismount + remount + `_set_bike_gear(0)`.
+- `renegade_mcp/addresses.py` — corrected encoding doc comment with decomp-vs-empirical warning.
+- `tests/test_navigation.py` — +4 tests on ramp-edge emission.
+
+### Followups
+
+- **Bike bridges** — next obstacle on the Wayward Cave east wing. Save state `bug_bike_bridge_unknown.mst` already exists (map 285 @ (22, 13) on foot) for a dedicated future session.
+- Task #6 in the session task list is marked pending as the reminder; the repro is captured in `SAVE_STATES.md` and this log.
+
 ## Dev Session: Bike-ramp segment execution + POI-path ramp scanner (2026-04-23 session 38)
 
 Goal that kicked off the session: auto-navigate to the east-chamber Pokéball in Wayward Cave (`bug_bike_ramps_repel`, target (31, 17) via a 4-ramp chain). Session 37 had closed the BFS side; session 38 closed the executor side. **Goal achieved: `navigate_to(poi="obj:2")` picks up the Max Ether in 8 steps with 1 repath.**
