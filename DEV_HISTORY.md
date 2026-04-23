@@ -4,6 +4,68 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Bike-bridge traversal + overshoot-retry wrapper (2026-04-23 session 40)
+
+Next obstacle after the 4-ramp chain puzzle: the Wayward Cave east-wing **bike bridges** — wooden suspension-bridge tiles that reject on-foot entry. User's pre-session hypothesis was correct: "something like the swimming implementation, but instead of interacting with the water when at the edge, you get on the bike, and once you're off the other edge, you get off the bike. Clean and simple, I'm hoping." Empirical observation confirmed three engine invariants that made this genuinely simple — plus one engine quirk (bike coasting) that forced a small but general repath-after-overshoot wrapper.
+
+### Empirical observations at `bug_bike_bridge_unknown`
+
+Map 285, player (22, 13) on foot on a `bridge_start` (0x70) tile directly east of the south bridge body:
+
+- **On-foot step onto 0x7A/0x7B body → BLOCKED.** Zero displacement, even with sustained hold. Engine refuses.
+- **On-bike step → succeeds.** Slow gear, fast gear — both ride through cleanly. **No momentum requirement**, no forced slide. Just "must be on the bike".
+- **Mid-bridge `use_item("Bicycle")` → fails.** Engine rejects the menu while the player is on a body tile. Nice safety net: the pathfinder cannot create a "stuck mid-bridge" state.
+- **`bridge_start` (0x70) is walkable on foot AND bike.** It's the hinge tile at each end. Mount can happen ON `bridge_start`, not just before it.
+- **Exit does NOT auto-dismount.** Riding off onto cave_floor keeps the bike mounted — the navigator has to emit the dismount itself.
+
+### Problem 1 — bridge behaviors not modeled in the executor
+
+`_scan_path_for_bike_obstacles` populated obstacle_tiles with ramps + slopes but not bridges. `_step_needs_bike` only looked at ramp runways + immediate-next slope tiles. BFS happily planned paths through bike-bridge bodies (they're `passable=True` in the terrain grid — same as ramps), but the executor walked into them on foot and bonked forever.
+
+**Fix.** `nav_constants.BIKE_BRIDGE_BEHAVIORS = {0x76–0x7D}` + `BIKE_BRIDGE_TYPES = {"bike_bridge"}`. Scanner now tags body tiles crossed by the path. `_step_needs_bike` returns True when **current OR immediate-next** tile is a bike-bridge body — the *current*-tile check is what keeps the bike active for the last exit step (body → bridge_start) so the executor doesn't emit a doomed dismount while still on a body tile. Error path extended to report `bike_bridge_requires_bicycle` when `_auto_mount_for_slope` fails on a bridge step.
+
+### Problem 2 — bike coasting overshoots the target
+
+First live test (`navigate_to(14, 13)` from (22, 13), a straight-west crossing): 8 lefts planned, player ended at (11, 14) — 3 tiles past target + 1 south. Instrumentation pinned the cause precisely:
+
+- After step_hold returns at (15, 13) on bike, the bike **coasts 3 tiles west** with no button held (stable coast-drift of ~20 frames on cave_floor after fast-gear release).
+- During the subsequent dismount menu, `open_pause_menu`'s verification `down` keypress fires while the bike is still in overworld → registers as a bike input → +1 south drift on top of the coast.
+
+Tested the cycling_road.py "drain momentum" recipe (slow gear + 120f idle before dismount) — the ~38f gear-toggle window let the bike coast another 3 tiles during the toggle itself, so even with drain the player overshoots. Tested mounting in slow gear *before* crossing: the gear byte flipped back to 0 (fast) during the first step_hold, but coasting was fully eliminated — empirical evidence that setting slow gear drains some internal momentum counter independent of the surface-level byte. **Kept the slow-gear mount** (cheap, helps) but couldn't fully eliminate coast on the east-bound trip.
+
+### Problem 2 (fix) — repath after overshoot instead of fighting coasting
+
+Per Woj: "If it overshoots, just add a step after getting off the bike afterwards to correct (if necessary, might just want to recalculate the full path at that point anyways since the overstep might even be beneficial)."
+
+Added `_nav_impl_with_overshoot_retry` — a thin wrapper around `_navigate_to_impl`. If the inner call returns `stopped_early` + `blocked_reason == "path_exhausted_before_target"`, it re-BFS-es from the player's current position and retries (up to 3 times). `path_choice` is honored only on the first attempt; retries are treated as repaths. `start` is preserved across retries, `steps` is summed.
+
+This is intentionally general: any future "engine carried the player past the planned final tile" case gets the same treatment without a bike-bridge-specific branch. East-bound trip: first pass overshoots to (25, 13), retry plans `left x3` on foot, lands on (22, 13). `overshoot_repaths: 1` surfaces in the result for observability.
+
+### Problem 3 — `is_on_cycling_road` false-triggered on Wayward bridges
+
+Retry then hit a second bug: `is_on_cycling_road(emu, 22, 13)` returned True because target (22, 13) is `bridge_start` (0x70), which was in the `BIKE_BRIDGE_BEHAVIORS` set used by the target-tile check. That set also included 0x76–0x7D — but those are Wayward-style bike bridges, NOT cycling-road auto-slide tiles. Pre-existing bug that my change surfaced.
+
+**Fix.** `map_state.py`:
+- Narrowed the cycling-road constant to the actual forced-slide behaviors (`CYCLING_ROAD_BRIDGE_BEHAVIORS = {0x70, 0x71}`); kept `BIKE_BRIDGE_BEHAVIORS` as an alias for the existing `test_cycling_road` import.
+- Removed the naive target-tile-behavior fast path in `is_on_cycling_road` (the column-scan height-gated heuristic still catches "player at bridge elevation stepping onto bridge from above", which is the real motivating case). Comment block calls out the Wayward false-positive.
+
+### Files touched
+
+- `renegade_mcp/nav_constants.py` — `BIKE_BRIDGE_BEHAVIORS`, `BIKE_BRIDGE_TYPES` (new).
+- `renegade_mcp/map_state.py` — `CYCLING_ROAD_BRIDGE_BEHAVIORS` (new, narrow), `BIKE_BRIDGE_BEHAVIORS` alias retained, `is_on_cycling_road` target-tile check removed.
+- `renegade_mcp/navigation.py` — scanner + `_step_needs_bike` + executor mount branch (slow-gear flip) + error path + `_nav_impl_with_overshoot_retry` wrapper; public `navigate_to` now dispatches through the wrapper.
+- `tests/test_navigation.py` — `TestBikeBridgeTraversal` (3 tests).
+
+### Session take-aways
+
+1. **Empirical > decomp, again.** Engine forbids mid-bridge dismount was a nice invariant I wouldn't have guessed from source; confirmed in under a minute with one `use_item` call.
+2. **"Match the engine behavior" beat "fight the engine behavior".** Fighting the bike coast (opposite-direction brake, mid-ride gear toggle, brute-force drain) produced fragile partial fixes. Accepting the coast + re-BFS after dismount is simpler, more general, and cost-free on paths where the coast happens to land on target.
+3. **Shared constants drift.** The map_state `BIKE_BRIDGE_BEHAVIORS` was defensively over-included from when 0x76–0x7D semantics were unknown; narrowing it was one line but required understanding all callers. Worth an audit pass on similar "I'll just include everything that might be relevant" sets elsewhere.
+
+### Commits
+
+- `bdd47c1` — `feat(nav): bike-bridge traversal + overshoot-retry wrapper`
+
 ## Dev Session: Near-jump ramp BFS + gear encoding empirical verification + slope-remount reset (2026-04-23 session 39)
 
 Goal that kicked off the session: the Wayward Cave 4-ramp chain puzzle. The solution isn't "hit every ramp at full momentum" — the LAST ramp in the chain has to fire a **near-jump** (land 1 tile past the ramp, not 4) so the player threads the correct corridor instead of overshooting into a consolation dead-end Pokéball. Extended BFS to admit near-jumps, unified gear control via `_set_bike_gear`, and — after a painful encoding misstep — documented the true empirical semantics of `BIKE_GEAR_STATE_ADDR`. Closes the puzzle. Full regression suite green (551 passed, 3:43).
