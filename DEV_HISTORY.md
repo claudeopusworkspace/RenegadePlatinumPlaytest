@@ -4,6 +4,97 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-14 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Bike ramp fast-gear fix + runway check + fast-gear mount (2026-04-23 session 34)
+
+Follow-up to session 33's sustained-hold primitive. Session 32's decomp dive + session 33's hold primitive had teed up BUG-043 (Wayward Cave B1F east chamber unreachable); this session closed the tool-side gap. Woj's brief: make the BFS aware that ramps need a few tiles of approach runway in the ramp direction, and that our playthrough always runs fast gear.
+
+### Spike first (again)
+
+`scripts/spike_ramp_runway.py` on `session31_wayward_cave_bike_ramps`. Methodology per `spike_before_redesign` memory: measure before redesigning.
+
+Ran a sweep of start positions at y=17 with varying runway length, held right continuously, sampled position every 2 frames. Two false starts first:
+
+1. **Teleport via `write_memory` on PLAYER_POS_BASE reverted on the next frame.** Writes to `+8` (tile_x) and `+12` (tile_y) land fine for one frame, then a third authority snaps them back. Writing the fx32 pixel pos at `OBJ_ARRAY_FPX_BASE` also didn't hold the engine's logical position. The truth source for tile coords is elsewhere — possibly the MapObject's script data, possibly a separate PlayerData field — and I didn't chase it because it wasn't on the critical path.
+2. **`navigate_to` overshoots target tiles on fast bike.** `nav_to(5, 17)` from west-chamber (7, 22) lands at (4, 17) instead of (5, 17) because the sustained-hold primitive carries the bike past the target when the BFS plan is short. That's BUG-044, which we left open last session — relevant here because it made the spike's "set player to precise start position" phase fragile.
+
+Final working setup: `nav_to(4, 17)` + 90f settle (known stable), then press right with `advance_frames_until(changed)` and 90f drain between tile-steps to reach the test start position on foot-like kinematics. Not perfect (each step leaks a bit of momentum into the next), but deterministic enough to sweep runway lengths 1-6 tiles.
+
+**Findings** (ramp at game-x 10 on row 17):
+
+| Approach tiles before ramp | Ramp fires? | Final |
+|---|---|---|
+| 0, 1, 2 | NO | approach tile |
+| 3 | YES | (13, 17) after jump, chain stalls |
+| 4, 5 | YES | (18, 17), chains into ramp 2 at (15, 17) |
+
+- Fast-gear cold-start acceleration curve: **12 → 12 → 8 → 6 → 4 frames/tile**.
+- Fast-gear ramp jump displacement: **approach + 4 tiles** (3 past the ramp). Matches decomp `MOVEMENT_ACTION_JUMP_FARTHER_EAST` (`src/unk_020655F4.c:994`, FX32_CONST(4) × 12f).
+- Empirical: minimum runway = 3 approach tiles. Went with **4** in the BFS constant for cold-start safety margin — the fifth tile is the first at full-speed 4f/tile, and we'd rather over-restrict than fail mid-chain.
+- Ramp chains: landing → 1 gap tile → next ramp still fires from carry-through momentum. Observed: ramp1 at 10 → land 13 → walk 14 → onto ramp2 at 15 fires → land 18.
+
+### Implementation (phase 1 — single-ramp runway)
+
+`nav_constants.py`:
+- `BIKE_RAMP_JUMP_TILES 2 → 4`.
+- New `BIKE_RAMP_RUNWAY_TILES = 4`.
+- Docstring expanded with the decomp cite + empirical numbers.
+
+`pathfinding.py::_bike_ramp_landing`:
+- Added optional `momentum` arg (int, default 0) for momentum-aware BFS callers.
+- When `momentum+1 < RUNWAY`, falls back to a **geometric check**: the `RUNWAY-1` tiles behind the approach tile in the ramp direction must be passable AND not direction-gated (no ledges, no directional warps) — since any of those would force a turn that breaks the straight-line hold.
+- Landing now `approach + JUMP_TILES × dir` (was `approach + 2 × dir`). Skips the ramp tile and the one-tile wall that sits mid-jump on most layouts.
+
+`navigation.py::_execute_path`:
+- Ramp-step hold extended from `BIKE_HOLD_FRAMES + 24f` to `BIKE_HOLD_FRAMES + 36f` — spike observed entry→landing spans ~20 frames, so 40f covers it with margin.
+- Path-scanner advances `BIKE_RAMP_JUMP_TILES` per ramp step (was hard-coded `+ 2`).
+
+`tests/test_navigation.py::TestBikeRampBfsEdges`:
+- Widened synthetic grids to 8 cols so the new runway check has room to test.
+- New `test_ramp_landing_insufficient_runway` (wall in the runway → edge rejected).
+- New `test_ramp_landing_momentum_override` (short geometric runway but `momentum=RUNWAY-1` supplied → edge admitted, chain-ready for phase 2).
+- `test_2d_bfs_crosses_ramp_in_wayward_cave` updated: landing is now (13, 17) instead of (11, 17).
+
+Full suite: **531 passed**.
+
+### Implementation (phase 2 — fast gear on every mount)
+
+Woj flagged the related concern: mounts don't currently enforce gear state, so we inherit whatever the last B-toggle left. Fast gear is the only gear we use deliberately.
+
+`use_item.py::_flow_bicycle`:
+- On a successful mount (transition to on-bike), read `BIKE_GEAR_STATE_ADDR`. If 1 (slow), press B once to toggle. Input-only — no memory writes (memory-write audit open from session 33 leaves that lane as the only one permitted for production tool code).
+- Factored out as `_ensure_fast_gear(emu)` helper for reuse.
+
+`navigation.py::_auto_mount_for_slope`:
+- Calls `_ensure_fast_gear` when the player is already cycling (use_item path already handles fresh mounts). Closes the "already on bike in slow gear → slope traversal fails" hole.
+
+Full suite: **531 passed, zero regressions** across the bike-touching tests (`test_cycling_road.py`, `test_navigation.py`, `test_bicycle.py`).
+
+### Deferred (next session)
+
+**Phase 3 — chain-aware BFS (task 6 from this session's task list).** Phase 1's geometric runway check doesn't admit a ramp edge when the approach tile has only a 1-tile straight-line backing (which is exactly the scenario between chained ramps). The empirical chain IS real — landing momentum carries the player through a subsequent ramp jump if they hold the same direction — but our current BFS can't see it. Concretely, Wayward Cave B1F east-chamber POIs (`obj:1/2/3` + `warp:0` at (43, 38)) are still `unreachable_interactibles`. BFS reaches `(13, 17)` (ramp-1 landing) and stops; the rest of the east chamber needs phase 3.
+
+Design sketch (not implemented): augment BFS state with `(last_direction, momentum)` where momentum is capped at `BIKE_RAMP_RUNWAY_TILES`. Rules:
+- Same-direction step: `momentum = min(m + 1, RUNWAY)`.
+- Direction change: `momentum = 1` (the step into the new direction is its own first tile).
+- Post-ramp-jump: `momentum = RUNWAY` (full carry-through per spike data).
+- Ramp edge admitted iff `last_direction == ramp direction AND momentum >= RUNWAY - 1`.
+
+State expansion per tile = 4 directions × (RUNWAY + 1) momenta = 20× — bounded, tractable. Affects `_bfs_reachable`, `_bfs_pathfind`, `_bfs_pathfind_level`, `_flood_fill_level` in `pathfinding.py`. The `momentum` arg on `_bike_ramp_landing` is already wired for this.
+
+**Memory-write audit** (session 33 carry-over) — `cycling_road.py::_traverse_bike_slope` still uses `emu.write_memory(BIKE_GEAR_STATE_ADDR, 1, …)` before its B-toggle and again after slope traversal to drain momentum. Input-only replacements would need to replicate the "settle" effect the original comment calls out ("the B press is essential even when gear is already 0"). Separate concern from this session.
+
+### Commits
+
+1. `chore(spike): ramp runway + fast-gear jump distance measurement` (26d1876)
+2. `fix(nav): bike-ramp fast-gear jump distance + runway requirement` (98e7e0d)
+3. `feat(nav): always end bike mounts in fast gear` (3bbcf30)
+
+### Take-aways
+
+- Two spike false starts (memory-write teleport, nav-overshoot positioning) ate most of the first hour but were cheap relative to the alternative of building the fix on wrong assumptions. The final spike data — that 3 approach tiles suffice and 2 don't — is the kind of threshold you don't get from decomp alone.
+- The "geometric runway" check is a coarse approximation of a direction-aware BFS state. It suffices for open corridors (most of the overworld) but can't reason about chained ramps. When we discovered phase 1 didn't unblock the east chamber, the right call was to stop, commit what works, and scope phase 2/3 for a dedicated session — not to try to land all three phases in one.
+- Memory-write audit concerns (from session 33) made the gear-enforcement design mechanical: the only production-code path is read gear + press B. Sometimes explicit constraints simplify the work.
+
 ## Dev Session: Sustained-hold movement primitive (2026-04-22 session 33)
 
 Architectural overhaul of the per-tile movement primitive in `_execute_path`. The old tap-and-wait pattern (`advance_frames(HOLD, buttons=[dir]) + advance_frames(WAIT)`) released the d-pad between tiles, which broke anything the engine needs sustained input for — bike ramps and bike slopes top the list. The new primitive holds the direction continuously across tile boundaries and exits per-tile on a memory-change condition.
