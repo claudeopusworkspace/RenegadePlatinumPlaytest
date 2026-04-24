@@ -4,6 +4,35 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-20 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: BUG-047 — navigate_to repel-expiration KeyError (2026-04-24 session 46)
+
+Closed BUG-047. `navigate_to(..., flee_encounters=True)` no longer raises `KeyError: 'move'` when a Repel expires mid-bridge; a single call now completes the full traversal instead of the previous two-call workaround.
+
+### Root cause
+
+`obstacle_tiles` in `_execute_path` is overloaded — it carries both HM-clearable obstacles (from BFS; have `"move"` / `"badge"` keys) and bike ramp / slope / bridge entries (from `_scan_path_for_bike_obstacles`; no `"move"`). When the Repel-wore-off dialogue blocked a step mid-bridge, the step-was-blocked handler found a `bike_bridge` entry on the next tile and fell into the `elif obs_info is not None` branch that assumes HM semantics. `_clear_hm_obstacle` pressed A, coincidentally dismissing the Repel dialogue, and returned `cleared=True`. The executor then tried to log the "clear" via `obs_info["move"]` → KeyError.
+
+### Code changes
+
+**`renegade_mcp/navigation.py::_execute_path`** — narrowed the HM-clear branch. The `elif obs_info is not None` became `elif obs_info is not None and obs_info["type"] in AUTO_NAVIGATE_TYPES`. Bike entries now fall through to the generic slow-terrain retry, which naturally succeeds once the dialogue is dismissed.
+
+**`renegade_mcp/navigation.py::navigate_to`** (flee_encounters loop) — extended to also resume after a mid-path dialogue-only encounter. `_post_nav_check` already advances + dismisses the dialogue, so the loop can strip the encounter metadata and continue from the current position. Added cross-iteration accumulation of `steps` and `path` so a resumed traversal reports the full journey (e.g. `"right x9 -> right x3"` with `steps: 9`), not just the last leg.
+
+### Tests
+
+4 new tests in `tests/test_qa_bug047_nav_repel_expiration.py` against the `bug_nav_repel_expired_move_keyerror` save:
+
+- `test_navigate_returns_without_error` — no KeyError (the core regression).
+- `test_full_traversal_completes_single_call` — (16, 6)→(25, 6) finishes in one call, no `stopped_early`.
+- `test_steps_accumulated_across_resume` — total `steps >= 9` for the 9-tile traversal.
+- `test_start_preserved_from_original_position` — `start` still reports (16, 6), not the mid-repel position.
+
+Full suite: **570 passed in 2:36 (N=8)**. No regressions in nav / bike / HM / 3D fallback / cycling-road paths (130 passed in 1:30 on the focused subset).
+
+### End-to-end verification
+
+From `bug_nav_repel_expired_move_keyerror` save (Wayward B1F (16, 6) facing right, Repel about to expire): `navigate_to(x=25, y=6, flee_encounters=True)` → lands at (25, 6), `steps: 9`, `path: "right x9 -> right x3"`, no crash. ✓
+
 ## Dev Session: BUG-048 Gap 1 — CHAIN_THROUGH ramp edge (2026-04-24 session 45)
 
 Closed half of BUG-048: the east chamber of Wayward Cave B1F is now reachable via BFS + executor using the row-6 ramp chain. The second half (Gap 2 — turn-into-ramp momentum for the chamber-interior ramp) remains open by design this session.
