@@ -84,34 +84,47 @@ def _bike_ramp_edges(
     terrain_info: list, x: int, y: int, direction: str,
     dx: int, dy: int, width: int, height: int,
     momentum: int | None = None,
+    npc_set: set | None = None,
 ) -> list[tuple[int, int, int]]:
     """Return all ramp-jump edges admitted from stepping (x, y)→ramp in
     ``direction``. Each edge is ``(landing_x, landing_y, post_momentum)``.
 
-    Two jump kinds, selected by running-start momentum at the approach:
+    At full momentum we emit ONE FAR-class edge with landing chosen by
+    whether ramp+4 (the "natural" landing) is clear:
 
-    - **FAR jump** — momentum at approach is at full runway
-      (``momentum + 1 >= BIKE_RAMP_RUNWAY_TILES``). Lands at
-      approach + BIKE_RAMP_JUMP_TILES (= ramp + 4).  Post-jump momentum
-      is RUNWAY so chained ramps can carry through.
-    - **NEAR jump** — momentum at approach is exactly 0 (standing start,
-      or just turned onto the approach).  Lands at approach +
-      BIKE_RAMP_NEAR_JUMP_TILES (= ramp + 1).  Post-jump momentum is 1
-      (one tile's worth — the jump itself, no runway built up).
+    - **FAR** — ramp+4 is clear (passable floor / non-ramp / no NPC).  Lands
+      at approach + ``BIKE_RAMP_JUMP_TILES`` (= ramp + 4).  Post-jump
+      momentum = RUNWAY so chained ramps can carry through.
+    - **FAR_SHORT** — ramp+4 is blocked (same-direction ramp, impassable
+      terrain, or NPC).  Engine auto-truncates the jump one tile short.
+      Lands at approach + ``BIKE_RAMP_JUMP_TILES - 1`` (= ramp + 3).
+      Post-jump momentum = 0 (bike stops — no chain from this landing).
 
-    Mid-range momentum (1 or 2 of the 3 runway prefixes) empirically did
-    not produce a clean intermediate landing in our spike (obstacles may
-    clamp the engine's natural displacement), so no edge is emitted.
+    "Any blocker at +4 truncates to +3" is the empirically-observed engine
+    rule (see ``scripts/spike_mid_range_ramp.py``): on Wayward B1F row 6,
+    ramp+4 is another same-direction ramp and releasing the button mid-
+    flight lands the bike cleanly at ramp+3 (the single-tile pocket just
+    before the downstream ramp).
 
-    ``momentum`` modes mirror the legacy single-landing helper:
+    At ``momentum == 0`` we emit a **NEAR** edge (ramp+1, post_m=1) — the
+    slow-gear standing-start jump.
+
+    Mid-range momentum (1–2 of the RUNWAY prefixes) produces no clean
+    intermediate landing in the engine and emits no edge.
+
+    ``momentum`` modes:
     - ``int`` — caller tracks per-state directional momentum precisely.
-    - ``None`` — caller doesn't track. Geometric fallback: the FAR edge
-      is admitted only if the RUNWAY-1 tiles behind (x, y) are clear
-      and not direction-gated; the NEAR edge is never emitted (the
-      caller has no way to assert standing-start).
+    - ``None`` — geometric fallback: the FAR edge is admitted only if the
+      RUNWAY-1 tiles behind (x, y) are clear and not direction-gated.  We
+      still apply the +4/+3 truncation rule; NEAR is never emitted.
 
-    Returns [] when there is no ramp, the ramp faces a different axis,
-    the landing is out of bounds, or the landing tile is impassable.
+    ``npc_set`` — optional set of (gx, gy) NPC tiles (grid-local, same
+    coord space as ``terrain_info``).  When supplied, NPCs at ramp+4 count
+    as blockers triggering the +3 fallback.  BFS call sites always pass
+    this; legacy geometric callers may omit it.
+
+    Returns [] when there is no ramp, the ramp faces a different axis, or
+    neither landing candidate is usable.
     """
     nx, ny = x + dx, y + dy
     if not (0 <= nx < width and 0 <= ny < height):
@@ -124,15 +137,36 @@ def _bike_ramp_edges(
 
     edges: list[tuple[int, int, int]] = []
 
-    # Helper: admit an edge if the landing is in-bounds and passable.
-    def _try_admit(jump_tiles: int, post_m: int) -> None:
-        lx, ly = x + dx * jump_tiles, y + dy * jump_tiles
-        if not (0 <= lx < width and 0 <= ly < height):
+    def _tile_passable_clear(tx: int, ty: int, exclude_chain: bool) -> bool:
+        """True iff (tx, ty) is in-bounds, passable, not an NPC, and (when
+        ``exclude_chain``) not a same-direction ramp (which would auto-
+        chain from this landing)."""
+        if not (0 <= tx < width and 0 <= ty < height):
+            return False
+        p, beh = terrain_info[ty][tx]
+        if not p:
+            return False
+        if npc_set is not None and (tx, ty) in npc_set:
+            return False
+        if exclude_chain:
+            if beh in BIKE_RAMP_BEHAVIORS and BIKE_RAMP_DIRECTIONS[beh] == direction:
+                return False
+        return True
+
+    def _admit_far_or_short(post_m_far: int) -> None:
+        """Emit ONE FAR-class edge — the ramp+4 ('far') landing when clear,
+        otherwise the ramp+3 ('far_short') fallback when ramp+4 is blocked
+        by a chain ramp / wall / NPC."""
+        far_x, far_y = x + dx * BIKE_RAMP_JUMP_TILES, y + dy * BIKE_RAMP_JUMP_TILES
+        if _tile_passable_clear(far_x, far_y, exclude_chain=True):
+            edges.append((far_x, far_y, post_m_far))
             return
-        land_passable, _land_beh = terrain_info[ly][lx]
-        if not land_passable:
-            return
-        edges.append((lx, ly, post_m))
+        short_tiles = BIKE_RAMP_JUMP_TILES - 1
+        sx, sy = x + dx * short_tiles, y + dy * short_tiles
+        if _tile_passable_clear(sx, sy, exclude_chain=False):
+            # post_m = 0: bike stops cleanly at ramp+3 with no carryover
+            # momentum, so the next step is a cold-start.
+            edges.append((sx, sy, 0))
 
     if momentum is None:
         # Geometric fallback: can only reason about far-jump feasibility.
@@ -147,14 +181,16 @@ def _bike_ramp_edges(
                 return []
             if back_behavior in DIRECTIONAL_WARP:
                 return []
-        _try_admit(BIKE_RAMP_JUMP_TILES, BIKE_RAMP_RUNWAY_TILES)
+        _admit_far_or_short(BIKE_RAMP_RUNWAY_TILES)
         return edges
 
     # Integer momentum — caller knows exactly.
     if momentum + 1 >= BIKE_RAMP_RUNWAY_TILES:
-        _try_admit(BIKE_RAMP_JUMP_TILES, BIKE_RAMP_RUNWAY_TILES)
+        _admit_far_or_short(BIKE_RAMP_RUNWAY_TILES)
     if momentum == 0:
-        _try_admit(BIKE_RAMP_NEAR_JUMP_TILES, 1)
+        nx1, ny1 = x + dx * BIKE_RAMP_NEAR_JUMP_TILES, y + dy * BIKE_RAMP_NEAR_JUMP_TILES
+        if _tile_passable_clear(nx1, ny1, exclude_chain=False):
+            edges.append((nx1, ny1, 1))
     return edges
 
 
@@ -252,7 +288,7 @@ def _bfs_reachable(
                 approach_m = m if last_d == direction else 0
                 for lx, ly, post_m in _bike_ramp_edges(
                     terrain_info, x, y, direction, dx, dy, width, height,
-                    momentum=approach_m,
+                    momentum=approach_m, npc_set=npc_set,
                 ):
                     if (lx, ly) in npc_set:
                         continue
@@ -523,7 +559,7 @@ def _bfs_pathfind(
                 goal_return = None
                 for lx, ly, post_m in _bike_ramp_edges(
                     terrain_info, x, y, direction, dx, dy, width, height,
-                    momentum=approach_m,
+                    momentum=approach_m, npc_set=npc_set,
                 ):
                     if (lx, ly) in npc_set and (lx, ly) != goal:
                         continue
@@ -730,7 +766,7 @@ def _bfs_pathfind_level(
                 goal_return = None
                 for lx, ly, post_m in _bike_ramp_edges(
                     terrain_info, x, y, direction, dx, dy, width, height,
-                    momentum=approach_m,
+                    momentum=approach_m, npc_set=npc_set,
                 ):
                     if (lx, ly) in npc_set and (lx, ly) != goal:
                         continue
@@ -1001,9 +1037,16 @@ def _flood_fill_level(
             passable, behavior = terrain_info[ny][nx]
             if not passable:
                 approach_m = m if last_d == direction else 0
+                # Build a 2D npc-blocker set for this level so the edge
+                # helper can honor the "any blocker at +4 → emit +3" rule.
+                if npc_is_3d:
+                    npc_2d = {(px, py) for (px, py, lv) in npc_set
+                              if lv == current_level}
+                else:
+                    npc_2d = npc_set
                 for lx, ly, post_m in _bike_ramp_edges(
                     terrain_info, x, y, direction, dx, dy, width, height,
-                    momentum=approach_m,
+                    momentum=approach_m, npc_set=npc_2d,
                 ):
                     if npc_is_3d:
                         if (lx, ly, current_level) in npc_set:

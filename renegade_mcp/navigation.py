@@ -341,6 +341,8 @@ def _auto_dismount_if_bike(emu: EmulatorClient) -> bool:
 
 def _bike_ramp_segment(
     directions: list[str], i: int, obstacle_tiles: dict, cur_x: int, cur_y: int,
+    terrain_info: list | None = None, grid_ox: int = 0, grid_oy: int = 0,
+    npc_set: set | None = None,
 ) -> tuple[int, int, int, int, int] | None:
     """If step i starts a contiguous same-direction bike-ramp segment,
     return ``(segment_end_idx, landing_x, landing_y, last_ramp_tile_x,
@@ -358,26 +360,32 @@ def _bike_ramp_segment(
 
     Momentum tracking matches BFS: same-direction steps accumulate
     momentum (capped at RUNWAY), ramp entries fire either:
-      • FAR jump when ``momentum + 1 >= RUNWAY`` — lands at
-        approach + ``BIKE_RAMP_JUMP_TILES``, post-momentum = RUNWAY,
-        requires ``target_gear = 1`` (fast).
-      • NEAR jump when ``momentum == 0`` — lands at
-        approach + ``BIKE_RAMP_NEAR_JUMP_TILES``, post-momentum = 1,
-        requires ``target_gear = 0`` (slow).
+      • FAR jump when ``momentum + 1 >= RUNWAY`` and ramp+4 is clear —
+        lands at approach + ``BIKE_RAMP_JUMP_TILES``, post-momentum =
+        RUNWAY, requires ``target_gear = 0`` (fast, decomp semantic).
+      • FAR_SHORT jump when ``momentum + 1 >= RUNWAY`` but ramp+4 is a
+        same-direction ramp / wall / NPC — engine auto-truncates, lands
+        at approach + (JUMP_TILES - 1) = ramp+3, post-momentum = 0.
+        This halts any chain (next ramp can't fire without RUNWAY
+        momentum) so the segment ends at this landing.
+      • NEAR jump when ``momentum == 0`` — lands at approach +
+        ``BIKE_RAMP_NEAR_JUMP_TILES``, post-momentum = 1, requires
+        ``target_gear = 1`` (slow).
 
     A segment's ``target_gear`` is the gear required by the FIRST
-    ramp in the chain.  Subsequent ramps must match (BFS-planned
-    segments naturally don't mix — after a FAR landing momentum is
-    capped at RUNWAY so successors fire FAR; after a NEAR landing
-    momentum is 1, and any follow-up ramp can't satisfy either gate
-    in the same continuous hold).  If a mixed chain is somehow
-    encountered we bail (return None) and let per-tile execution
-    handle the tail.
+    ramp in the chain.  Mixed near+far (different gear requirements)
+    bails with ``None`` and the per-tile fallback handles it.
 
     The ``last_ramp_tile_*`` coords are the ramp tile that triggers
     the final jump (not the landing); polling for that position +
     idling the jump animation lets the engine place the player
     cleanly on the landing with no drift past the target.
+
+    ``terrain_info`` + ``grid_ox/oy`` + ``npc_set`` are optional
+    blocker-detection inputs (grid-local coord space).  When supplied,
+    the "+4 blocker → +3" rule honors walls and NPCs too; without
+    them it falls back to same-direction-ramp detection via
+    ``obstacle_tiles`` (the common case).
     """
     if i >= len(directions):
         return None
@@ -385,6 +393,32 @@ def _bike_ramp_segment(
     dx, dy = _DIR_DELTAS.get(d, (0, 0))
     if dx == 0 and dy == 0:
         return None
+
+    def _far_plus_one_blocked(ramp_gx: int, ramp_gy: int) -> bool:
+        """Is ramp+4 (= ramp_gx + 4*dx, ramp_gy + 4*dy) blocked by a same-
+        direction ramp, wall, or NPC?  Mirrors the rule in
+        ``_bike_ramp_edges``."""
+        far_gx = ramp_gx + dx * (BIKE_RAMP_JUMP_TILES - 1)
+        far_gy = ramp_gy + dy * (BIKE_RAMP_JUMP_TILES - 1)
+        # Same-direction ramp check via obstacle_tiles (global coords).
+        obs_far = obstacle_tiles.get((far_gx, far_gy))
+        if obs_far is not None and obs_far.get("type") in BIKE_RAMP_TYPES:
+            if BIKE_RAMP_DIRECTIONS.get(obs_far.get("behavior")) == d:
+                return True
+        # Terrain / NPC check (grid-local) when provided.
+        if terrain_info is not None:
+            tx, ty = far_gx - grid_ox, far_gy - grid_oy
+            if not (0 <= ty < len(terrain_info)) or not (0 <= tx < len(terrain_info[0])):
+                return True
+            p, beh = terrain_info[ty][tx]
+            if not p:
+                return True
+            if (beh in BIKE_RAMP_BEHAVIORS
+                    and BIKE_RAMP_DIRECTIONS[beh] == d):
+                return True
+        if npc_set is not None and (far_gx, far_gy) in npc_set:
+            return True
+        return False
 
     fx, fy = cur_x, cur_y
     momentum = 0
@@ -401,8 +435,12 @@ def _bike_ramp_segment(
         is_ramp_here = obs is not None and obs.get("type") in BIKE_RAMP_TYPES
         if is_ramp_here:
             if momentum + 1 >= BIKE_RAMP_RUNWAY_TILES:
-                jump_tiles = BIKE_RAMP_JUMP_TILES
-                post_m = BIKE_RAMP_RUNWAY_TILES
+                if _far_plus_one_blocked(nx, ny):
+                    jump_tiles = BIKE_RAMP_JUMP_TILES - 1  # ramp+3
+                    post_m = 0  # chain halts here
+                else:
+                    jump_tiles = BIKE_RAMP_JUMP_TILES
+                    post_m = BIKE_RAMP_RUNWAY_TILES
                 this_gear = 0  # fast (decomp semantic; _set_bike_gear inverts)
             elif momentum == 0:
                 jump_tiles = BIKE_RAMP_NEAR_JUMP_TILES
@@ -426,6 +464,11 @@ def _bike_ramp_segment(
             momentum = post_m
             last_ramp_idx = j
             last_ramp_fx, last_ramp_fy = fx, fy
+            if post_m == 0:
+                # FAR_SHORT halts the chain — segment ends at this landing
+                # regardless of what the path does next.
+                j += 1
+                break
         else:
             fx, fy = nx, ny
             momentum = min(momentum + 1, BIKE_RAMP_RUNWAY_TILES)
@@ -480,8 +523,26 @@ def _scan_path_for_bike_obstacles(
                     }
         if is_ramp:
             if momentum + 1 >= BIKE_RAMP_RUNWAY_TILES:
-                jump_tiles = BIKE_RAMP_JUMP_TILES
-                momentum = BIKE_RAMP_RUNWAY_TILES
+                # FAR-class jump: natural landing is ramp+4, but if that
+                # tile is blocked (same-dir ramp / wall / void) the engine
+                # truncates to ramp+3 and stops momentum (FAR_SHORT). Mirror
+                # _bike_ramp_edges' "any blocker at +4 → +3" rule so the sim
+                # matches what BFS planned for.
+                far_x, far_y = sx + sdx * BIKE_RAMP_JUMP_TILES, sy + sdy * BIKE_RAMP_JUMP_TILES
+                far_blocked = True
+                if 0 <= far_y < len(terrain_info) and 0 <= far_x < len(terrain_info[far_y]):
+                    far_p, far_beh = terrain_info[far_y][far_x]
+                    if far_p and not (
+                        far_beh in BIKE_RAMP_BEHAVIORS
+                        and BIKE_RAMP_DIRECTIONS[far_beh] == step_dir
+                    ):
+                        far_blocked = False
+                if far_blocked:
+                    jump_tiles = BIKE_RAMP_JUMP_TILES - 1  # ramp+3
+                    momentum = 0  # chain halts at FAR_SHORT landing
+                else:
+                    jump_tiles = BIKE_RAMP_JUMP_TILES
+                    momentum = BIKE_RAMP_RUNWAY_TILES
             elif momentum == 0:
                 jump_tiles = BIKE_RAMP_NEAR_JUMP_TILES
                 momentum = 1
@@ -718,7 +779,25 @@ def _execute_path(
         # of 4). Releasing only after the last ramp's settle preserves
         # momentum through the whole chain.
         if step_wants_bike:
-            seg = _bike_ramp_segment(directions, i, obstacle_tiles, old_x, old_y)
+            # Pass terrain + NPC context so the segment sim can honor the
+            # "any blocker at ramp+4 → ramp+3 truncation" rule that
+            # _bike_ramp_edges uses when planning.  Without these, the sim
+            # only catches same-direction-ramp blockers (via obstacle_tiles);
+            # walls and NPCs at +4 would desync sim from BFS.
+            _seg_terrain = None
+            _seg_gox = _seg_goy = 0
+            _seg_npc: set | None = None
+            if repath_ctx is not None:
+                _seg_terrain = repath_ctx.get("terrain_info")
+                _seg_gox = repath_ctx.get("grid_ox", 0)
+                _seg_goy = repath_ctx.get("grid_oy", 0)
+                _seg_npc = repath_ctx.get("npc_set")
+            seg = _bike_ramp_segment(
+                directions, i, obstacle_tiles, old_x, old_y,
+                terrain_info=_seg_terrain,
+                grid_ox=_seg_gox, grid_oy=_seg_goy,
+                npc_set=_seg_npc,
+            )
             if seg is not None:
                 seg_end_idx, seg_fx, seg_fy, ramp_tile_x, ramp_tile_y, seg_gear = seg
                 from renegade_mcp.addresses import addr as _addr
