@@ -4,6 +4,80 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-20 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Ramp+3 landing edge + 3D-BFS momentum preservation (2026-04-24 session 43)
+
+Unblocked the Wayward Cave B1F row-6 ramp chain Pokéball puzzle that closed session 42. Empirically characterized the engine's chain-safety behavior, added the matching BFS edge, fixed a subtler 3D-BFS regression the first fix exposed, and closed issue #1 (DeSmuME → MelonMCP migration — already complete in practice, just needed closing).
+
+### The puzzle and the mechanic
+
+Map 285 row 6 is a 2-ramp eastbound chain: `floor(26-28) → ramp1(29) → floor(30) → VOID(31) → floor(32) → ramp2(33) → floor(34) → VOID(35)`. The single-tile pocket at x=32 (between ramp2 and the void east of it) is the only access route to the obj:3 Pokéball pocket at (33, 8) — row 7-9 cols 32-34 are walled off on all other sides by 0x39 directional blockers and voids.
+
+FAR jump from ramp1 with the direction button held lands at ramp+4 = x=33 = ON ramp2 → auto-chain → overshoots to x=38. The puzzle requires landing at x=32 specifically. Session 42's backlog had this down as "spike mid-range jump distance (ramp+2/+3 from 1/2-tile runways)".
+
+Session 43 spike (`scripts/spike_mid_range_ramp.py`) revealed the real mechanic is **not** runway-driven, it's **release-driven**: at full momentum, if the direction button is released before the bike lands AND the ramp+4 tile is another same-direction ramp, **the engine auto-truncates the landing to ramp+3**. It's a chain-safety — the engine won't deposit a button-released bike on an un-fire-able ramp tile. From (25, 6) holding right and releasing when `player.x ∈ [29, 32]`, the bike lands at (32, 6) every time. 4-frame release window, completely deterministic.
+
+Bonus empirical clarifications the existing nav_constants.py comment had wrong: **gear DOES select FAR vs NEAR** — FAST+momentum=0 stalls (bike refuses to enter ramp), SLOW always produces NEAR regardless of runway. Not wired into BFS yet (out of scope).
+
+### Code changes
+
+**`renegade_mcp/pathfinding.py`** — `_bike_ramp_edges` reworked:
+- At full momentum, check ramp+4 tile. If clear (passable, non-chain-ramp, not NPC) → emit FAR edge landing at ramp+4 with post_m=RUNWAY (existing behavior). If blocked → emit FAR_SHORT edge landing at ramp+3 with post_m=0 (chain halts because the next ramp needs RUNWAY momentum).
+- Added `npc_set` param so NPCs at ramp+4 trigger the fallback.
+- Four BFS callers updated to pass `npc_set` through.
+
+**`renegade_mcp/navigation.py`** — executor sim parity:
+- `_scan_path_for_bike_obstacles` mirrors the "+4 blocker → +3" rule when simulating momentum to pre-populate obstacle_tiles.
+- `_bike_ramp_segment` applies the same rule. When a FAR_SHORT fires (post_m=0), the segment terminates at that landing — no further chain possible.
+- `_bike_ramp_segment` now accepts optional `terrain_info` + `grid_ox/oy` + `npc_set` so it can detect all three blocker kinds (chain ramp / wall / NPC). The callsite pulls these from `repath_ctx`.
+
+**3D-BFS momentum fix** (same session — the ramp+3 edge exposed a latent 3D bug):
+- `_flood_fill_level` and `_bfs_pathfind_level` previously re-seeded each level's BFS with `momentum=0`, dropping motion across BDHC-ramp tile transitions. On session42 this meant crossing bridge_EW tiles from level 2 to level 0 restarted momentum at (26, 6) level 0; by the approach tile at (28, 6) only 2 tiles of momentum were accumulated — below RUNWAY=4 — so `_bike_ramp_edges` didn't emit the FAR_SHORT edge and view_map reported obj:3 as unreachable.
+- Both functions now accept optional `start_dir` + `start_momentum` seeds and propagate `(arrive_dir, arrive_momentum)` through the `transitions` / `reachable_ramps` dicts (5-tuple values).
+- `_bfs_reachable_3d` and `_bfs_pathfind_3d._search` thread the arrive-direction + arrive-momentum through each level handoff.
+- Net: 3D BFS now agrees with 2D on the session42 puzzle — view_map lists obj:3 as reachable.
+
+### Tests
+
+Six new unit tests in `tests/test_navigation.py::TestBikeRampBfsEdges`:
+
+- `test_ramp_edges_far_short_when_plus4_is_chain_ramp` — synthetic 10-wide grid with ramp+ramp spacing matching row 6.
+- `test_ramp_edges_far_short_when_plus4_is_wall` — impassable terrain as blocker.
+- `test_ramp_edges_far_short_when_plus4_is_npc` — NPC via `npc_set`.
+- `test_ramp_edges_no_edge_when_both_plus3_and_plus4_blocked` — correct empty result.
+- `test_2d_bfs_ramp_pocket_reachable_between_chained_ramps` — end-to-end BFS proof on a pocket that's reachable ONLY via FAR_SHORT.
+- `test_2d_bfs_pocket_unreachable_when_far_short_disabled` — regression guard; monkey-patches `_bike_ramp_edges` to legacy FAR-only and asserts the pocket becomes unreachable. Catches future removals of the fallback.
+
+Full pytest suite: **560 passed in ~4:54** (N=8). No regressions.
+
+### End-to-end verification
+
+- `navigate_to(32, 8)` from session42 save plans a clean 6-step path (`right x4 → down x2`) and lands exactly at the interaction tile for obj:3. BFS 2D reach grew from 443 → 477 tiles including the pocket; 3D reach grew from 443 → 465 after the momentum-preservation fix.
+- Pokéball obj:3 itself at (33, 8) is a MapObject blocking its own tile; the player stands at (32, 8) facing east and A-presses — standard item-get flow.
+- **BUG-046 also fully resolved** as a side-effect of the 3D momentum fix: `navigate_to(28, 6)` from `session32_wayward_b1f_ramp_slope_stairs` save at (13, 9) now succeeds in 38 steps / 1 repath. Same mechanism — the slope+ramp runway that was "rejected as cross-elevation" was actually failing because BDHC-ramp transitions dropped momentum, defeating the downstream ramp's runway.
+- warp:0 at (43, 38) still unreachable ("No path found: target is reachable terrain but all paths are blocked by walls, water, NPCs, or obstacles") — **separate from BUG-046**, appears to be an actual walls/blockers problem in that part of the east chamber, not a momentum/runway issue. Will need its own investigation.
+
+### Observations for future optimization
+
+Test-timing survey (Woj asked): slope tests dominate the suite at ~236s of 295s total. Top 5 slowest are all `TestBikeSlopeTraversal::test_*` in the 34–56s range — 2.5–3× the April baseline. Likely the slope executor's overshoot-retry + gear-reassertion loop. No action this session; filed for future.
+
+### Commits + issue
+
+- `8374eda` (previous session) — bike gear address fix
+- `74e1596` — add spike script (318 LOC)
+- `e431cb8` — ramp+3 FAR_SHORT edge + executor sim parity
+- `9d3f7fe` — CLAUDE.md status update
+- `b9373a4` — 6 new tests
+- `7bb9ab8` — 3D BFS momentum preservation across level transitions
+- **GitHub issue #1 closed** — MelonMCP migration confirmed complete (bridge socket, battery save, MCP namespace all migrated; parallel test fleet N=8 operational at `--shm-size=8g`).
+
+### Files added
+
+- `scripts/spike_mid_range_ramp.py` — characterization sweep across runway × release-timing × gear regimes on session42. Checked in per spike-before-redesign policy.
+
+### Memory updates
+
+None this session — the new engine rule is documented in `_bike_ramp_edges`' docstring and `DEV_HISTORY.md`. Per memory guidelines, not duplicating code-derivable information.
+
 ## Dev Session: Bike-gear encoding inversion + BUG-047 logged (2026-04-24 session 41/42)
 
 Root-caused and fixed the bike-gear address-and-encoding problem that session 39 had misidentified. Session closed with the `session42_wayward_b1f_first_ramp_approach` save, player at (25, 6) on Wayward Cave B1F top of the first east-bound bike ramp in the row-6 chain, mid-puzzle.
