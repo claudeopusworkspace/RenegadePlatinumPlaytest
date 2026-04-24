@@ -4,6 +4,46 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-20 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Y-shortcut for key items — Bicycle / Vs. Seeker / Explorer Kit / rods (2026-04-24 session 44)
+
+Added the Y-button registered-key-item shortcut to `use_item` so the 4 item types we use most often skip the ~1500-frame bag-menu round trip on every warm call. One-slot vanilla Platinum system (confirmed via decomp at `ref/pokeplatinum/include/bag.h:44` and `src/bag.c:51`) — 4 designated items rotate through the single slot.
+
+### Mechanism
+
+**`Bag.registeredItem`** — u32 at `BAG_BASE + 0x770`. Eight pockets × sizeof(BagItem=4) × (165+50+100+12+40+64+15+30) = 1904 bytes before the field. Wayne's E4 save had Vs. Seeker (443) registered, verified on-the-wire.
+
+**Y-press** dispatches the same `fieldUseFunc` as the bag's USE action (decomp `sub_02069238` at field_control.c:327). Gated on `PLAYER_MOVE_STATE == NONE|END` — in-flight step frames swallow the press.
+
+**Registration is silent** — no "replace existing?" confirmation. `Bag_RegisterItem` just overwrites.
+
+**Submenu order**:
+- Item not registered: `USE / REGISTER / CANCEL` (cursor on USE).
+- Item already registered: `USE / DESELECT / CANCEL`. USE stays at index 0 — the final A in the register-then-use chain works for both variants.
+
+### Flow in `_drive_shortcut_use` (renegade_mcp/use_item.py)
+
+- **Fast path** (target == registered): 60f pre-Y settle → `Y` → 180f. Typical cost: ~480f end-to-end.
+- **Slow path**: open bag → nav to item → A (submenu) → DOWN (REGISTER) → A (commit, silent write) → A (reopen submenu) → A (USE). Typical cost: ~2350f, ~500f cheaper than the unshortcut flow thanks to the text-printer finding below.
+
+Called transparently from `_flow_bicycle` (with CYCLING_GEAR_ADDR verification + fast-gear ensure) and from `_flow_shortcut_ack` (for Vs. Seeker / Explorer Kit — returns success without post-USE verification; caller drives any follow-up UI). `activate_key_item` (used by fishing.py) also goes through `_drive_shortcut_use` when the item is shortcut-eligible.
+
+### Missteps worth remembering
+
+1. **First wait estimate was 17× too high.** Initial MCP-driven spike reported "needs ~700f between A and DOWN." That was wrong — the real defect was `press_buttons(..., frames=1)` on the DOWN press, which the engine drops. The settle itself was fine. Binary search with `frames=8` holds found **5f suffices** (see `scripts/spike_submenu_wait.py`). Lesson: if a button press "doesn't register," check the hold duration before blaming settle timing.
+
+2. **Nav-loop Y-press needs a pre-settle.** `_auto_mount_for_slope` calls `use_item("Bicycle")` after only `WAIT_FRAMES=8` — a walk step (~16f) is still resolving. Y gets eaten (decomp `moveState` check). Fixed with `SHORTCUT_PRE_Y_WAIT = 60f` inside the fast path. The old bag flow "worked" because opening the pause menu is a synchronizing op — it waits for the step to finish.
+
+### Test results
+
+- Full suite: **562 passed** in 3:57 (N=4 fleet) — no regressions.
+- Targeted (bicycle + cycling road + fishing + item tools + navigation): **141 passed** in 1:38 (N=4 fleet), down from ~2:01 before.
+- Bike toggle cost, Wayne's league-outdoor save: first call 2349f (slow path, was-Vs.Seeker → now-bike), second call 549f (Y fast path). Saves ~1000–1500f per warm call.
+
+### Follow-ups not done this session
+
+- **Explorer Kit / Vs. Seeker post-USE UI** — `_flow_shortcut_ack` returns immediately after USE. The caller is responsible for driving the Underground modal or dismissing the "no trainers" text.
+- **MENU_WAIT = 300f everywhere else** — Woj flagged that 300f between menu steps feels defensive too. Not investigated this session; candidate for a follow-up spike pass.
+
 ## Dev Session: Ramp+3 landing edge + 3D-BFS momentum preservation (2026-04-24 session 43)
 
 Unblocked the Wayward Cave B1F row-6 ramp chain Pokéball puzzle that closed session 42. Empirically characterized the engine's chain-safety behavior, added the matching BFS edge, fixed a subtler 3D-BFS regression the first fix exposed, and closed issue #1 (DeSmuME → MelonMCP migration — already complete in practice, just needed closing).
