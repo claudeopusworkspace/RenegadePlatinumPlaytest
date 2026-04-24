@@ -652,6 +652,140 @@ class TestBikeRampBfsEdges:
             f"got reach={sorted(reach)}"
         )
 
+    def test_ramp_edges_emits_chain_through_when_chain_landing_clear(self):
+        """BUG-048 Gap 1: when ramp+4 is a same-direction chain-ramp AND
+        the chain-ramp's own FAR landing (approach+10, chain-ramp+5) is
+        clear, ``_bike_ramp_edges`` must emit BOTH the FAR_SHORT release-
+        edge at ramp+3 AND a CHAIN_THROUGH edge at approach+10.  The bike
+        auto-fires the chain-ramp mid-flight when the direction button is
+        held through; releasing mid-flight lands at ramp+3 instead.  BFS
+        admits both paths so callers can pick either target."""
+        from renegade_mcp.pathfinding import _bike_ramp_edges
+        from renegade_mcp.nav_constants import BIKE_RAMP_RUNWAY_TILES
+        # Approach (3,0), ramp1 (4,0), floor, void, pocket (7,0),
+        # chain-ramp (8,0), floor*5, chain-landing at (13, 0).
+        grid = [[
+            (True, 0x08), (True, 0x08), (True, 0x08),
+            (True, 0x08),   # approach (3, 0)
+            (False, 0xD7),  # ramp1 (4, 0)
+            (True, 0x08),   # (5, 0)
+            (False, 0x00),  # (6, 0) void
+            (True, 0x08),   # (7, 0) ramp+3 pocket
+            (False, 0xD7),  # (8, 0) chain-ramp
+            (True, 0x08),   # (9, 0)
+            (True, 0x08),   # (10, 0)
+            (True, 0x08),   # (11, 0)
+            (True, 0x08),   # (12, 0)
+            (True, 0x08),   # (13, 0) CHAIN_THROUGH landing
+            (True, 0x08),   # (14, 0)
+        ]]
+        edges = _bike_ramp_edges(
+            grid, 3, 0, "right", 1, 0, width=15, height=1,
+            momentum=BIKE_RAMP_RUNWAY_TILES - 1,
+        )
+        landings = {(lx, ly): post_m for (lx, ly, post_m) in edges}
+        assert (13, 0) in landings, (
+            f"CHAIN_THROUGH edge must land at approach+10 = (13, 0); "
+            f"got edges {edges}"
+        )
+        assert landings[(13, 0)] == BIKE_RAMP_RUNWAY_TILES, (
+            f"CHAIN_THROUGH post_m should be RUNWAY so further chains "
+            f"can carry through; got post_m={landings[(13, 0)]}"
+        )
+        assert (7, 0) in landings, (
+            f"FAR_SHORT release-edge must still be emitted alongside "
+            f"CHAIN_THROUGH; got edges {edges}"
+        )
+        assert landings[(7, 0)] == 0, (
+            f"FAR_SHORT post_m=0 (bike halts at pocket); got "
+            f"post_m={landings[(7, 0)]}"
+        )
+
+    def test_ramp_edges_no_chain_through_when_chain_landing_blocked(self):
+        """If the chain-ramp's own FAR landing is blocked (wall/chain/
+        oob), only the FAR_SHORT edge is emitted — holding through would
+        crash the bike into the blocker."""
+        from renegade_mcp.pathfinding import _bike_ramp_edges
+        from renegade_mcp.nav_constants import BIKE_RAMP_RUNWAY_TILES
+        # Same as above but (13, 0) blocked.
+        grid = [[
+            (True, 0x08), (True, 0x08), (True, 0x08),
+            (True, 0x08),   # approach (3, 0)
+            (False, 0xD7),  # ramp1 (4, 0)
+            (True, 0x08),   # (5, 0)
+            (False, 0x00),  # (6, 0) void
+            (True, 0x08),   # (7, 0) pocket
+            (False, 0xD7),  # (8, 0) chain-ramp
+            (True, 0x08),   # (9, 0)
+            (True, 0x08),   # (10, 0)
+            (True, 0x08),   # (11, 0)
+            (True, 0x08),   # (12, 0)
+            (False, 0x00),  # (13, 0) chain-landing BLOCKED
+            (True, 0x08),   # (14, 0)
+        ]]
+        edges = _bike_ramp_edges(
+            grid, 3, 0, "right", 1, 0, width=15, height=1,
+            momentum=BIKE_RAMP_RUNWAY_TILES - 1,
+        )
+        assert edges == [(7, 0, 0)], (
+            f"Chain-landing blocked → only FAR_SHORT edge; got {edges}"
+        )
+
+    def test_ramp_edges_no_chain_through_when_npc_on_chain_ramp(self):
+        """An NPC standing on the chain-ramp stops the chain at entry —
+        the bike can't land on the NPC-occupied ramp to re-fire.  Falls
+        back to FAR_SHORT at ramp+3."""
+        from renegade_mcp.pathfinding import _bike_ramp_edges
+        from renegade_mcp.nav_constants import BIKE_RAMP_RUNWAY_TILES
+        grid = [[
+            (True, 0x08), (True, 0x08), (True, 0x08),
+            (True, 0x08),   # approach (3, 0)
+            (False, 0xD7),  # ramp1 (4, 0)
+            (True, 0x08),   # (5, 0)
+            (False, 0x00),  # (6, 0) void
+            (True, 0x08),   # (7, 0) pocket
+            (False, 0xD7),  # (8, 0) chain-ramp (NPC here)
+            (True, 0x08),   # (9, 0)
+            (True, 0x08),   # (10, 0)
+            (True, 0x08),   # (11, 0)
+            (True, 0x08),   # (12, 0)
+            (True, 0x08),   # (13, 0) would-be chain-landing
+            (True, 0x08),   # (14, 0)
+        ]]
+        edges = _bike_ramp_edges(
+            grid, 3, 0, "right", 1, 0, width=15, height=1,
+            momentum=BIKE_RAMP_RUNWAY_TILES - 1,
+            npc_set={(8, 0)},
+        )
+        assert edges == [(7, 0, 0)], (
+            f"NPC on chain-ramp → chain disabled, only FAR_SHORT edge; "
+            f"got {edges}"
+        )
+
+    def test_2d_bfs_reaches_chain_through_landing(self):
+        """End-to-end BFS: the chain-through landing beyond the chain
+        pair is reachable via the CHAIN_THROUGH edge.  Mirrors the
+        Wayward B1F row-6 east-chamber entry."""
+        from renegade_mcp.pathfinding import _bfs_pathfind
+        grid = [[
+            (True, 0x08),  # (0, 0) start
+            (True, 0x08), (True, 0x08), (True, 0x08),
+            (False, 0xD7),  # ramp1 (4, 0)
+            (True, 0x08), (False, 0x00), (True, 0x08),  # pocket (7, 0)
+            (False, 0xD7),  # chain-ramp (8, 0)
+            (True, 0x08), (True, 0x08), (True, 0x08), (True, 0x08),
+            (True, 0x08),   # (13, 0) CHAIN_THROUGH landing
+            (True, 0x08),
+        ]]
+        path = _bfs_pathfind(grid, set(), 0, 0, 13, 0, width=15, height=1)
+        assert path is not None, (
+            "BFS must find a path to (13, 0) via CHAIN_THROUGH edge."
+        )
+        assert path == ["right", "right", "right", "right"], (
+            f"Expected 4-step path 'right x4' (3 walks + 1 chain edge); "
+            f"got {path}"
+        )
+
     def test_2d_bfs_near_jump_landing_reachable(self):
         """BFS must now admit near-jump landings — the ramp tile after a
         turn (momentum=0) lands the player 1 tile past, not 4.

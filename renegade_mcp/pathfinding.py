@@ -154,13 +154,37 @@ def _bike_ramp_edges(
         return True
 
     def _admit_far_or_short(post_m_far: int) -> None:
-        """Emit ONE FAR-class edge — the ramp+4 ('far') landing when clear,
-        otherwise the ramp+3 ('far_short') fallback when ramp+4 is blocked
-        by a chain ramp / wall / NPC."""
+        """Emit FAR-class edges — ramp+4 ('far') when clear, CHAIN_THROUGH
+        when ramp+4 is a same-direction ramp (auto-fires mid-flight), and
+        FAR_SHORT at ramp+3 as a release-window / non-chain blocker
+        fallback."""
         far_x, far_y = x + dx * BIKE_RAMP_JUMP_TILES, y + dy * BIKE_RAMP_JUMP_TILES
         if _tile_passable_clear(far_x, far_y, exclude_chain=True):
             edges.append((far_x, far_y, post_m_far))
             return
+
+        # ramp+4 is blocked.  Distinguish chain-ramp (emits CHAIN_THROUGH +
+        # release-edge FAR_SHORT) from non-chain blockers (FAR_SHORT only).
+        is_chain = False
+        if 0 <= far_x < width and 0 <= far_y < height:
+            _, far_beh = terrain_info[far_y][far_x]
+            if far_beh in BIKE_RAMP_BEHAVIORS and BIKE_RAMP_DIRECTIONS[far_beh] == direction:
+                # NPC standing on the chain-ramp halts the chain.
+                if npc_set is None or (far_x, far_y) not in npc_set:
+                    is_chain = True
+
+        if is_chain:
+            # Engine auto-chain: the in-flight bike enters the chain-ramp
+            # and re-fires, launching +JUMP_TILES from the chain-ramp
+            # tile (+5, not +4 — in-flight entry carries one extra tile
+            # vs. a ground-approach ramp fire).  Empirically verified at
+            # Wayward B1F row 6 (approach x=28 → landing x=38, see
+            # scripts/spike_mid_range_ramp.py and session 44 bisection).
+            ct_x = far_x + dx * BIKE_RAMP_JUMP_TILES
+            ct_y = far_y + dy * BIKE_RAMP_JUMP_TILES
+            if _tile_passable_clear(ct_x, ct_y, exclude_chain=True):
+                edges.append((ct_x, ct_y, post_m_far))
+
         short_tiles = BIKE_RAMP_JUMP_TILES - 1
         sx, sy = x + dx * short_tiles, y + dy * short_tiles
         if _tile_passable_clear(sx, sy, exclude_chain=False):

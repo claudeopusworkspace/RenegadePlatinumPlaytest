@@ -343,6 +343,7 @@ def _bike_ramp_segment(
     directions: list[str], i: int, obstacle_tiles: dict, cur_x: int, cur_y: int,
     terrain_info: list | None = None, grid_ox: int = 0, grid_oy: int = 0,
     npc_set: set | None = None,
+    goal_x: int | None = None, goal_y: int | None = None,
 ) -> tuple[int, int, int, int, int] | None:
     """If step i starts a contiguous same-direction bike-ramp segment,
     return ``(segment_end_idx, landing_x, landing_y, last_ramp_tile_x,
@@ -420,11 +421,60 @@ def _bike_ramp_segment(
             return True
         return False
 
+    def _far_plus_one_is_chain_ramp(ramp_gx: int, ramp_gy: int) -> bool:
+        """Is ramp+4 specifically a same-direction chain ramp (not a wall/
+        void/NPC)?  Used to gate CHAIN_THROUGH — only chain-ramps let
+        the bike re-fire mid-flight; other blockers just truncate the
+        jump to ramp+3."""
+        far_gx = ramp_gx + dx * (BIKE_RAMP_JUMP_TILES - 1)
+        far_gy = ramp_gy + dy * (BIKE_RAMP_JUMP_TILES - 1)
+        # NPC on the chain-ramp tile disables the chain (bike can't land on it).
+        if npc_set is not None and (far_gx, far_gy) in npc_set:
+            return False
+        obs_far = obstacle_tiles.get((far_gx, far_gy))
+        if obs_far is not None and obs_far.get("type") in BIKE_RAMP_TYPES:
+            if BIKE_RAMP_DIRECTIONS.get(obs_far.get("behavior")) == d:
+                return True
+        if terrain_info is not None:
+            tx, ty = far_gx - grid_ox, far_gy - grid_oy
+            if 0 <= ty < len(terrain_info) and 0 <= tx < len(terrain_info[0]):
+                _, beh = terrain_info[ty][tx]
+                if beh in BIKE_RAMP_BEHAVIORS and BIKE_RAMP_DIRECTIONS[beh] == d:
+                    return True
+        return False
+
+    def _chain_through_landing_clear(ramp_gx: int, ramp_gy: int) -> bool:
+        """Is the chain-ramp's own FAR landing (= approach + 2*JUMP_TILES,
+        or equivalently chain-ramp + JUMP_TILES) clear of walls, NPCs,
+        and same-direction chain ramps?  Mirrors ``_tile_passable_clear
+        (..., exclude_chain=True)`` in pathfinding."""
+        # chain-ramp tile is at ramp + (JUMP_TILES - 1).  Its own FAR
+        # landing adds another JUMP_TILES.
+        ct_gx = ramp_gx + dx * (BIKE_RAMP_JUMP_TILES - 1 + BIKE_RAMP_JUMP_TILES)
+        ct_gy = ramp_gy + dy * (BIKE_RAMP_JUMP_TILES - 1 + BIKE_RAMP_JUMP_TILES)
+        if npc_set is not None and (ct_gx, ct_gy) in npc_set:
+            return False
+        if terrain_info is not None:
+            tx, ty = ct_gx - grid_ox, ct_gy - grid_oy
+            if not (0 <= ty < len(terrain_info)) or not (0 <= tx < len(terrain_info[0])):
+                return False
+            p, beh = terrain_info[ty][tx]
+            if not p:
+                return False
+            if beh in BIKE_RAMP_BEHAVIORS and BIKE_RAMP_DIRECTIONS[beh] == d:
+                return False
+        return True
+
     fx, fy = cur_x, cur_y
     momentum = 0
     last_ramp_idx = -1
     last_ramp_fx = last_ramp_fy = None
     last_ramp_tile_fx = last_ramp_tile_fy = None
+    # For normal ramps the executor releases the direction button when
+    # the player reaches the ramp tile (the jump then animates out).
+    # CHAIN_THROUGH requires holding past the chain transition so the
+    # chain-ramp auto-fires; track the release target separately.
+    release_tile_fx = release_tile_fy = None
     segment_gear: int | None = None  # locked by first ramp; follow-ups must match
     j = i
     while j < len(directions):
@@ -436,8 +486,32 @@ def _bike_ramp_segment(
         if is_ramp_here:
             if momentum + 1 >= BIKE_RAMP_RUNWAY_TILES:
                 if _far_plus_one_blocked(nx, ny):
-                    jump_tiles = BIKE_RAMP_JUMP_TILES - 1  # ramp+3
-                    post_m = 0  # chain halts here
+                    # Distinguish CHAIN_THROUGH (chain-ramp at +4 with
+                    # clear landing) from FAR_SHORT (non-chain blocker
+                    # or release-at-pocket).  When the BFS-planned goal
+                    # sits at the CHAIN_THROUGH landing, or the plan
+                    # continues same-direction past this ramp, we hold
+                    # through; otherwise we release and land at ramp+3.
+                    ct_landing_x = fx + dx * (2 * BIKE_RAMP_JUMP_TILES)
+                    ct_landing_y = fy + dy * (2 * BIKE_RAMP_JUMP_TILES)
+                    goal_at_ct = (
+                        goal_x is not None and goal_y is not None
+                        and goal_x == ct_landing_x and goal_y == ct_landing_y
+                    )
+                    plan_continues = (
+                        j + 1 < len(directions) and directions[j + 1] == d
+                    )
+                    if ((plan_continues or goal_at_ct)
+                            and _far_plus_one_is_chain_ramp(nx, ny)
+                            and _chain_through_landing_clear(nx, ny)):
+                        # Holding direction through the chain: bike lands
+                        # on chain-ramp mid-flight, re-fires, lands at
+                        # chain-ramp + JUMP_TILES (= approach + 2*JUMP_TILES).
+                        jump_tiles = 2 * BIKE_RAMP_JUMP_TILES
+                        post_m = BIKE_RAMP_RUNWAY_TILES
+                    else:
+                        jump_tiles = BIKE_RAMP_JUMP_TILES - 1  # ramp+3
+                        post_m = 0  # chain halts here
                 else:
                     jump_tiles = BIKE_RAMP_JUMP_TILES
                     post_m = BIKE_RAMP_RUNWAY_TILES
@@ -464,6 +538,13 @@ def _bike_ramp_segment(
             momentum = post_m
             last_ramp_idx = j
             last_ramp_fx, last_ramp_fy = fx, fy
+            # Release target defaults to the ramp tile (single-jump cases).
+            # CHAIN_THROUGH must hold through the chain animation, so the
+            # release target becomes the chain-through landing itself.
+            if jump_tiles == 2 * BIKE_RAMP_JUMP_TILES:
+                release_tile_fx, release_tile_fy = fx, fy
+            else:
+                release_tile_fx, release_tile_fy = nx, ny
             if post_m == 0:
                 # FAR_SHORT halts the chain — segment ends at this landing
                 # regardless of what the path does next.
@@ -477,9 +558,13 @@ def _bike_ramp_segment(
     if last_ramp_idx == -1 or segment_gear is None:
         return None
 
+    # Use the per-jump-type release target if set; fall back to the last
+    # ramp tile for legacy single-jump paths.
+    rel_fx = release_tile_fx if release_tile_fx is not None else last_ramp_tile_fx
+    rel_fy = release_tile_fy if release_tile_fy is not None else last_ramp_tile_fy
     return (
         last_ramp_idx, last_ramp_fx, last_ramp_fy,
-        last_ramp_tile_fx, last_ramp_tile_fy, segment_gear,
+        rel_fx, rel_fy, segment_gear,
     )
 
 
@@ -504,7 +589,7 @@ def _scan_path_for_bike_obstacles(
     sx, sy = start_gx, start_gy
     last_dir: str | None = None
     momentum = 0
-    for step_dir in directions:
+    for i, step_dir in enumerate(directions):
         sdx, sdy = _DIR_DELTAS.get(step_dir, (0, 0))
         if step_dir != last_dir:
             momentum = 0
@@ -525,10 +610,13 @@ def _scan_path_for_bike_obstacles(
             if momentum + 1 >= BIKE_RAMP_RUNWAY_TILES:
                 # FAR-class jump: natural landing is ramp+4, but if that
                 # tile is blocked (same-dir ramp / wall / void) the engine
-                # truncates to ramp+3 and stops momentum (FAR_SHORT). Mirror
-                # _bike_ramp_edges' "any blocker at +4 → +3" rule so the sim
-                # matches what BFS planned for.
+                # truncates to ramp+3 and stops momentum (FAR_SHORT) — unless
+                # the blocker is a chain-ramp AND the next plan direction
+                # continues through it AND chain-ramp's own landing is
+                # clear, in which case CHAIN_THROUGH carries the bike to
+                # approach + 2*JUMP_TILES. Mirrors _bike_ramp_edges.
                 far_x, far_y = sx + sdx * BIKE_RAMP_JUMP_TILES, sy + sdy * BIKE_RAMP_JUMP_TILES
+                far_is_chain = False
                 far_blocked = True
                 if 0 <= far_y < len(terrain_info) and 0 <= far_x < len(terrain_info[far_y]):
                     far_p, far_beh = terrain_info[far_y][far_x]
@@ -537,9 +625,38 @@ def _scan_path_for_bike_obstacles(
                         and BIKE_RAMP_DIRECTIONS[far_beh] == step_dir
                     ):
                         far_blocked = False
+                    elif (far_beh in BIKE_RAMP_BEHAVIORS
+                            and BIKE_RAMP_DIRECTIONS[far_beh] == step_dir):
+                        far_is_chain = True
                 if far_blocked:
-                    jump_tiles = BIKE_RAMP_JUMP_TILES - 1  # ramp+3
-                    momentum = 0  # chain halts at FAR_SHORT landing
+                    plan_continues = (
+                        i + 1 < len(directions) and directions[i + 1] == step_dir
+                    )
+                    ct_x = sx + sdx * (2 * BIKE_RAMP_JUMP_TILES)
+                    ct_y = sy + sdy * (2 * BIKE_RAMP_JUMP_TILES)
+                    ct_clear = False
+                    if far_is_chain and plan_continues:
+                        if 0 <= ct_y < len(terrain_info) and 0 <= ct_x < len(terrain_info[ct_y]):
+                            ct_p, ct_beh = terrain_info[ct_y][ct_x]
+                            if ct_p and not (
+                                ct_beh in BIKE_RAMP_BEHAVIORS
+                                and BIKE_RAMP_DIRECTIONS[ct_beh] == step_dir
+                            ):
+                                ct_clear = True
+                    if far_is_chain and plan_continues and ct_clear:
+                        # CHAIN_THROUGH. Also record the chain-ramp tile
+                        # so downstream passes know it's in the path.
+                        cr_gx, cr_gy = far_x + grid_ox, far_y + grid_oy
+                        if (cr_gx, cr_gy) not in obstacle_tiles:
+                            obstacle_tiles[(cr_gx, cr_gy)] = {
+                                "type": "bike_ramp",
+                                "behavior": far_beh,
+                            }
+                        jump_tiles = 2 * BIKE_RAMP_JUMP_TILES
+                        momentum = BIKE_RAMP_RUNWAY_TILES
+                    else:
+                        jump_tiles = BIKE_RAMP_JUMP_TILES - 1  # ramp+3
+                        momentum = 0  # chain halts at FAR_SHORT landing
                 else:
                     jump_tiles = BIKE_RAMP_JUMP_TILES
                     momentum = BIKE_RAMP_RUNWAY_TILES
@@ -792,11 +909,19 @@ def _execute_path(
                 _seg_gox = repath_ctx.get("grid_ox", 0)
                 _seg_goy = repath_ctx.get("grid_oy", 0)
                 _seg_npc = repath_ctx.get("npc_set")
+            _seg_goal_x = _seg_goal_y = None
+            if repath_ctx is not None:
+                _gx = repath_ctx.get("goal_x")
+                _gy = repath_ctx.get("goal_y")
+                if _gx is not None and _gy is not None:
+                    _seg_goal_x = _gx + _seg_gox
+                    _seg_goal_y = _gy + _seg_goy
             seg = _bike_ramp_segment(
                 directions, i, obstacle_tiles, old_x, old_y,
                 terrain_info=_seg_terrain,
                 grid_ox=_seg_gox, grid_oy=_seg_goy,
                 npc_set=_seg_npc,
+                goal_x=_seg_goal_x, goal_y=_seg_goal_y,
             )
             if seg is not None:
                 seg_end_idx, seg_fx, seg_fy, ramp_tile_x, ramp_tile_y, seg_gear = seg
