@@ -461,6 +461,197 @@ class TestBikeRampBfsEdges:
             f"FAR-jump edge (8, 0, {BIKE_RAMP_RUNWAY_TILES}); got {edges}"
         )
 
+    def test_ramp_edges_far_short_when_plus4_is_chain_ramp(self):
+        """Wayward B1F row-6 scenario: ramp+4 is a same-direction ramp
+        (would auto-chain on hold-through). BFS emits the FAR_SHORT edge
+        landing at ramp+3 (approach+4) with post_m=0 so the chain halts
+        cleanly in the single-tile pocket before ramp2.
+        """
+        from renegade_mcp.pathfinding import _bike_ramp_edges
+        from renegade_mcp.nav_constants import BIKE_RAMP_RUNWAY_TILES
+        # Approach (3, 0), ramp1 (4, 0), floor, void, floor, ramp2 (8, 0).
+        # Ramp+4 landing = (8, 0) IS a same-dir ramp → truncate to
+        # ramp+3 landing at (7, 0).
+        grid = [[
+            (True, 0x08), (True, 0x08), (True, 0x08),
+            (True, 0x08),   # approach (3, 0)
+            (False, 0xD7),  # ramp1 (4, 0)
+            (True, 0x08),   # floor (5, 0)
+            (False, 0x00),  # void (6, 0) — jump arcs over
+            (True, 0x08),   # POCKET / ramp+3 landing (7, 0)
+            (False, 0xD7),  # ramp2 (8, 0) — chain blocker
+            (True, 0x08),   # floor (9, 0)
+        ]]
+        edges = _bike_ramp_edges(
+            grid, 3, 0, "right", 1, 0, width=10, height=1,
+            momentum=BIKE_RAMP_RUNWAY_TILES - 1,
+        )
+        assert edges == [(7, 0, 0)], (
+            f"Ramp+4=(8,0) is a same-dir chain ramp — expect FAR_SHORT "
+            f"edge (7, 0, 0), not the default FAR (8, 0, RUNWAY). Got {edges}"
+        )
+
+    def test_ramp_edges_far_short_when_plus4_is_wall(self):
+        """Any impassable tile at ramp+4 triggers the same +3 fallback —
+        the engine auto-truncates to the safe tile one short."""
+        from renegade_mcp.pathfinding import _bike_ramp_edges
+        from renegade_mcp.nav_constants import BIKE_RAMP_RUNWAY_TILES
+        # Approach (3, 0), ramp (4, 0), floor, floor, floor, WALL (8, 0).
+        grid = [[
+            (True, 0x08), (True, 0x08), (True, 0x08),
+            (True, 0x08),   # approach (3, 0)
+            (False, 0xD7),  # ramp (4, 0)
+            (True, 0x08),   # (5, 0)
+            (True, 0x08),   # (6, 0)
+            (True, 0x08),   # (7, 0) — ramp+3 fallback landing
+            (False, 0x00),  # (8, 0) — ramp+4 blocked by wall
+        ]]
+        edges = _bike_ramp_edges(
+            grid, 3, 0, "right", 1, 0, width=9, height=1,
+            momentum=BIKE_RAMP_RUNWAY_TILES - 1,
+        )
+        assert edges == [(7, 0, 0)], (
+            f"Wall at ramp+4 should trigger FAR_SHORT fallback to (7, 0, 0); "
+            f"got {edges}"
+        )
+
+    def test_ramp_edges_far_short_when_plus4_is_npc(self):
+        """NPC at ramp+4 counts as a blocker (same rule as wall/chain).
+        Requires the caller to pass ``npc_set``; without it NPCs aren't
+        checked (geometric fallback behavior preserved)."""
+        from renegade_mcp.pathfinding import _bike_ramp_edges
+        from renegade_mcp.nav_constants import BIKE_RAMP_RUNWAY_TILES
+        grid = [[(True, 0x08)] * 4 + [(False, 0xD7)] + [(True, 0x08)] * 4]
+        # NPC occupies ramp+4 = (8, 0).
+        edges = _bike_ramp_edges(
+            grid, 3, 0, "right", 1, 0, width=9, height=1,
+            momentum=BIKE_RAMP_RUNWAY_TILES - 1,
+            npc_set={(8, 0)},
+        )
+        assert edges == [(7, 0, 0)], (
+            f"NPC at ramp+4 should trigger FAR_SHORT fallback to (7, 0, 0); "
+            f"got {edges}"
+        )
+
+    def test_ramp_edges_no_edge_when_both_plus3_and_plus4_blocked(self):
+        """If ramp+4 is blocked AND ramp+3 is also impassable, no edge
+        is admitted — the bike has nowhere safe to land."""
+        from renegade_mcp.pathfinding import _bike_ramp_edges
+        from renegade_mcp.nav_constants import BIKE_RAMP_RUNWAY_TILES
+        # Approach (3, 0), ramp (4, 0), floor, floor, WALL at +3, WALL at +4.
+        grid = [[
+            (True, 0x08), (True, 0x08), (True, 0x08),
+            (True, 0x08),   # approach (3, 0)
+            (False, 0xD7),  # ramp (4, 0)
+            (True, 0x08),   # (5, 0)
+            (True, 0x08),   # (6, 0)
+            (False, 0x00),  # (7, 0) — ramp+3 blocked
+            (False, 0x00),  # (8, 0) — ramp+4 blocked
+        ]]
+        edges = _bike_ramp_edges(
+            grid, 3, 0, "right", 1, 0, width=9, height=1,
+            momentum=BIKE_RAMP_RUNWAY_TILES - 1,
+        )
+        assert edges == [], (
+            f"Both ramp+4 and ramp+3 blocked — expect no edge; got {edges}"
+        )
+
+    def test_2d_bfs_ramp_pocket_reachable_between_chained_ramps(self):
+        """End-to-end BFS proof: the pocket tile (ramp1+3) sandwiched
+        between a chain ramp and a void is reachable only via the
+        FAR_SHORT edge.  Mirrors Wayward B1F row-6 geometry.
+
+        Layout (row 0 only):
+          col  0 1 2 3 4 5 6 7 8 9
+          beh  . . . . R . # . R #
+                       ↑       ↑
+                    ramp1     ramp2 (chain blocker)
+                     at 4    at 8
+                       pocket = (7, 0)   (ramp1+3)
+
+        From start (0, 0), the pocket (7, 0) is reachable ONLY via the
+        ramp1 FAR_SHORT edge — it's walled off otherwise ((6, 0) is
+        void, (8, 0) is a ramp that fires eastward, not accessible
+        from the east since (9, 0) is void).
+        """
+        from renegade_mcp.pathfinding import _bfs_reachable
+        grid = [[
+            (True, 0x08),  # (0, 0) start
+            (True, 0x08), (True, 0x08), (True, 0x08),
+            (False, 0xD7),  # ramp1 (4, 0)
+            (True, 0x08),   # (5, 0) floor
+            (False, 0x00),  # (6, 0) void — isolates pocket from west
+            (True, 0x08),   # (7, 0) POCKET (ramp1+3) — target
+            (False, 0xD7),  # ramp2 (8, 0) chain blocker
+            (False, 0x00),  # (9, 0) void — isolates pocket from east
+        ]]
+        reach = _bfs_reachable(grid, set(), 0, 0, width=10, height=1)
+        assert (7, 0) in reach, (
+            f"Pocket (7, 0) must be reachable via FAR_SHORT edge; "
+            f"got reach={sorted(reach)}"
+        )
+        # (5, 0) is on the ramp1 trajectory but the jump arcs over it,
+        # and the void at (6, 0) blocks walking. The pocket is truly
+        # isolated — reachable ONLY via the FAR_SHORT edge.
+        assert (5, 0) not in reach
+
+    def test_2d_bfs_pocket_unreachable_when_far_short_disabled(self):
+        """Sanity: without the FAR_SHORT fallback, the pocket would be
+        unreachable.  Simulate by monkey-patching ``_bike_ramp_edges``
+        to only return the ramp+4 edge (old behavior), and confirm
+        that BFS CANNOT reach the pocket.  Guards against silent
+        regression if someone removes the fallback.
+        """
+        from renegade_mcp import pathfinding
+        from renegade_mcp.pathfinding import _bfs_reachable
+        from renegade_mcp.nav_constants import (
+            BIKE_RAMP_BEHAVIORS, BIKE_RAMP_DIRECTIONS,
+            BIKE_RAMP_JUMP_TILES, BIKE_RAMP_RUNWAY_TILES,
+        )
+        # Same layout as the pocket test above.
+        grid = [[
+            (True, 0x08),
+            (True, 0x08), (True, 0x08), (True, 0x08),
+            (False, 0xD7),  # ramp1
+            (True, 0x08), (False, 0x00), (True, 0x08),
+            (False, 0xD7),  # ramp2
+            (False, 0x00),
+        ]]
+
+        def _legacy_far_only(
+            terrain_info, x, y, direction, dx, dy, width, height,
+            momentum=None, npc_set=None,
+        ):
+            """Pre-fix behavior: only emit ramp+4 FAR edge at full momentum."""
+            nx, ny = x + dx, y + dy
+            if not (0 <= nx < width and 0 <= ny < height):
+                return []
+            _, beh = terrain_info[ny][nx]
+            if beh not in BIKE_RAMP_BEHAVIORS:
+                return []
+            if BIKE_RAMP_DIRECTIONS[beh] != direction:
+                return []
+            if momentum is None or momentum + 1 < BIKE_RAMP_RUNWAY_TILES:
+                return []
+            lx, ly = x + dx * BIKE_RAMP_JUMP_TILES, y + dy * BIKE_RAMP_JUMP_TILES
+            if not (0 <= lx < width and 0 <= ly < height):
+                return []
+            p, _ = terrain_info[ly][lx]
+            if not p:
+                return []
+            return [(lx, ly, BIKE_RAMP_RUNWAY_TILES)]
+
+        original = pathfinding._bike_ramp_edges
+        try:
+            pathfinding._bike_ramp_edges = _legacy_far_only
+            reach = _bfs_reachable(grid, set(), 0, 0, width=10, height=1)
+        finally:
+            pathfinding._bike_ramp_edges = original
+        assert (7, 0) not in reach, (
+            f"Without FAR_SHORT fallback the pocket must be unreachable; "
+            f"got reach={sorted(reach)}"
+        )
+
     def test_2d_bfs_near_jump_landing_reachable(self):
         """BFS must now admit near-jump landings — the ramp tile after a
         turn (momentum=0) lands the player 1 tile past, not 4.
