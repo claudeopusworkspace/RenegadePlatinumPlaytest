@@ -4,6 +4,55 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-20 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: BUG-048 Gap 1 — CHAIN_THROUGH ramp edge (2026-04-24 session 45)
+
+Closed half of BUG-048: the east chamber of Wayward Cave B1F is now reachable via BFS + executor using the row-6 ramp chain. The second half (Gap 2 — turn-into-ramp momentum for the chamber-interior ramp) remains open by design this session.
+
+### Empirical characterization
+
+Manual hold-RIGHT on bike from `session42_wayward_b1f_first_ramp_approach` (25, 6):
+- 50f → (32, 6) = FAR_SHORT pocket (released mid-flight before chain fired).
+- 65f → (38, 6) = CHAIN_THROUGH landing.
+- 80f / 180f → (38, 6) or (42, 6) depending on post-chain walk distance to the east-chamber wall.
+
+**Chain-through landing math:** 38 − 28 = 10 = 2 × `BIKE_RAMP_JUMP_TILES` (=5). So `CHAIN_THROUGH landing = approach + 2 × JUMP_TILES = chain-ramp + JUMP_TILES = chain-ramp + 5`. That +5 is one tile further than a *ground-approach* ramp jump from the chain-ramp (which would be chain-ramp + 4). The extra +1 reflects in-flight entry: the chain-ramp fires with the bike already moving, so the jump carries an extra tile.
+
+Saved state `bug048_wayward_b1f_east_chamber_via_chain_through` (player at (42, 6), post-chain).
+
+### Code changes
+
+**`renegade_mcp/pathfinding.py::_bike_ramp_edges`** — when ramp+4 is rejected and the tile is a same-direction chain-ramp (not a wall/NPC/oob), probe chain-ramp's own FAR landing at `approach + 2*JUMP_TILES`. If clear, emit an additional CHAIN_THROUGH edge there with `post_m=RUNWAY`. FAR_SHORT release-edge at ramp+3 still emitted alongside (both paths are admissible — caller picks target). NPC on the chain-ramp disables the chain.
+
+**`renegade_mcp/navigation.py::_bike_ramp_segment`** — mirrored. New helpers `_far_plus_one_is_chain_ramp` and `_chain_through_landing_clear`. Dispatch choice between FAR_SHORT and CHAIN_THROUGH:
+- Always CHAIN_THROUGH when `plan_continues` (next direction in plan matches the ramp direction).
+- CHAIN_THROUGH when `goal_at_ct` (the planned goal sits exactly at the CHAIN_THROUGH landing — handles the single-step plan where the ramp fire IS the final step).
+- Otherwise FAR_SHORT.
+- Added `goal_x/y` parameters; `_execute_path` threads them through from `repath_ctx["goal_x"/"goal_y"]`.
+
+**Release-target split.** Previously `last_ramp_tile_*` doubled as both the last ramp tile and the executor's release target. For CHAIN_THROUGH the two diverge: we must hold the direction button through both ramp animations, not release at ramp1's tile. `_bike_ramp_segment` now tracks a separate `release_tile_*` that defaults to the last ramp tile but switches to the CHAIN_THROUGH landing when the segment fires as chain-through. The executor's existing `advance_frames_until` polling uses `release_tile_*` as the threshold — releasing when player.x reaches the landing (not the ramp) so the chain animation completes cleanly.
+
+**`_scan_path_for_bike_obstacles`** — mirrors the CHAIN_THROUGH sim (advances `sx` by 2×JUMP_TILES and marks both ramp tiles in `obstacle_tiles`). Gated only on `plan_continues` (no goal-awareness — inert for obstacle marking since the scan doesn't gate execution).
+
+### Tests
+
+4 new unit tests in `tests/test_navigation.py::TestBikeRampBfsEdges`:
+- `test_ramp_edges_emits_chain_through_when_chain_landing_clear` — both FAR_SHORT + CHAIN_THROUGH edges emitted.
+- `test_ramp_edges_no_chain_through_when_chain_landing_blocked` — chain-landing blocked → only FAR_SHORT.
+- `test_ramp_edges_no_chain_through_when_npc_on_chain_ramp` — NPC on chain-ramp disables chain.
+- `test_2d_bfs_reaches_chain_through_landing` — end-to-end BFS finds 4-step path to CHAIN_THROUGH landing.
+
+Full suite: **562 passed in 3:57 (N=4)**. No regressions.
+
+### End-to-end verification
+
+- `navigate_to(38, 6)` from session42 save — 5 steps, lands at (38, 6). ✓
+- `navigate_to(32, 6)` from session42 save — FAR_SHORT regression check, 4 steps, lands at (32, 6). ✓
+- `navigate_to(poi="obj:3")` from session42 save — reaches Pokéball, gets Rare Candy. ✓
+
+### Remaining for BUG-048 Gap 2
+
+The east chamber interior still has a `bike_ramp_W` (approximately (42, 8)) whose straight-runway is <RUNWAY_TILES. Firing it requires preserving fast-gear momentum across a turn (e.g., east from column 40, turn south at row 7, turn west at row 8 into the ramp with accumulated momentum). Our BFS state `(x, y, last_d, momentum)` resets momentum to 0 on any `last_d` change — this is the open work. Filed as Gap 2 in `project_tool_improvements.md::BUG-048`; needs an empirical spike to characterize engine behavior before coding.
+
 ## Dev Session: Y-shortcut for key items — Bicycle / Vs. Seeker / Explorer Kit / rods (2026-04-24 session 44)
 
 Added the Y-button registered-key-item shortcut to `use_item` so the 4 item types we use most often skip the ~1500-frame bag-menu round trip on every warm call. One-slot vanilla Platinum system (confirmed via decomp at `ref/pokeplatinum/include/bag.h:44` and `src/bag.c:51`) — 4 designated items rotate through the single slot.
