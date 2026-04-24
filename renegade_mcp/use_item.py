@@ -37,9 +37,16 @@ if TYPE_CHECKING:
 MENU_WAIT = 300       # frames after major menu transitions
 NAV_WAIT = 60         # frames after D-pad navigation
 DISMISS_WAIT = 120    # frames after B press to dismiss text
+SHORTCUT_USE_WAIT = 180   # frames after Y-press / final USE A-press before state poll
+SHORTCUT_PRE_Y_WAIT = 60  # pre-Y settle — Y is eaten if player moveState != NONE/END
 
 # ── Pause menu ──
 BAG_INDEX = 2
+
+# ── Registered-key-item slot (Bag struct) ──
+# Bag layout: 8 BagItem pockets × 4 bytes each × (165+50+100+12+40+64+15+30) = 1904 bytes
+# then u32 registeredItem at the end. See ref/pokeplatinum/include/bag.h:35.
+REGISTERED_ITEM_OFFSET = 0x770
 
 # ── Bag pocket touch coords (bottom screen) ──
 POCKET_COORDS = {
@@ -96,10 +103,21 @@ PARTY_TARGET_FUNCS = {FUNC_HEALING, FUNC_BERRY, FUNC_EVO_STONE, FUNC_GRACIDEA}
 
 NO_TARGET_FUNCS = {FUNC_BAG_MESSAGE, FUNC_ESCAPE_ROPE, FUNC_HONEY, FUNC_BICYCLE}
 
-# Modal / context-gated flows we explicitly reject (add dedicated support if needed)
+# Designated Y-shortcut items. Platinum has exactly one registered-item slot
+# (Bag.registeredItem), so these share that single slot — whichever one we
+# most recently used becomes the Y target until we use another.
+# See _drive_shortcut_use() for the register+use flow.
+SHORTCUT_FUNCS = {
+    FUNC_BICYCLE, FUNC_VS_SEEKER, FUNC_EXPLORER_KIT,
+    FUNC_OLD_ROD, FUNC_GOOD_ROD, FUNC_SUPER_ROD,
+}
+
+# Modal / context-gated flows we explicitly reject (add dedicated support if needed).
+# Vs. Seeker and Explorer Kit are shortcut-eligible — they're intentionally NOT in
+# this set; their post-USE UI (scan-text, Underground modal) is the caller's problem.
 MODAL_UI_FUNCS = {
-    FUNC_TOWN_MAP, FUNC_EXPLORER_KIT, FUNC_JOURNAL, FUNC_POFFIN_CASE,
-    FUNC_PAL_PAD, FUNC_POKE_RADAR, FUNC_VS_SEEKER, FUNC_VS_RECORDER,
+    FUNC_TOWN_MAP, FUNC_JOURNAL, FUNC_POFFIN_CASE,
+    FUNC_PAL_PAD, FUNC_POKE_RADAR, FUNC_VS_RECORDER,
     FUNC_SPRAYDUCK, FUNC_MULCH, FUNC_AZURE_FLUTE,
 }
 
@@ -217,6 +235,54 @@ def _find_item_in_bag(
             if it["name"].lower() == item_lower:
                 return pocket["name"], i, it
     return None, None, None
+
+
+# ─────────────────────── Y-shortcut for key items ───────────────────────
+
+
+def _get_registered_item(emu: EmulatorClient) -> int:
+    """Read Bag.registeredItem — the ID of the item bound to the Y button."""
+    from renegade_mcp.addresses import addr
+    return emu.read_memory(addr("BAG_BASE") + REGISTERED_ITEM_OFFSET, size="long")
+
+
+def _drive_shortcut_use(
+    emu: EmulatorClient,
+    pocket_name: str,
+    item_index: int,
+    item_entry: dict,
+) -> bool:
+    """Fire the item via its Y-shortcut, registering it first if needed.
+
+    Fast path (already registered): press Y in overworld.
+    Slow path (different item or nothing registered): open bag → nav to item →
+    A (submenu) → DOWN (REGISTER) → A (commit, silent overwrite) → A (reopen
+    submenu; USE stays at index 0) → A (USE).
+
+    Returns True if the sequence completed, False if the bag couldn't be opened.
+    The caller is responsible for verifying the item's actual in-game effect
+    (e.g. _flow_bicycle checks CYCLING_GEAR_ADDR). Errors after USE (bike
+    indoors, rod facing a wall, Vs. Seeker with no trainers) surface as
+    text dialogs — the caller's state check is the gate.
+    """
+    if _get_registered_item(emu) == item_entry["id"]:
+        # The decomp gates Y on PLAYER_MOVE_STATE_{NONE,END}; an in-flight
+        # step swallows the press. Nav loops call us after WAIT_FRAMES=8 of
+        # settle which isn't enough for a walk step to finish resolving —
+        # pad to SHORTCUT_PRE_Y_WAIT so the input actually lands.
+        emu.advance_frames(SHORTCUT_PRE_Y_WAIT)
+        emu.press_buttons(["y"], frames=8)
+        emu.advance_frames(SHORTCUT_USE_WAIT)
+        return True
+
+    if not _navigate_to_bag_pocket(emu, pocket_name, item_index):
+        return False
+    _press(emu, ["a"], wait=NAV_WAIT)            # submenu opens (text prints — harmless for D-pad)
+    _press(emu, ["down"], wait=NAV_WAIT)         # REGISTER
+    _press(emu, ["a"], wait=MENU_WAIT)           # commit → silent write, back to item list
+    _press(emu, ["a"], wait=MENU_WAIT)           # reopen submenu (now USE / DESELECT / CANCEL)
+    _press(emu, ["a"], wait=SHORTCUT_USE_WAIT)   # USE (index 0 in both variants)
+    return True
 
 
 # ─────────────────────────── main dispatcher ───────────────────────────
@@ -350,6 +416,8 @@ def use_item(
     # ── Dispatch ──
     if func == FUNC_BICYCLE:
         return _flow_bicycle(emu, pocket_name, item_index, item_entry)
+    if func in {FUNC_VS_SEEKER, FUNC_EXPLORER_KIT}:
+        return _flow_shortcut_ack(emu, pocket_name, item_index, item_entry)
     if func == FUNC_ESCAPE_ROPE:
         return _flow_escape_rope(emu, pocket_name, item_index, item_entry)
     if func in {FUNC_BAG_MESSAGE, FUNC_HONEY}:
@@ -415,13 +483,13 @@ def _flow_bicycle(
     item_index: int,
     item_entry: dict,
 ) -> dict[str, Any]:
-    """Bicycle toggle flow: USE → mount/dismount animation.
+    """Bicycle toggle flow via Y-shortcut.
 
-    On a successful mount (transition to on-bike), also ensures the bike
-    ends in fast gear. Fast is the default for bike slopes and long-jump
-    ramps; callers that need slow gear (e.g. near-jump ramps) flip it
-    explicitly via ``_set_bike_gear``. Toggle is input-only (B press in
-    the overworld), so no memory writes.
+    Fires USE through ``_drive_shortcut_use`` (Y-press if already registered,
+    otherwise bag-register-then-use), then verifies the mount/dismount via
+    CYCLING_GEAR_ADDR. On a successful mount, ensures fast gear (near-jump
+    ramp callers flip to slow via ``_set_bike_gear``). On failure the USE
+    triggers a "Can't use here" dialog — dismiss and close menus.
 
     Note: Pokemon engine does NOT reset gear on mount — the bike inherits
     whatever gear was last used. ``_ensure_fast_gear`` B-presses if needed.
@@ -429,17 +497,18 @@ def _flow_bicycle(
     from renegade_mcp.addresses import addr
     was_cycling = bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short"))
 
-    if not _navigate_to_bag_pocket(emu, pocket_name, item_index):
+    if not _drive_shortcut_use(emu, pocket_name, item_index, item_entry):
         return _error("Could not open bag — player may not have control.")
 
-    _press(emu, ["a"], wait=MENU_WAIT)   # Item submenu (USE / REGISTER / CANCEL)
-    _press(emu, ["a"], wait=MENU_WAIT)   # USE
-    emu.advance_frames(MENU_WAIT)        # Mount/dismount animation
+    emu.advance_frames(MENU_WAIT)  # extra settle for mount/dismount animation
 
     is_cycling = bool(emu.read_memory(addr("CYCLING_GEAR_ADDR"), size="short"))
 
     if was_cycling == is_cycling:
-        # "Can't use here" / Rowan's echo — multi-page text, close everything.
+        # "Can't use here" — multi-page text. Fast-path puts us in the overworld
+        # with a dialog open; slow-path puts us in the bag with a dialog.
+        # B-presses are safe in both: in the overworld they clear dialog; in
+        # the bag they close submenu + bag + pause menu.
         _press(emu, ["b"], wait=DISMISS_WAIT)
         _press(emu, ["b"], wait=DISMISS_WAIT)
         _close_menus(emu, presses=3)
@@ -458,6 +527,32 @@ def _flow_bicycle(
         "item": item_entry["name"],
         "on_bicycle": is_cycling,
         "formatted": f"{action.capitalize()} Bicycle.",
+    }
+
+
+def _flow_shortcut_ack(
+    emu: EmulatorClient,
+    pocket_name: str,
+    item_index: int,
+    item_entry: dict,
+) -> dict[str, Any]:
+    """Vs. Seeker / Explorer Kit: fire the shortcut and hand control back.
+
+    Unlike bike/medicine flows we don't verify the post-USE state — Vs. Seeker
+    may open a trainer-found text or a "no trainers" dialog; Explorer Kit
+    opens the Underground modal. The caller drives whatever UI comes next.
+    """
+    if not _drive_shortcut_use(emu, pocket_name, item_index, item_entry):
+        return _error("Could not open bag — player may not have control.")
+
+    return {
+        "success": True,
+        "kind": "shortcut",
+        "item": item_entry["name"],
+        "formatted": (
+            f"Used {item_entry['name']} via Y-shortcut. "
+            "Caller should drive any follow-up UI (text / modal)."
+        ),
     }
 
 
@@ -723,11 +818,18 @@ def activate_key_item(
     item_name: str,
     allowed_funcs: set[int] | None = None,
 ) -> dict[str, Any]:
-    """Navigate the bag UI to USE a key item, then hand control back.
+    """Fire a key item's USE action, then hand control back for polling.
 
     Used by fishing.py — fishing can't complete the full USE loop because it
-    needs to detect the encounter while USE is in flight. This helper opens
-    the bag, selects the item, and presses USE, then returns.
+    needs to detect the cast/bite animation while USE is in flight.
+
+    For shortcut-eligible items (rods, bike, vs-seeker, explorer-kit) this
+    goes through ``_drive_shortcut_use`` — pressing Y if the item is already
+    registered, or driving register-then-use through the bag otherwise. That
+    saves ~1000 frames per cold call and ~1300 frames per warm call.
+
+    For any other whitelisted item it falls back to the original bag-navigate
+    → A → A flow.
 
     Args:
         allowed_funcs: Whitelist of acceptable fieldUseFunc values. Defaults
@@ -750,6 +852,11 @@ def activate_key_item(
         return _error(f"'{canonical}' cannot be used from the field.")
     if func not in allowed_funcs:
         return _error(f"'{canonical}' (fieldUseFunc={func}) is not allowed here.")
+
+    if func in SHORTCUT_FUNCS:
+        if not _drive_shortcut_use(emu, pocket_name, item_index, item_entry):
+            return _error("Could not open bag — player may not have control.")
+        return {"success": True, "item": item_entry, "func": func}
 
     if not _navigate_to_bag_pocket(emu, pocket_name, item_index):
         return _error("Could not open bag — player may not have control.")
