@@ -262,29 +262,23 @@ def _traverse_bike_slope(
         (final_x, final_y, tiles_moved) where tiles_moved is the distance
         from old_x/old_y to the final position (includes the slope tiles).
     """
-    from renegade_mcp.addresses import BIKE_GEAR_STATE_ADDR
-    from renegade_mcp.use_item import _set_bike_gear, use_item
+    from renegade_mcp.use_item import _set_bike_gear
 
     opp = _OPPOSITE_DIR[direction]
     dx, dy = _DIR_DELTAS[direction]
 
-    # ── 1. Reset bike state via dismount + remount ──
-    # After several navigation repaths around the slope (oscillating
-    # UP/DOWN while BFS explores foot-paths around the chokepoint), the
-    # bike accumulates internal state that causes slope traversal to
-    # silently refuse, even when the surface-level gear byte looks right.
-    # `_set_bike_gear(0)` alone is not enough — the engine reverts the
-    # gear to slow during the backup hold in that stuck state.
-    # A full dismount + remount reliably clears the state.  Each trip
-    # through the bag costs ~400 frames; acceptable given slope traversal
-    # is an infrequent event on long routes.
-    use_item(emu, "Bicycle")   # dismount
-    emu.advance_frames(30)
-    use_item(emu, "Bicycle")   # remount (use_item forces fast gear)
-    emu.advance_frames(30)
+    # ── 1. Ensure fast gear (the authoritative gate for slope climb).
+    # Earlier versions did a paranoid dismount+remount here that cost ~800f
+    # per call without fixing anything — it was papering over a gear-address
+    # misdiagnosis (BUG-046). With BIKE_GEAR_STATE_ADDR at PPB+0x8c and
+    # `_set_bike_gear` handling the byte-inversion internally, calling
+    # `_set_bike_gear(emu, 0)` (decomp semantic 0=fast) reliably B-presses
+    # when needed and is a no-op when already fast.
     _set_bike_gear(emu, 0)
 
-    # ── 2. Back up 3 tiles for running start ──
+    # ── 2. Back up for running start. The engine's slope gate checks
+    # PlayerAvatar.Speed >= 3 — fast-gear bike reaches that within ~3 tiles
+    # of continuous hold.
     for _ in range(BIKE_SLOPE_BACKUP_TILES):
         emu.advance_frames(BIKE_HOLD_FRAMES, buttons=[opp])
         emu.advance_frames(WAIT_FRAMES)

@@ -77,9 +77,11 @@ _DESMUME: dict[str, int] = {
     "BOX_DATA_BASE":         0x0228B100,
     # MiscSaveBlock.berryPatches[128] — 14-byte BerryPatch records, SB+0x20C4.
     "BERRY_PATCH_BASE":      0x02280294,
-    # FieldOverworldState group (live position, cycling gear)
-    # CYCLING_GEAR_ADDR is explicitly +0x90 from PLAYER_POS_BASE in the same struct.
+    # FieldOverworldState group (live position, cycling gear).
+    # PLAYER_POS_BASE + 0x8c = BIKE_GEAR_STATE_ADDR (engine-mirrored gear byte).
+    # PLAYER_POS_BASE + 0x90 = CYCLING_GEAR_ADDR (on-bike flag).
     "PLAYER_POS_BASE":       0x0227F450,
+    "BIKE_GEAR_STATE_ADDR":  0x0227F4DC,  # byte: 0=SLOW, 1=FAST (INVERTED from decomp)
     "CYCLING_GEAR_ADDR":     0x0227F4E0,  # u16: 0=walking, 1=cycling
     # FieldSystem group (cursor, facing, map objects) — uses save_block delta by default.
     "PAUSE_CURSOR_ADDR":     0x0229FA28,
@@ -105,8 +107,9 @@ _DESMUME: dict[str, int] = {
 # to "save_block" (preserves legacy behavior for addresses we haven't
 # empirically split).
 _GROUPS: dict[str, str] = {
-    "PLAYER_POS_BASE":   "field_ow",
-    "CYCLING_GEAR_ADDR": "field_ow",
+    "PLAYER_POS_BASE":      "field_ow",
+    "BIKE_GEAR_STATE_ADDR": "field_ow",
+    "CYCLING_GEAR_ADDR":    "field_ow",
 }
 
 # ── ARM9 fixed addresses (no shift) ──
@@ -114,29 +117,28 @@ _GROUPS: dict[str, str] = {
 ZONE_HEADER_BASE = 0x020E601E
 ZONE_HEADER_STRIDE = 24
 
-# Bike gear state: byte at this address.
-#   0 = FAST (4th gear — climbs bike slopes with a 3-tile run-up, fires
-#       JUMP_FARTHER on bike ramps; also the state ``use_item("Bicycle")``
-#       transitions into on mount).
-#   1 = SLOW (3rd gear — bounces off bike slopes, fires JUMP_NEAR_SHORT
-#       on bike ramps at 0 momentum).
+# Bike gear state: lives in FieldOverworldState at PLAYER_POS_BASE + 0x8c
+# (shift-aware via ``addr("BIKE_GEAR_STATE_ADDR")``). Byte semantics are
+# **inverted** from the decomp's ``PlayerData.cyclingGear`` (a derived
+# engine mirror, not the authoritative PlayerData field):
+#   byte == 1 = FAST (4th gear — climbs bike slopes with a 3-tile run-up,
+#              fires JUMP_FARTHER on bike ramps).
+#   byte == 0 = SLOW (3rd gear — bounces off bike slopes, fires
+#              JUMP_NEAR_SHORT on bike ramps at 0 momentum).
+# Verified empirically via scripts/spike_gear_truth_v4.py on the Route 207
+# slope: byte=0 blocks at slope, byte=1 climbs through.
 #
-# Empirically verified 2026-04-23 on Route 207 bike slope: a save state
-# created shortly after mount reads byte=1 and the bike cannot climb the
-# slope; pressing B toggles to 0 and the slope climbs cleanly.
+# Historically this pointed at an ARM9-BSS address (0x021BF6AC) and then
+# at PPB+0x6c — both were alternating derived mirrors that drifted out of
+# sync. See BUG-046 (2026-04-24): the fix was finding PPB+0x8c which
+# toggles cleanly with every B-press, and recognizing the inversion.
 #
-# NOTE: this address is NOT ``PlayerData.cyclingGear``.  The decomp
-# function ``PlayerAvatar_CyclingGear`` reads a mirror whose semantics
-# are INVERTED from this byte (decomp's gear==1 branch corresponds to
-# byte==0 here).  Do not copy decomp's ``== 1`` checks onto this symbol.
+# ``_set_bike_gear(emu, target_gear)`` presents a decomp-style API to
+# callers (0=fast, 1=slow) and XORs internally to translate to the byte.
 #
-# Memory writes to this byte are NOT reliable — the engine re-syncs from
-# an authoritative mirror within ~60 frames.  Toggle via B-press input
-# (see ``use_item._set_bike_gear``).  B-press toggle only fires in
-# PLAYER_STATE_CYCLING and refuses while standing on a ramp tile.
-#
-# Located in ARM9 BSS region — no heap delta shift needed.
-BIKE_GEAR_STATE_ADDR = 0x021BF6AC
+# Writes are unreliable (the engine re-syncs within ~10 frames), so toggle
+# via B-press input (see ``use_item._set_bike_gear``).  B-press toggle only
+# fires in PLAYER_STATE_CYCLING and refuses while standing on a ramp tile.
 
 # ── Struct-internal constants (no shift) ──
 

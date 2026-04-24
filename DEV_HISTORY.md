@@ -4,6 +4,64 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-20 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Bike-gear encoding inversion + BUG-047 logged (2026-04-24 session 41/42)
+
+Root-caused and fixed the bike-gear address-and-encoding problem that session 39 had misidentified. Session closed with the `session42_wayward_b1f_first_ramp_approach` save, player at (25, 6) on Wayward Cave B1F top of the first east-bound bike ramp in the row-6 chain, mid-puzzle.
+
+### Root cause — `BIKE_GEAR_STATE_ADDR` was pointing at the wrong mirror AND had the encoding backwards
+
+History of the wrong address:
+1. **ARM9 BSS `0x021BF6AC`** — early guess. Alternated 0/1 on B-press but drifted out of sync with the true engine gear.
+2. **`PLAYER_POS_BASE + 0x6c` (`0x0227F4BC`)** — session 39's "fix" after the ARM9 address failed. Also an alternating mirror, toggled cleanly on B-press, but sometimes showed a gear state opposite to what the engine was actually using. Session-39's decomp-matching encoding (`0=fast, 1=slow`) was written against this mirror's post-load state on one save and didn't generalize.
+3. **`PLAYER_POS_BASE + 0x8c` (`0x0227F4DC`)** — the right byte. Found by memory-scanning for tiles that toggle cleanly with every B press across many iterations (`scripts/spike_scan_e4_gear.py`), then empirically verifying on the Route 207 slope that `byte==1` climbs and `byte==0` is rejected (`scripts/spike_gear_truth_v4.py`).
+
+Important subtlety — **this byte is *inverted* from the decomp's `PlayerData.cyclingGear`**. It's an engine mirror, not the authoritative PlayerData field, and at this mirror:
+- `byte == 1` = **FAST** (climbs slopes, fires JUMP_FARTHER)
+- `byte == 0` = **SLOW** (bounces off slopes, fires JUMP_NEAR_SHORT at 0 momentum)
+
+To keep call sites readable, `_set_bike_gear(emu, target_gear)` now takes decomp-style semantics (`0=fast, 1=slow`) at the boundary and XORs internally to translate to the byte. This hides the inversion so `this_gear = 0  # fast` in the ramp-segment planner and `_set_bike_gear(emu, 0)` in the slope traversal keep their intuitive meaning.
+
+### Rabbit-hole that delayed discovery
+
+First empirical "proof" (`spike_gear_truth_v3.py`) used `bug_bike_slope_north_climb_fail` — which I *assumed* was a slope runway save. It wasn't. Player was at (299, 730) on Route 207, 14 tiles west of the actual slope. Holding UP from there walked through tall grass for 15 tiles — no slope involvement — and I mis-read the displacement as "gear=0 climbed." Woj caught it: *"what level is the player on? Perhaps the position you asked for it to move to was incorrect to begin with?"* The follow-up spike (`spike_gear_truth_v4.py`) on `route207_at_bike_slope_bottom` (the actual slope-bottom save) gave the real answer.
+
+**Feedback takeaway saved to memory:** pick spike saves with care and verify the player is *in the regime you're testing* before drawing conclusions (`feedback_spike_save_verification.md`).
+
+### Code changes
+
+- `renegade_mcp/addresses.py:84`: `BIKE_GEAR_STATE_ADDR = 0x0227F4DC` (was `0x0227F4BC`). Tagged `"field_ow"` heap group. Doc comment rewritten to explain the inversion vs decomp.
+- `renegade_mcp/use_item.py::_set_bike_gear`: XOR on the target internally (`target_byte = 1 - target_gear`). Caller API unchanged — decomp semantics preserved.
+- `renegade_mcp/cycling_road.py`, `renegade_mcp/navigation.py`: comment cleanups — call sites that used `# byte=0 fast` now say `# decomp semantic; _set_bike_gear inverts`.
+- `tests/test_cycling_road.py::TestBikeSlopeConstants::test_gear_address_valid`: range updated to the FieldOverworldState heap. `test_gear_toggle` asserts raw before/after toggle rather than a specific value.
+- Three slope tests (`test_slope_in_path`, `test_traverse_reaches_target`, `test_close_target_near_slope_top`) migrated from `_navigate_to_impl` to the public `navigate_to`. Cause: the BFS bounces back-and-forth around the slope runway when NPC motion drives proactive repaths. `_navigate_to_impl` alone can hit `MAX_REPATHS=15` before the slope-trigger fires; `navigate_to` wraps it in `_nav_impl_with_overshoot_retry` which gets one more full attempt. Production uses the wrapper, so the tests should too. Full suite: **554 passed @ ~5:10 (N=8).**
+
+### Playthrough progress & BUG-047
+
+With gear fixed, the slope on Wayward B1F climbs cleanly (`navigate_to(7, 6)` from (13, 9): 17 steps, one bike_slope obstacle, one-shot success). Woj then asked about BUG-046's east-chamber reachability — confirmed still open:
+
+- Dumped BDHC elevation (`scripts/spike_dump_elevation_levels.py`). Both `(13, 9)` and `(23, 9)` are level 0; `(33, 8)` (obj:3 Pokéball) is also level 0. The 3D BFS rejects nav between them not because of elevation classification but because there's no connected level-0 corridor between the east chamber and any ramp that reaches level 2. BUG-046 remains the gating issue for obj:3 and warp:0.
+- During an attempt to navigate `(16, 6) → (25, 6)`, a Repel expired mid-bridge. Instead of surfacing the repel-expiration or flee-ing the resulting encounter, `navigate_to` raised `KeyError: 'move'` (`navigation.py:1751/1755` accesses `ob["move"]` unconditionally when formatting the obstacle-choice prompt). Logged as **BUG-047**, repro save `bug_nav_repel_expired_move_keyerror` (frame 1334845). Not fixed this session.
+
+### Mid-range ramp jump distance — new open question (future session)
+
+Reached (25, 6) and spotted the next Pokéball: the puzzle wants a jump of *exactly 3 tiles past the first ramp*, then NOT taking a chained second ramp. Our BFS only models two ramp landing distances:
+- **FAR**: approach + 5 = ramp + 4 (requires RUNWAY_TILES=4 of momentum)
+- **NEAR**: approach + 2 = ramp + 1 (from momentum=0)
+
+Mid-range (ramp + 2 or ramp + 3, from 1 or 2 tiles of runway) is intentionally excluded from BFS edges — `nav_constants.py:127-131` notes the earlier spike was inconclusive because a wall clamped the landing. This Wayward puzzle is a clean mid-range case on the row-6 chain. Saved `session42_wayward_b1f_first_ramp_approach` (player at (25, 6), facing east, first-ramp-approach tile) for the follow-up spike; goal is to confirm whether 1-tile runway → ramp+2 and 2-tile runway → ramp+3 are indeed deterministic, then add those edges to `_bike_ramp_segment`. Noted in `project_tool_improvements.md`.
+
+### Files added
+
+- `scripts/spike_gear_truth_v4.py` — definitive gear encoding proof via Route 207 slope climb.
+- `scripts/spike_gear_truth_v5.py` — `_set_bike_gear` API round-trip confirmation.
+- `scripts/spike_dump_elevation_levels.py` — BDHC level / ramp dump around a given player position.
+- Several dead-end spike scripts (`v2`, `v3`, `spike_gear_encoding_truth`, `spike_fow_*`, `spike_find_authoritative_gear`, etc.) left checked in per the "spike-before-redesign" policy as a record of the rabbit hole. Safe to prune later.
+
+### Memory updates
+
+- `reference_bike_gear_encoding.md` — rewritten with the correct address, inverted encoding, and the `_set_bike_gear` abstraction.
+- `project_tool_improvements.md` — **BUG-047** added above BUG-046. Description-line updated.
+
 ## Dev Session: Bike-bridge traversal + overshoot-retry wrapper (2026-04-23 session 40)
 
 Next obstacle after the 4-ramp chain puzzle: the Wayward Cave east-wing **bike bridges** — wooden suspension-bridge tiles that reject on-foot entry. User's pre-session hypothesis was correct: "something like the swimming implementation, but instead of interacting with the water when at the edge, you get on the bike, and once you're off the other edge, you get off the bike. Clean and simple, I'm hoping." Empirical observation confirmed three engine invariants that made this genuinely simple — plus one engine quirk (bike coasting) that forced a small but general repath-after-overshoot wrapper.

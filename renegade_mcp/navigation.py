@@ -311,10 +311,10 @@ def _try_repath(
 def _auto_mount_for_slope(emu: EmulatorClient) -> bool:
     """Mount the bicycle if not already on it. Returns True on success.
 
-    Always ends with the bike in fast gear (BIKE_GEAR_STATE_ADDR == 0) —
-    `use_item("Bicycle")` already forces fast on fresh mount, and if the
-    player was already cycling we toggle here. Slopes and long-jump ramps
-    only fire reliably at fast gear (byte=0).
+    Always ends with the bike in fast gear — `use_item("Bicycle")` already
+    forces fast on fresh mount, and if the player was already cycling we
+    toggle here. Slopes and long-jump ramps only fire reliably at fast gear.
+    (BIKE_GEAR_STATE_ADDR byte==1 is fast; see addresses.py docstring.)
     """
     from renegade_mcp.addresses import addr
     from renegade_mcp.use_item import _ensure_fast_gear, use_item
@@ -403,11 +403,11 @@ def _bike_ramp_segment(
             if momentum + 1 >= BIKE_RAMP_RUNWAY_TILES:
                 jump_tiles = BIKE_RAMP_JUMP_TILES
                 post_m = BIKE_RAMP_RUNWAY_TILES
-                this_gear = 0  # fast (BIKE_GEAR_STATE_ADDR byte=0)
+                this_gear = 0  # fast (decomp semantic; _set_bike_gear inverts)
             elif momentum == 0:
                 jump_tiles = BIKE_RAMP_NEAR_JUMP_TILES
                 post_m = 1
-                this_gear = 1  # slow (BIKE_GEAR_STATE_ADDR byte=1)
+                this_gear = 1  # slow (decomp semantic; _set_bike_gear inverts)
             else:
                 # Mid-range momentum — BFS doesn't plan into this regime,
                 # so if we're here the plan is inconsistent. Bail and let
@@ -732,18 +732,16 @@ def _execute_path(
                 # from an authoritative mirror within ~60f), so the
                 # helper uses B-press input.
                 emu.advance_frames(90)
-                from renegade_mcp.addresses import (
-                    BIKE_GEAR_STATE_ADDR as _BGS_ADDR,
-                )
+                _bgs_addr = _addr("BIKE_GEAR_STATE_ADDR")
                 _pre_cycling = bool(
                     emu.read_memory(_addr("CYCLING_GEAR_ADDR"), size="short")
                 )
-                _pre_gear = emu.read_memory(_BGS_ADDR, size="byte")
+                _pre_gear = emu.read_memory(_bgs_addr, size="byte")
                 if not _set_bike_gear(emu, seg_gear):
                     _post_cycling = bool(
                         emu.read_memory(_addr("CYCLING_GEAR_ADDR"), size="short")
                     )
-                    _post_gear = emu.read_memory(_BGS_ADDR, size="byte")
+                    _post_gear = emu.read_memory(_bgs_addr, size="byte")
                     nav_info["blocked_at"] = {
                         "x": old_x, "y": old_y, "step": steps_taken,
                     }
@@ -857,19 +855,22 @@ def _execute_path(
             last_step_was_ramp = True
         else:
             last_step_was_ramp = False
-            # Hold direction until the movement-axis coord changes (or max
-            # frames elapse). Including "b" when walking engages Running Shoes
-            # (~2x speed outdoors, harmless otherwise). Bike/surf: "b" would
-            # toggle bike gear or do nothing useful, so skip it.
-            aux = ["b"] if active_hold == HOLD_FRAMES else None
-            step_hold(emu, direction, active_hold, aux_buttons=aux)
-            # Bike-slope tiles slide the player back mid-animation. step_hold
-            # exits on the first position change (= enters the slope), which
-            # is BEFORE the slide-back completes. Wait for the animation to
-            # settle so the blocked-check below sees the engine's final state
-            # and the slope branch triggers correctly.
             if pre_obs is not None and pre_obs.get("type") in BIKE_SLOPE_TYPES:
-                emu.advance_frames(WAIT_FRAMES)
+                # Don't fire step_hold directly into a slope tile. A single
+                # press with no running start gets slope-rejected (engine
+                # speed-gate); the rejection leaves the bike slightly past
+                # the slope boundary and corrupts the subsequent blocked-
+                # check, which can mis-classify the step as "succeeded" and
+                # skip the slope handler. Let blocked=True propagate so the
+                # dedicated slope-traversal branch fires.
+                pass
+            else:
+                # Hold direction until the movement-axis coord changes (or max
+                # frames elapse). Including "b" when walking engages Running
+                # Shoes (~2x speed outdoors, harmless otherwise). Bike/surf:
+                # "b" would toggle bike gear or do nothing useful, so skip it.
+                aux = ["b"] if active_hold == HOLD_FRAMES else None
+                step_hold(emu, direction, active_hold, aux_buttons=aux)
 
         new_map, new_x, new_y = _read_position(emu)
 

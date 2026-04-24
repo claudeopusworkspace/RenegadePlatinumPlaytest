@@ -261,9 +261,11 @@ class TestBikeSlopeConstants:
         assert "bike_slope" in BIKE_SLOPE_TYPES
 
     def test_gear_address_valid(self, emu: EmulatorClient):
-        """BIKE_GEAR_STATE_ADDR is in the expected ARM9 BSS range."""
-        from renegade_mcp.addresses import BIKE_GEAR_STATE_ADDR
-        assert 0x02100000 < BIKE_GEAR_STATE_ADDR < 0x02200000
+        """BIKE_GEAR_STATE_ADDR is in the FieldOverworldState range."""
+        from renegade_mcp.addresses import addr
+        bgs = addr("BIKE_GEAR_STATE_ADDR")
+        # Lives at PLAYER_POS_BASE + 0x8c — shifted into the field_ow heap.
+        assert 0x02200000 < bgs < 0x02300000
 
 
 class TestBikeSlopeTraversal:
@@ -275,20 +277,32 @@ class TestBikeSlopeTraversal:
 
     @retry_on_rng("route207_at_bike_slope_bottom")
     def test_gear_toggle(self, emu: EmulatorClient):
-        """Gear address reads correctly and toggles with B press."""
-        from renegade_mcp.addresses import BIKE_GEAR_STATE_ADDR
-        gear = emu.read_memory(BIKE_GEAR_STATE_ADDR, size="byte")
-        assert gear == 1, f"Expected slow gear (1), got {gear}"
+        """Gear byte reads correctly and toggles with B press.
+
+        Byte encoding at PPB+0x8c is inverted from decomp: byte 1 = FAST,
+        0 = SLOW.  `_set_bike_gear` hides the inversion behind decomp
+        semantics; here we assert the raw toggle behavior only.
+        """
+        from renegade_mcp.addresses import addr
+        bgs = addr("BIKE_GEAR_STATE_ADDR")
+        before = emu.read_memory(bgs, size="byte")
+        assert before in (0, 1), f"Expected gear byte 0 or 1, got {before}"
         emu.press_buttons(["b"], frames=8)
-        emu.advance_frames(8)
-        gear = emu.read_memory(BIKE_GEAR_STATE_ADDR, size="byte")
-        assert gear == 0, f"Expected fast gear (0) after B press, got {gear}"
+        emu.advance_frames(30)
+        after = emu.read_memory(bgs, size="byte")
+        assert after == (1 - before), f"B press should toggle gear; {before} -> {after}"
 
     @retry_on_rng("route207_at_bike_slope_bottom")
     def test_slope_in_path(self, emu: EmulatorClient):
-        """navigate_to detects slope tiles in the BFS path."""
-        from renegade_mcp.navigation import _navigate_to_impl
-        result = _navigate_to_impl(emu, 306, 710)
+        """navigate_to detects slope tiles in the BFS path.
+
+        Uses the public ``navigate_to`` entry (with overshoot-retry) to
+        match production behavior — the raw ``_navigate_to_impl`` can hit
+        MAX_REPATHS before the slope trigger fires when NPC activity
+        drives proactive repaths.
+        """
+        from renegade_mcp.navigation import navigate_to
+        result = navigate_to(emu, 306, 710)
         assert "obstacles_cleared" in result, "Expected obstacles_cleared in result"
         slopes = [o for o in result["obstacles_cleared"] if o["type"] == "bike_slope"]
         assert len(slopes) == 1, f"Expected 1 bike_slope obstacle, got {slopes}"
@@ -297,8 +311,8 @@ class TestBikeSlopeTraversal:
     @retry_on_rng("route207_at_bike_slope_bottom")
     def test_traverse_reaches_target(self, emu: EmulatorClient):
         """navigate_to through slope reaches a target well past the slope."""
-        from renegade_mcp.navigation import _navigate_to_impl
-        result = _navigate_to_impl(emu, 306, 710)
+        from renegade_mcp.navigation import navigate_to
+        result = navigate_to(emu, 306, 710)
         assert result["final"]["y"] == 710, (
             f"Expected y=710, got y={result['final']['y']}"
         )
@@ -339,8 +353,8 @@ class TestBikeSlopeTraversal:
         (in either direction) depending on where the bike dropped the player
         and whether a clean foot-path exists to the exact tile.
         """
-        from renegade_mcp.navigation import _navigate_to_impl
-        result = _navigate_to_impl(emu, 306, 718)
+        from renegade_mcp.navigation import navigate_to
+        result = navigate_to(emu, 306, 718)
         assert "obstacles_cleared" in result
         # Slope was crossed; final position is close to target.
         assert abs(result["final"]["y"] - 718) <= 3, (
