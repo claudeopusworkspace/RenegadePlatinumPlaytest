@@ -75,6 +75,65 @@ class TestUseItemBicycle:
 
 
 # ---------------------------------------------------------------------------
+# Y-button shortcut: registeredItem drives the fast path
+# ---------------------------------------------------------------------------
+
+class TestBicycleShortcut:
+    """use_item('Bicycle') uses the Y-shortcut once the bike is registered.
+
+    Mechanics verified empirically (see scripts/spike_register_shortcut.py):
+      - Bag.registeredItem is a u32 at BAG_BASE + 0x770.
+      - REGISTER silently overwrites any prior registered item.
+      - Y in overworld dispatches the same fieldUseFunc as the bag's USE.
+    """
+
+    @retry_on_rng("test_eterna_city_overworld")
+    def test_first_use_registers_bicycle(self, emu: EmulatorClient):
+        """A cold use_item('Bicycle') ends with Bicycle registered to Y."""
+        from renegade_mcp.use_item import (
+            REGISTERED_ITEM_OFFSET, _get_registered_item, use_item,
+        )
+        from renegade_mcp.addresses import addr
+
+        # Force a known non-bike registered item so we take the slow path.
+        emu.write_memory(
+            addr("BAG_BASE") + REGISTERED_ITEM_OFFSET, 0, size="long"
+        )
+        assert _get_registered_item(emu) == 0
+
+        result = use_item(emu, "Bicycle")
+        assert result.get("success") is True, result
+        assert result["on_bicycle"] is True
+        assert _get_registered_item(emu) == 450, (
+            "Bicycle should be registered after first use"
+        )
+
+    @retry_on_rng("test_eterna_city_overworld")
+    def test_second_use_is_fast_path(self, emu: EmulatorClient):
+        """With Bicycle already registered, use_item takes the Y fast path.
+
+        Signal: the fast path is ~2000+ frames cheaper than the slow path
+        (spike measured 489f vs 2829f). We assert the frame delta directly
+        — a regression would push this over 1500f.
+        """
+        from renegade_mcp.use_item import use_item
+
+        # Warm: first call registers + mounts.
+        first = use_item(emu, "Bicycle")
+        assert first.get("success") is True
+
+        t0 = emu.get_status().get("frame_count")
+        second = use_item(emu, "Bicycle")
+        t1 = emu.get_status().get("frame_count")
+
+        assert second.get("success") is True
+        assert second["on_bicycle"] is False, "Second call should dismount"
+        assert t1 - t0 < 1500, (
+            f"Expected fast Y-path (<1500f), got {t1 - t0}f — shortcut broke?"
+        )
+
+
+# ---------------------------------------------------------------------------
 # CYCLING_GEAR_ADDR — memory read
 # ---------------------------------------------------------------------------
 
