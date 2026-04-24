@@ -1170,7 +1170,15 @@ def _execute_path(
                         nav_info["blocked_reason"] = "bike_slope_traversal_failed"
                         nav_info["bike_slope_position"] = {"x": obs_gx, "y": obs_gy}
 
-            elif obs_info is not None:
+            elif obs_info is not None and obs_info["type"] in AUTO_NAVIGATE_TYPES:
+                # HM-clearable obstacle (Surf / Rock Climb / Waterfall). Bike
+                # ramp / bridge / slope tiles also live in obstacle_tiles but
+                # are not HM-clearable — they fall through to the slow-terrain
+                # retry below. Without this guard, a mid-bridge block from an
+                # unrelated dialogue (e.g. "Repel wore off!") was routed here,
+                # the A press coincidentally dismissed the dialogue, and the
+                # executor then KeyError'd on obs_info["move"] because bike
+                # entries don't carry a move/badge (BUG-047).
                 is_surf = obs_info["type"] in SURF_TYPES
                 is_multi_tile = obs_info["type"] in MULTI_TILE_HM_TYPES
                 cleared = _clear_hm_obstacle(emu, direction, obs_info)
@@ -1544,6 +1552,11 @@ def navigate_to(
 
     flee_log: list[dict[str, Any]] = []
     original_start: dict[str, Any] | None = None
+    # Accumulated steps + path across loop iterations so a resumed traversal
+    # (e.g. after a mid-path dialogue auto-dismiss) reports the full journey,
+    # not just the last segment.
+    prev_steps = 0
+    prev_path_parts: list[str] = []
     for _ in range(MAX_FLEE_ENCOUNTERS):
         result = _nav_impl_with_overshoot_retry(
             emu, target_x, target_y, path_choice=path_choice,
@@ -1564,7 +1577,23 @@ def navigate_to(
             # No encounter — navigation completed (or hit a non-encounter stop)
             break
 
-        if enc.get("encounter") != "battle":
+        enc_kind = enc.get("encounter")
+
+        if enc_kind == "dialogue" and result.get("stopped_early"):
+            # Mid-path overworld dialogue (Repel wore off, story trigger, etc.)
+            # has already been advanced and dismissed by _post_nav_check.
+            # Resume pathfinding from current position so a single call
+            # completes the full traversal. (BUG-047 post-fix extension.)
+            prev_steps += result.get("steps", 0) or 0
+            leg_path = result.get("path")
+            if leg_path:
+                prev_path_parts.append(leg_path)
+            result.pop("encounter", None)
+            result.pop("stopped_early", None)
+            result.pop("blocked_at", None)
+            continue
+
+        if enc_kind != "battle":
             break
 
         if enc.get("dialogue"):
@@ -1609,6 +1638,13 @@ def navigate_to(
 
     if original_start is not None:
         result["start"] = original_start
+
+    if prev_steps:
+        result["steps"] = (result.get("steps", 0) or 0) + prev_steps
+    if prev_path_parts:
+        leg_path = result.get("path")
+        parts = prev_path_parts + ([leg_path] if leg_path else [])
+        result["path"] = " -> ".join(parts)
 
     return result
 
