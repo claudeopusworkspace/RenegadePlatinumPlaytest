@@ -26,11 +26,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from renegade_mcp.battle import read_battle
 from renegade_mcp.battle_tracker import (
     _scan_for_new_text,
     _scan_markers,
     SCAN_SIZE,
 )
+from renegade_mcp.party import read_party
 
 if TYPE_CHECKING:
     from melonds_mcp.client import EmulatorClient
@@ -391,7 +393,6 @@ def get_move_learn_info(emu: EmulatorClient) -> tuple[int, int] | None:
     # Read taskData pointer (non-null when EXP distribution task is active)
     from renegade_mcp.addresses import addr
     from renegade_mcp.data import level_up_moves
-    from renegade_mcp.party import read_party
 
     task_ptr = emu.read_memory(addr("TASK_DATA_PTR_ADDR"), size="long")
     if not task_ptr:
@@ -453,9 +454,7 @@ def get_move_learn_info(emu: EmulatorClient) -> tuple[int, int] | None:
 
 def enrich_move_learn_result(result: dict[str, Any], emu: EmulatorClient) -> None:
     """Add move_to_learn, current_moves, and learning_pokemon to a MOVE_LEARN result."""
-    from renegade_mcp.battle import read_battle
     from renegade_mcp.data import move_names
-    from renegade_mcp.party import read_party
 
     info = get_move_learn_info(emu)
     if info:

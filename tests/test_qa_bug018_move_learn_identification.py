@@ -59,8 +59,15 @@ def _install_memory_mock(monkeypatch, task_ptr_val, move_id, slot_lower,
 
 
 def _patch_read_party(monkeypatch, party):
-    """Replace renegade_mcp.turn's read_party with a stub returning party."""
-    monkeypatch.setattr("renegade_mcp.turn.read_party", lambda emu: party)
+    """Replace read_party with a stub returning party.
+
+    get_move_learn_info was extracted from turn.py into move_learning.py;
+    patch both bindings so the underlying call resolves to our stub
+    regardless of which module's binding Python hits first.
+    """
+    stub = lambda emu: party  # noqa: E731
+    monkeypatch.setattr("renegade_mcp.turn.read_party", stub)
+    monkeypatch.setattr("renegade_mcp.move_learning.read_party", stub)
 
 
 class TestQaBug018MoveLearnLearnsetMatch:
