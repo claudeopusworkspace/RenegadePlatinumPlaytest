@@ -239,6 +239,342 @@ class TestBug003PremierBallBonus:
 
 
 # ---------------------------------------------------------------------------
+# Veilstone Department Store
+# ---------------------------------------------------------------------------
+
+
+class TestDeptStoreData:
+    """Per-floor cashier inventory tables resolve to known item names."""
+
+    def test_floors_indexed(self):
+        from renegade_mcp.shop import DEPT_STORE_CASHIERS, DEPT_STORE_FLOOR_NAMES
+
+        assert set(DEPT_STORE_CASHIERS) == {
+            "C07R0201", "C07R0202", "C07R0203", "C07R0207",
+        }
+        # Floor labels also cover the unsupported interiors so read_shop
+        # can speak to them by name.
+        assert "C07R0204" in DEPT_STORE_FLOOR_NAMES
+        assert "C07R0205" in DEPT_STORE_FLOOR_NAMES
+
+    def test_1f_left_counter_sells_repels(self):
+        from renegade_mcp.data import item_names
+        from renegade_mcp.shop import DEPT_STORE_CASHIERS
+
+        names = item_names()
+        cashier_m = next(c for c in DEPT_STORE_CASHIERS["C07R0201"] if c["x"] == 2)
+        sold = {names[i] for i in cashier_m["items"]}
+        assert {"Poké Ball", "Great Ball", "Ultra Ball", "Repel", "Max Repel"} <= sold
+
+    def test_1f_right_counter_sells_potions(self):
+        from renegade_mcp.data import item_names
+        from renegade_mcp.shop import DEPT_STORE_CASHIERS
+
+        names = item_names()
+        cashier_f = next(c for c in DEPT_STORE_CASHIERS["C07R0201"] if c["x"] == 3)
+        sold = {names[i] for i in cashier_f["items"]}
+        assert {"Potion", "Super Potion", "Hyper Potion", "Max Potion", "Revive"} <= sold
+
+    def test_2f_two_cashier_f_disambiguated_by_coords(self):
+        from renegade_mcp.shop import DEPT_STORE_CASHIERS
+
+        cashiers = DEPT_STORE_CASHIERS["C07R0202"]
+        # Two NPCs share the "Cashier F" name; tile y disambiguates them.
+        assert [c["npc"] for c in cashiers] == ["Cashier F", "Cashier F"]
+        assert sorted(c["y"] for c in cashiers) == [4, 6]
+
+    def test_3f_top_counter_sells_evolution_stones(self):
+        # Renegade Platinum replaces vanilla's TM list with evolution stones.
+        from renegade_mcp.data import item_names
+        from renegade_mcp.shop import DEPT_STORE_CASHIERS
+
+        top = DEPT_STORE_CASHIERS["C07R0203"][0]
+        assert top["x"] == 3 and top["y"] == 4
+        sold = {item_names()[i] for i in top["items"]}
+        assert {"Fire Stone", "Water Stone", "Leaf Stone"} <= sold
+
+    def test_3f_bottom_counter_unsupported(self):
+        # Drayano walled off the bottom-left counter; Cashier_M at (3, 11)
+        # still spawns but is unreachable. Don't surface it as buyable.
+        from renegade_mcp.shop import DEPT_STORE_CASHIERS
+
+        assert len(DEPT_STORE_CASHIERS["C07R0203"]) == 1
+
+
+class TestDeptStoreLookup:
+    """_find_dept_store_cashier_for_item routes items to the right counter."""
+
+    def test_finds_potion_on_1f(self):
+        from renegade_mcp.shop import _find_dept_store_cashier_for_item
+
+        result = _find_dept_store_cashier_for_item("C07R0201", "Potion")
+        assert result is not None
+        cashier, menu_idx, item_id = result
+        assert cashier["npc"] == "Cashier F"
+        assert cashier["x"] == 3 and cashier["y"] == 5
+        assert menu_idx == 0
+        assert item_id == 17
+
+    def test_finds_max_repel_on_1f_other_counter(self):
+        from renegade_mcp.shop import _find_dept_store_cashier_for_item
+
+        result = _find_dept_store_cashier_for_item("C07R0201", "Max Repel")
+        assert result is not None
+        cashier, _menu_idx, _item_id = result
+        assert cashier["x"] == 2 and cashier["y"] == 5
+
+    def test_case_insensitive(self):
+        from renegade_mcp.shop import _find_dept_store_cashier_for_item
+
+        assert _find_dept_store_cashier_for_item("C07R0201", "POTION") is not None
+
+    def test_finds_protein_on_2f_middle(self):
+        from renegade_mcp.shop import _find_dept_store_cashier_for_item
+
+        result = _find_dept_store_cashier_for_item("C07R0202", "Protein")
+        assert result is not None
+        cashier, menu_idx, _ = result
+        assert cashier["y"] == 6
+        assert menu_idx == 0
+
+    def test_finds_x_attack_on_2f_top(self):
+        from renegade_mcp.shop import _find_dept_store_cashier_for_item
+
+        result = _find_dept_store_cashier_for_item("C07R0202", "X Attack")
+        assert result is not None
+        cashier, _, _ = result
+        assert cashier["y"] == 4
+
+    def test_returns_none_for_wrong_floor(self):
+        from renegade_mcp.shop import _find_dept_store_cashier_for_item
+
+        # Potion is sold on 1F, not 3F (TMs only).
+        assert _find_dept_store_cashier_for_item("C07R0203", "Potion") is None
+
+    def test_returns_none_for_unknown_item(self):
+        from renegade_mcp.shop import _find_dept_store_cashier_for_item
+
+        assert _find_dept_store_cashier_for_item("C07R0201", "Master Ball") is None
+
+
+class TestFindNpcAt:
+    """_find_npc_at picks the right NPC when multiple share a name."""
+
+    def test_picks_correct_cashier_by_coords(self):
+        from renegade_mcp.shop import _find_npc_at
+
+        state = {
+            "objects": [
+                {"index": 1, "name": "Cashier F", "x": 2, "y": 4},
+                {"index": 2, "name": "Cashier F", "x": 2, "y": 6},
+                {"index": 3, "name": "Receptionist", "x": 18, "y": 6},
+            ]
+        }
+        north = _find_npc_at(state, "Cashier F", 2, 4)
+        south = _find_npc_at(state, "Cashier F", 2, 6)
+        assert north is not None and north["index"] == 1
+        assert south is not None and south["index"] == 2
+
+    def test_returns_none_when_no_match(self):
+        from renegade_mcp.shop import _find_npc_at
+
+        state = {"objects": [{"index": 1, "name": "Cashier F", "x": 2, "y": 4}]}
+        assert _find_npc_at(state, "Cashier F", 2, 6) is None
+        assert _find_npc_at(state, "Cashier M", 2, 4) is None
+
+
+class TestReadShopDeptStore:
+    """read_shop branch dispatch for dept-store maps and Veilstone overworld."""
+
+    def test_read_dept_store_1f_lists_both_counters(self):
+        from renegade_mcp.shop import _read_dept_store
+
+        result = _read_dept_store(map_id=137, code="C07R0201")
+        assert result["floor"] == "1F"
+        assert result["map_code"] == "C07R0201"
+        assert len(result["cashiers"]) == 2
+        labels = {c["label"] for c in result["cashiers"]}
+        assert "Potions & status healing" in labels
+        assert "Balls, repels & mail" in labels
+        # Each cashier exposes priced items.
+        for c in result["cashiers"]:
+            assert all("price" in it and "item_id" in it for it in c["items"])
+        assert "Veilstone Dept Store" in result["formatted"]
+        assert "1F" in result["formatted"]
+
+    def test_read_dept_store_4f_decoration_message(self):
+        from renegade_mcp.shop import _read_dept_store
+
+        result = _read_dept_store(map_id=140, code="C07R0204")
+        # 4F is intentionally not in DEPT_STORE_CASHIERS (decoration UI).
+        assert result["cashiers"] == []
+        assert "decoration" in result["formatted"].lower()
+
+    def test_veilstone_overworld_summary_lists_floors(self):
+        from renegade_mcp.shop import (
+            VEILSTONE_DEPT_STORE_ENTRANCE,
+            _veilstone_overworld_summary,
+        )
+
+        result = _veilstone_overworld_summary(map_id=132)
+        assert result["dept_store"] is True
+        assert result["city_code"] == "C07"
+        floors = {c["floor"] for c in result["cashiers"]}
+        assert {"1F", "2F", "3F", "B1F"} <= floors
+        # Formatted includes the entry-warp coords so the player can navigate.
+        ex, ey = VEILSTONE_DEPT_STORE_ENTRANCE
+        assert str(ex) in result["formatted"]
+        assert str(ey) in result["formatted"]
+
+
+class TestIsDeptStoreMap:
+    """_is_dept_store_map matches Veilstone interior code prefix."""
+
+    def test_matches_dept_store_floors(self):
+        from renegade_mcp.shop import _is_dept_store_map
+
+        assert _is_dept_store_map("C07R0201") is True  # 1F
+        assert _is_dept_store_map("C07R0207") is True  # B1F
+
+    def test_rejects_other_veilstone_maps(self):
+        from renegade_mcp.shop import _is_dept_store_map
+
+        # Veilstone overworld (C07), gym (C07GYM0101), Pokémon Center (C07PC0101)
+        # — only C07R02xx is the dept store.
+        assert _is_dept_store_map("C07") is False
+        assert _is_dept_store_map("C07GYM0101") is False
+        assert _is_dept_store_map("C07PC0101") is False
+        assert _is_dept_store_map("C07R0101") is False  # Game Corner
+
+
+# Behavioral tests — drive the actual UI via Wayne's E4 save (8 badges,
+# Garchomp can Fly, Veilstone Dept Store reachable from overworld).
+
+
+class TestDeptStore1F:
+    """Cashier F (potions) and Cashier M (balls/repels) on Veilstone Dept 1F."""
+
+    @retry_on_rng("e4_dept_store_1f")
+    def test_buy_potion_from_cashier_f(self, emu: EmulatorClient):
+        from renegade_mcp.shop import buy_item
+
+        result = buy_item(emu, "Potion", quantity=1)
+        assert result["success"] is True
+        assert result["floor"] == "1F"
+        assert result["counter"] == "Potions & status healing"
+        assert result["money_spent"] == 300
+
+    @retry_on_rng("e4_dept_store_1f")
+    def test_buy_repel_from_cashier_m(self, emu: EmulatorClient):
+        # Repel sits on the OTHER counter (Cashier M @ 2,5) — verifies that
+        # the dept-store cashier dispatch routes to the correct NPC by coords.
+        from renegade_mcp.shop import buy_item
+
+        result = buy_item(emu, "Repel", quantity=1)
+        assert result["success"] is True
+        assert result["counter"] == "Balls, repels & mail"
+        assert result["money_spent"] == 350
+
+    @retry_on_rng("e4_dept_store_1f")
+    def test_buy_repel_quantity_two(self, emu: EmulatorClient):
+        # Regression for the qty>1 bug: dept-store cashier dialog renders
+        # text + qty selector on one screen, so the press flow had to drop
+        # one A press to avoid silently confirming qty=1.
+        from renegade_mcp.shop import buy_item
+
+        result = buy_item(emu, "Repel", quantity=2)
+        assert result["success"] is True
+        assert result["money_spent"] == 700, (
+            f"qty=2 should spend ¥700; spent ¥{result['money_spent']}"
+        )
+
+
+class TestDeptStore2F:
+    """2F has two Cashier F NPCs at different tiles (X items vs vitamins)."""
+
+    @retry_on_rng("e4_dept_store_2f")
+    def test_buy_x_attack_from_top_counter(self, emu: EmulatorClient):
+        # Cashier F at y=4 — must not fall through to the y=6 vitamin counter.
+        from renegade_mcp.shop import buy_item
+
+        result = buy_item(emu, "X Attack", quantity=1)
+        assert result["success"] is True
+        assert result["counter"] == "Battle X items"
+        assert result["money_spent"] == 500
+
+    @retry_on_rng("e4_dept_store_2f")
+    def test_buy_protein_from_middle_counter(self, emu: EmulatorClient):
+        # Cashier F at y=6 — coord-based dispatch picks this counter, not y=4.
+        from renegade_mcp.shop import buy_item
+
+        result = buy_item(emu, "Protein", quantity=1)
+        assert result["success"] is True
+        assert result["counter"] == "Vitamins (stat boosters)"
+        assert result["money_spent"] == 9800
+
+
+class TestDeptStore3F:
+    """3F top counter — Renegade replaced vanilla TMs with evolution stones."""
+
+    @retry_on_rng("e4_dept_store_3f")
+    def test_buy_fire_stone(self, emu: EmulatorClient):
+        from renegade_mcp.shop import buy_item
+
+        result = buy_item(emu, "Fire Stone", quantity=1)
+        assert result["success"] is True
+        assert result["counter"] == "Evolution stones"
+        assert result["money_spent"] == 2100
+
+    @retry_on_rng("e4_dept_store_3f")
+    def test_old_tm_not_available(self, emu: EmulatorClient):
+        # Vanilla 3F sold TM83 — Renegade replaced the inventory.
+        from renegade_mcp.shop import buy_item
+
+        result = buy_item(emu, "TM83", quantity=1)
+        assert result["success"] is False
+        assert "not sold" in result["error"].lower()
+
+
+class TestDeptStoreB1F:
+    """B1F berry vendor — only the berry counter is automated; lava-cookie
+    and poffin counters use custom UIs and aren't supported."""
+
+    @retry_on_rng("e4_dept_store_b1f")
+    def test_buy_figy_berry(self, emu: EmulatorClient):
+        from renegade_mcp.shop import buy_item
+
+        result = buy_item(emu, "Figy Berry", quantity=1)
+        assert result["success"] is True
+        assert result["counter"] == "Berries"
+        assert result["money_spent"] == 20
+
+
+class TestVeilstoneOverworldShopping:
+    """Auto-navigation from city overworld → Dept Store 1F → buy."""
+
+    @retry_on_rng("e4_veilstone_city_overworld")
+    def test_read_shop_returns_dept_store_summary(self, emu: EmulatorClient):
+        from renegade_mcp.shop import read_shop
+
+        result = read_shop(emu)
+        assert result["dept_store"] is True
+        floors = {c["floor"] for c in result["cashiers"]}
+        assert {"1F", "2F", "3F", "B1F"} <= floors
+
+    @retry_on_rng("e4_veilstone_city_overworld")
+    def test_buy_from_overworld_auto_warps_to_1f(self, emu: EmulatorClient):
+        # Auto-nav: walks to entrance warp at (701, 603), enters 1F, finds
+        # Cashier F, buys Potion. Single round-trip.
+        from renegade_mcp.shop import buy_item
+
+        result = buy_item(emu, "Potion", quantity=1)
+        assert result["success"] is True
+        assert result.get("navigated_to_mart") is True
+        assert result["floor"] == "1F"
+        assert result["money_spent"] == 300
+
+
+# ---------------------------------------------------------------------------
 # QA BUG-006: buy_item leaves player stuck in shop UI on "How many?" prompt
 # ---------------------------------------------------------------------------
 # Save state: jubilife_mart_after_buy_5potions — inside Jubilife Mart, player

@@ -4,6 +4,39 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-20 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: Veilstone Department Store shopping (2026-04-25 session 48)
+
+Extended `read_shop` / `buy_item` / `sell_item` to cover Veilstone's multi-floor Dept Store. Each floor has 1-2 vendor counters with a fixed inventory; 2F has two `Cashier F` NPCs at different tiles. Cashier dispatch keys on NPC name + tile coords. From Veilstone's overworld `read_shop` returns a floor directory and `buy_item` auto-warps into 1F. Multi-floor stair/elevator navigation is out of scope — the player must already be on the floor that sells the requested item.
+
+### Code changes
+
+**`renegade_mcp/shop.py`** — new `DEPT_STORE_CASHIERS` table (per-floor cashier specs with coords + item lists), `DEPT_STORE_FLOORS` (display label + optional message for unsupported floors 4F/5F/Elevator), `VEILSTONE_DEPT_STORE_ENTRANCE` constant for the (701, 603) overworld warp. Helpers: `_is_dept_store_map`, `_find_dept_store_cashier_for_item`, `_find_npc_at` (coord-disambiguation), `_resolve_cashier_items`. Existing flow refactored into `_enter_shop_or_error` (shared between buy/sell — auto-warps when on a city overworld) and `_run_buy_press_flow`. `_walk_to_cashier_by_name` was dropped after switching the regular-mart cashier lookup to `move_services._find_npc`.
+
+**`renegade_mcp/shop.py::_run_buy_press_flow`** — fixed a long-latent over-press bug. Renegade's shop dialog renders the item-prompt text *and* the `x01` qty selector on the same screen. The old flow had two A presses between item-confirm and the up-loop, so the second A confirmed qty=1 silently and the up-press increments hit the YES/NO dialog instead. Trimmed to `1A → ups → 2A` (was `2A → ups → 3A`); post-purchase B count unchanged at 3 (5 with Premier Ball bonus). The old over-press was masked in the existing Eterna mart tests because qty=1 was always confirmed on the first cycle and the surplus A presses landed harmlessly on subsequent dialog pages — the failure mode only surfaced once we tried qty>1 against Wayne's E4 save (where text speed is set high).
+
+### Empirical reconciliation against Wayne's E4 save
+
+Flew to Veilstone with `e4_pokemon_league_outdoor` and walked every floor that has a shop. Saved `e4_veilstone_city_overworld`, `e4_dept_store_1f`, `e4_dept_store_2f`, `e4_dept_store_3f`, `e4_dept_store_b1f`. Verified each cashier by buying from it.
+
+- **1F, 2F, B1F**: vanilla `mart_items.h` data is correct (Drayano left these alone). Coord-disambiguation between 2F's two `Cashier F` NPCs (X-items at y=4 vs vitamins at y=6) works as designed.
+- **3F: Renegade Platinum diverges from vanilla.** Top counter (`Cashier F` @ 3, 4) sells **evolution stones** — Fire / Ice / Leaf / Moon / Sun / Thunder / Water Stone, ¥2,100 each — instead of vanilla's TM83/17/54/20/33/16/70. Bottom counter (`Cashier M` @ 3, 11) is walled off behind decorative obstacles; the NPC still spawns but is unreachable. Updated `DEPT_STORE_CASHIERS["C07R0203"]` to one counter (stones) and dropped the inaccessible TM list.
+
+4F decoration / doll counter, 5F (no shop), B1F lava-cookie / poffin counters use custom UIs and remain out of scope.
+
+### Tests
+
+`tests/test_shop_tools.py`:
+- 19 unit tests for the new data tables and helpers — `TestDeptStoreData`, `TestDeptStoreLookup`, `TestFindNpcAt`, `TestReadShopDeptStore`, `TestIsDeptStoreMap`. No emulator interaction.
+- 11 integration tests against the new save states — `TestDeptStore1F` (Cashier F potion + Cashier M repel + qty>1 regression), `TestDeptStore2F` (X Attack at y=4 + Protein at y=6, coord disambiguation), `TestDeptStore3F` (Fire Stone buy + asserts `TM83` is no longer sold), `TestDeptStoreB1F` (Figy Berry), `TestVeilstoneOverworldShopping` (overworld `read_shop` summary + auto-warp `buy_item`).
+
+Full suite **600 passed in 6:43** (fleet=8). The 14 existing regular-mart tests all pass on the new press flow — confirming the over-press bug fix didn't regress the Eterna path.
+
+### Outstanding
+
+- Multi-floor navigation (stair/elevator) for `buy_item` from city overworld when the requested item lives on 2F+/B1F: deferred. Current behavior auto-warps to 1F and errors with a useful "sold on Nf" hint if the item is on a different floor.
+- 4F decoration shop: different mart subsystem (`MART_TYPE_DECORATION`, `Shop_Start` with `VeilstoneDeptStoreDecorationStocks`). Decorations don't go in the regular bag; out of scope for now.
+- 3F bottom `Cashier_M` NPC unreachability deserves a visual confirmation when Woj is back home — the ASCII `view_map` clearly shows the bottom-left section walled off, and the in-game screenshot showed decorative blocks where the counter would be, but a closer look may turn up a hidden access route I missed.
+
 ## Dev Session: BUG-048 Gap 2 — direction-agnostic fast-bike momentum (2026-04-25 session 47)
 
 Closed BUG-048 Gap 2. The Wayward B1F east-chamber Pokéball at (33, 8) is now reachable from `session42_wayward_b1f_first_ramp_approach` via a single `navigate_to(poi=obj:3)` call — BFS plans `right x4 → down → right`, executor drives it as one continuous fast-bike hold across the up→right turn into the ramp chain, lands at the interaction tile cleanly, picks up the Rare Candy. Saved post-pickup as `session47_wayward_b1f_post_obj3_rare_candy`.

@@ -121,6 +121,14 @@ Fly (Garchomp), Surf (Swampert), Rock Smash (Nidoking), Strength (Nidoking), Roc
 
 ### Move Services Test States
 | `move_relearner_pastoria` | Pastoria City at map 129 (C06R0401), inside the Move Relearner's house. E4 save (8 badges). NPC "Collector" is the relearner. |
+
+### Veilstone Department Store Test States
+All states from Wayne's E4 save flown to Veilstone (¥148,239 baseline).
+| `e4_veilstone_city_overworld` | Veilstone City overworld at (717, 612). Just landed via Fly. Used for `read_shop` overworld dispatch + `buy_item` auto-nav-to-1F tests. |
+| `e4_dept_store_1f` | Veilstone Dept Store 1F (C07R0201) at (10, 12) facing up — just inside the entrance warp. Cashier F at (3,5) sells potions/heals; Cashier M at (2,5) sells balls/repels/mail. |
+| `e4_dept_store_2f` | Veilstone Dept Store 2F (C07R0202) at (6, 8). Two Cashier F NPCs: (2,4) battle X items, (2,6) vitamins. Used for coord-disambiguation tests. |
+| `e4_dept_store_3f` | Veilstone Dept Store 3F (C07R0203) at (6, 8). Top counter Cashier F (3,4) sells **evolution stones** in Renegade Platinum (vanilla had TMs). Bottom counter Cashier M (3,11) is walled off and unreachable. |
+| `e4_dept_store_b1f` | Veilstone Dept Store B1F (C07R0207) at (12, 8). Berry vendor Cashier F at (5, 11) sells Figy/Wiki/Mago/Aguav/Iapapa Berry @ ¥20 each. Lava-cookie + poffin counters use custom UIs and are out of scope. |
 | `move_deleter_oreburgh` | Oreburgh City at map 58 (C03R0301), inside the Move Deleter's house. E4 save (8 badges). NPC "Old Man" is the deleter. |
 
 ### No longer needed

@@ -3,9 +3,11 @@
 Mart data is sourced from the ROM (mart_items.h in the decompilation).
 Item prices come from pl_item_data.narc (extracted to data/item_prices.json).
 
-Two inventory systems:
+Three inventory systems:
   1. Common items — shared across all standard PokéMarts, badge-gated.
   2. Specialty items — unique per city, always available.
+  3. Veilstone Dept Store — per-floor, per-cashier fixed lists (no badge gating,
+     no common stock mixed in). Each cashier sells one named category.
 
 Badge-gating uses the same switch logic as the game (scrcmd_shop.c):
   0 badges → threshold 1, 1-2 → 2, 3-4 → 3, 5-6 → 4, 7 → 5, 8 → 6
@@ -16,7 +18,13 @@ All standard marts share identical layouts:
   - Cashier M at (2, 5) — specialty items
   - Exit warp at (3, 11)
 
-If called from a city/town overworld, auto-navigates to the mart.
+Veilstone Dept Store rooms use code prefix "C07R02" (1F=01 … B1F=07).
+Floors carry 1-2 vendor counters each, and 2F has two "Cashier F" NPCs at
+different tiles — so dept-store cashier lookup matches by NPC name + coords,
+not name alone.
+
+If called from a city/town overworld, auto-navigates to the mart (or to
+the Veilstone Dept Store 1F entrance if in Veilstone).
 """
 
 from __future__ import annotations
@@ -84,6 +92,95 @@ def _badge_threshold(badge_count: int) -> int:
     return _BADGE_THRESHOLDS.get(badge_count, 1)
 
 
+# ── Veilstone Dept Store ──
+# Each floor has 1-2 vendor counters; each counter sells a fixed item list
+# (no badge gating, no common items mixed in). Cashier coords use the same
+# (x, y) convention as `read_objects` — events JSON's "z" field is engine "y".
+#
+# Skipped (different UIs / out of scope for now):
+#   - 4F: decoration/doll shop (Shop_Start with MART_TYPE_DECORATION)
+#   - 5F: no shops, only collectors
+#   - B1F: Lava Cookie / Poffin / Rage Candy Bar vendors (custom press flows)
+#
+# Source: ref/pokeplatinum/include/data/mart_items.h VeilstoneDeptStoreStock_*[]
+# Cashier coords: ref/pokeplatinum/res/field/events/events_veilstone_store_*.json
+# Renegade Platinum may have edited TM lists in the binary scripts; if read_shop
+# disagrees with the in-game menu, this table is the place to fix.
+DEPT_STORE_CASHIERS: dict[str, list[dict]] = {
+    # 1F: code C07R0201
+    "C07R0201": [
+        {
+            "npc": "Cashier F", "x": 3, "y": 5,
+            "label": "Potions & status healing",
+            "items": [17, 26, 25, 24, 28, 18, 22, 19, 20, 21, 27],
+        },
+        {
+            "npc": "Cashier M", "x": 2, "y": 5,
+            "label": "Balls, repels & mail",
+            "items": [4, 3, 2, 78, 63, 79, 76, 77, 137, 138, 139, 145],
+        },
+    ],
+    # 2F: code C07R0202 — two "Cashier F" NPCs at different tiles.
+    "C07R0202": [
+        {
+            "npc": "Cashier F", "x": 2, "y": 4,
+            "label": "Battle X items",
+            "items": [59, 57, 58, 55, 56, 60, 61, 62],
+        },
+        {
+            "npc": "Cashier F", "x": 2, "y": 6,
+            "label": "Vitamins (stat boosters)",
+            "items": [46, 47, 49, 52, 48, 45],
+        },
+    ],
+    # 3F: code C07R0203 — Renegade Platinum replaced vanilla's TM lists.
+    # Top counter: evolution stones (verified in-game vs Wayne's E4 save,
+    # session 48 spike). Bottom counter (vanilla TM38/25/14/22/52/15) was
+    # walled off behind decorative obstacles — the Cashier_M NPC at (3, 11)
+    # still loads but is unreachable, so it's omitted here.
+    "C07R0203": [
+        {
+            "npc": "Cashier F", "x": 3, "y": 4,
+            "label": "Evolution stones",
+            "items": [82, 457, 85, 81, 80, 83, 84],  # Fire/Ice/Leaf/Moon/Sun/Thunder/Water
+        },
+    ],
+    # B1F: code C07R0207 — Berry vendor only (Lava Cookie/Poffin counters skipped).
+    "C07R0207": [
+        {
+            "npc": "Cashier F", "x": 5, "y": 11,
+            "label": "Berries",
+            "items": [159, 160, 161, 162, 163],
+        },
+    ],
+}
+
+# Display labels and read_shop messages for every dept-store interior,
+# including non-shop floors. (`message` is shown when the floor has no
+# entry in DEPT_STORE_CASHIERS.)
+DEPT_STORE_FLOORS: dict[str, dict] = {
+    "C07R0201": {"name": "1F"},
+    "C07R0202": {"name": "2F"},
+    "C07R0203": {"name": "3F"},
+    "C07R0204": {"name": "4F", "message": "4F is the decoration / doll counter — not yet supported."},
+    "C07R0205": {"name": "5F", "message": "5F has no purchasable shop (collectors only)."},
+    "C07R0206": {"name": "Elevator", "message": "Elevator — pick a floor, no shop here."},
+    "C07R0207": {"name": "B1F"},
+}
+
+DEPT_STORE_FLOOR_NAMES: dict[str, str] = {
+    code: floor["name"] for code, floor in DEPT_STORE_FLOORS.items()
+}
+
+# Veilstone overworld → Dept Store 1F entrance (events_veilstone_city.json).
+VEILSTONE_DEPT_STORE_ENTRANCE: tuple[int, int] = (701, 603)
+
+
+def _is_dept_store_map(code: str) -> bool:
+    """True if `code` is a Veilstone Dept Store interior map."""
+    return code.startswith("C07R02")
+
+
 def _city_code_from_map(map_id: int) -> str | None:
     """Extract the city/town code (e.g. 'C01', 'T03') from a map ID."""
     entry = map_table().get(map_id, {})
@@ -105,7 +202,11 @@ def _city_name(city_code: str) -> str:
 def _find_mart_warp(
     emu: "EmulatorClient", map_id: int, city_code: str,
 ) -> dict | None:
-    """Find a warp on the current map that leads to this city's PokéMart."""
+    """Find a warp on the current map that leads to this city's PokéMart.
+
+    For Veilstone (C07) there is no Friendly Shop — instead, accept the
+    warp to the Department Store 1F (code C07R0201) as the mart entrance.
+    """
     from renegade_mcp.map_state import read_warps_from_rom
 
     warps = read_warps_from_rom(emu, map_id)
@@ -115,6 +216,36 @@ def _find_mart_warp(
         dest_code = dest_entry.get("code", "")
         if dest_code.startswith(f"{city_code}FS"):
             return w
+        if city_code == "C07" and dest_code == "C07R0201":
+            return w
+    return None
+
+
+def _find_dept_store_cashier_for_item(
+    map_code: str, item_name: str,
+) -> tuple[dict, int, int] | None:
+    """Locate a dept-store cashier on this floor that sells `item_name`.
+
+    Returns (cashier_spec, menu_index, item_id) or None.
+    """
+    target = item_name.lower()
+    names = item_names()
+    for cashier in DEPT_STORE_CASHIERS.get(map_code, []):
+        for idx, item_id in enumerate(cashier["items"]):
+            if names.get(item_id, "").lower() == target:
+                return (cashier, idx, item_id)
+    return None
+
+
+def _find_npc_at(state: dict, npc_name: str, x: int, y: int) -> dict | None:
+    """Find an active map object matching `npc_name` at exact tile (x, y).
+
+    Used to disambiguate same-named NPCs (e.g. dept-store 2F has two
+    "Cashier F" objects at different tiles).
+    """
+    for obj in state["objects"]:
+        if obj.get("name") == npc_name and obj.get("x") == x and obj.get("y") == y:
+            return obj
     return None
 
 
@@ -134,21 +265,34 @@ def read_shop(emu: EmulatorClient, badge_count: int | None = None) -> dict[str, 
         badge_count: Player's badge count. If None, defaults to 0.
 
     Returns dict with common_items, specialty_items, formatted text, etc.
+    For Veilstone Dept Store interiors the return shape is different:
+    {location, floor, cashiers: [{npc, x, y, label, items}], formatted}.
     """
     from renegade_mcp.map_state import read_player_state
     from renegade_mcp.trainer import read_trainer_status
 
     map_id, x, y, _facing = read_player_state(emu)
+    entry = map_table().get(map_id, {})
+    code = entry.get("code", "")
+
+    if _is_dept_store_map(code):
+        return _read_dept_store(map_id, code)
+
     city_code = _city_code_from_map(map_id)
 
     if city_code is None:
-        entry = map_table().get(map_id, {})
         loc_name = entry.get("name", f"Map {map_id}")
         return {
             "error": f"Not in a city or town with a standard PokéMart.",
             "location": loc_name,
             "map_id": map_id,
         }
+
+    # Veilstone overworld: no Friendly Shop — direct the caller at the
+    # Dept Store instead so they don't get a confusing badge-gated stock
+    # listing for a mart that doesn't exist.
+    if code == "C07":
+        return _veilstone_overworld_summary(map_id)
 
     loc_name = _city_name(city_code)
 
@@ -242,6 +386,95 @@ def read_shop(emu: EmulatorClient, badge_count: int | None = None) -> dict[str, 
     }
 
 
+def _resolve_cashier_items(cashier: dict) -> list[dict]:
+    """Materialize a cashier's item list into name/price/item_id dicts."""
+    names = item_names()
+    prices = item_prices()
+    return [
+        {
+            "name": names.get(item_id, f"???#{item_id}"),
+            "price": prices.get(item_id, 0),
+            "item_id": item_id,
+        }
+        for item_id in cashier["items"]
+    ]
+
+
+def _read_dept_store(map_id: int, code: str) -> dict[str, Any]:
+    """read_shop branch for Veilstone Dept Store interior maps."""
+    floor_meta = DEPT_STORE_FLOORS.get(code, {"name": "?"})
+    floor = floor_meta["name"]
+    cashiers_raw = DEPT_STORE_CASHIERS.get(code, [])
+
+    cashiers_out = [
+        {
+            "npc": c["npc"], "x": c["x"], "y": c["y"], "label": c["label"],
+            "items": _resolve_cashier_items(c),
+        }
+        for c in cashiers_raw
+    ]
+
+    lines = [f"Veilstone Dept Store — {floor}"]
+    if not cashiers_out:
+        lines.append("")
+        lines.append(floor_meta.get(
+            "message", "(No purchasable shops indexed for this floor.)",
+        ))
+    for c in cashiers_out:
+        lines.append("")
+        lines.append(f"{c['label']} — {c['npc']} @ ({c['x']},{c['y']}):")
+        for it in c["items"]:
+            lines.append(_format_item(it["name"], it["price"]))
+
+    return {
+        "location": "Veilstone Dept Store",
+        "floor": floor,
+        "city_code": "C07",
+        "map_code": code,
+        "map_id": map_id,
+        "cashiers": cashiers_out,
+        "formatted": "\n".join(lines),
+    }
+
+
+def _veilstone_overworld_summary(map_id: int) -> dict[str, Any]:
+    """read_shop branch for the Veilstone City overworld (no Friendly Shop)."""
+    cashiers_out = []
+    for floor_code in ("C07R0201", "C07R0202", "C07R0203", "C07R0207"):
+        floor = DEPT_STORE_FLOOR_NAMES.get(floor_code, "?")
+        for c in DEPT_STORE_CASHIERS.get(floor_code, []):
+            cashiers_out.append({
+                "floor": floor, "map_code": floor_code,
+                "npc": c["npc"], "x": c["x"], "y": c["y"], "label": c["label"],
+                "items": _resolve_cashier_items(c),
+            })
+
+    entrance_x, entrance_y = VEILSTONE_DEPT_STORE_ENTRANCE
+    lines = [
+        "Veilstone City — no standard PokéMart.",
+        f"Enter the Department Store (warp at city tile {entrance_x}, {entrance_y}) for shops.",
+        "",
+        "Floor directory:",
+    ]
+    by_floor: dict[str, list[dict]] = {}
+    for c in cashiers_out:
+        by_floor.setdefault(c["floor"], []).append(c)
+    for floor in ("1F", "2F", "3F", "B1F"):
+        for c in by_floor.get(floor, []):
+            lines.append(f"  {floor}  {c['label']:<28s} ({c['npc']} @ {c['x']},{c['y']})")
+    lines.append("  4F  Decorations / dolls         (not yet supported)")
+    lines.append("  5F  (no shop)")
+
+    return {
+        "location": "Veilstone City",
+        "city_code": "C07",
+        "map_id": map_id,
+        "dept_store": True,
+        "cashiers": cashiers_out,
+        "formatted": "\n".join(lines),
+    }
+
+
 # ── Buy Item ──
 
 # Timing constants (frames)
@@ -290,90 +523,158 @@ def _find_item_position(
     return None
 
 
+def _is_inside_shop_map(code: str) -> bool:
+    """True if `code` is a regular mart or a Veilstone Dept Store interior."""
+    return "FS" in code or _is_dept_store_map(code)
+
+
+def _enter_shop_or_error(
+    emu: EmulatorClient,
+) -> tuple[str | None, dict | None, bool]:
+    """Ensure the player is inside a shop map, auto-warping from city overworld.
+
+    Returns (code, error, navigated_to_mart). On success `error` is None
+    and `code` is the current map's code (a mart "FS" code or a Veilstone
+    Dept Store interior). On failure `error` is a result dict ready to return.
+    """
+    from renegade_mcp.map_state import read_player_state
+    from renegade_mcp.navigation import navigate_to
+    from renegade_mcp.phase_timer import phase
+
+    map_id, _x, _y, _facing = read_player_state(emu)
+    entry = map_table().get(map_id, {})
+    code = entry.get("code", "")
+
+    if _is_inside_shop_map(code):
+        return code, None, False
+
+    city_code = _city_code_from_map(map_id)
+    if city_code is None or code != city_code:
+        loc = _city_name(city_code) if city_code else entry.get("name", f"Map {map_id}")
+        return None, _error(
+            f"Not inside a PokéMart or city overworld ({loc}, code: {code}). "
+            "Navigate to a town with a PokéMart first."
+        ), False
+
+    mart_warp = _find_mart_warp(emu, map_id, city_code)
+    if mart_warp is None:
+        return None, _error(f"No PokéMart warp found in {_city_name(city_code)}."), False
+
+    with phase("shop_navigate_to_mart"):
+        nav_result = navigate_to(
+            emu, mart_warp["x"], mart_warp["y"], flee_encounters=True,
+        )
+
+    if nav_result.get("encounter"):
+        err = _error("Navigation to PokéMart interrupted by encounter.")
+        err["encounter"] = nav_result["encounter"]
+        err["formatted"] = (
+            "Error: Navigation to PokéMart interrupted by encounter. "
+            "Deal with the encounter and try again."
+        )
+        return None, err, False
+
+    if nav_result.get("stopped_early") and not nav_result.get("door_entered"):
+        return None, _error(
+            "Could not reach the PokéMart — path was blocked. "
+            f"Path: {nav_result.get('path', 'unknown')}"
+        ), False
+
+    new_map_id, _, _, _ = read_player_state(emu)
+    new_code = map_table().get(new_map_id, {}).get("code", "")
+    if not _is_inside_shop_map(new_code):
+        return None, _error(
+            f"Navigated to mart warp but didn't enter (current code: {new_code})."
+        ), False
+    return new_code, None, True
+
+
+def _has_premier_bonus(item_name: str, quantity: int) -> bool:
+    """10+ Poké Balls of any kind triggers a Premier Ball gift dialogue."""
+    return item_name.lower().endswith("ball") and quantity >= 10
+
+
+def _run_buy_press_flow(
+    emu: EmulatorClient, menu_index: int, quantity: int, premier_bonus: bool,
+) -> None:
+    """Drive the post-greeting buy UI: BUY → scroll → qty → confirm → exit."""
+    from renegade_mcp.phase_timer import phase
+
+    with phase("shop_purchase_flow"):
+        _press(emu, ["a"], _MENU_WAIT)  # BUY → item list
+
+        for _ in range(menu_index):
+            _press(emu, ["down"], wait=30)
+
+        # Item-confirm renders "Item? Certainly. How many?" *and* the qty
+        # selector x01 in one screen — so a single A here, not two. Pressing
+        # A twice would land on the qty selector (cursor on x01) and confirm
+        # qty=1, eating the up-press increments below.
+        _press(emu, ["a"], _MENU_WAIT)
+
+        for _ in range(quantity - 1):
+            _press(emu, ["up"], wait=15)
+
+        # qty-confirm produces "And you want N. ¥X. OK?" with YES/NO inline,
+        # then YES advances to "Here you are!". Two A presses, not three.
+        _press(emu, ["a"], _MENU_WAIT)
+        _press(emu, ["a"], _MENU_WAIT)
+
+        # Post-YES: B advances "Here you are!" → "You put away..." →
+        # item list → BUY/SELL/SEE YA menu (cursor on BUY). Premier Ball
+        # bonus (10+ Poké Balls) inserts two extra pages before the item list.
+        n_b_presses = 5 if premier_bonus else 3
+        for _ in range(n_b_presses):
+            _press(emu, ["b"], wait=_MENU_WAIT)
+
+        _press(emu, ["down"], wait=30)
+        _press(emu, ["down"], wait=30)
+        _press(emu, ["a"], wait=_TEXT_WAIT)
+        _press(emu, ["a"], wait=_SETTLE_WAIT)
+
+
 def buy_item(
     emu: EmulatorClient,
     item_name: str,
     quantity: int = 1,
     badge_count: int | None = None,
 ) -> dict[str, Any]:
-    """Buy an item from the PokéMart.
+    """Buy an item from a PokéMart or the Veilstone Department Store.
 
-    Works from inside a mart or from a city/town overworld (auto-navigates).
-    Finds the correct cashier (common vs specialty), navigates to them,
-    opens the shop, scrolls to the item, selects quantity, confirms, and exits.
+    Works from inside a mart, inside a Veilstone Dept Store floor, or from a
+    city/town overworld (auto-navigates through the entrance warp). Finds the
+    correct cashier, walks there, opens the shop, scrolls to the item, selects
+    quantity, confirms, and exits.
+
+    For the Dept Store, multi-floor navigation is not yet automated: stand on
+    the floor that sells the item before calling. From the Veilstone overworld
+    this auto-navigates only as far as 1F.
 
     Args:
         emu: Emulator client.
-        item_name: Item name (e.g. "Potion", "Heal Ball"). Case-insensitive.
+        item_name: Item name (e.g. "Potion", "Heal Ball", "TM83"). Case-insensitive.
         quantity: How many to buy (default 1).
         badge_count: Player's badge count for filtering. If None, defaults to 0.
+            Ignored for Dept Store (no badge gating there).
     """
-    from renegade_mcp.map_state import get_map_state, read_player_state
-    from renegade_mcp.navigation import interact_with, navigate_to
-    from renegade_mcp.phase_timer import phase
     from renegade_mcp.trainer import read_trainer_status
 
+    code, err, navigated_to_mart = _enter_shop_or_error(emu)
+    if err is not None:
+        return err
+
+    if _is_dept_store_map(code):
+        return _buy_at_dept_store(
+            emu, code, item_name, quantity, navigated_to_mart,
+        )
+
+    # ── Regular PokéMart path ──
+    from renegade_mcp.map_state import read_player_state
     map_id, _x, _y, _facing = read_player_state(emu)
-    entry = map_table().get(map_id, {})
-    code = entry.get("code", "")
+    city_code = _city_code_from_map(map_id)
+    if city_code is None:
+        return _error(f"Cannot determine city from map code: {code}")
 
-    navigated_to_mart = False
-
-    if "FS" in code:
-        # ── Case 1: Already inside a PokéMart ──
-        city_code = _city_code_from_map(map_id)
-        if city_code is None:
-            return _error(f"Cannot determine city from map code: {code}")
-
-    else:
-        # ── Case 2: On a city/town overworld — navigate to mart ──
-        city_code = _city_code_from_map(map_id)
-        if city_code is not None and code == city_code:
-            mart_warp = _find_mart_warp(emu, map_id, city_code)
-            if mart_warp is None:
-                loc = _city_name(city_code)
-                return _error(f"No PokéMart warp found in {loc}.")
-
-            with phase("shop_navigate_to_mart"):
-                nav_result = navigate_to(emu, mart_warp["x"], mart_warp["y"], flee_encounters=True)
-
-            if nav_result.get("encounter"):
-                return {
-                    "success": False,
-                    "error": "Navigation to PokéMart interrupted by encounter.",
-                    "encounter": nav_result["encounter"],
-                    "formatted": (
-                        "Error: Navigation to PokéMart interrupted by encounter. "
-                        "Deal with the encounter and try again."
-                    ),
-                }
-
-            if nav_result.get("stopped_early") and not nav_result.get("door_entered"):
-                return _error(
-                    "Could not reach the PokéMart — path was blocked. "
-                    f"Path: {nav_result.get('path', 'unknown')}"
-                )
-
-            navigated_to_mart = True
-            # Re-read position now that we're inside
-            map_id, _x, _y, _facing = read_player_state(emu)
-            entry = map_table().get(map_id, {})
-            code = entry.get("code", "")
-
-            if "FS" not in code:
-                return _error(
-                    f"Navigated to mart warp but didn't enter "
-                    f"(current code: {code})."
-                )
-        else:
-            # ── Case 3: Not in a mart or city overworld ──
-            loc = _city_name(city_code) if city_code else entry.get("name", f"Map {map_id}")
-            return _error(
-                f"Not inside a PokéMart or city overworld ({loc}, code: {code}). "
-                "Navigate to a town with a PokéMart first."
-            )
-
-    # ── Resolve badge threshold ──
     if badge_count is not None:
         badges = badge_count
     else:
@@ -381,10 +682,8 @@ def buy_item(
         badges = status.get("badges", 0) if isinstance(status.get("badges"), int) else 0
     threshold = _badge_threshold(badges)
 
-    # ── Find item in shop inventory ──
     result = _find_item_position(item_name, threshold, city_code)
     if result is None:
-        # Build helpful error with available items
         names = item_names()
         avail_common = [names.get(i, "?") for i in _available_common_items(threshold)]
         avail_spec = [names.get(i, "?") for i in SPECIALTY_MARTS.get(city_code, [])]
@@ -400,7 +699,6 @@ def buy_item(
     total_cost = price * quantity
     display_name = item_names().get(item_id, item_name)
 
-    # ── Check money ──
     status = read_trainer_status(emu)
     money = status.get("money", 0)
     if total_cost > money:
@@ -409,81 +707,26 @@ def buy_item(
             f"but you only have ¥{money:,}."
         )
 
-    # ── Find the correct cashier NPC ──
-    state = get_map_state(emu)
-    if state is None:
-        return _error("Could not read map state.")
+    from renegade_mcp.move_services import _find_npc
+    from renegade_mcp.navigation import interact_with
+    from renegade_mcp.phase_timer import phase
 
     cashier_name = "Cashier F" if cashier_type == "common" else "Cashier M"
-    cashier = next(
-        (obj for obj in state["objects"] if obj.get("name") == cashier_name),
-        None,
-    )
-    if cashier is None:
-        npc_names = [obj.get("name", "?") for obj in state["objects"] if obj["index"] != 0]
-        return _error(f"No {cashier_name} found. NPCs: {', '.join(npc_names)}")
+    cashier, err = _find_npc(emu, cashier_name, cashier_name)
+    if err is not None:
+        return err
 
-    # ── Walk to cashier and interact ──
     with phase("shop_interact_cashier"):
         nav_result = interact_with(emu, cashier["index"])
-
     if nav_result.get("interrupted") or nav_result.get("encounter"):
         return _error(f"Navigation to {cashier_name} interrupted: {nav_result}")
     if nav_result.get("stopped_early"):
         return _error(f"Could not reach {cashier_name} — path blocked.")
 
-    # interact_with auto-advances "Welcome! What do you need?" dialogue.
-    # We're now at the BUY/SELL/SEE YA menu with cursor on BUY.
-    with phase("shop_purchase_flow"):
-        _press(emu, ["a"], _MENU_WAIT)   # select BUY → item list loads
+    _run_buy_press_flow(
+        emu, menu_index, quantity, _has_premier_bonus(item_name, quantity),
+    )
 
-        # ── Navigate item list to target item ──
-        for _ in range(menu_index):
-            _press(emu, ["down"], wait=30)
-
-        # ── Select item ──
-        _press(emu, ["a"])               # "Certainly. How many would you like?"
-        _press(emu, ["a"])               # text finishes → quantity selector (x01)
-
-        # ── Set quantity (up arrow to increase from 1) ──
-        for _ in range(quantity - 1):
-            _press(emu, ["up"], wait=15)
-
-        # ── Confirm quantity → YES/NO → purchase ──
-        _press(emu, ["a"])               # confirm qty → "That will be ¥X..." text
-        _press(emu, ["a"])               # text finishes → YES/NO prompt
-        _press(emu, ["a"])               # select YES → "Here you are! Thank you!"
-
-        # ── Post-purchase dialogue + exit ──
-        # Shop dialog pages aren't tracked by the ScriptManager (is_msg_box_open
-        # stays False throughout the shop UI), so we drive the exit with a fixed
-        # B-press sequence. Each B with a _MENU_WAIT pause is enough to fully
-        # render AND dismiss one page.
-        #
-        # Standard post-YES sequence (2 post-purchase pages + 1 exit):
-        #   B → "Here you are!" → "You put away..." (rendered + money deducted)
-        #   B → dismiss dialog → item list (selected item highlighted)
-        #   B → item list → BUY/SELL/SEE YA main menu (cursor on BUY)
-        #   down → SELL
-        #   down → SEE YA!
-        #   A → "Please come again!"
-        #   A → overworld
-        #
-        # Premier Ball bonus (10+ Poké Balls bought) adds two extra pages
-        # before the item list, so two additional B presses are needed.
-        n_b_presses = 3  # standard 2-page flow + 1 to exit to main menu
-        if item_name.lower().endswith("ball") and quantity >= 10:
-            n_b_presses += 2  # Premier Ball bonus pages
-
-        for _ in range(n_b_presses):
-            _press(emu, ["b"], wait=_MENU_WAIT)
-
-        _press(emu, ["down"], wait=30)        # BUY → SELL
-        _press(emu, ["down"], wait=30)        # SELL → SEE YA!
-        _press(emu, ["a"], wait=_TEXT_WAIT)   # select SEE YA → "Please come again!"
-        _press(emu, ["a"], wait=_SETTLE_WAIT) # dismiss farewell, back to overworld
-
-    # ── Verify purchase ──
     new_status = read_trainer_status(emu)
     new_money = new_status.get("money", 0)
     spent = money - new_money
@@ -508,6 +751,127 @@ def buy_item(
         "cashier": cashier_type,
         "formatted": (
             f"Bought {display_name} x{quantity} for ¥{total_cost:,}. "
+            f"Money: ¥{money:,} → ¥{new_money:,}"
+        ),
+    }
+    if navigated_to_mart:
+        result["navigated_to_mart"] = True
+    return result
+
+
+def _buy_at_dept_store(
+    emu: EmulatorClient,
+    code: str,
+    item_name: str,
+    quantity: int,
+    navigated_to_mart: bool,
+) -> dict[str, Any]:
+    """buy_item branch for Veilstone Dept Store interior maps."""
+    from renegade_mcp.map_state import get_map_state
+    from renegade_mcp.navigation import interact_with
+    from renegade_mcp.phase_timer import phase
+    from renegade_mcp.trainer import read_trainer_status
+
+    floor = DEPT_STORE_FLOOR_NAMES.get(code, "?")
+    found = _find_dept_store_cashier_for_item(code, item_name)
+
+    if found is None:
+        names = item_names()
+        items_here = []
+        for c in DEPT_STORE_CASHIERS.get(code, []):
+            items_here.extend(names.get(i, "?") for i in c["items"])
+
+        target = item_name.lower()
+        other_floor_hint = None
+        for other_code, cashiers in DEPT_STORE_CASHIERS.items():
+            if other_code == code:
+                continue
+            for c in cashiers:
+                for iid in c["items"]:
+                    if names.get(iid, "").lower() == target:
+                        other_floor_hint = (
+                            f"Sold on {DEPT_STORE_FLOOR_NAMES.get(other_code, '?')}: "
+                            f"{c['label']}."
+                        )
+                        break
+                if other_floor_hint:
+                    break
+            if other_floor_hint:
+                break
+
+        msg = f'"{item_name}" is not sold on {floor}.'
+        if items_here:
+            msg += f" Here: {', '.join(items_here)}."
+        if other_floor_hint:
+            msg += " " + other_floor_hint
+        return _error(msg)
+
+    cashier_spec, menu_index, item_id = found
+    prices = item_prices()
+    price = prices.get(item_id, 0)
+    total_cost = price * quantity
+    display_name = item_names().get(item_id, item_name)
+
+    status = read_trainer_status(emu)
+    money = status.get("money", 0)
+    if total_cost > money:
+        return _error(
+            f"Not enough money. {display_name} x{quantity} costs ¥{total_cost:,} "
+            f"but you only have ¥{money:,}."
+        )
+
+    state = get_map_state(emu)
+    if state is None:
+        return _error("Could not read map state.")
+
+    cashier_obj = _find_npc_at(
+        state, cashier_spec["npc"], cashier_spec["x"], cashier_spec["y"],
+    )
+    if cashier_obj is None:
+        return _error(
+            f"No {cashier_spec['npc']} at "
+            f"({cashier_spec['x']}, {cashier_spec['y']}) on {floor}."
+        )
+
+    with phase("shop_interact_cashier"):
+        nav_result = interact_with(emu, cashier_obj["index"])
+
+    if nav_result.get("interrupted") or nav_result.get("encounter"):
+        return _error(f"Navigation to {cashier_spec['npc']} interrupted: {nav_result}")
+    if nav_result.get("stopped_early"):
+        return _error(f"Could not reach {cashier_spec['npc']} — path blocked.")
+
+    _run_buy_press_flow(
+        emu, menu_index, quantity, _has_premier_bonus(item_name, quantity),
+    )
+
+    new_status = read_trainer_status(emu)
+    new_money = new_status.get("money", 0)
+    spent = money - new_money
+
+    if spent != total_cost:
+        return _error(
+            f"Purchase verification failed: expected to spend ¥{total_cost:,} "
+            f"but actually spent ¥{spent:,} (money {money:,} → {new_money:,}). "
+            f"Shop UI may be in a bad state — screenshot to diagnose."
+        )
+
+    result: dict[str, Any] = {
+        "success": True,
+        "item": display_name,
+        "item_id": item_id,
+        "quantity": quantity,
+        "unit_price": price,
+        "total_cost": total_cost,
+        "money_before": money,
+        "money_after": new_money,
+        "money_spent": spent,
+        "cashier": "dept_store",
+        "floor": floor,
+        "counter": cashier_spec["label"],
+        "formatted": (
+            f"Bought {display_name} x{quantity} for ¥{total_cost:,} "
+            f"at Dept Store {floor} ({cashier_spec['label']}). "
             f"Money: ¥{money:,} → ¥{new_money:,}"
         ),
     }
@@ -542,11 +906,15 @@ def sell_item(
     item_name: str,
     quantity: int = 1,
 ) -> dict[str, Any]:
-    """Sell an item at the PokéMart.
+    """Sell an item at a PokéMart or the Veilstone Department Store.
 
-    Works from inside a mart or from a city/town overworld (auto-navigates).
-    Talks to Cashier F, selects SELL, navigates the sell bag to the item,
-    sets quantity, confirms the sale, and exits.
+    Works from inside a mart, inside any Veilstone Dept Store floor, or from
+    a city/town overworld (auto-navigates through the entrance warp). Talks
+    to the floor's cashier, selects SELL, navigates the sell bag to the
+    item, sets quantity, confirms the sale, and exits.
+
+    In the Dept Store any active vendor counter on the current floor accepts
+    SELL — the bag UI is identical regardless of which counter you talk to.
 
     Sell price = buy price / 2 (standard Pokémon formula).
 
@@ -557,8 +925,8 @@ def sell_item(
     """
     from renegade_mcp.bag import read_bag
     from renegade_mcp.bag_cursor import get_pocket_cursor
-    from renegade_mcp.map_state import get_map_state, read_player_state
-    from renegade_mcp.navigation import interact_with, navigate_to
+    from renegade_mcp.map_state import get_map_state
+    from renegade_mcp.navigation import interact_with
     from renegade_mcp.trainer import read_trainer_status
 
     item_lower = item_name.lower()
@@ -625,87 +993,55 @@ def sell_item(
         return _error(f"'{display_name}' has no sell value (buy price: ¥0).")
     total_value = sell_price * quantity
 
-    # ── Navigate to mart ──
-    map_id, _x, _y, _facing = read_player_state(emu)
-    entry = map_table().get(map_id, {})
-    code = entry.get("code", "")
-
-    navigated_to_mart = False
-
-    if "FS" in code:
-        city_code = _city_code_from_map(map_id)
-        if city_code is None:
-            return _error(f"Cannot determine city from map code: {code}")
-    else:
-        city_code = _city_code_from_map(map_id)
-        if city_code is not None and code == city_code:
-            mart_warp = _find_mart_warp(emu, map_id, city_code)
-            if mart_warp is None:
-                loc = _city_name(city_code)
-                return _error(f"No PokéMart warp found in {loc}.")
-
-            nav_result = navigate_to(emu, mart_warp["x"], mart_warp["y"],
-                                     flee_encounters=True)
-
-            if nav_result.get("encounter"):
-                return {
-                    "success": False,
-                    "error": "Navigation to PokéMart interrupted by encounter.",
-                    "encounter": nav_result["encounter"],
-                    "formatted": (
-                        "Error: Navigation to PokéMart interrupted by encounter. "
-                        "Deal with the encounter and try again."
-                    ),
-                }
-
-            if nav_result.get("stopped_early") and not nav_result.get("door_entered"):
-                return _error(
-                    "Could not reach the PokéMart — path was blocked. "
-                    f"Path: {nav_result.get('path', 'unknown')}"
-                )
-
-            navigated_to_mart = True
-            map_id, _x, _y, _facing = read_player_state(emu)
-            entry = map_table().get(map_id, {})
-            code = entry.get("code", "")
-
-            if "FS" not in code:
-                return _error(
-                    f"Navigated to mart warp but didn't enter "
-                    f"(current code: {code})."
-                )
-        else:
-            loc = (_city_name(city_code) if city_code
-                   else entry.get("name", f"Map {map_id}"))
-            return _error(
-                f"Not inside a PokéMart or city overworld ({loc}, code: {code}). "
-                "Navigate to a town with a PokéMart first."
-            )
+    # ── Navigate to mart (auto-warp from city overworld if needed) ──
+    code, err, navigated_to_mart = _enter_shop_or_error(emu)
+    if err is not None:
+        return err
 
     # ── Record money before ──
     status = read_trainer_status(emu)
     money_before = status.get("money", 0)
 
-    # ── Find Cashier F and interact ──
-    state = get_map_state(emu)
-    if state is None:
-        return _error("Could not read map state.")
-
-    cashier = next(
-        (obj for obj in state["objects"] if obj.get("name") == "Cashier F"),
-        None,
-    )
-    if cashier is None:
-        npc_names = [obj.get("name", "?") for obj in state["objects"]
-                     if obj["index"] != 0]
-        return _error(f"No Cashier F found. NPCs: {', '.join(npc_names)}")
+    # ── Find a cashier on the current floor and interact ──
+    if _is_dept_store_map(code):
+        state = get_map_state(emu)
+        if state is None:
+            return _error("Could not read map state.")
+        # Any vendor counter on this floor accepts SELL — pick the first
+        # one whose tile we can match on the live object array.
+        floor_cashiers = DEPT_STORE_CASHIERS.get(code, [])
+        if not floor_cashiers:
+            return _error(
+                f"Dept Store {DEPT_STORE_FLOOR_NAMES.get(code, code)} has no "
+                "selling counter mapped (4F decoration / B1F lava-cookie / "
+                "B1F poffin counters use custom UIs and aren't supported)."
+            )
+        cashier = None
+        cashier_label = floor_cashiers[0]["npc"]
+        for spec in floor_cashiers:
+            obj = _find_npc_at(state, spec["npc"], spec["x"], spec["y"])
+            if obj is not None:
+                cashier = obj
+                cashier_label = spec["npc"]
+                break
+        if cashier is None:
+            return _error(
+                f"No active cashier found on Dept Store "
+                f"{DEPT_STORE_FLOOR_NAMES.get(code, code)}."
+            )
+    else:
+        from renegade_mcp.move_services import _find_npc
+        cashier_label = "Cashier F"
+        cashier, npc_err = _find_npc(emu, cashier_label, cashier_label)
+        if npc_err is not None:
+            return npc_err
 
     nav_result = interact_with(emu, cashier["index"])
 
     if nav_result.get("interrupted") or nav_result.get("encounter"):
-        return _error(f"Navigation to Cashier F interrupted: {nav_result}")
+        return _error(f"Navigation to {cashier_label} interrupted: {nav_result}")
     if nav_result.get("stopped_early"):
-        return _error("Could not reach Cashier F — path blocked.")
+        return _error(f"Could not reach {cashier_label} — path blocked.")
 
     # interact_with auto-advances "Welcome! What do you need?" dialogue.
     # We're now at the BUY/SELL/SEE YA menu with cursor on BUY.
