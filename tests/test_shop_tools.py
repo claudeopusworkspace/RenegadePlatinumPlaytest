@@ -293,12 +293,18 @@ class TestDeptStoreData:
         sold = {item_names()[i] for i in top["items"]}
         assert {"Fire Stone", "Water Stone", "Leaf Stone"} <= sold
 
-    def test_3f_bottom_counter_unsupported(self):
-        # Drayano walled off the bottom-left counter; Cashier_M at (3, 11)
-        # still spawns but is unreachable. Don't surface it as buyable.
+    def test_3f_bottom_counter_sells_special_stones(self):
+        # Bottom counter sells the "special" stones; reached via talk-across-
+        # counter from (3, 9). view_map BFS calls Cashier M unreachable but
+        # `interact_with` has the across-counter fallback.
+        from renegade_mcp.data import item_names
         from renegade_mcp.shop import DEPT_STORE_CASHIERS
 
-        assert len(DEPT_STORE_CASHIERS["C07R0203"]) == 1
+        bottom = DEPT_STORE_CASHIERS["C07R0203"][1]
+        assert bottom["npc"] == "Cashier M"
+        assert bottom["x"] == 3 and bottom["y"] == 11
+        sold = {item_names()[i] for i in bottom["items"]}
+        assert {"Dawn Stone", "Dusk Stone", "Everstone", "Shiny Stone"} <= sold
 
 
 class TestDeptStoreLookup:
@@ -514,7 +520,8 @@ class TestDeptStore2F:
 
 
 class TestDeptStore3F:
-    """3F top counter — Renegade replaced vanilla TMs with evolution stones."""
+    """3F counters — Renegade replaced both vanilla TM lists with evolution
+    stones. Both cashiers are reached via talk-across-counter."""
 
     @retry_on_rng("e4_dept_store_3f")
     def test_buy_fire_stone(self, emu: EmulatorClient):
@@ -523,6 +530,18 @@ class TestDeptStore3F:
         result = buy_item(emu, "Fire Stone", quantity=1)
         assert result["success"] is True
         assert result["counter"] == "Evolution stones"
+        assert result["money_spent"] == 2100
+
+    @retry_on_rng("e4_dept_store_3f")
+    def test_buy_dawn_stone_from_bottom_counter(self, emu: EmulatorClient):
+        # Cashier M at (3, 11) — reached by walking to (3, 9) and pressing A
+        # down through the counter strip. Confirms the across-counter fallback
+        # in `interact_with` drives the navigation.
+        from renegade_mcp.shop import buy_item
+
+        result = buy_item(emu, "Dawn Stone", quantity=1)
+        assert result["success"] is True
+        assert result["counter"] == "Special evolution stones"
         assert result["money_spent"] == 2100
 
     @retry_on_rng("e4_dept_store_3f")

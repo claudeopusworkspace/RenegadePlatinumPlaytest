@@ -133,16 +133,22 @@ DEPT_STORE_CASHIERS: dict[str, list[dict]] = {
             "items": [46, 47, 49, 52, 48, 45],
         },
     ],
-    # 3F: code C07R0203 — Renegade Platinum replaced vanilla's TM lists.
-    # Top counter: evolution stones (verified in-game vs Wayne's E4 save,
-    # session 48 spike). Bottom counter (vanilla TM38/25/14/22/52/15) was
-    # walled off behind decorative obstacles — the Cashier_M NPC at (3, 11)
-    # still loads but is unreachable, so it's omitted here.
+    # 3F: code C07R0203 — Renegade Platinum replaced both of vanilla's TM lists
+    # with evolution stones, split into two themed counters. Both cashiers are
+    # talked to ACROSS the counter strip (player one tile south of counter,
+    # press A facing up/down). view_map's BFS doesn't model counter-talk and
+    # will list both as "unreachable" — `interact_with` has the across-counter
+    # fallback that drives the actual navigation.
     "C07R0203": [
         {
             "npc": "Cashier F", "x": 3, "y": 4,
             "label": "Evolution stones",
             "items": [82, 457, 85, 81, 80, 83, 84],  # Fire/Ice/Leaf/Moon/Sun/Thunder/Water
+        },
+        {
+            "npc": "Cashier M", "x": 3, "y": 11,
+            "label": "Special evolution stones",
+            "items": [109, 108, 229, 238, 110, 107],  # Dawn/Dusk/Everstone/Hard/Oval/Shiny
         },
     ],
     # B1F: code C07R0207 — Berry vendor only (Lava Cookie/Poffin counters skipped).
