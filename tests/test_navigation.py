@@ -896,14 +896,6 @@ class TestBikeRampSegmentExecution:
 
     SAVE_STATE = "bug_bike_ramps_repel"
 
-    @pytest.mark.xfail(
-        reason="BUG-048 Gap 2 work-in-progress: BFS now plans paths with "
-        "turn-into-ramp runway (e.g. up x5 → right x2 → ramp chain), but "
-        "_bike_ramp_segment still requires same-direction runway. Pending "
-        "executor rewrite to drive multi-direction continuous holds via "
-        "advance_frames_until + final_buttons (validated in spike phase 6).",
-        strict=True,
-    )
     def test_navigate_reaches_east_chamber_pokeball(self, emu: EmulatorClient):
         load_state(emu, self.SAVE_STATE)
         from renegade_mcp.nav_constants import _read_position
@@ -939,11 +931,6 @@ class TestBikeRampSegmentExecution:
             "up→left slip that motivated this fix."
         )
 
-    @pytest.mark.xfail(
-        reason="BUG-048 Gap 2 work-in-progress: same as "
-        "test_navigate_reaches_east_chamber_pokeball — pending executor rewrite.",
-        strict=True,
-    )
     def test_poi_pickup_reaches_east_chamber_pokeball(self, emu: EmulatorClient):
         """Regression: interact_with (the POI dispatcher for items) calls
         _execute_path directly without pre-populating obstacle_tiles with
