@@ -4,6 +4,57 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-20 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: BUG-048 Gap 2 — direction-agnostic fast-bike momentum (2026-04-25 session 47)
+
+Closed BUG-048 Gap 2. The Wayward B1F east-chamber Pokéball at (33, 8) is now reachable from `session42_wayward_b1f_first_ramp_approach` via a single `navigate_to(poi=obj:3)` call — BFS plans `right x4 → down → right`, executor drives it as one continuous fast-bike hold across the up→right turn into the ramp chain, lands at the interaction tile cleanly, picks up the Rare Candy. Saved post-pickup as `session47_wayward_b1f_post_obj3_rare_candy`.
+
+### Three-phase spike (committed in `9fbe5fa`, `0c3b72f`, `dafc2d7`)
+
+Built and ran a snake-game harness on `spike_eterna_open_bike_fast` to characterize fast-bike turn behavior:
+
+- **Phase 1**: per-frame `advance_frames(1)` + `read_pos` traces. Acceleration curve `12 → 8 → 7 → 4 → 4` (steady state 4f/tile by tile 5). 180-flip preserves momentum (next reverse-tick fires on the normal 12f / 4f boundary). Most importantly EXP G + EXP F: 6 east tiles then 1 south tile arrives at delta=4 with no re-acceleration; gear byte stays at 1 (FAST) across continuous turns. Fast-bike momentum is a global scalar, not per-direction.
+
+- **Phase 2**: closed CW/CCW 2x2 squares (3 laps, cold and primed). All pure 4f/tile post-accel, zero overshoot, gear stays FAST. Confirmed turn-on-a-dime correctness at the tightest cadence.
+
+- **Phase 3**: snake harness with 100 random targets across 3 seeds. 300/300 targets eaten, 0 overshoots. Steady-state delta histogram dominated by 4 with a small 5-6 tail (scheduler slop near direction changes; harmless).
+
+- **Phase 4 / 5**: while building the harness against the production `step_hold` primitive, surfaced a bridge-level overshoot bug. `advance_frames_until` advanced one extra frame holding the polling buttons after the condition fired, which leaked into chained calls and committed an extra old-direction tile. Filed as MelonMCP issue [#10](https://github.com/claudeopusworkspace/MelonMCP/issues/10), fixed in #11 (release the trailing frame). Phase 5 then surfaced that releasing alone still left a 1-frame input gap during which the bike's queued momentum could spill — filed [#12](https://github.com/claudeopusworkspace/MelonMCP/issues/12), fixed by adding `final_buttons` to override the trailing render frame's inputs.
+
+- **Phase 6**: rebuilt the snake harness on `advance_frames_until + final_buttons` with prediction-based handoff (pre-pick the next target so the trailing frame already presses the new direction at landing-tile arrivals). 3 seeds × 100 targets, histograms bit-for-bit identical to Phase 3 frame-by-frame, with the efficiency win of skip_render between ticks.
+
+### Code changes
+
+**`renegade_mcp/pathfinding.py`** — direction-agnostic momentum across all 4 BFS variants. State drops `last_d`: `_bfs_reachable` becomes `(x, y, m)`, `_bfs_pathfind` becomes `(x, y, m, path)`, `_bfs_pathfind_level` and `_flood_fill_level` lose `start_dir` parameters and return `arrive_momentum` only (no `arrive_dir`). Each `new_m = min(m + 1, RUNWAY)` and `approach_m = m` is unconditional now — turns no longer reset momentum. `_bike_ramp_edges` itself is unchanged; only callers' momentum calc moves.
+
+**`renegade_mcp/nav_constants.py::drive_bike_subsegments`** — new primitive. Drives a list of `(direction, target_x, target_y)` sub-segments via chained `advance_frames_until` calls with `final_buttons` set to the next sub-segment's direction (or `None` on the last one to release inputs). Trailing render frame becomes the first frame of the new direction press, so the bike never sees an empty-input frame mid-segment and momentum is preserved.
+
+**`renegade_mcp/navigation.py::_bike_ramp_segment`** — drops the `if directions[j] != d: break` terminator; tracks momentum direction-agnostically; returns a dict with `subsegments` (one per direction-run, target = run's final position post all walks/ramps) instead of the old `(seg_end_idx, landing, ramp_tile, gear)` tuple. FAR_SHORT, NEAR jumps, and mixed-gear cases still bail with `None` for per-tile fallback.
+
+**`renegade_mcp/navigation.py::_step_needs_bike`** — runway lookahead now scans direction-agnostically. The old version only counted same-direction tiles ahead, so plans with a turn-into-ramp like `up x5 → right x8 with ramp at index 7` never triggered a mount until index 5 (first right) — by which time the executor had already walked four ups on foot and the segment-builder couldn't build runway. The new lookahead walks the planned path forward RUNWAY tiles regardless of direction, mounting in time for the ramp's runway to start on the bike.
+
+**`renegade_mcp/navigation.py::_execute_path`** — segment-success path replaces the single `advance_frames_until + 36f animation idle` with `drive_bike_subsegments(seg_subsegments, settle_frames=0)`, then drains fast-gear momentum via `_set_bike_gear(emu, 1) + 120f idle` so `_post_nav_check`'s no-input poll loop doesn't coast the bike one tile past the planned landing. Pattern lifted from `_traverse_bike_slope`.
+
+### Tests
+
+Two existing tests flipped to encode the new rule (renamed to make intent clear):
+- `test_2d_bfs_turn_into_ramp_preserves_momentum` (was `test_2d_bfs_turn_resets_momentum_before_ramp`) — asserts the FAR landing IS reachable when path turns onto the approach.
+- `test_2d_bfs_admits_slope_via_corridor_oscillation` (was `test_2d_bfs_refuses_turn_into_slope_approach`) — 4-wide corridor admits slope entry via momentum-across-180s.
+- `test_wayward_cave_3d_bfs_reaches_north_of_slope` (was `…reroutes_south_before_slope`) — relaxed: BFS no longer needs to reroute south, just needs ≥RUNWAY total motion ahead of slope entry.
+
+`TestBikeRampSegmentExecution` integration tests pass without xfail markers:
+- `test_navigate_reaches_east_chamber_pokeball` — end-to-end `(7, 22) → (31, 17)` Pokéball pickup.
+- `test_poi_pickup_reaches_east_chamber_pokeball` — same target via `interact_with`.
+
+Full test suite: **570 passed in 10:41** (fleet=2). No regressions.
+
+### Bridge-side support
+
+MelonMCP issues [#10](https://github.com/claudeopusworkspace/MelonMCP/issues/10), [#11](https://github.com/claudeopusworkspace/MelonMCP/issues/11), [#12](https://github.com/claudeopusworkspace/MelonMCP/issues/12) all filed and resolved upstream during this session. `final_buttons` (and optional `final_touch_x` / `final_touch_y`) are now part of the bridge API and we've adopted them in the executor.
+
+### What's left for warp:0
+
+warp:0 at (43, 38) — the original BUG-048 motivation — remains unreachable (Manhattan 41 from the new save). It's a different chamber geometry south of the row-6 chain, not a momentum issue. Separate problem to scope when we revisit Wayward Cave's south end. Closing BUG-048 since both gaps that drove the original ticket are now fixed; opening a fresh entry if the south corridor reveals a new model bug.
+
 ## Dev Session: BUG-047 — navigate_to repel-expiration KeyError (2026-04-24 session 46)
 
 Closed BUG-047. `navigate_to(..., flee_encounters=True)` no longer raises `KeyError: 'move'` when a Repel expires mid-bridge; a single call now completes the full traversal instead of the previous two-call workaround.
