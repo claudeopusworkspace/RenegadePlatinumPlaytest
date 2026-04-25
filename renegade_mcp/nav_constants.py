@@ -66,6 +66,70 @@ def step_hold(emu: EmulatorClient, direction: str, active_hold: int,
     )
 
 
+def drive_bike_subsegments(
+    emu: EmulatorClient,
+    subsegments: list[tuple[str, int, int]],
+    settle_frames: int = 36,
+    max_frames_per_tile: int = BIKE_HOLD_FRAMES * 6,
+) -> list[dict]:
+    """Drive a multi-direction sustained fast-bike hold via chained
+    ``advance_frames_until`` calls with ``final_buttons`` handoff.
+
+    Each sub-segment is ``(direction, target_x, target_y)``. The drive
+    holds ``direction`` until the player's axis coordinate reaches the
+    target (``>=`` for right/down, ``<=`` for left/up). The trailing
+    render frame is set to the *next* sub-segment's direction via
+    ``final_buttons`` — so the bike never sees an empty-input frame and
+    fast-bike momentum is preserved across the turn (proved in
+    ``scripts/spike_bike_snake_phase6_final_buttons.py``).
+
+    On the LAST sub-segment, ``final_buttons=None``: inputs release for
+    the trailing frame and ``settle_frames`` of no-input idle let any
+    pending ramp-jump animation place the player on its natural landing
+    without fast-gear drift past it.
+
+    Returns the per-sub-segment ``advance_frames_until`` results so the
+    caller can detect missed conditions (``triggered=False`` on any
+    sub-segment indicates a sized-frame timeout).
+    """
+    from renegade_mcp.addresses import addr
+    base = addr("PLAYER_POS_BASE")
+    results: list[dict] = []
+    for i, (direction, tx, ty) in enumerate(subsegments):
+        is_last = i == len(subsegments) - 1
+        next_dir = subsegments[i + 1][0] if not is_last else None
+        axis_offset = 8 if direction in ("left", "right") else 12
+        target = tx if direction in ("left", "right") else ty
+        operator = ">=" if direction in ("right", "down") else "<="
+        # Tile budget for this sub-segment: distance to target + accel
+        # ramp slack. We don't know the exact tile count when the
+        # sub-segment includes ramp jumps (one direction can cover 5
+        # tiles via FAR jump), so cap at the distance + a generous
+        # buffer for the ramp animation.
+        cur_x = emu.read_memory(base + 8, size="long")
+        cur_y = emu.read_memory(base + 12, size="long")
+        cur = cur_x if direction in ("left", "right") else cur_y
+        dist = abs(target - cur)
+        max_frames = max(max_frames_per_tile * (dist + 1), 60)
+        res = emu.advance_frames_until(
+            max_frames=max_frames,
+            conditions=[{
+                "type": "value",
+                "address": base + axis_offset,
+                "size": "long",
+                "operator": operator,
+                "value": target,
+            }],
+            poll_interval=1,
+            buttons=[direction],
+            final_buttons=[next_dir] if next_dir else None,
+        )
+        results.append(res)
+    if settle_frames > 0:
+        emu.advance_frames(settle_frames)
+    return results
+
+
 # ── Direction handling ──
 DIR_ALIASES = {"u": "up", "d": "down", "l": "left", "r": "right"}
 BFS_MOVES = [(0, -1, "up"), (0, 1, "down"), (-1, 0, "left"), (1, 0, "right")]
