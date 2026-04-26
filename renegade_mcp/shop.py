@@ -181,6 +181,38 @@ DEPT_STORE_FLOOR_NAMES: dict[str, str] = {
 # Veilstone overworld → Dept Store 1F entrance (events_veilstone_city.json).
 VEILSTONE_DEPT_STORE_ENTRANCE: tuple[int, int] = (701, 603)
 
+# ── Inter-floor stair warps ──
+# Vertical floor order, B1F at the bottom, used to compute up vs. down. 4F/5F
+# are non-shop floors but may be transited by the chain (no current cashier
+# lives there, so in practice we never enter them, but the table keeps the
+# graph complete).
+DEPT_STORE_FLOOR_SEQUENCE: list[str] = [
+    "C07R0207",  # B1F
+    "C07R0201",  # 1F
+    "C07R0202",  # 2F
+    "C07R0203",  # 3F
+    "C07R0204",  # 4F
+    "C07R0205",  # 5F
+]
+
+# (current_floor_code, "up"|"down") → (x, y) of the stairs warp tile to step
+# onto. Stairs on 1F-5F sit at (12, 8) going up and (7, 8) going down. The
+# B1F↔1F connection is off-axis: the 1F south-stair tile is (7, 8) and on
+# B1F you ascend from (11, 8). Sourced from events_veilstone_store_*.json
+# (warp_events with dest_header_id pointing at adjacent floors).
+DEPT_STORE_STAIR_TILES: dict[tuple[str, str], tuple[int, int]] = {
+    ("C07R0207", "up"):   (11, 8),  # B1F → 1F
+    ("C07R0201", "down"): (7, 8),   # 1F  → B1F
+    ("C07R0201", "up"):   (12, 8),  # 1F  → 2F
+    ("C07R0202", "down"): (7, 8),   # 2F  → 1F
+    ("C07R0202", "up"):   (12, 8),  # 2F  → 3F
+    ("C07R0203", "down"): (7, 8),   # 3F  → 2F
+    ("C07R0203", "up"):   (12, 8),  # 3F  → 4F
+    ("C07R0204", "down"): (7, 8),   # 4F  → 3F
+    ("C07R0204", "up"):   (12, 8),  # 4F  → 5F
+    ("C07R0205", "down"): (7, 8),   # 5F  → 4F
+}
+
 
 def _is_dept_store_map(code: str) -> bool:
     """True if `code` is a Veilstone Dept Store interior map."""
@@ -241,6 +273,87 @@ def _find_dept_store_cashier_for_item(
             if names.get(item_id, "").lower() == target:
                 return (cashier, idx, item_id)
     return None
+
+
+def _find_dept_store_cashier_anywhere(
+    item_name: str,
+) -> tuple[str, dict, int, int] | None:
+    """Locate any dept-store cashier on any floor that sells `item_name`.
+
+    Returns (floor_code, cashier_spec, menu_index, item_id) or None.
+    """
+    target = item_name.lower()
+    names = item_names()
+    for code, cashiers in DEPT_STORE_CASHIERS.items():
+        for cashier in cashiers:
+            for idx, item_id in enumerate(cashier["items"]):
+                if names.get(item_id, "").lower() == target:
+                    return (code, cashier, idx, item_id)
+    return None
+
+
+def _navigate_dept_store_floor(
+    emu: EmulatorClient, target_code: str,
+) -> dict | None:
+    """Walk from the current dept-store floor to `target_code` via stairs.
+
+    Reads the current floor, picks the up- or down-stair tile from
+    DEPT_STORE_STAIR_TILES, drives navigate_to onto it, and re-reads the map.
+    Loops until on the target floor or until the chain stalls.
+
+    Returns None on success, or an error result dict on failure.
+    """
+    from renegade_mcp.map_state import read_player_state
+    from renegade_mcp.navigation import navigate_to
+    from renegade_mcp.phase_timer import phase
+
+    if target_code not in DEPT_STORE_FLOOR_SEQUENCE:
+        return _error(f"Floor {target_code} is not stair-routable.")
+
+    target_idx = DEPT_STORE_FLOOR_SEQUENCE.index(target_code)
+
+    # 6 floors top-to-bottom, so 5 stair hops is the worst case. Cap at 8.
+    for _ in range(8):
+        map_id, _, _, _ = read_player_state(emu)
+        code = map_table().get(map_id, {}).get("code", "")
+        if code == target_code:
+            return None
+        if code not in DEPT_STORE_FLOOR_SEQUENCE:
+            return _error(
+                f"Off the dept-store floor sequence (current code: {code})."
+            )
+        cur_idx = DEPT_STORE_FLOOR_SEQUENCE.index(code)
+        direction = "up" if target_idx > cur_idx else "down"
+        tile = DEPT_STORE_STAIR_TILES.get((code, direction))
+        if tile is None:
+            return _error(
+                f"No stair tile registered for "
+                f"{DEPT_STORE_FLOOR_NAMES.get(code, code)} going {direction}."
+            )
+
+        with phase("shop_dept_store_stairs"):
+            nav_result = navigate_to(emu, tile[0], tile[1], flee_encounters=True)
+
+        if nav_result.get("encounter"):
+            err = _error("Dept Store stair navigation interrupted by encounter.")
+            err["encounter"] = nav_result["encounter"]
+            return err
+        if nav_result.get("stopped_early") and not nav_result.get("door_entered"):
+            return _error(
+                f"Could not reach stairs at ({tile[0]}, {tile[1]}) on "
+                f"{DEPT_STORE_FLOOR_NAMES.get(code, code)} — path blocked."
+            )
+
+        new_map_id, _, _, _ = read_player_state(emu)
+        new_code = map_table().get(new_map_id, {}).get("code", "")
+        if new_code == code:
+            return _error(
+                f"Stair warp at ({tile[0]}, {tile[1]}) on "
+                f"{DEPT_STORE_FLOOR_NAMES.get(code, code)} did not trigger "
+                f"(still on same floor)."
+            )
+
+    return _error("Dept Store stair chain exceeded safety cap (8 hops).")
 
 
 def _find_npc_at(state: dict, npc_name: str, x: int, y: int) -> dict | None:
@@ -647,14 +760,16 @@ def buy_item(
 ) -> dict[str, Any]:
     """Buy an item from a PokéMart or the Veilstone Department Store.
 
-    Works from inside a mart, inside a Veilstone Dept Store floor, or from a
+    Works from inside a mart, inside any Veilstone Dept Store floor, or from a
     city/town overworld (auto-navigates through the entrance warp). Finds the
     correct cashier, walks there, opens the shop, scrolls to the item, selects
     quantity, confirms, and exits.
 
-    For the Dept Store, multi-floor navigation is not yet automated: stand on
-    the floor that sells the item before calling. From the Veilstone overworld
-    this auto-navigates only as far as 1F.
+    For the Dept Store, multi-floor navigation is automatic: the chain walks
+    up or down through the stair tiles ((12,8) up, (7,8) down on 1F-5F; off-axis
+    on the B1F↔1F connector) until on the floor that sells the requested item.
+    The elevator is never used. If the player starts from the Veilstone
+    overworld, the chain runs after the entrance warp into 1F.
 
     Args:
         emu: Emulator client.
@@ -773,46 +888,31 @@ def _buy_at_dept_store(
     navigated_to_mart: bool,
 ) -> dict[str, Any]:
     """buy_item branch for Veilstone Dept Store interior maps."""
-    from renegade_mcp.map_state import get_map_state
+    from renegade_mcp.map_state import get_map_state, read_player_state
     from renegade_mcp.navigation import interact_with
     from renegade_mcp.phase_timer import phase
     from renegade_mcp.trainer import read_trainer_status
 
-    floor = DEPT_STORE_FLOOR_NAMES.get(code, "?")
-    found = _find_dept_store_cashier_for_item(code, item_name)
+    found = _find_dept_store_cashier_anywhere(item_name)
 
     if found is None:
         names = item_names()
-        items_here = []
-        for c in DEPT_STORE_CASHIERS.get(code, []):
-            items_here.extend(names.get(i, "?") for i in c["items"])
-
-        target = item_name.lower()
-        other_floor_hint = None
-        for other_code, cashiers in DEPT_STORE_CASHIERS.items():
-            if other_code == code:
-                continue
-            for c in cashiers:
-                for iid in c["items"]:
-                    if names.get(iid, "").lower() == target:
-                        other_floor_hint = (
-                            f"Sold on {DEPT_STORE_FLOOR_NAMES.get(other_code, '?')}: "
-                            f"{c['label']}."
-                        )
-                        break
-                if other_floor_hint:
-                    break
-            if other_floor_hint:
-                break
-
-        msg = f'"{item_name}" is not sold on {floor}.'
-        if items_here:
-            msg += f" Here: {', '.join(items_here)}."
-        if other_floor_hint:
-            msg += " " + other_floor_hint
+        per_floor = []
+        for fcode in ("C07R0201", "C07R0202", "C07R0203", "C07R0207"):
+            fname = DEPT_STORE_FLOOR_NAMES.get(fcode, fcode)
+            items_there = [
+                names.get(i, "?")
+                for c in DEPT_STORE_CASHIERS.get(fcode, [])
+                for i in c["items"]
+            ]
+            if items_there:
+                per_floor.append(f"{fname}: {', '.join(items_there)}")
+        msg = f'"{item_name}" is not sold in the Dept Store.'
+        if per_floor:
+            msg += " Stocked: " + " | ".join(per_floor) + "."
         return _error(msg)
 
-    cashier_spec, menu_index, item_id = found
+    target_code, cashier_spec, menu_index, item_id = found
     prices = item_prices()
     price = prices.get(item_id, 0)
     total_cost = price * quantity
@@ -825,6 +925,21 @@ def _buy_at_dept_store(
             f"Not enough money. {display_name} x{quantity} costs ¥{total_cost:,} "
             f"but you only have ¥{money:,}."
         )
+
+    floors_traversed: list[str] = []
+    if code != target_code:
+        start_floor = DEPT_STORE_FLOOR_NAMES.get(code, code)
+        nav_err = _navigate_dept_store_floor(emu, target_code)
+        if nav_err is not None:
+            return nav_err
+        # Re-read to confirm and capture the path label for the result.
+        new_map_id, _, _, _ = read_player_state(emu)
+        code = map_table().get(new_map_id, {}).get("code", "")
+        floors_traversed = [
+            start_floor, DEPT_STORE_FLOOR_NAMES.get(code, code),
+        ]
+
+    floor = DEPT_STORE_FLOOR_NAMES.get(code, "?")
 
     state = get_map_state(emu)
     if state is None:
@@ -883,6 +998,8 @@ def _buy_at_dept_store(
     }
     if navigated_to_mart:
         result["navigated_to_mart"] = True
+    if floors_traversed:
+        result["floors_traversed"] = floors_traversed
     return result
 
 

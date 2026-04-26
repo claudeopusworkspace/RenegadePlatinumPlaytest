@@ -593,6 +593,64 @@ class TestVeilstoneOverworldShopping:
         assert result["money_spent"] == 300
 
 
+class TestDeptStoreFloorChain:
+    """Multi-floor stair chaining — buy_item walks the player up or down
+    through stair tiles ((12,8) up / (7,8) down on 1F-5F; off-axis on the
+    B1F↔1F connector) until on the floor that sells the requested item."""
+
+    @retry_on_rng("e4_dept_store_1f")
+    def test_buy_chains_up_one_floor(self, emu: EmulatorClient):
+        # Carbos (item 47) lives on 2F vitamins counter — chain 1F → 2F.
+        from renegade_mcp.shop import buy_item
+
+        result = buy_item(emu, "Carbos", quantity=1)
+        assert result["success"] is True, f"buy_item error: {result.get('error')}"
+        assert result["floor"] == "2F"
+        assert result["counter"] == "Vitamins (stat boosters)"
+        assert result["money_spent"] == 9800
+        assert result.get("floors_traversed") == ["1F", "2F"]
+
+    @retry_on_rng("e4_dept_store_3f")
+    def test_buy_chains_down_three_floors(self, emu: EmulatorClient):
+        # Figy Berry on B1F — chain 3F → 2F → 1F → B1F (three stair hops).
+        from renegade_mcp.shop import buy_item
+
+        result = buy_item(emu, "Figy Berry", quantity=1)
+        assert result["success"] is True, f"buy_item error: {result.get('error')}"
+        assert result["floor"] == "B1F"
+        assert result["counter"] == "Berries"
+        assert result["money_spent"] == 20
+        assert result.get("floors_traversed") == ["3F", "B1F"]
+
+    @retry_on_rng("e4_dept_store_b1f")
+    def test_buy_chains_up_across_b1f_connector(self, emu: EmulatorClient):
+        # X Attack on 2F — chain B1F → 1F → 2F. The B1F→1F hop uses (11, 8)
+        # (off-axis from the standard up-stairs at (12, 8)).
+        from renegade_mcp.shop import buy_item
+
+        result = buy_item(emu, "X Attack", quantity=1)
+        assert result["success"] is True, f"buy_item error: {result.get('error')}"
+        assert result["floor"] == "2F"
+        assert result["counter"] == "Battle X items"
+        assert result["money_spent"] == 500
+        assert result.get("floors_traversed") == ["B1F", "2F"]
+
+    @retry_on_rng("e4_veilstone_city_overworld")
+    def test_buy_chains_from_overworld_to_3f(self, emu: EmulatorClient):
+        # Full chain: city OW → entrance warp into 1F → stairs 1F → 2F → 3F,
+        # then evolution-stones counter. Exercises both the entrance auto-warp
+        # and the multi-hop stair chain in one call.
+        from renegade_mcp.shop import buy_item
+
+        result = buy_item(emu, "Fire Stone", quantity=1)
+        assert result["success"] is True, f"buy_item error: {result.get('error')}"
+        assert result.get("navigated_to_mart") is True
+        assert result["floor"] == "3F"
+        assert result["counter"] == "Evolution stones"
+        assert result["money_spent"] == 2100
+        assert result.get("floors_traversed") == ["1F", "3F"]
+
+
 # ---------------------------------------------------------------------------
 # QA BUG-006: buy_item leaves player stuck in shop UI on "How many?" prompt
 # ---------------------------------------------------------------------------
