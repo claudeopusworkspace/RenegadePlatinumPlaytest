@@ -26,7 +26,7 @@ class TestBuyItem:
         badge_count = status.get("badges") if isinstance(status.get("badges"), int) else None
 
         # Use the ROM name (Poké Ball with accent)
-        result = buy_item(emu, "Poké Ball", quantity=1, badge_count=badge_count)
+        result = buy_item(emu, {"Poké Ball": 1}, badge_count=badge_count)
         assert "error" not in result, f"buy_item error: {result.get('error')}"
 
     @retry_on_rng("test_eterna_city_overworld")
@@ -39,7 +39,7 @@ class TestBuyItem:
         money_before = status_before["money"]
         badge_count = status_before.get("badges") if isinstance(status_before.get("badges"), int) else None
 
-        result = buy_item(emu, "Potion", quantity=3, badge_count=badge_count)
+        result = buy_item(emu, {"Potion": 3}, badge_count=badge_count)
         assert "error" not in result, f"buy_item error: {result.get('error')}"
 
         status_after = read_trainer_status(emu)
@@ -61,7 +61,7 @@ class TestBuyItem:
 
         status = read_trainer_status(emu)
         badge_count = status.get("badges") if isinstance(status.get("badges"), int) else None
-        result = buy_item(emu, "Potion", quantity=1, badge_count=badge_count)
+        result = buy_item(emu, {"Potion": 1}, badge_count=badge_count)
         assert "error" not in result, f"buy_item error: {result.get('error')}"
 
         bag_after = read_bag(emu)
@@ -74,6 +74,113 @@ class TestBuyItem:
         assert potion_count_after == potion_count_before + 1
 
 
+class TestBuyCart:
+    """Cart-API features: multi-item carts, multi-counter routing, atomic
+    validation, and auto-exit. Exercises the partition + chain pipeline that
+    the simpler one-item buys don't fully cover."""
+
+    @retry_on_rng("test_eterna_city_overworld")
+    def test_multi_item_one_cashier(self, emu: EmulatorClient):
+        # Two items both sold by Cashier F (common counter): one cashier
+        # visit, two _press_buy_one_item calls, one SEE YA exit.
+        from renegade_mcp.shop import buy_item
+        from renegade_mcp.trainer import read_trainer_status
+
+        status = read_trainer_status(emu)
+        badges = status.get("badges", 0)
+        money_before = status["money"]
+
+        result = buy_item(emu, {"Potion": 3, "Antidote": 2}, badge_count=badges)
+        assert result["success"] is True, f"buy_item: {result}"
+        names = {p["name"] for p in result["purchases"]}
+        assert names == {"Potion", "Antidote"}
+        # Potion ¥300 × 3 + Antidote ¥100 × 2 = ¥1100
+        assert result["money_spent"] == 1100
+        assert result["money_before"] == money_before
+        assert result["exited"] is True
+        # Both items are common-counter items.
+        assert all(p["counter"] == "common" for p in result["purchases"])
+
+    @retry_on_rng("test_eterna_city_overworld")
+    def test_multi_counter_common_plus_specialty(self, emu: EmulatorClient):
+        # Eterna's specialty counter (Cashier M) sells Heal Ball; Potion is
+        # on the common counter (Cashier F). Cart must visit both cashiers.
+        from renegade_mcp.shop import buy_item
+        from renegade_mcp.trainer import read_trainer_status
+
+        badges = read_trainer_status(emu).get("badges", 0)
+        result = buy_item(
+            emu, {"Potion": 1, "Heal Ball": 1}, badge_count=badges,
+        )
+        assert result["success"] is True, f"buy_item: {result}"
+        counters = {p["counter"] for p in result["purchases"]}
+        assert counters == {"common", "specialty"}
+        # Potion ¥300 + Heal Ball ¥300 = ¥600
+        assert result["money_spent"] == 600
+        assert result["exited"] is True
+
+    @retry_on_rng("e4_dept_store_1f")
+    def test_multi_floor_dept_store_cart(self, emu: EmulatorClient):
+        # Cart spans 1F (Potion), 2F (X Attack), 3F (Fire Stone), B1F
+        # (Figy Berry) — every shop floor in one call. Verifies the floor
+        # chain visits all four in ascending sequence-index order
+        # (B1F, 1F, 2F, 3F) and exits cleanly.
+        from renegade_mcp.shop import buy_item
+
+        cart = {
+            "Potion": 1,
+            "X Attack": 1,
+            "Fire Stone": 1,
+            "Figy Berry": 1,
+        }
+        result = buy_item(emu, cart)
+        assert result["success"] is True, f"buy_item: {result}"
+        # 300 + 500 + 2100 + 20 = 2920
+        assert result["money_spent"] == 2920
+        floors = result.get("floors_traversed", [])
+        # Visited in B1F→1F→2F→3F order regardless of starting floor.
+        assert floors == ["B1F", "1F", "2F", "3F"]
+        # purchases[*].floor records where each line item was bought.
+        per_item_floors = {p["name"]: p["floor"] for p in result["purchases"]}
+        assert per_item_floors == {
+            "Potion": "1F",
+            "X Attack": "2F",
+            "Fire Stone": "3F",
+            "Figy Berry": "B1F",
+        }
+        assert result["exited"] is True
+
+    @retry_on_rng("e4_dept_store_1f")
+    def test_atomic_unsold_item_aborts_cart(self, emu: EmulatorClient):
+        # Cart contains a sold item (Potion) AND an item the dept store
+        # doesn't stock (TM83). Whole cart must error before any purchase.
+        from renegade_mcp.shop import buy_item
+        from renegade_mcp.trainer import read_trainer_status
+
+        money_before = read_trainer_status(emu)["money"]
+        result = buy_item(emu, {"Potion": 1, "TM83": 1})
+        assert result["success"] is False
+        assert "TM83" in result["error"]
+        money_after = read_trainer_status(emu)["money"]
+        assert money_after == money_before, (
+            "No purchases should have happened — money should be unchanged."
+        )
+
+    @retry_on_rng("test_eterna_city_overworld")
+    def test_atomic_insufficient_money(self, emu: EmulatorClient):
+        # Cart cost > player money — error before any UI, no money spent.
+        # 0-badge save has limited funds; ask for 999 Ultra Balls (¥1200 each).
+        from renegade_mcp.shop import buy_item
+        from renegade_mcp.trainer import read_trainer_status
+
+        money_before = read_trainer_status(emu)["money"]
+        result = buy_item(emu, {"Poké Ball": 999}, badge_count=0)
+        assert result["success"] is False
+        assert "money" in result["error"].lower()
+        money_after = read_trainer_status(emu)["money"]
+        assert money_after == money_before
+
+
 class TestSellItem:
     """Sell items at PokeMart."""
 
@@ -82,7 +189,7 @@ class TestSellItem:
         """Sell a Potion — completes without error."""
         from renegade_mcp.shop import sell_item
 
-        result = sell_item(emu, "Potion", quantity=1)
+        result = sell_item(emu, {"Potion": 1})
         assert "error" not in result, f"sell_item error: {result.get('error')}"
         assert result["success"] is True
 
@@ -94,7 +201,7 @@ class TestSellItem:
 
         money_before = read_trainer_status(emu)["money"]
 
-        result = sell_item(emu, "Potion", quantity=1)
+        result = sell_item(emu, {"Potion": 1})
         assert "error" not in result, f"sell_item error: {result.get('error')}"
 
         money_after = read_trainer_status(emu)["money"]
@@ -113,7 +220,7 @@ class TestSellItem:
                 if item["name"] == "Potion":
                     potion_before = item["qty"]
 
-        result = sell_item(emu, "Potion", quantity=1)
+        result = sell_item(emu, {"Potion": 1})
         assert "error" not in result, f"sell_item error: {result.get('error')}"
 
         bag_after = read_bag(emu)
@@ -133,7 +240,7 @@ class TestSellItem:
 
         money_before = read_trainer_status(emu)["money"]
 
-        result = sell_item(emu, "Antidote", quantity=3)
+        result = sell_item(emu, {"Antidote": 3})
         assert "error" not in result, f"sell_item error: {result.get('error')}"
 
         money_after = read_trainer_status(emu)["money"]
@@ -147,7 +254,7 @@ class TestSellItem:
         """Selling a Key Item returns an error."""
         from renegade_mcp.shop import sell_item
 
-        result = sell_item(emu, "Bicycle")
+        result = sell_item(emu, {"Bicycle": 1})
         assert result["success"] is False
         assert "cannot be sold" in result["error"].lower()
 
@@ -156,7 +263,7 @@ class TestSellItem:
         """Selling an item not in bag returns an error."""
         from renegade_mcp.shop import sell_item
 
-        result = sell_item(emu, "Master Ball")
+        result = sell_item(emu, {"Master Ball": 1})
         assert result["success"] is False
         assert "not found" in result["error"].lower()
 
@@ -167,7 +274,7 @@ class TestSellItem:
         from renegade_mcp.trainer import read_trainer_status
 
         money_before = read_trainer_status(emu)["money"]
-        result = sell_item(emu, "Parlyz Heal", quantity=1)
+        result = sell_item(emu, {"Parlyz Heal": 1})
         assert "error" not in result, f"sell_item error: {result.get('error')}"
         assert result["success"] is True
         assert "navigated_to_mart" not in result, (
@@ -181,9 +288,45 @@ class TestSellItem:
         """Selling more than we have returns an error."""
         from renegade_mcp.shop import sell_item
 
-        result = sell_item(emu, "Parlyz Heal", quantity=999)
+        result = sell_item(emu, {"Parlyz Heal": 999})
         assert result["success"] is False
         assert "not enough" in result["error"].lower()
+
+
+class TestSellCart:
+    """Cart-API features for sell: multi-item carts, atomic validation,
+    auto-exit."""
+
+    @retry_on_rng("test_eterna_city_overworld")
+    def test_multi_item_sell(self, emu: EmulatorClient):
+        # One cashier visit, two items sold (loop in sell bag, no SEE YA
+        # between them). Total = (Potion ¥150) + (Antidote ¥50 × 2) = ¥250.
+        from renegade_mcp.shop import sell_item
+        from renegade_mcp.trainer import read_trainer_status
+
+        money_before = read_trainer_status(emu)["money"]
+        result = sell_item(emu, {"Potion": 1, "Antidote": 2})
+        assert result["success"] is True, f"sell_item: {result}"
+        names = {s["name"] for s in result["sales"]}
+        assert names == {"Potion", "Antidote"}
+        assert result["money_earned"] == 250
+        assert result["exited"] is True
+        money_after = read_trainer_status(emu)["money"]
+        assert money_after == money_before + 250
+
+    @retry_on_rng("test_eterna_city_overworld")
+    def test_atomic_sell_unsellable_aborts(self, emu: EmulatorClient):
+        # Cart contains a sellable Potion AND a Bicycle (Key Item, unsellable).
+        # Validation must reject before opening any UI.
+        from renegade_mcp.shop import sell_item
+        from renegade_mcp.trainer import read_trainer_status
+
+        money_before = read_trainer_status(emu)["money"]
+        result = sell_item(emu, {"Potion": 1, "Bicycle": 1})
+        assert result["success"] is False
+        assert "cannot be sold" in result["error"].lower()
+        money_after = read_trainer_status(emu)["money"]
+        assert money_after == money_before, "No items should have been sold."
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +348,7 @@ class TestBug003PremierBallBonus:
         badges = status.get("badges", 0)
 
         # First purchase: 10 Poke Balls (triggers Premier Ball bonus)
-        result1 = buy_item(emu, "Poké Ball", quantity=10, badge_count=badges)
+        result1 = buy_item(emu, {"Poké Ball": 10}, badge_count=badges)
         assert result1["success"] is True, f"Poke Ball buy failed: {result1}"
         assert result1["money_spent"] == result1["total_cost"], (
             f"Poke Ball cost mismatch: spent={result1['money_spent']} "
@@ -213,10 +356,10 @@ class TestBug003PremierBallBonus:
         )
 
         # Second purchase: 3 Potions (this was broken before the fix)
-        result2 = buy_item(emu, "Potion", quantity=3, badge_count=badges)
+        result2 = buy_item(emu, {"Potion": 3}, badge_count=badges)
         assert result2["success"] is True, f"Potion buy failed: {result2}"
-        assert result2["item"] == "Potion", (
-            f"Expected to buy Potion, got '{result2.get('item')}'"
+        assert result2["purchases"][0]["name"] == "Potion", (
+            f"Expected to buy Potion, got '{result2['purchases'][0].get('name')}'"
         )
         assert result2["money_spent"] == result2["total_cost"], (
             f"Potion cost mismatch: spent={result2['money_spent']} "
@@ -233,7 +376,7 @@ class TestBug003PremierBallBonus:
         badges = status.get("badges", 0)
 
         # Normal single buy — sanity check should pass
-        result = buy_item(emu, "Potion", quantity=1, badge_count=badges)
+        result = buy_item(emu, {"Potion": 1}, badge_count=badges)
         assert result["success"] is True
         assert result["money_spent"] == result["total_cost"]
 
@@ -464,11 +607,12 @@ class TestDeptStore1F:
     def test_buy_potion_from_cashier_f(self, emu: EmulatorClient):
         from renegade_mcp.shop import buy_item
 
-        result = buy_item(emu, "Potion", quantity=1)
+        result = buy_item(emu, {"Potion": 1})
         assert result["success"] is True
-        assert result["floor"] == "1F"
-        assert result["counter"] == "Potions & status healing"
+        assert result["purchases"][0]["floor"] == "1F"
+        assert result["purchases"][0]["counter"] == "Potions & status healing"
         assert result["money_spent"] == 300
+        assert result["exited"] is True
 
     @retry_on_rng("e4_dept_store_1f")
     def test_buy_repel_from_cashier_m(self, emu: EmulatorClient):
@@ -476,9 +620,9 @@ class TestDeptStore1F:
         # the dept-store cashier dispatch routes to the correct NPC by coords.
         from renegade_mcp.shop import buy_item
 
-        result = buy_item(emu, "Repel", quantity=1)
+        result = buy_item(emu, {"Repel": 1})
         assert result["success"] is True
-        assert result["counter"] == "Balls, repels & mail"
+        assert result["purchases"][0]["counter"] == "Balls, repels & mail"
         assert result["money_spent"] == 350
 
     @retry_on_rng("e4_dept_store_1f")
@@ -488,7 +632,7 @@ class TestDeptStore1F:
         # one A press to avoid silently confirming qty=1.
         from renegade_mcp.shop import buy_item
 
-        result = buy_item(emu, "Repel", quantity=2)
+        result = buy_item(emu, {"Repel": 2})
         assert result["success"] is True
         assert result["money_spent"] == 700, (
             f"qty=2 should spend ¥700; spent ¥{result['money_spent']}"
@@ -503,9 +647,9 @@ class TestDeptStore2F:
         # Cashier F at y=4 — must not fall through to the y=6 vitamin counter.
         from renegade_mcp.shop import buy_item
 
-        result = buy_item(emu, "X Attack", quantity=1)
+        result = buy_item(emu, {"X Attack": 1})
         assert result["success"] is True
-        assert result["counter"] == "Battle X items"
+        assert result["purchases"][0]["counter"] == "Battle X items"
         assert result["money_spent"] == 500
 
     @retry_on_rng("e4_dept_store_2f")
@@ -513,9 +657,9 @@ class TestDeptStore2F:
         # Cashier F at y=6 — coord-based dispatch picks this counter, not y=4.
         from renegade_mcp.shop import buy_item
 
-        result = buy_item(emu, "Protein", quantity=1)
+        result = buy_item(emu, {"Protein": 1})
         assert result["success"] is True
-        assert result["counter"] == "Vitamins (stat boosters)"
+        assert result["purchases"][0]["counter"] == "Vitamins (stat boosters)"
         assert result["money_spent"] == 9800
 
 
@@ -527,9 +671,9 @@ class TestDeptStore3F:
     def test_buy_fire_stone(self, emu: EmulatorClient):
         from renegade_mcp.shop import buy_item
 
-        result = buy_item(emu, "Fire Stone", quantity=1)
+        result = buy_item(emu, {"Fire Stone": 1})
         assert result["success"] is True
-        assert result["counter"] == "Evolution stones"
+        assert result["purchases"][0]["counter"] == "Evolution stones"
         assert result["money_spent"] == 2100
 
     @retry_on_rng("e4_dept_store_3f")
@@ -539,9 +683,9 @@ class TestDeptStore3F:
         # in `interact_with` drives the navigation.
         from renegade_mcp.shop import buy_item
 
-        result = buy_item(emu, "Dawn Stone", quantity=1)
+        result = buy_item(emu, {"Dawn Stone": 1})
         assert result["success"] is True
-        assert result["counter"] == "Special evolution stones"
+        assert result["purchases"][0]["counter"] == "Special evolution stones"
         assert result["money_spent"] == 2100
 
     @retry_on_rng("e4_dept_store_3f")
@@ -549,7 +693,7 @@ class TestDeptStore3F:
         # Vanilla 3F sold TM83 — Renegade replaced the inventory.
         from renegade_mcp.shop import buy_item
 
-        result = buy_item(emu, "TM83", quantity=1)
+        result = buy_item(emu, {"TM83": 1})
         assert result["success"] is False
         assert "not sold" in result["error"].lower()
 
@@ -562,9 +706,9 @@ class TestDeptStoreB1F:
     def test_buy_figy_berry(self, emu: EmulatorClient):
         from renegade_mcp.shop import buy_item
 
-        result = buy_item(emu, "Figy Berry", quantity=1)
+        result = buy_item(emu, {"Figy Berry": 1})
         assert result["success"] is True
-        assert result["counter"] == "Berries"
+        assert result["purchases"][0]["counter"] == "Berries"
         assert result["money_spent"] == 20
 
 
@@ -586,41 +730,49 @@ class TestVeilstoneOverworldShopping:
         # Cashier F, buys Potion. Single round-trip.
         from renegade_mcp.shop import buy_item
 
-        result = buy_item(emu, "Potion", quantity=1)
+        result = buy_item(emu, {"Potion": 1})
         assert result["success"] is True
         assert result.get("navigated_to_mart") is True
-        assert result["floor"] == "1F"
+        assert result["purchases"][0]["floor"] == "1F"
         assert result["money_spent"] == 300
+        assert result["exited"] is True
 
 
 class TestDeptStoreFloorChain:
     """Multi-floor stair chaining — buy_item walks the player up or down
     through stair tiles ((12,8) up / (7,8) down on 1F-5F; off-axis on the
-    B1F↔1F connector) until on the floor that sells the requested item."""
+    B1F↔1F connector) until on the floor that sells the requested item.
+
+    `floors_traversed` records the floors where purchases happened, in
+    visit order (de-duplicated). It does not include transit-only floors
+    or the exit chain back to 1F.
+    """
 
     @retry_on_rng("e4_dept_store_1f")
     def test_buy_chains_up_one_floor(self, emu: EmulatorClient):
         # Carbos (item 47) lives on 2F vitamins counter — chain 1F → 2F.
         from renegade_mcp.shop import buy_item
 
-        result = buy_item(emu, "Carbos", quantity=1)
+        result = buy_item(emu, {"Carbos": 1})
         assert result["success"] is True, f"buy_item error: {result.get('error')}"
-        assert result["floor"] == "2F"
-        assert result["counter"] == "Vitamins (stat boosters)"
+        assert result["purchases"][0]["floor"] == "2F"
+        assert result["purchases"][0]["counter"] == "Vitamins (stat boosters)"
         assert result["money_spent"] == 9800
-        assert result.get("floors_traversed") == ["1F", "2F"]
+        assert result.get("floors_traversed") == ["2F"]
+        assert result["exited"] is True
 
     @retry_on_rng("e4_dept_store_3f")
     def test_buy_chains_down_three_floors(self, emu: EmulatorClient):
-        # Figy Berry on B1F — chain 3F → 2F → 1F → B1F (three stair hops).
+        # Figy Berry on B1F — chain 3F → 2F → 1F → B1F (three stair hops),
+        # then exit-chain back up B1F → 1F → out the entrance warp.
         from renegade_mcp.shop import buy_item
 
-        result = buy_item(emu, "Figy Berry", quantity=1)
+        result = buy_item(emu, {"Figy Berry": 1})
         assert result["success"] is True, f"buy_item error: {result.get('error')}"
-        assert result["floor"] == "B1F"
-        assert result["counter"] == "Berries"
+        assert result["purchases"][0]["floor"] == "B1F"
+        assert result["purchases"][0]["counter"] == "Berries"
         assert result["money_spent"] == 20
-        assert result.get("floors_traversed") == ["3F", "B1F"]
+        assert result.get("floors_traversed") == ["B1F"]
 
     @retry_on_rng("e4_dept_store_b1f")
     def test_buy_chains_up_across_b1f_connector(self, emu: EmulatorClient):
@@ -628,27 +780,28 @@ class TestDeptStoreFloorChain:
         # (off-axis from the standard up-stairs at (12, 8)).
         from renegade_mcp.shop import buy_item
 
-        result = buy_item(emu, "X Attack", quantity=1)
+        result = buy_item(emu, {"X Attack": 1})
         assert result["success"] is True, f"buy_item error: {result.get('error')}"
-        assert result["floor"] == "2F"
-        assert result["counter"] == "Battle X items"
+        assert result["purchases"][0]["floor"] == "2F"
+        assert result["purchases"][0]["counter"] == "Battle X items"
         assert result["money_spent"] == 500
-        assert result.get("floors_traversed") == ["B1F", "2F"]
+        assert result.get("floors_traversed") == ["2F"]
 
     @retry_on_rng("e4_veilstone_city_overworld")
     def test_buy_chains_from_overworld_to_3f(self, emu: EmulatorClient):
         # Full chain: city OW → entrance warp into 1F → stairs 1F → 2F → 3F,
-        # then evolution-stones counter. Exercises both the entrance auto-warp
-        # and the multi-hop stair chain in one call.
+        # then evolution-stones counter, then exit-chain back to 1F → out.
+        # Exercises entrance auto-warp + multi-hop stair chain + auto-exit.
         from renegade_mcp.shop import buy_item
 
-        result = buy_item(emu, "Fire Stone", quantity=1)
+        result = buy_item(emu, {"Fire Stone": 1})
         assert result["success"] is True, f"buy_item error: {result.get('error')}"
         assert result.get("navigated_to_mart") is True
-        assert result["floor"] == "3F"
-        assert result["counter"] == "Evolution stones"
+        assert result["purchases"][0]["floor"] == "3F"
+        assert result["purchases"][0]["counter"] == "Evolution stones"
         assert result["money_spent"] == 2100
-        assert result.get("floors_traversed") == ["1F", "3F"]
+        assert result.get("floors_traversed") == ["3F"]
+        assert result["exited"] is True
 
 
 # ---------------------------------------------------------------------------
@@ -672,7 +825,7 @@ class TestQaBug006BuyItemExit:
         from renegade_mcp.dialogue import read_dialogue
         from renegade_mcp.shop import buy_item
 
-        result = buy_item(emu, "Potion", quantity=1, badge_count=0)
+        result = buy_item(emu, {"Potion": 1}, badge_count=0)
         assert "error" not in result, f"buy_item error: {result.get('error')}"
 
         dlg = read_dialogue(emu, "overworld")

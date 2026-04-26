@@ -743,20 +743,26 @@ def create_server() -> FastMCP:
 
     @mcp.tool()
     @renegade_tool
-    def buy_item(item_name: str, quantity: int = 1) -> dict[str, Any]:
-        """Buy an item from a standard PokéMart.
+    def buy_item(cart: dict[str, int]) -> dict[str, Any]:
+        """Buy a cart of items from a PokéMart or the Veilstone Department Store.
 
-        Works from inside a PokéMart or from a city/town overworld (auto-navigates
-        to the mart). Finds the correct cashier (Cashier F for common items,
-        Cashier M for specialty), navigates to them, opens the shop, scrolls to
-        the item, purchases the specified quantity, and exits.
+        cart is a {item_name: quantity} dict (case-insensitive keys, qty ≥ 1).
+        Auto-routes through the shop, visiting every cashier the cart spans
+        (e.g. common + specialty in a regular mart; multiple floors and
+        counters in the Dept Store via stair chaining), then walks the player
+        back out the entrance warp.
 
-        Item position is calculated from ROM data — common items appear first
-        (badge-filtered, in PokeMartCommonItems[] order), then specialty items.
+        Atomic: if any item isn't stocked, no purchases happen — the tool
+        errors with the per-floor / per-cashier stock listing before stepping
+        into any shop UI. Money pre-flight check runs before the first
+        purchase.
+
+        Works from inside a shop or from a city/town overworld (auto-navigates
+        to the mart entrance).
 
         Args:
-            item_name: Item to buy (e.g. "Potion", "Heal Ball"). Case-insensitive.
-            quantity: How many to buy (default 1).
+            cart: {item_name: quantity}, e.g. {"Potion": 5, "Repel": 3,
+                "Fire Stone": 1}. Names case-insensitive. Each quantity ≥ 1.
         """
         from renegade_mcp.shop import buy_item as _buy_item
         from renegade_mcp.trainer import read_trainer_status as _read_status
@@ -766,29 +772,31 @@ def create_server() -> FastMCP:
         status = _read_status(emu)
         badge_count = status.get("badges") if isinstance(status.get("badges"), int) else None
 
-        return _buy_item(emu, item_name, quantity=quantity, badge_count=badge_count)
+        return _buy_item(emu, cart, badge_count=badge_count)
 
     @mcp.tool()
     @renegade_tool
-    def sell_item(item_name: str, quantity: int = 1) -> dict[str, Any]:
-        """Sell an item at a standard PokéMart.
+    def sell_item(cart: dict[str, int]) -> dict[str, Any]:
+        """Sell a cart of items at a PokéMart or the Veilstone Department Store.
 
-        Works from inside a PokéMart or from a city/town overworld (auto-navigates
-        to the mart). Talks to Cashier F, selects SELL, navigates the sell bag to
-        the target item, sells the specified quantity, and exits.
+        cart is a {item_name: quantity} dict (case-insensitive keys, qty ≥ 1).
+        Talks to the nearest cashier (any vendor counter accepts SELL), loops
+        through each item in the bag, then walks the player back out.
+
+        Atomic: validates every item exists in a sellable pocket with
+        sufficient quantity before opening any UI. Items in Key Items / TMs &
+        HMs / Mail pockets are rejected.
 
         Sell price = buy price / 2 (standard Pokémon formula).
 
-        Cannot sell Key Items, TMs/HMs, or Mail.
-
         Args:
-            item_name: Item to sell (e.g. "Potion", "Repel"). Case-insensitive.
-            quantity: How many to sell (default 1).
+            cart: {item_name: quantity}, e.g. {"Potion": 3, "Antidote": 5}.
+                Names case-insensitive. Each quantity ≥ 1.
         """
         from renegade_mcp.shop import sell_item as _sell_item
 
         emu = get_client()
-        return _sell_item(emu, item_name, quantity=quantity)
+        return _sell_item(emu, cart)
 
     # ── Item Use ──
 
