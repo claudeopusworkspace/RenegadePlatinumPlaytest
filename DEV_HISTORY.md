@@ -4,6 +4,53 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-20 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: `_bike_ramp_segment` terminates after last ramp landing (2026-04-27 session 51)
+
+Fixes the executor-side blocker session 50 left open. From `session31_wayward_cave_bike_ramps`, `navigate_to(poi=warp:0)` now drives the row-17 chain ramps cleanly and reaches the post-chain landing in one segment + a short walk tail. End-to-end `navigate_to(x=30, y=17)` succeeds (the new live integration test). End-to-end `navigate_to(poi=warp:0)` still bumps wild encounters along the 132-tile path — that's environmental, not an executor bug — but the player now traverses *past* the chain instead of stalling at (25, 17).
+
+### Diagnosis
+
+Reproduced session 50's reported failure (`final=(25, 17)`, `repaths=15`, `warp_failed=true`). Wrote `scripts/diag_session31_warp0_segments.py` to wrap `_bike_ramp_segment`, `drive_bike_subsegments`, and `step_hold` and dump every iteration's predicted vs actual coords.
+
+The trace surfaced the bug immediately: `_bike_ramp_segment` had **no termination condition**. The simulation loop ran from the segment's start index to the end of `directions[]`, accumulating ramp jumps and walks alike. The session 31 plan (132 directions to warp:0) collapsed into one mega-segment with **21 sub-segments** predicting landing at (50, 38). `drive_bike_subsegments` then handed the bike a 21-step continuous-hold programme that bike physics couldn't honour past the row-17 chain — the bike stalled around (32, 17), the post-segment `reached` check tripped `False`, and the BUG-049 repath wrapper kicked in 15 times before MAX_REPATHS exhausted.
+
+### Fix
+
+`renegade_mcp/navigation.py::_bike_ramp_segment` — add a single termination check at the top of the loop:
+
+```python
+# Once we've crossed at least one ramp, stop as soon as the next
+# planned step no longer needs the bike (no further ramp / slope /
+# bridge within the RUNWAY lookahead used by `_step_needs_bike`).
+if saw_ramp and not _step_needs_bike(
+    directions, j, obstacle_tiles, fx, fy,
+):
+    break
+```
+
+The predicate is symmetric with `_step_needs_bike`'s mounting decision in `_execute_path` — when the executor would no longer mount the bike for upcoming steps, the segment closes. Walks-between-ramps in a chain still span (each ramp's lookahead finds the next), so BUG-048's continuous-hold-across-ramps win is preserved.
+
+Live trace post-fix on session 31: segment from (7, 18) closes at `last_ramp_idx=11, landing=(30, 17)` with **2 sub-segments** ([up→(7,17), right→(30,17)]). The bike actually drives to (32, 17) (small post-segment momentum overshoot — same drift BUG-049 documents), then BUG-049's repath wrapper splices in `left x2` and the per-tile loop walks to (30, 17). Repaths used: 1.
+
+### Tests
+
+`tests/test_navigation.py::TestBikeRampSegmentTermination` — 4 new tests (3 unit, 1 live):
+
+- `test_terminates_after_single_ramp_when_path_continues_off_ramp` — single ramp + 5 trailing walks; loop closes at the ramp's natural landing.
+- `test_spans_chain_ramps_with_walks_between` — 4 chained ramps with one walk between each; loop spans all four, then closes once lookahead is dry.
+- `test_does_not_consume_path_past_last_ramp` — synthetic mirror of the session-31 → warp:0 plan; `last_ramp_idx=7`, `landing=(30, 17)`, exactly 1 sub-segment (regression vs. the pre-fix 21 sub-segments).
+- `test_session31_post_chain_landing_reaches_30_17` — live: from `session31_wayward_cave_bike_ramps`, `navigate_to(x=30, y=17)` reaches the target without `warp_failed` / `stopped_early`.
+
+`tests/test_qa_bug049_bike_segment_overshoot_repath.py::test_overshoot_triggers_single_repath` → **renamed** `test_overshoot_recovery_keeps_repaths_low`. The pre-fix scenario asserted exactly 1 repath (the band-aid catching the segment overshoot). Post session-51 fix the segment terminates earlier on this exact plan (closes at (38, 8) instead of (38, 12)), the post-segment idle has nothing to drift past, and the trailing `down x4` runs per-tile. Repath count is now 0 here. Assertion relaxed to `repaths <= 1` — both the band-aid path AND the cleaner termination path satisfy the invariant. The other 3 BUG-049 tests (final position, no `stopped_early`, no encounter) pass unchanged.
+
+Full pytest suite: **615 passed, 0 failed** (was 615 passed + 1 failed pre-test-update). 81 navigation tests pass.
+
+### Open: end-to-end navigate_to(warp:0) from session 31
+
+Still gated on wild encounters along the 132-tile path. Repel doesn't repel Lv≥leader-1, but our leader is Lv29 vs. wild Lv21–22, so Repel *should* work — the live navigate_to surfaced 10 encounters even though the player started with an active Repel. Untangling Repel timing on a 132-tile bike ride (does the counter consume per tile? per ramp jump? does fast-bike speed exhaust Repel faster?) is a separate session.
+
+The executor itself is now correct; the path is just long enough that any encounter it does provoke (one Mean Look-trapped Zubat in our reproduction) halts the trip.
+
 ## Dev Session: BFS reaches Wayward B1F warp:0 from south corridor (2026-04-27 session 50)
 
 Closed the BFS-side gap on Wayward Cave B1F's south-corridor → warp:0 puzzle. From `session31_wayward_cave_bike_ramps` (player at (7, 22) on bike, level 2), `view_map` now lists all 5 interactibles as reachable (obj:1 reach@56, obj:2 reach@13, obj:3 reach@83, warp:0 reach@132, warp:1 reach@41). Pre-fix only obj:2 and warp:1 were in the reach set; obj:1 / obj:3 / warp:0 were `unreachable_interactibles`. Executor still has a separate landing-on-ramp issue that prevents the end-to-end run; tracked for next session.
