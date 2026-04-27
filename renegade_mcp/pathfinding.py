@@ -106,11 +106,19 @@ def _bike_ramp_edges(
     flight lands the bike cleanly at ramp+3 (the single-tile pocket just
     before the downstream ramp).
 
-    At ``momentum == 0`` we emit a **NEAR** edge (ramp+1, post_m=1) — the
-    slow-gear standing-start jump.
+    NEAR edges (ramp+1, post_m=1) are emitted at **any** momentum. The
+    NEAR-jump regime fires from SLOW gear and is independent of runway
+    momentum (DEV_HISTORY session 43: "SLOW always produces NEAR
+    regardless of runway"). Since the executor can drop the bike into
+    SLOW gear before any ramp approach, the NEAR landing is reachable
+    from every approach tile — not just standing-start (m=0). Without
+    this we'd miss obj:1/obj:3/warp:0 access from session-31-class
+    starting positions where the row-17 chain's last ramp is the only
+    bridge to the upper-chamber pocket and FAR overshoots into a
+    dead-end past the connecting tile.
 
-    Mid-range momentum (1–2 of the RUNWAY prefixes) produces no clean
-    intermediate landing in the engine and emits no edge.
+    Mid-range FAR momentum (1–2 of the RUNWAY prefixes) produces no
+    clean intermediate landing in the engine and emits no FAR edge.
 
     ``momentum`` modes:
     - ``int`` — caller tracks per-state directional momentum precisely.
@@ -211,10 +219,12 @@ def _bike_ramp_edges(
     # Integer momentum — caller knows exactly.
     if momentum + 1 >= BIKE_RAMP_RUNWAY_TILES:
         _admit_far_or_short(BIKE_RAMP_RUNWAY_TILES)
-    if momentum == 0:
-        nx1, ny1 = x + dx * BIKE_RAMP_NEAR_JUMP_TILES, y + dy * BIKE_RAMP_NEAR_JUMP_TILES
-        if _tile_passable_clear(nx1, ny1, exclude_chain=False):
-            edges.append((nx1, ny1, 1))
+    # NEAR jump fires from SLOW gear regardless of approach momentum.
+    # Player can always toggle to SLOW (B-press) before the ramp, so
+    # this edge is admitted at every approach.
+    nx1, ny1 = x + dx * BIKE_RAMP_NEAR_JUMP_TILES, y + dy * BIKE_RAMP_NEAR_JUMP_TILES
+    if _tile_passable_clear(nx1, ny1, exclude_chain=False):
+        edges.append((nx1, ny1, 1))
     return edges
 
 
@@ -724,13 +734,17 @@ def _bfs_pathfind_level(
            dict[int, tuple[list[str], tuple[int, int], int, int]]]:
     """BFS pathfind restricted to a single elevation level.
 
-    Returns (path_to_goal, reachable_ramps) where:
+    Returns (path_to_goal, reachable_transitions) where:
     - path_to_goal: direction list or None if goal unreachable on this level
-    - reachable_ramps: {ramp_index: (path_to_ramp, (rx, ry), other_level,
-      arrive_momentum)} for each ramp reachable from start on
-      current_level. ``arrive_momentum`` lets the caller seed the next
-      level's search with preserved momentum (fast-bike momentum carries
-      across level transitions and is direction-agnostic per
+    - reachable_transitions: {key: (path_to_transition, (rx, ry), other_level,
+      arrive_momentum)} for each level transition reachable from start on
+      current_level. Keys are either ``ramp_index`` (int, BDHC ramp plate)
+      or ``("ml", x, y, other_level)`` (multi-level flat tile). Mirrors
+      ``_flood_fill_level``'s transitions dict so the 3D recursive
+      pathfinder explores the same set of edges as the 3D reachability
+      flood. ``arrive_momentum`` lets the caller seed the next level's
+      search with preserved momentum (fast-bike momentum carries across
+      level transitions and is direction-agnostic per
       ``_bfs_reachable``).
 
     ``start_momentum`` seeds the BFS state. Default ``0`` is the
@@ -785,8 +799,45 @@ def _bfs_pathfind_level(
     queue: deque[tuple[int, int, int, list[str]]] = deque(
         [(start_x, start_y, start_momentum, [])]
     )
-    reachable_ramps: dict[int, tuple[list[str], tuple[int, int], int, int]] = {}
+    # Reachable level-transition record: {key -> (path, (x, y), other_lv, arrive_m)}.
+    # Keys are ramp_index (int) for BDHC ramp plates and ("ml", x, y, other_lv)
+    # tuples for multi-level flat tiles — same convention as `_flood_fill_level`.
+    reachable_ramps: dict[object, tuple[list[str], tuple[int, int], int, int]] = {}
     runway = BIKE_RAMP_RUNWAY_TILES
+
+    def _record_transition(tx: int, ty: int, path: list[str], arrive_m: int) -> None:
+        ri = ramp_tiles.get((tx, ty))
+        if ri is not None:
+            ramp_idx = ri["ramp_index"]
+            if ramp_idx in reachable_ramps:
+                return
+            if ri["from_level"] == current_level:
+                other = ri["to_level"]
+            elif ri["to_level"] == current_level:
+                other = ri["from_level"]
+            else:
+                other = None
+            if other is not None and other != current_level:
+                reachable_ramps[ramp_idx] = (path, (tx, ty), other, arrive_m)
+            return
+        lvls = level_map.get((tx, ty))
+        if lvls and len(lvls) > 1 and current_level in lvls:
+            for other_lv in lvls:
+                if other_lv == current_level:
+                    continue
+                if not _steppable(other_lv):
+                    continue
+                key = ("ml", tx, ty, other_lv)
+                if key in reachable_ramps:
+                    continue
+                reachable_ramps[key] = (path, (tx, ty), other_lv, 0)
+
+    # Start tile may itself be a level transition — mirrors
+    # `_flood_fill_level`. Without this, a player parked on a ramp
+    # plate or multi-level tile (e.g. session 31 at (7, 22) on ramp 9)
+    # has no way to seed the 3D recursive search with the off-level
+    # continuation.
+    _record_transition(start_x, start_y, [], start_momentum)
 
     while queue:
         x, y, m, path = queue.popleft()
@@ -851,23 +902,13 @@ def _bfs_pathfind_level(
             new_path = path + [direction]
             visited.add(new_state)
 
-            # Record ramp transitions to other levels (first discovery only).
-            ramp_key = (nx, ny)
-            if ramp_key not in tile_seen and ramp_key in ramp_tiles:
-                ri = ramp_tiles[ramp_key]
-                ramp_idx = ri["ramp_index"]
-                if ramp_idx not in reachable_ramps:
-                    if ri["from_level"] == current_level:
-                        other = ri["to_level"]
-                    elif ri["to_level"] == current_level:
-                        other = ri["from_level"]
-                    else:
-                        other = None
-                    if other is not None and other != current_level:
-                        reachable_ramps[ramp_idx] = (
-                            new_path, (nx, ny), other, new_m,
-                        )
-            tile_seen.add(ramp_key)
+            # Record level transitions on first discovery — both BDHC ramps
+            # and multi-level flat tiles. Mirrors `_flood_fill_level` so the
+            # 3D pathfinder explores every transition the reachability flood
+            # does.
+            if (nx, ny) not in tile_seen:
+                _record_transition(nx, ny, new_path, new_m)
+            tile_seen.add((nx, ny))
 
             if (nx, ny) == (goal_x, goal_y):
                 return new_path, reachable_ramps
@@ -892,7 +933,7 @@ def _bfs_pathfind_3d(
     deadline = time.monotonic() + _3D_TIMEOUT
 
     def _search(
-        sx: int, sy: int, level: int, depth: int, visited_ramps: frozenset[int],
+        sx: int, sy: int, level: int, depth: int, visited_ramps: frozenset,
         seed_m: int = 0,
     ) -> list[str] | None:
         if depth > _3D_MAX_DEPTH:
@@ -913,22 +954,27 @@ def _bfs_pathfind_3d(
         if not reachable_ramps:
             return None
 
-        # Sort ramps: toward target level first, then Manhattan to goal, then path length
+        # Sort transitions: toward target level first, then Manhattan to
+        # goal, then path length. Keys are either ramp_index (int) or
+        # ("ml", x, y, other_lv) tuples for multi-level tiles.
         def _ramp_priority(item: tuple) -> tuple:
-            ramp_idx, (path_to_ramp, _, other_level, _am) = item
+            tkey, (path_to_ramp, (rx, ry), other_level, _am) = item
             toward_goal = 0 if (goal_levels and other_level in goal_levels) else 1
-            # Use ramp midpoint for distance heuristic
-            ri = None
-            for r in elevation["ramps"]:
-                if r["ramp_index"] == ramp_idx:
-                    ri = r
-                    break
-            if ri:
-                mid_c = (ri["col_range"][0] + ri["col_range"][1]) / 2
-                mid_r = (ri["row_range"][0] + ri["row_range"][1]) / 2
-                dist = abs(mid_c - goal_x) + abs(mid_r - goal_y)
+            if isinstance(tkey, int):
+                ri = None
+                for r in elevation["ramps"]:
+                    if r["ramp_index"] == tkey:
+                        ri = r
+                        break
+                if ri:
+                    mid_c = (ri["col_range"][0] + ri["col_range"][1]) / 2
+                    mid_r = (ri["row_range"][0] + ri["row_range"][1]) / 2
+                    dist = abs(mid_c - goal_x) + abs(mid_r - goal_y)
+                else:
+                    dist = 999.0
             else:
-                dist = 999.0
+                # ML transition: use the tile coords directly.
+                dist = abs(rx - goal_x) + abs(ry - goal_y)
             return (toward_goal, dist, len(path_to_ramp))
 
         candidates = [

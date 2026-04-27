@@ -436,24 +436,29 @@ class TestBikeRampBfsEdges:
             f"momentum=0 should emit only NEAR-jump edge (5, 0, 1); got {edges}"
         )
 
-    def test_ramp_edges_mid_range_momentum_emits_no_edge(self):
-        """Momentum=2 is in the dead zone — neither near nor far jumps
-        are emitted. BFS intentionally skips this regime; puzzles that
-        need it would require fresh empirical data.
+    def test_ramp_edges_mid_range_momentum_emits_only_near(self):
+        """Mid-range momentum (1–2 of RUNWAY prefixes) doesn't qualify
+        for FAR, but NEAR is always available — the executor can drop
+        into SLOW gear before the ramp regardless of approach speed
+        (DEV_HISTORY session 43: 'SLOW always produces NEAR regardless
+        of runway'). So the only edge is NEAR at ramp+1.
         """
         from renegade_mcp.pathfinding import _bike_ramp_edges
         grid = [[(True, 0x08)] * 4 + [(False, 0xD7)] + [(True, 0x08)] * 4]
         edges = _bike_ramp_edges(
             grid, 3, 0, "right", 1, 0, width=9, height=1, momentum=2,
         )
-        assert edges == [], (
-            f"Mid-range momentum=2 should emit no edges; got {edges}"
+        # NEAR-only at approach+2 = (5, 0), post_m=1.
+        assert edges == [(5, 0, 1)], (
+            f"Mid-range momentum=2 should emit only NEAR edge; got {edges}"
         )
 
     def test_ramp_edges_far_jump_at_full_runway(self):
-        """Momentum=RUNWAY-1 admits the far-jump edge; near-jump is not
-        emitted when far qualifies (they're selected by momentum range,
-        not both simultaneously).
+        """At full runway momentum we admit BOTH the FAR-jump (fast-gear
+        flight, post_m=RUNWAY) and the NEAR-jump (SLOW-gear standing
+        version, post_m=1). FAR represents continuing-east-at-speed;
+        NEAR represents toggling SLOW before the ramp. Both are
+        physically achievable, so BFS exposes both.
         """
         from renegade_mcp.pathfinding import _bike_ramp_edges
         from renegade_mcp.nav_constants import BIKE_RAMP_RUNWAY_TILES
@@ -462,10 +467,10 @@ class TestBikeRampBfsEdges:
             grid, 3, 0, "right", 1, 0, width=9, height=1,
             momentum=BIKE_RAMP_RUNWAY_TILES - 1,
         )
-        # Exactly one edge: the far-jump at (8, 0), post-momentum=RUNWAY.
-        assert edges == [(8, 0, BIKE_RAMP_RUNWAY_TILES)], (
-            f"momentum={BIKE_RAMP_RUNWAY_TILES - 1} should emit only "
-            f"FAR-jump edge (8, 0, {BIKE_RAMP_RUNWAY_TILES}); got {edges}"
+        # Two edges: FAR at (8, 0) and NEAR at (5, 0).
+        assert edges == [(8, 0, BIKE_RAMP_RUNWAY_TILES), (5, 0, 1)], (
+            f"momentum={BIKE_RAMP_RUNWAY_TILES - 1} should emit FAR and "
+            f"NEAR edges; got {edges}"
         )
 
     def test_ramp_edges_far_short_when_plus4_is_chain_ramp(self):
@@ -493,9 +498,10 @@ class TestBikeRampBfsEdges:
             grid, 3, 0, "right", 1, 0, width=10, height=1,
             momentum=BIKE_RAMP_RUNWAY_TILES - 1,
         )
-        assert edges == [(7, 0, 0)], (
+        # FAR_SHORT (7, 0, 0) plus the always-available NEAR (5, 0, 1).
+        assert edges == [(7, 0, 0), (5, 0, 1)], (
             f"Ramp+4=(8,0) is a same-dir chain ramp — expect FAR_SHORT "
-            f"edge (7, 0, 0), not the default FAR (8, 0, RUNWAY). Got {edges}"
+            f"(7, 0, 0) plus NEAR (5, 0, 1). Got {edges}"
         )
 
     def test_ramp_edges_far_short_when_plus4_is_wall(self):
@@ -517,9 +523,9 @@ class TestBikeRampBfsEdges:
             grid, 3, 0, "right", 1, 0, width=9, height=1,
             momentum=BIKE_RAMP_RUNWAY_TILES - 1,
         )
-        assert edges == [(7, 0, 0)], (
-            f"Wall at ramp+4 should trigger FAR_SHORT fallback to (7, 0, 0); "
-            f"got {edges}"
+        assert edges == [(7, 0, 0), (5, 0, 1)], (
+            f"Wall at ramp+4 should trigger FAR_SHORT (7, 0, 0) plus the "
+            f"always-available NEAR (5, 0, 1); got {edges}"
         )
 
     def test_ramp_edges_far_short_when_plus4_is_npc(self):
@@ -535,22 +541,22 @@ class TestBikeRampBfsEdges:
             momentum=BIKE_RAMP_RUNWAY_TILES - 1,
             npc_set={(8, 0)},
         )
-        assert edges == [(7, 0, 0)], (
-            f"NPC at ramp+4 should trigger FAR_SHORT fallback to (7, 0, 0); "
-            f"got {edges}"
+        assert edges == [(7, 0, 0), (5, 0, 1)], (
+            f"NPC at ramp+4 should trigger FAR_SHORT (7, 0, 0) plus the "
+            f"always-available NEAR (5, 0, 1); got {edges}"
         )
 
-    def test_ramp_edges_no_edge_when_both_plus3_and_plus4_blocked(self):
-        """If ramp+4 is blocked AND ramp+3 is also impassable, no edge
-        is admitted — the bike has nowhere safe to land."""
+    def test_ramp_edges_no_edge_when_all_landings_blocked(self):
+        """If ramp+1 (NEAR), ramp+3 (FAR_SHORT), and ramp+4 (FAR) are all
+        blocked, no edge is admitted — the bike has nowhere safe to land."""
         from renegade_mcp.pathfinding import _bike_ramp_edges
         from renegade_mcp.nav_constants import BIKE_RAMP_RUNWAY_TILES
-        # Approach (3, 0), ramp (4, 0), floor, floor, WALL at +3, WALL at +4.
+        # Approach (3, 0), ramp (4, 0), WALL at +1, floor, WALL at +3, WALL at +4.
         grid = [[
             (True, 0x08), (True, 0x08), (True, 0x08),
             (True, 0x08),   # approach (3, 0)
             (False, 0xD7),  # ramp (4, 0)
-            (True, 0x08),   # (5, 0)
+            (False, 0x00),  # (5, 0) — ramp+1 (NEAR) blocked
             (True, 0x08),   # (6, 0)
             (False, 0x00),  # (7, 0) — ramp+3 blocked
             (False, 0x00),  # (8, 0) — ramp+4 blocked
@@ -560,7 +566,7 @@ class TestBikeRampBfsEdges:
             momentum=BIKE_RAMP_RUNWAY_TILES - 1,
         )
         assert edges == [], (
-            f"Both ramp+4 and ramp+3 blocked — expect no edge; got {edges}"
+            f"All landings blocked — expect no edge; got {edges}"
         )
 
     def test_2d_bfs_ramp_pocket_reachable_between_chained_ramps(self):
@@ -597,10 +603,10 @@ class TestBikeRampBfsEdges:
             f"Pocket (7, 0) must be reachable via FAR_SHORT edge; "
             f"got reach={sorted(reach)}"
         )
-        # (5, 0) is on the ramp1 trajectory but the jump arcs over it,
-        # and the void at (6, 0) blocks walking. The pocket is truly
-        # isolated — reachable ONLY via the FAR_SHORT edge.
-        assert (5, 0) not in reach
+        # (5, 0) is reachable via the NEAR-jump edge (ramp+1) — the
+        # always-available SLOW-gear landing. That's a separate path
+        # from the FAR_SHORT pocket; the pocket assertion above is
+        # what guards the row-6-style geometry.
 
     def test_2d_bfs_pocket_unreachable_when_far_short_disabled(self):
         """Sanity: without the FAR_SHORT fallback, the pocket would be
@@ -734,8 +740,9 @@ class TestBikeRampBfsEdges:
             grid, 3, 0, "right", 1, 0, width=15, height=1,
             momentum=BIKE_RAMP_RUNWAY_TILES - 1,
         )
-        assert edges == [(7, 0, 0)], (
-            f"Chain-landing blocked → only FAR_SHORT edge; got {edges}"
+        assert edges == [(7, 0, 0), (5, 0, 1)], (
+            f"Chain-landing blocked → FAR_SHORT (7, 0, 0) plus the always-"
+            f"available NEAR (5, 0, 1); got {edges}"
         )
 
     def test_ramp_edges_no_chain_through_when_npc_on_chain_ramp(self):
@@ -764,9 +771,9 @@ class TestBikeRampBfsEdges:
             momentum=BIKE_RAMP_RUNWAY_TILES - 1,
             npc_set={(8, 0)},
         )
-        assert edges == [(7, 0, 0)], (
-            f"NPC on chain-ramp → chain disabled, only FAR_SHORT edge; "
-            f"got {edges}"
+        assert edges == [(7, 0, 0), (5, 0, 1)], (
+            f"NPC on chain-ramp → chain disabled, FAR_SHORT (7, 0, 0) "
+            f"plus the always-available NEAR (5, 0, 1); got {edges}"
         )
 
     def test_2d_bfs_reaches_chain_through_landing(self):

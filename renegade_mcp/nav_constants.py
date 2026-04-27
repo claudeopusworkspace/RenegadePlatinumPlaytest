@@ -343,7 +343,11 @@ DIRECTIONAL_BLOCKS: dict[int, str] = {
 }
 
 # ── 3D pathfinding constants ──
-_3D_MAX_DEPTH = 5       # max ramp transitions in a single path search
+_3D_MAX_DEPTH = 15      # max ramp transitions in a single path search.
+# Wayward Cave B1F's south-corridor → warp:0 path requires ~10 transitions
+# (9 → 0 → 2 → 3 → 8 → 7 → 5 → 4 → 1 → 13 → 14 → 11 → 12 → 10 → 19 → 18),
+# so a depth ≥ 11 is needed for that puzzle. Priority-sorted DFS prunes
+# effectively in practice — empirically <0.1s wall-clock at depth 20.
 _3D_TIMEOUT = 300       # wall-clock seconds before aborting 3D search
 
 # Height units: 16 = one full tile height. Small dips (L0 grass/puddles in
