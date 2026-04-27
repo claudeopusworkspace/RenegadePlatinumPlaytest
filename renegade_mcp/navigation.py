@@ -465,6 +465,22 @@ def _bike_ramp_segment(
     cur_subseg_dir: str | None = None
     j = i
     while j < len(directions):
+        # Termination: once we've crossed at least one ramp, stop as soon
+        # as the next planned step no longer needs the bike (no further
+        # ramp / slope / bridge within the RUNWAY lookahead used by
+        # `_step_needs_bike`). Without this, the loop walks the entire
+        # remaining path into one giant segment — `drive_bike_subsegments`
+        # then receives a sub-segment list far past where bike physics
+        # actually carry, and the bike stalls mid-plan with the post-segment
+        # `reached` check failing on every iteration. (Observed on
+        # session 31 → warp:0: a 132-step plan collapsed into 21
+        # sub-segments predicting landing at (50, 38); the bike actually
+        # parked near (32, 17) and exhausted MAX_REPATHS.)
+        if saw_ramp and not _step_needs_bike(
+            directions, j, obstacle_tiles, fx, fy,
+        ):
+            break
+
         d = directions[j]
         dx, dy = _DIR_DELTAS.get(d, (0, 0))
         if dx == 0 and dy == 0:

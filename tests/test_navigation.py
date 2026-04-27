@@ -878,6 +878,135 @@ class TestBikeRampBfsEdges:
         )
 
 
+class TestBikeRampSegmentTermination:
+    """`_bike_ramp_segment` must close the segment at the last ramp's natural
+    landing — once no ramp/slope/bridge sits within the `_step_needs_bike`
+    runway lookahead from the current sim position, the loop breaks.
+
+    Regression for session 51: the loop walked the entire remaining path
+    after the last ramp, collapsing 132-step plans into one 21-sub-segment
+    drive that the bike physics couldn't honor. The post-segment `reached`
+    check then failed and `MAX_REPATHS` exhausted.
+    """
+
+    @staticmethod
+    def _ramps(*coords):
+        """Build an obstacle_tiles dict with east-ramps at each coord."""
+        return {
+            (x, y): {"type": "bike_ramp", "behavior": 0xD7}
+            for (x, y) in coords
+        }
+
+    def test_terminates_after_single_ramp_when_path_continues_off_ramp(self):
+        """One ramp followed by walks-only — segment ends at ramp landing."""
+        from renegade_mcp.navigation import _bike_ramp_segment
+        # Plan: 3 walks (runway) → ramp at (10, 17) (lands (14, 17)) → down x5.
+        # The downs do NOT pass through any further ramp, so once we land
+        # at (14, 17) the lookahead returns False and the loop breaks.
+        directions = ["right"] * 4 + ["down"] * 5
+        obstacle_tiles = self._ramps((10, 17))
+        seg = _bike_ramp_segment(
+            directions, 0, obstacle_tiles, cur_x=6, cur_y=17,
+        )
+        assert seg is not None, "single-ramp segment must be drivable"
+        # Last ramp consumed at directions[3] (4th right, the one onto the
+        # ramp tile). landing = approach (9, 17) + 5 east = (14, 17).
+        assert seg["last_ramp_idx"] == 3
+        assert (seg["landing_x"], seg["landing_y"]) == (14, 17)
+        # Sub-segments: one continuous 'right' run that lands at (14, 17).
+        assert seg["subsegments"] == [("right", 14, 17)]
+
+    def test_spans_chain_ramps_with_walks_between(self):
+        """Four chained ramps with one walk between each — segment includes
+        all four since each ramp's lookahead finds the next one in range,
+        then closes once the lookahead from the last landing has no more
+        ramps."""
+        from renegade_mcp.navigation import _bike_ramp_segment
+        # Wayward Cave row 17 layout: ramps at 10/15/20/26, walks in
+        # between. Plan: 3 runway walks → ramp1 → ramp2 → ramp3 → walk
+        # → ramp4 → 4 trailing walks → down (terminator).
+        directions = ["right"] * 12 + ["down"] * 3
+        obstacle_tiles = self._ramps(
+            (10, 17), (15, 17), (20, 17), (26, 17),
+        )
+        seg = _bike_ramp_segment(
+            directions, 0, obstacle_tiles, cur_x=6, cur_y=17,
+        )
+        assert seg is not None
+        # Approach to ramp4 is (25, 17); JUMP_TILES=5 lands at (30, 17).
+        assert (seg["landing_x"], seg["landing_y"]) == (30, 17)
+        # last_ramp_idx is 7 — the 8th right, which fires the jump onto
+        # ramp4. j=8's termination check (lookahead from (30, 17): 4
+        # trailing rights through (31..34, 17), none ramp) breaks the
+        # loop before any of those walks gets processed.
+        assert seg["last_ramp_idx"] == 7
+        assert seg["subsegments"] == [("right", 30, 17)]
+
+    def test_does_not_consume_path_past_last_ramp(self):
+        """Regression: pre-fix, this plan was driven as one 21-step segment
+        all the way to the path tail (50, 38). Post-fix, the segment closes
+        at the row-17 ramp chain's last landing (30, 17) and per-tile
+        execution handles the rest of the plan.
+        """
+        from renegade_mcp.navigation import _bike_ramp_segment
+        # Mirrors the session 31 → warp:0 BFS plan past the leading runway.
+        # Start at (6, 17) so the first 3 rights build momentum for ramp1
+        # at (10, 17). The path then chains four row-17 ramps (10/15/20/26)
+        # via right x8 (3 walks + 4 ramps + 1 walk), and continues into
+        # the rest of the plan — turn south, then north-east — none of
+        # which involves another ramp within the post-landing lookahead.
+        directions = (
+            ["right"] * 8        # runway + chain through (26, 17) ramp
+            + ["down"] * 3
+            + ["right"] * 6
+            + ["up"] * 2
+            + ["right"]
+            + ["up"] * 5
+            + ["left"] * 18
+        )
+        obstacle_tiles = self._ramps(
+            (10, 17), (15, 17), (20, 17), (26, 17),
+            (29, 6), (29, 13),  # ramps elsewhere in the floor, not in path
+        )
+        seg = _bike_ramp_segment(
+            directions, 0, obstacle_tiles, cur_x=6, cur_y=17,
+        )
+        assert seg is not None
+        # Sim: i=0..2 walk to (9, 17) m=3; i=3 ramp1 → (14, 17); i=4
+        # ramp2 → (19, 17); i=5 ramp3 → (24, 17); i=6 walk → (25, 17);
+        # i=7 ramp4 → (30, 17). j=8 lookahead from (30, 17) sees only
+        # walk tiles (31..32, 17 then south turns) — TERMINATE.
+        assert seg["last_ramp_idx"] == 7, (
+            f"expected last_ramp_idx=7 (the right that fires ramp4), "
+            f"got {seg['last_ramp_idx']}"
+        )
+        assert (seg["landing_x"], seg["landing_y"]) == (30, 17)
+        # Crucially: subsegments is just one 'right' run, NOT a 21-entry
+        # list stretching to the path tail. (Pre-fix bug.)
+        assert len(seg["subsegments"]) == 1
+        assert seg["subsegments"][0] == ("right", 30, 17)
+
+    def test_session31_post_chain_landing_reaches_30_17(self, emu: EmulatorClient):
+        """Live regression: from session 31 (player on bike at (7, 22)), the
+        BFS chain-ramp plan to (30, 17) must drive the chain successfully
+        and land at the target. Pre-fix the segment over-claimed the entire
+        plan and stalled mid-chain at (25, 17); post-fix the segment closes
+        at (30, 17), the bike's small momentum overshoot is absorbed by
+        BUG-049's repath wrapper, and a short walk tail lands exactly on
+        the target.
+        """
+        load_state(emu, "session31_wayward_cave_bike_ramps")
+        from renegade_mcp.nav_constants import _read_position
+        from renegade_mcp.navigation import navigate_to
+        result = navigate_to(emu, target_x=30, target_y=17, flee_encounters=True)
+        _, ex, ey = _read_position(emu)
+        assert (ex, ey) == (30, 17), (
+            f"expected (30, 17); got ({ex}, {ey}). result={result}"
+        )
+        assert not result.get("warp_failed"), result
+        assert not result.get("stopped_early"), result
+
+
 class TestBikeRampSegmentExecution:
     """Session-38 follow-up to BUG-043: end-to-end ramp chain execution.
 

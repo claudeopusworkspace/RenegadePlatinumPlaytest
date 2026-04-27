@@ -83,18 +83,35 @@ class TestQaBug049BikeSegmentOvershootRepath:
             f"Got: {result}"
         )
 
-    def test_overshoot_triggers_single_repath(self, emu: EmulatorClient) -> None:
-        """The fix records exactly one repath for the overshoot recovery
-        (the bike-segment landing drifts ~3 tiles past predicted, then a
-        short up-walk completes the trip). Anything more would mean the
-        executor still got off-plan."""
+    def test_overshoot_recovery_keeps_repaths_low(self, emu: EmulatorClient) -> None:
+        """Repath count stays at 0 or 1 — the executor must not chain
+        repaths through the chamber.
+
+        Pre-fix (BUG-049): segment over-claimed to (38, 12), drifted to
+        (38, 15) on the post-segment "drain" idle, fell through to per-tile
+        with stale directions, ended up at (35, 20) on a different
+        elevation, 2D fallback long-looped to wall-bonks → many repaths.
+
+        Post-BUG-049 fix: 1 repath — the band-aid recognises the overshoot,
+        repaths from the actual post-segment position, and a short up-walk
+        finishes the trip.
+
+        Post session-51 segment-termination fix: 0 repaths — the segment
+        now closes at (38, 8) (the last ramp's natural landing), so no
+        post-segment drift past the predicted target can happen, and
+        per-tile execution drives the trailing ``down x4`` cleanly. The
+        band-aid stays in place for plans where the segment legitimately
+        spans past a single ramp landing and the post-segment idle still
+        coasts; this test scenario just no longer exercises that path.
+        """
         load_state(emu, STATE)
         from renegade_mcp.navigation import navigate_to
 
         result = navigate_to(emu, target_x=38, target_y=12)
 
         repaths = result.get("repaths", 0)
-        assert repaths == 1, (
-            f"BUG-049: expected exactly 1 repath (segment overshoot "
-            f"recovery). Got repaths={repaths}, result={result}"
+        assert repaths <= 1, (
+            f"BUG-049: expected at most 1 repath (segment overshoot "
+            f"recovery, or 0 if the segment terminated cleanly). "
+            f"Got repaths={repaths}, result={result}"
         )
