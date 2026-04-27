@@ -972,6 +972,21 @@ def _execute_path(
                 seg_len = seg_end_idx - i + 1
                 new_map, new_x, new_y = _read_position(emu)
                 reached = (new_x, new_y) == (seg_fx, seg_fy)
+                if not reached and repath_ctx is not None and repaths_used < MAX_REPATHS:
+                    # Bike segment landed off-plan (typically a momentum/coast
+                    # overshoot past seg_fx/seg_fy). The remaining BFS-planned
+                    # directions from seg_end_idx+1 onward were computed
+                    # assuming arrival at the predicted landing — from any
+                    # other tile they are stale and will walk to the wrong
+                    # destination. Throw them away and repath from the actual
+                    # post-segment position rather than fall through to a
+                    # per-tile press of a now-meaningless direction.
+                    new_path = _try_repath(repath_ctx, prev_npcs, new_x, new_y)
+                    if new_path is not None and len(new_path) > 0:
+                        repaths_used += 1
+                        directions = directions[:i] + new_path
+                        last_step_was_ramp = False
+                        continue
                 if reached:
                     steps_taken += seg_len
                     # Clear consumed ramp tiles from tracking so the next

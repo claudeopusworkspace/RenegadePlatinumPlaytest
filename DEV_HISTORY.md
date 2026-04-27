@@ -4,6 +4,53 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-20 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: BUG-049 — bike-segment overshoot recovery via repath (2026-04-27 session 49)
+
+While probing why `navigate_to(38, 12)` from `bug048_wayward_b1f_east_chamber_via_chain_through` (player at (42, 6) on bike, level-2 bridge row past the row-6 ramp chain) returned an 80-step long-loop path that bonked walls 4× and ate a wild Zubat at (12, 12), traced the cause to a stale-plan execution problem in `_execute_path`'s bike-ramp segment driver.
+
+### Root cause (two bugs stacked)
+
+`_bike_ramp_segment` plans the segment correctly: `last_ramp_idx=23`, `landing=(38, 12)`, with 3 sub-segments (`down→(44,8)`, `left→(38,8)`, `down→(38,12)`). `drive_bike_subsegments` executes the chain perfectly — the position read immediately afterward shows the player exactly at (38, 12). Then this code runs:
+
+```python
+_set_bike_gear(emu, 1)   # toggle to slow gear
+emu.advance_frames(120)  # "drain" momentum
+```
+
+…and the player drifts 3 tiles south to (38, 15). The intent is to drain residual fast-gear momentum, but gear toggles don't actually drain bike momentum on the Platinum engine — what's happening is unclear (residual input buffer? lingering speed accumulator?) but empirically the 120 idle frames coast the player further in the last-held direction. (38, 15) ≠ (38, 12), so `reached=False`, and the executor fell through to per-tile execution. Per-tile then ran the *remaining 7 BFS-planned directions* (`down + left x2 + down x4`, computed assuming arrival at (38, 12)) from the wrong starting point of (38, 15). Result: player at (35, 20) — which is on a different elevation level, so the overshoot-retry's 3D BFS failed; 2D fallback chose the long way around.
+
+The drift itself is the underlying engine quirk; the cascade into a long-loop fallback is the executor following stale directions instead of recognizing the plan is no longer valid.
+
+### Fix
+
+`renegade_mcp/navigation.py` `_execute_path`: when the bike-segment driver returns and `reached=False`, the directions tail (`directions[i:]` past the segment) is stale relative to the actual position. Throw it away and call `_try_repath` from the post-segment position, splicing the new BFS into `directions[:i]` and incrementing `repaths_used`. Falls through to per-tile only if repath returns `None` or `repath_ctx` is unavailable.
+
+The fix is a band-aid for the underlying drift rather than a model of bike momentum — bike physics on this engine are awkward to predict exactly, so a post-hoc repath is more robust than chasing the right `advance_frames(N)` constant. Decided in conversation with Woj that this trade-off is acceptable.
+
+### Verification
+
+`navigate_to(38, 12)` from the same save now returns:
+```json
+{"steps": 19, "final": {"x": 38, "y": 12}, "repaths": 1, ...}
+```
+
+Single repath = the overshoot recovery (a 3-tile `up x3` walk from (38, 15)). No `stopped_early`, no encounter, no wall-bonking.
+
+### Tests
+
+`tests/test_qa_bug049_bike_segment_overshoot_repath.py`: 4 integration tests against `bug048_wayward_b1f_east_chamber_via_chain_through`:
+
+- `test_reaches_target_after_overshoot` — final at (38, 12).
+- `test_does_not_stop_early` — clean completion.
+- `test_no_wild_encounter_on_path` — short repath stays on plan, no Zubat.
+- `test_overshoot_triggers_single_repath` — exactly one repath records the overshoot recovery.
+
+Full suite: **612 passed in 6:54** (fleet=8). No regressions.
+
+### Followups (not blocking)
+
+The post-`drive_bike_subsegments` "drain" code (`_set_bike_gear(emu, 1) + advance_frames(120)`) is misnamed — it doesn't drain momentum, it *causes* drift in the held direction. Worth investigating whether it can be removed entirely (and whether `drive_bike_subsegments` needs its own settle pattern instead). A separate session can chase this without urgency now that overshoots no longer cascade.
+
 ## Dev Session: Veilstone Department Store shopping (2026-04-25 session 48)
 
 Extended `read_shop` / `buy_item` / `sell_item` to cover Veilstone's multi-floor Dept Store. Each floor has 1-2 vendor counters with a fixed inventory; 2F has two `Cashier F` NPCs at different tiles. Cashier dispatch keys on NPC name + tile coords. From Veilstone's overworld `read_shop` returns a floor directory and `buy_item` auto-warps into 1F. Multi-floor stair/elevator navigation is out of scope — the player must already be on the floor that sells the requested item.
