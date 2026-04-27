@@ -4,6 +4,84 @@ Chronological log of tool development, bug fixes, and MCP improvements — separ
 
 Older entries (2026-04-20 and earlier) live in [DEV_HISTORY_ARCHIVE.md](DEV_HISTORY_ARCHIVE.md).
 
+## Dev Session: BFS reaches Wayward B1F warp:0 from south corridor (2026-04-27 session 50)
+
+Closed the BFS-side gap on Wayward Cave B1F's south-corridor → warp:0 puzzle. From `session31_wayward_cave_bike_ramps` (player at (7, 22) on bike, level 2), `view_map` now lists all 5 interactibles as reachable (obj:1 reach@56, obj:2 reach@13, obj:3 reach@83, warp:0 reach@132, warp:1 reach@41). Pre-fix only obj:2 and warp:1 were in the reach set; obj:1 / obj:3 / warp:0 were `unreachable_interactibles`. Executor still has a separate landing-on-ramp issue that prevents the end-to-end run; tracked for next session.
+
+### Investigation
+
+Started from Woj's recollection that "warp:0 was reachable from the bug048 save state but not from earlier saves." Surveyed each save state's `view_map`:
+
+| Save | Player | warp:0 (before this session) |
+|---|---|---|
+| `session31_wayward_cave_bike_ramps` | (7, 22) lv 2 | UNREACHABLE |
+| `session32_wayward_b1f_ramp_slope_stairs` | (13, 9) lv 0 | reach@84 |
+| `session42_wayward_b1f_first_ramp_approach` | (25, 6) lv 2 | reach@55 |
+| `session47_wayward_b1f_post_obj3_rare_candy` | (33, 7) lv 0 | reach@55 |
+| `bug048_wayward_b1f_east_chamber_via_chain_through` | (42, 6) lv 0 | reach@55 |
+
+So the doc that said "warp:0 unreachable from session 32/47" was stale — only session 31 still genuinely reported unreachable. The pre-existing BUG-048 Gap-1 / Gap-2 fixes (sessions 45 / 47) had unlocked the row-6 chain path but the SAVE_STATES.md notes weren't updated.
+
+Built `scripts/dump_wayward_b1f_reach.py` to emit a full ASCII map of the room's reach state (`logs/map285_reach_<state>.txt`). Visualizing session 31 made the disconnect obvious: the upper chamber (rows 4-13) was completely `o` (passable but unreached), with all four bike ramps on row 17 emitting only their FAR landings. The NEAR-jump landing pocket at (27, 17) (one tile past ramp 4) was unreached and that pocket connects via (27, 18-20) → row-20 corridor → (33-34, 11-15) column to the upper chamber's level-0 plate. Without NEAR access to that pocket the entire upper chamber was a dead zone from the south corridor's perspective.
+
+### Three stacked bugs in the path planner
+
+#### 1. NEAR-jump emitted only at momentum=0 (`_bike_ramp_edges`)
+
+```python
+if momentum + 1 >= BIKE_RAMP_RUNWAY_TILES:
+    _admit_far_or_short(BIKE_RAMP_RUNWAY_TILES)
+if momentum == 0:                       # ← only at zero
+    edges.append((nx1, ny1, 1))
+```
+
+DEV_HISTORY session 43 had documented the empirical mechanic ("**gear DOES select FAR vs NEAR** — FAST+momentum=0 stalls (bike refuses to enter ramp), SLOW always produces NEAR regardless of runway. Not wired into BFS yet (out of scope)") but the code still gated NEAR on `momentum == 0`. With `new_m = min(m + 1, runway)` in the BFS loop, m is always ≥ 1 after any step, so NEAR effectively only fired from the start tile. The mid-range BFS state-space at the chain ramps therefore exposed only FAR landings, overshooting the (27, 17) pocket.
+
+**Fix**: drop the `if momentum == 0` gate. NEAR is admitted at every approach since the executor can drop into SLOW gear before any ramp regardless of incoming momentum.
+
+#### 2. `_bfs_pathfind_level` missed multi-level flat tiles AND start-tile transitions
+
+Once the BFS reach reported warp:0 reachable, `navigate_to` still errored with "No reasonable path at your current elevation (level 2)". Wrapping `_bfs_pathfind_level` and printing its returned `reachable_ramps` exposed two further gaps vs. `_flood_fill_level`:
+
+- **Start tile transition** — when the player starts on a ramp tile (session 31's (7, 22) is BDHC ramp 9), the level-pathfind returned `reachable_ramps={}` because the ramp was added to `tile_seen` at init, so the recording check `if ramp_key not in tile_seen` skipped it. `_flood_fill_level` had a `_record_transitions(start_x, start_y, 0, start_momentum)` call before the loop; pathfind didn't.
+- **Multi-level flat tiles** — `_flood_fill_level._record_transitions` records both ramp_index keys and `("ml", x, y, other_lv)` keys for tiles whose BDHC level_map has ≥ 2 plates. `_bfs_pathfind_level` only recorded ramp_index keys, dropping every multi-level transition.
+
+**Fix**: factor a `_record_transition(tx, ty, path, arrive_m)` helper inside `_bfs_pathfind_level` mirroring `_flood_fill_level`, call it once for the start tile and once per first-discovery during BFS expansion. `_bfs_pathfind_3d._search`'s candidate-sort heuristic now handles both int and tuple keys (ML transitions get tile-coord distance to goal instead of ramp-midpoint distance). For Wayward B1F the path the planner ultimately found uses pure ramp transitions (no ML keys), but the start-tile fix was load-bearing for session 31 specifically.
+
+#### 3. `_3D_MAX_DEPTH = 5` was too low
+
+The Wayward B1F south-corridor → warp:0 path requires 11 ramp transitions (9 → 0 → 2 → 3 → 8 → 7 → 5 → 4 → 1 → 13 → 14 → 11 → 12 → 10 → 19 → 18). The recursive DFS in `_bfs_pathfind_3d` capped depth at 5, so the entire branch space below depth 5 was pruned before the goal was findable. With `_3D_MAX_DEPTH = 20` the search returns a 132-step path in 0.01s wall-clock — the priority sort (`toward_goal`, Manhattan-to-goal, path length) prunes effectively even at much higher depths.
+
+**Fix**: bumped `_3D_MAX_DEPTH` to **15**. Documented the puzzle that drives the floor and the empirical wall-clock observation in `nav_constants.py`.
+
+### Code changes
+
+- **`renegade_mcp/pathfinding.py::_bike_ramp_edges`** — drop `if momentum == 0` gate on NEAR; emit at any approach. Docstring rewritten to cite DEV_HISTORY's SLOW-gear empirical note and the (27, 17)-pocket motivation.
+- **`renegade_mcp/pathfinding.py::_bfs_pathfind_level`** — record transitions via shared `_record_transition` helper that handles both ramp-plate and multi-level keys; record start tile once before the BFS loop.
+- **`renegade_mcp/pathfinding.py::_bfs_pathfind_3d._search`** — candidate-sort key handles tuple ML keys.
+- **`renegade_mcp/nav_constants.py::_3D_MAX_DEPTH`** — 5 → 15 with comment.
+- **`tests/test_navigation.py::TestBikeRampBfsEdges`** — 8 cases updated for always-NEAR semantics. `test_ramp_edges_mid_range_momentum_emits_no_edge` → `..._emits_only_near` (mid-range now emits NEAR-only). `test_ramp_edges_no_edge_when_both_plus3_and_plus4_blocked` → `..._when_all_landings_blocked` (grid now also blocks ramp+1 so the no-edge assertion holds). The pocket-reachability test no longer asserts `(5, 0) not in reach` since NEAR makes it reachable.
+- **`scripts/dump_wayward_b1f_reach.py`** — new diagnostic dump (full ASCII map + per-tile reach + interactibles). `logs/map285_reach_<state>.txt` is the suggested output path.
+- **`scripts/diag_warp0_reach.py`** — small per-state landmark probe; useful when narrowing in on a specific column.
+
+### Test results
+
+- Full pytest suite: 616 passed in 7m07s. No regressions.
+- Targeted nav suite: 81 passed in 1m43s.
+- Live `view_map` from session 31 post-fix: all 5 interactibles in `interactibles[]`, `unreachable_interactibles=[]`. Per-level reach: `[(0, 493), (1, 78), (2, 69)]` (was `[(0, 226), (1, 8), (2, 26)]`). The reach grid in the dumped log now shows the upper chamber, the (33-34, 11-15) column, and lv 1 components A-D fully populated.
+- Session 47 unchanged (warp:0 still reach@55 — was already using the FAR-jump path).
+
+### Open: executor still parks on a ramp tile
+
+End-to-end test from session 31 — both the sequential pickup (obj:2 → obj:1 → obj:3 → warp:0) and the direct `navigate_to(poi=warp:0)` — finishes obj:2 cleanly (Max Ether picked up) but stalls at (25, 17) for the rest. The bike-ramp segment driver's release timing leaves the player parked **on** a `bike_ramp_E` tile rather than on a floor tile past the ramp; the next iteration plans `right` from the ramp tile, the executor tries to walk east into the next ramp at (26, 17), and the wall bit on the ramp blocks the step. 15 repaths → `warp_failed: true`, `final=(25, 17)`.
+
+This is the executor-side issue Woj remembered ("we'd grabbed all 3 items one after another a few sessions ago"). BFS planning now finds the path correctly; the executor's segment-driver overshoot/release behavior on chained ramps needs a separate fix. Filed as the followup for next session.
+
+### Documentation hygiene
+
+- `SAVE_STATES.md` entries for session 32/42/47 still claimed "warp:0 unreachable" — stale since BUG-048 Gap 1 (session 45). Updated to reflect the current reach state and to point session 31's note at the executor as the remaining blocker.
+- `CLAUDE.md` "Wayward Cave status" updated to acknowledge that session 31's start position now BFS-reaches all POIs but the executor doesn't drive the path yet.
+
 ## Dev Session: BUG-049 — bike-segment overshoot recovery via repath (2026-04-27 session 49)
 
 While probing why `navigate_to(38, 12)` from `bug048_wayward_b1f_east_chamber_via_chain_through` (player at (42, 6) on bike, level-2 bridge row past the row-6 ramp chain) returned an 80-step long-loop path that bonked walls 4× and ate a wild Zubat at (12, 12), traced the cause to a stale-plan execution problem in `_execute_path`'s bike-ramp segment driver.
